@@ -5,7 +5,7 @@ import { Button } from '@oxy.so/bloom/button';
 import { Text } from '@oxy.so/bloom/typography';
 import { useAuth } from '@oxy.so/services/ui/client';
 import { useScreenOnShow } from '@/shared/platform/use-screen-on-show';
-import { GemiesWelcomeArt } from '@/shared/ui/gemies-mark';
+import { GemiesWelcomeArt } from '@/shared/ui/gemies-welcome-art';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, View, type LayoutChangeEvent, type PointerEvent } from 'react-native';
 import Animated, {
