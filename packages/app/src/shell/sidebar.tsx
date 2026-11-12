@@ -821,7 +821,7 @@ function useSidebarProps() {
       {loadError ? (
         <Pressable accessibilityRole="button" onPress={retryLists}>
           <Text>{t('sidebar.loadError')}</Text>
-          <Text>{t('common.retry')}</Text>
+          <Text>{t('common.tryAgain')}</Text>
         </Pressable>
       ) : null}
       {isAuthenticated && !myAgents && agentsPending ? <HistorySkeleton rows={2} /> : null}
