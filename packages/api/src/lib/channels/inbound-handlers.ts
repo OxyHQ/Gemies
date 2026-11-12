@@ -31,6 +31,7 @@ import {
 import { reserveAgentTurn } from '../agent/turn-funding.js';
 import type { ChannelId, ChannelInboundMessage } from '../channels/types.js';
 import { log } from '../logger.js';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { servedModelId, servedReferenceOf } from '../models/power-levels.js';
 
 /**
@@ -193,9 +194,10 @@ export async function processChannelMessage(
      * nobody, the line is gone and the guard is what stands here — which is
      * also a stronger rule than the one it replaces.
      *
-     * No agent: this bot is Alia itself. `findSystemBot` is what selected it
-     * upstream — the row with no owner — and an agent's own bot is
-     * `processAgentBotMessage` below, which passes that agent's name.
+     * The base identity: this bot is Alia's own (`bots.agent_id` names her
+     * gemie). `findSystemBot` is what selected it upstream — the row with no
+     * owner — and an agent's own bot is `processAgentBotMessage` below, which
+     * passes that agent's name.
      */
     const systemPrompt = `${buildIdentityGuard()}\n\n---\n\n${await getChannelSystemPrompt(channelType)}`;
     const result = await generateText({
@@ -247,6 +249,7 @@ export async function processChannelMessage(
         lastMessage: fullResponse.slice(0, 100),
         titleOnInsert: message.text.slice(0, 50),
         source: channelType,
+        agentId: ALIA_GEMIE_ID,
       });
 
       /**
@@ -509,6 +512,7 @@ export async function processAgentBotMessage(
       await upsertConversation(db, {
         oxyUserId: ownerUserId,
         conversationId,
+        agentId: agent._id,
         lastMessage: fullResponse.slice(0, 100),
         titleOnInsert: message.text.slice(0, 50),
         source: channelType,

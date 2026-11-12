@@ -1,4 +1,5 @@
 import { uuidv7 } from '@oxy.so/db';
+import { ROOM_GEMIE_ID } from '../../domain/alia-gemie';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MAX_SPACE_MEMBERS } from '../../domain/spaces';
@@ -71,7 +72,7 @@ describe('a space', () => {
     expect(space).toMatchObject({ name: 'Marketing', instructions: 'Ship it', memberAgentIds: [] });
     const room = await findConversation(db, owner, space.conversationId);
     expect(room?.title).toBe('Marketing');
-    expect(room?.agentId).toBeNull();
+    expect(room?.agentId).toBe(ROOM_GEMIE_ID);
     expect(await roomMembers(owner, space.conversationId)).toEqual([]);
   });
 

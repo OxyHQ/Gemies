@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { getErrorMessage } from '../errors/index.js';
 import { log } from '../logger.js';
 import { type AgentTurnPerson, runAgentTurn } from './agent-turn.js';
+import { loadAliaGemie } from '../alia-gemie.js';
 
 export const ASK_ALIA_TOOL = 'askAlia';
 
@@ -44,7 +45,7 @@ export function buildAskAliaTool(options: {
       execute: async ({ question }): Promise<AskAliaResult> => {
         try {
           const outcome = await runAgentTurn({
-            agent: null,
+            agent: await loadAliaGemie(),
             task: question,
             person: options.person,
             payerOxyUserId: options.payerOxyUserId,

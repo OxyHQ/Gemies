@@ -29,6 +29,7 @@
  * that silently matched nothing would pass every assertion on this page.
  */
 
+import { aliaGemie, personaGemie } from '../../__tests__/support/gemies.js';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { HydratedAgent } from '../agent-identity.js';
 
@@ -61,6 +62,7 @@ const HISTORICAL_RIVAL_CLAIMS = [
 ];
 
 const claudio = {
+  ...personaGemie(),
   _id: 'agent-1',
   id: 'agent-1',
   oxyAccountId: 'oxy-account-1',
@@ -95,7 +97,13 @@ const MODEL = {
   releasedAt: null,
 } as const;
 
-const turn = { surface: 'chat', model: MODEL, isDirectUserSession: true } as const;
+/** A turn that named no gemie: Alia's. A test about a persona spreads its own `linkedAgent` over it. */
+const turn = {
+  surface: 'chat',
+  model: MODEL,
+  isDirectUserSession: true,
+  linkedAgent: aliaGemie(),
+} as const;
 
 // `loadPrompt` memoizes per process, and these tests read the real files.
 beforeEach(() => clearPromptCache());

@@ -1,3 +1,4 @@
+import { aliaGemie } from '../../__tests__/support/gemies.js';
 import { describe, expect, it } from 'vitest';
 
 import { SystemPromptBuilder } from '../system-prompt-builder.js';
@@ -28,6 +29,7 @@ const ACTIVE =
 
 async function build(skills: { index: string; active: string } | null): Promise<string> {
   return SystemPromptBuilder.build({
+    linkedAgent: aliaGemie(),
     surface: 'chat',
     isDirectUserSession: true,
     skills,
@@ -90,6 +92,7 @@ describe('selected skills', () => {
 describe('API-key sessions', () => {
   it('receive the same skills a direct session would', async () => {
     const prompt = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
       surface: 'chat',
       isDirectUserSession: false,
       skills: { index: INDEX, active: ACTIVE },

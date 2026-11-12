@@ -130,7 +130,6 @@ async function assignmentsFor(executor: Executor, automationIds: string[]) {
 }
 
 type AutomationActorSelection =
-  | { mode: 'alia' }
   | { mode: 'fixed'; agentId: string | null }
   | { mode: 'automatic'; eligibleAgentIds: string[] };
 
@@ -138,7 +137,6 @@ function actorSelectionOf(
   row: DefinitionRow,
   eligibleAgentIds: string[],
 ): AutomationActorSelection {
-  if (row.actorMode === 'alia') return { mode: 'alia' };
   if (row.actorMode === 'fixed') return { mode: 'fixed', agentId: row.fixedAgentId };
   return { mode: 'automatic', eligibleAgentIds };
 }
@@ -1246,6 +1244,8 @@ export interface AbandonedAliaRun {
   id: string;
   automationId: string;
   requesterAccountId: string;
+  /** The standing-authority gemie the run was dispatched to. */
+  selectedAgentId: string | null;
   creditReservation: AutomationRunCreditHold | null;
 }
 
@@ -1313,6 +1313,7 @@ export async function failAbandonedAliaRun(
       id: run.id,
       automationId: run.automationId,
       requesterAccountId: run.requesterAccountId,
+      selectedAgentId: run.selectedAgentId,
       creditReservation: run.creditReservation ?? null,
     };
   });

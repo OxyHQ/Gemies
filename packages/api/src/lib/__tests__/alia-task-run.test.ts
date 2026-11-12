@@ -1,7 +1,10 @@
+import { aliaGemie } from '../../__tests__/support/gemies.js';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   findRun: vi.fn(),
+  findAgent: vi.fn(),
   findDefinition: vi.fn(),
   listSteps: vi.fn(),
   markRun: vi.fn(),
@@ -22,6 +25,8 @@ const state = vi.hoisted(() => ({
 const database = { kind: 'test-db' };
 
 vi.mock('../../db/index.js', () => ({ getDb: () => database }));
+vi.mock('../../db/agents/agentRepository.js', () => ({ findAgentById: state.findAgent }));
+vi.mock('../agent-identity.js', () => ({ attachAgentIdentity: async (row: unknown) => row }));
 vi.mock('../../db/automation/automationDefinitionRepository.js', () => ({
   findAutomationRunById: state.findRun,
   findAutomationDefinitionById: state.findDefinition,
@@ -90,8 +95,12 @@ beforeEach(() => {
     id: 'run-1',
     automationId: 'automation-1',
     selectedActorType: 'alia',
+    selectedAgentId: ALIA_GEMIE_ID,
     status: 'planned',
   });
+  state.findAgent.mockImplementation(async (_db: unknown, id: string) =>
+    id === ALIA_GEMIE_ID ? aliaGemie() : null,
+  );
   state.findDefinition.mockResolvedValue({
     id: 'automation-1',
     ownerAccountId: 'owner-1',
@@ -134,7 +143,7 @@ describe('an Alia task run', () => {
         userId: 'owner-1',
         actsForPerson: true,
         isDirectSession: false,
-        agent: null,
+        agent: expect.objectContaining({ _id: ALIA_GEMIE_ID, taskAuthority: 'standing' }),
         toolsEnabled: true,
         webSearch: true,
         runId: 'run-1',
@@ -164,11 +173,31 @@ describe('an Alia task run', () => {
     expect(state.post).toHaveBeenCalledWith({
       oxyUserId: 'owner-1',
       automationId: 'automation-1',
+      agentId: ALIA_GEMIE_ID,
       objective: 'Track the latest releases from Meta',
       conversationId: 'conversation-1',
       content: 'Meta announced Llama 5 today.',
     });
     expect(state.refund).not.toHaveBeenCalled();
+  });
+
+  it('drives only a run of a standing-authority gemie: any other is failed and refunded, unrun', async () => {
+    state.findRun.mockResolvedValueOnce({
+      id: 'run-1',
+      automationId: 'automation-1',
+      selectedActorType: 'alia',
+      selectedAgentId: 'a-persona',
+      status: 'planned',
+    });
+    state.findAgent.mockResolvedValueOnce({
+      ...aliaGemie(),
+      _id: 'a-persona',
+      taskAuthority: 'session',
+    });
+
+    await expect(runAliaTask(job, { finalAttempt: true })).resolves.toBe('failed');
+    expect(state.forUser).not.toHaveBeenCalled();
+    expect(state.refund).toHaveBeenCalledWith(RESERVATION, 'Standing-authority gemie not found');
   });
 
   it('keeps the hold for the retry when an earlier attempt fails', async () => {

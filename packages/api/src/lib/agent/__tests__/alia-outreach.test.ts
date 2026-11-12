@@ -33,12 +33,14 @@ vi.mock('../../notification-service.js', () => ({ sendNotification: state.notify
 vi.mock('../../../socket.js', () => ({ getIO: () => ({ to: state.to }) }));
 vi.mock('../../logger.js', () => ({ log: { agents: { warn: vi.fn() } } }));
 
+import { ALIA_GEMIE_ID } from '../../../domain/alia-gemie.js';
 import { aliaOutreachConversationId, postAliaCheckIn, postAliaMessage } from '../alia-outreach.js';
 import { CHECK_IN_DAILY_LIMIT } from '../outreach-budget.js';
 
 const base = {
   oxyUserId: 'owner-1',
   automationId: 'automation-1',
+  agentId: ALIA_GEMIE_ID,
   objective: 'Track the latest releases from Meta',
   content: 'Meta announced Llama 5 today.',
 };
@@ -57,7 +59,7 @@ beforeEach(() => {
 });
 
 describe('Alia posting a task result', () => {
-  it('opens the task conversation on the first result, titled by the objective, with no agent', async () => {
+  it('opens the task conversation on the first result, titled by the objective, on the task’s gemie', async () => {
     const outcome = await postAliaMessage({ ...base, conversationId: null });
 
     expect(outcome).toEqual({
@@ -70,10 +72,10 @@ describe('Alia posting a task result', () => {
     expect(state.upsert).toHaveBeenNthCalledWith(1, database, {
       oxyUserId: 'owner-1',
       conversationId,
+      agentId: ALIA_GEMIE_ID,
       titleOnInsert: 'Track the latest releases from Meta',
       source: 'app',
     });
-    expect(state.upsert.mock.calls[0]?.[1]).not.toHaveProperty('agentId');
     expect(state.insert).toHaveBeenCalledWith(database, [
       expect.objectContaining({
         conversationId,

@@ -1,4 +1,5 @@
 import express from 'express';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import type { Server } from 'node:http';
 import { request as httpRequest } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -42,16 +43,25 @@ vi.mock('../../middleware/auth.js', () => ({
     next();
   },
 }));
-vi.mock('../../db/agents/agentRepository.js', () => ({
-  findAgentById: vi.fn(async (_db, id: string) => ({
-    id,
-    _id: id,
-    ownerOxyAccountId: 'owner-1',
-    access: 'private',
-    oxyAccountId: `bot-${id}`,
-    status: 'active',
-  })),
-}));
+vi.mock('../../db/agents/agentRepository.js', async () => {
+  const { aliaGemie } = await import('../../__tests__/support/gemies.js');
+  const { ALIA_GEMIE_ID } = await import('../../domain/alia-gemie.js');
+  return {
+    findAgentById: vi.fn(async (_db, id: string) =>
+      id === ALIA_GEMIE_ID
+        ? aliaGemie()
+        : {
+            id,
+            _id: id,
+            ownerOxyAccountId: 'owner-1',
+            access: 'private',
+            oxyAccountId: `bot-${id}`,
+            status: 'active',
+            taskAuthority: 'session',
+          },
+    ),
+  };
+});
 vi.mock('../../db/automation/automationDefinitionRepository.js', () => ({
   countEnabledAutomationDefinitions: state.enabledCount,
   createAutomationDefinition: state.create,
@@ -721,8 +731,8 @@ describe('Alia as the default responsible actor', () => {
     expect(state.create).toHaveBeenCalledWith(
       database,
       expect.objectContaining({
-        actorMode: 'alia',
-        fixedAgentId: undefined,
+        actorMode: 'fixed',
+        fixedAgentId: ALIA_GEMIE_ID,
         eligibleAgentIds: [],
         actions: [],
         // Inert until her authority is durable.
@@ -764,13 +774,13 @@ describe('Alia as the default responsible actor', () => {
   it('accepts Alia named explicitly', async () => {
     const response = await send('POST', '/automations', {
       ...assistantTask,
-      actorSelection: { mode: 'alia' },
+      actorSelection: { mode: 'fixed', agentId: ALIA_GEMIE_ID },
     });
 
     expect(response.status).toBe(201);
     expect(state.create).toHaveBeenCalledWith(
       database,
-      expect.objectContaining({ actorMode: 'alia' }),
+      expect.objectContaining({ actorMode: 'fixed', fixedAgentId: ALIA_GEMIE_ID }),
     );
   });
 
@@ -887,12 +897,12 @@ describe('Alia as the default responsible actor', () => {
     state.update.mockImplementationOnce(async (_db, input) =>
       storedAutomation({
         ...existing,
-        actorSelection: { mode: input.actorMode },
+        actorSelection: { mode: input.actorMode, agentId: input.fixedAgentId },
       }),
     );
 
     const response = await send('PATCH', '/automations/automation-1', {
-      actorSelection: { mode: 'alia' },
+      actorSelection: { mode: 'fixed', agentId: ALIA_GEMIE_ID },
     });
 
     expect(response.status).toBe(200);
@@ -902,8 +912,8 @@ describe('Alia as the default responsible actor', () => {
     expect(state.update).toHaveBeenCalledWith(
       database,
       expect.objectContaining({
-        actorMode: 'alia',
-        fixedAgentId: undefined,
+        actorMode: 'fixed',
+        fixedAgentId: ALIA_GEMIE_ID,
         eligibleAgentIds: [],
         authorizations: [],
         aliaAuthorizations: [
@@ -915,7 +925,9 @@ describe('Alia as the default responsible actor', () => {
   });
 
   it("revokes Alia's standing authority with the task when it is stopped", async () => {
-    state.find.mockResolvedValueOnce(storedAutomation({ actorSelection: { mode: 'alia' } }));
+    state.find.mockResolvedValueOnce(
+      storedAutomation({ actorSelection: { mode: 'fixed', agentId: ALIA_GEMIE_ID } }),
+    );
     state.listActive.mockResolvedValueOnce([
       { oxyAuthorizationId: 'oxy-listEmails' },
       { oxyAuthorizationId: 'oxy-getEmail' },

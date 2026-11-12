@@ -34,6 +34,7 @@ import {
   insertMessages,
 } from '../../db/chat/messageRepository.js';
 import { AGENT_OUTREACH_MESSAGE_ID_PREFIX } from '../../domain/conversation.js';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { log } from '../logger.js';
 import { sendNotification } from '../notification-service.js';
 import { getIO } from '../../socket.js';
@@ -50,6 +51,8 @@ const SEQ_INDEX = 'messages_oxy_user_conversation_seq_key';
 export interface AliaTaskMessageInput {
   readonly oxyUserId: string;
   readonly automationId: string;
+  /** The standing-authority gemie responsible for the task, whose conversation it is. */
+  readonly agentId: string;
   /** The task's objective: the conversation's title and the notification's. */
   readonly objective: string;
   /** Already stored on the definition, when an earlier run delivered. */
@@ -65,6 +68,7 @@ export type AliaOutreachOutcome =
 async function appendAliaMessage(
   oxyUserId: string,
   conversationId: string,
+  agentId: string,
   title: string,
   content: string,
 ): Promise<string> {
@@ -97,6 +101,7 @@ async function appendAliaMessage(
     conversationId,
     lastMessage: content.slice(0, 100),
     titleOnInsert: title,
+    agentId,
   });
 
   // Live, for a client that has this conversation open.
@@ -115,7 +120,10 @@ async function appendAliaMessage(
  * before anything is posted into it.
  */
 async function ensureAliaTaskConversation(
-  input: Pick<AliaTaskMessageInput, 'oxyUserId' | 'automationId' | 'objective' | 'conversationId'>,
+  input: Pick<
+    AliaTaskMessageInput,
+    'oxyUserId' | 'automationId' | 'agentId' | 'objective' | 'conversationId'
+  >,
 ): Promise<string> {
   const title = input.objective.trim().slice(0, MAX_TITLE_CHARS) || 'Scheduled task';
   const conversationId =
@@ -132,6 +140,7 @@ async function ensureAliaTaskConversation(
       conversationId,
       titleOnInsert: title,
       source: 'app',
+      agentId: input.agentId,
     });
   }
   return conversationId;
@@ -143,7 +152,13 @@ export async function postAliaMessage(input: AliaTaskMessageInput): Promise<Alia
   const title = input.objective.trim().slice(0, MAX_TITLE_CHARS) || 'Scheduled task';
   const conversationId = await ensureAliaTaskConversation(input);
 
-  const messageId = await appendAliaMessage(input.oxyUserId, conversationId, title, content);
+  const messageId = await appendAliaMessage(
+    input.oxyUserId,
+    conversationId,
+    input.agentId,
+    title,
+    content,
+  );
 
   await sendNotification({
     userId: input.oxyUserId,
@@ -220,9 +235,16 @@ export async function postAliaCheckIn(input: AliaCheckInInput): Promise<AliaChec
       conversationId,
       titleOnInsert: title,
       source: 'app',
+      agentId: ALIA_GEMIE_ID,
     });
   }
-  const messageId = await appendAliaMessage(input.oxyUserId, conversationId, title, content);
+  const messageId = await appendAliaMessage(
+    input.oxyUserId,
+    conversationId,
+    ALIA_GEMIE_ID,
+    title,
+    content,
+  );
 
   await sendNotification({
     userId: input.oxyUserId,

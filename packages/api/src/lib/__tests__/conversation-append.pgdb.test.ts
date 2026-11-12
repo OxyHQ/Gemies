@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../chat-core.js', () => ({ resolveUtilityModel: vi.fn(), getAIModel: vi.fn() }));
@@ -28,6 +29,7 @@ describe('appendConversationMessages', () => {
     const userId = `voice-append-${randomUUID()}`;
     const conversationId = randomUUID();
     await appendConversationMessages({
+      agentId: ALIA_GEMIE_ID,
       userId,
       conversationId,
       titleOnInsert: 'Hola',
@@ -39,12 +41,14 @@ describe('appendConversationMessages', () => {
     // Two exchanges completing at once claim the same seq: one retries.
     await Promise.all([
       appendConversationMessages({
+        agentId: ALIA_GEMIE_ID,
         userId,
         conversationId,
         titleOnInsert: 'x',
         messages: [{ id: 'v-u2', role: 'user', content: 'uno' }],
       }),
       appendConversationMessages({
+        agentId: ALIA_GEMIE_ID,
         userId,
         conversationId,
         titleOnInsert: 'x',
@@ -67,6 +71,7 @@ describe('appendConversationMessages', () => {
     const userId = `voice-append-${randomUUID()}`;
     const conversationId = randomUUID();
     await appendConversationMessages({
+      agentId: ALIA_GEMIE_ID,
       userId,
       conversationId,
       titleOnInsert: 'Hola',
@@ -77,6 +82,7 @@ describe('appendConversationMessages', () => {
     });
     // A client whose copy diverges (an edited first message) forces the full rewrite.
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId,
       conversationId,
       messages: [

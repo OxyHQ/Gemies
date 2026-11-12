@@ -112,6 +112,7 @@ export class VoiceCall {
   private accessToken: string;
 
   private start: VoiceCallStart | null = null;
+  /** The call's gemie (Alia's when the start named none), set once the call starts. */
   private linkedAgent: HydratedAgent | null = null;
   private candidate: RealtimeCandidate | null = null;
   private meter: VoiceCreditMeter | null = null;
@@ -288,9 +289,7 @@ export class VoiceCall {
       }
 
       const agent = inputs.turnAgent;
-      if (agent.kind === 'agent') {
-        this.linkedAgent = agent.agent;
-      } else if (agent.kind !== 'none') {
+      if (agent.kind !== 'agent') {
         throw new VoiceFailure(
           agent.kind === 'resolution_unavailable' || agent.kind === 'identity_unavailable'
             ? 'realtime-unavailable'
@@ -298,6 +297,8 @@ export class VoiceCall {
           { retryable: agent.kind !== 'unavailable' },
         );
       }
+      const gemie = agent.agent;
+      this.linkedAgent = gemie;
 
       const kaana = this.env.kaana;
       if (!kaana) throw new VoiceFailure('realtime-unavailable');
@@ -319,7 +320,7 @@ export class VoiceCall {
         callId: this.callId,
         oxyUserId: this.oxyUserId,
         conversationId: start.conversationId,
-        agentId: this.linkedAgent?._id ?? null,
+        agentId: gemie._id,
         call: { takenOver: () => this.end('call-moved-elsewhere') },
       });
       this.registered = true;
@@ -337,7 +338,7 @@ export class VoiceCall {
         accessToken: () => this.accessToken,
         conversationId: start.conversationId,
         requestId: this.callId,
-        linkedAgent: this.linkedAgent,
+        linkedAgent: gemie,
         surfaceApplicationId: start.surfaceApplicationId,
         userMemory: inputs.userMemory,
         oxyUser: inputs.oxyUser,
@@ -912,7 +913,8 @@ export class VoiceCall {
 
   private persist(batch: AppendedMessage[]): void {
     const start = this.start;
-    if (!start) return;
+    const gemie = this.linkedAgent;
+    if (!start || !gemie) return;
     const firstUser = batch.find((message) => message.role === 'user')?.content ?? '';
     const titleNow = this.firstPersist && this.historyWasEmpty && firstUser !== '';
     if (firstUser !== '') this.firstPersist = false;
@@ -922,7 +924,7 @@ export class VoiceCall {
           userId: this.oxyUserId,
           conversationId: start.conversationId,
           messages: batch,
-          ...(this.linkedAgent ? { agentId: this.linkedAgent._id } : {}),
+          agentId: gemie._id,
           titleOnInsert: firstUser.slice(0, 60) || 'Voice call',
         });
         this.emit({

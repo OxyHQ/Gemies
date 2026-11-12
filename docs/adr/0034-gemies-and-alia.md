@@ -121,3 +121,58 @@ repository from Alia's `main`.
 - **A fresh database for Gemies.** This was rejected because people's agents and conversations
   would be lost.
 - **A GitHub fork.** This was rejected by the owner, who wants the two repositories unlinked.
+
+## Implementation record
+
+### Phase 3, step 1: Alia is an `agents` row (2026-11-12)
+
+- **Attributes, not a `null`.** Four columns every gemie has (`domain/agent.ts`), with an
+  ordinary gemie's value as the default and Alia's row holding the other one:
+  - `memory_store` (`nilo` | `gemie`);
+  - `reach` (`person` | `grants`): the person's own assistant — Oxy's person lane, every row of
+    the instanced families, the person's installed skills, name and Inbox context, the base
+    identity with no remit — or a persona under its grants, linked skills and remit;
+  - `mailbox` (boolean): `self_*` tools and own-mailbox alerts;
+  - `task_authority` (`standing` | `session`): tasks on `alia-tasks` under standing authority,
+    no agent session or thread; or durable sessions and thread turns.
+
+  "No computer" is configuration too: her row holds no `computer` (nor `browser`) grant. Every
+  `agentId == null` branch in the turn (`tool-pipeline`, `turn-inputs`, `system-prompt-builder`,
+  `agent-turn`, the chat route, voice, channels, automations) reads these attributes instead.
+- **The row** is seeded by migration 0135 with the fixed id `ALIA_GEMIE_ID`
+  (`01a1cf00-cecf-7a24-868b-42b452105a6f`), public and published.
+- **Her Oxy account does not exist yet.** Oxy reserves the username `alia` and models her as the
+  actor `{ type: 'alia', ownerAccountId }`, which its schema requires to have no account. Until Oxy
+  creates the gemie's account (phase 2, Oxy's contract), the row's `oxy_account_id` holds
+  `ALIA_PENDING_OXY_ACCOUNT_ID`, a value Oxy resolves to nobody (`POST /users/by-ids` drops it,
+  availability answers "anywhere", nobody holds `act_as` over it). This was chosen over a nullable
+  column, which would have made every gemie's account optional for the sake of one row; the value
+  is replaced by id in the migration that follows Oxy's change.
+- **The Oxy lane stays as it is at the edge.** `lib/gemie-oxy-actor.ts` is the one place that
+  chooses Oxy's actor for a gemie: `reach = 'person'` speaks `{ type: 'alia', ownerAccountId }`,
+  every other gemie `{ type: 'agent', accountId }`. When Oxy accepts `agent:<alia>`, that function
+  and Alia's `oxy_account_id` are what change.
+- **The public wire does not change in this step.** Responses and the shared page spell Alia's
+  gemie as no `agentId` (`publicAgentId`), and a request that names no gemie gets hers, so a chat
+  with Alia looks and behaves as before. The routes and events take the Gemies vocabulary in their
+  own phase, with `@gemies/sdk`.
+- **Rows rewritten** (0135 pre, 0136 post for what the replaced image wrote meanwhile):
+  `conversations.agent_id` (groups and space rooms included: a room belongs to her gemie,
+  `ROOM_GEMIE_ID`, and its speakers stay its `conversation_members`), `voice_calls.agent_id`, the
+  system bots' `bots.agent_id` (a user's bot with no agent is unbound, not Alia's, and stays so),
+  the feedback on her replies (`message_reaction_states.target_actor_id`), `actor_mode = 'alia'`
+  tasks (now `fixed` on her gemie) and the standing lane's runs and steps (which now name her
+  gemie). `messages.agent_info_*` is not rewritten: a `NULL` there means "the conversation's own
+  gemie spoke". 0137–0139 make `conversations.agent_id` NOT NULL (CHECK NOT VALID, VALIDATE, SET
+  NOT NULL) and narrow `actor_mode` to `fixed` | `automatic`.
+- **Guarantees, tested** (`lib/__tests__/alia-gemie-guarantees.test.ts`,
+  `db/__tests__/aliaGemieMigration.pgdb.test.ts`): her memory never reaches another gemie (tools
+  or prompt); consulting stays one level deep for her and for a persona; her chat keeps the person
+  lane, no `self_*`, no machine, the person's skills and no remit.
+- **Kept, by name, for the vocabulary phase:** the standing lane's stored value
+  (`automation_runs.selected_actor_type = 'alia'`, `automation_steps.actor_type`), the `alia-tasks`
+  queue and `alia_task_authorizations`.
+- **Not yet migrated:** `email_alert_preferences.agent_id` and `email_outreach_decisions.agent_id`
+  still use `NULL` for "the person's own Inbox, told by Alia" (and so does
+  `PUT /notifications/email-alerts`); the Codea gemie is not seeded; the default gemie is Alia
+  for everybody until the per-person and per-app setting (§4) exists.

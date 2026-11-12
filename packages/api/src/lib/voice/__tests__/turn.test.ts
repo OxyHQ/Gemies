@@ -1,3 +1,4 @@
+import { aliaGemie } from '../../../__tests__/support/gemies.js';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../logger.js', () => {
@@ -57,7 +58,7 @@ function input(overrides: Partial<Parameters<typeof buildVoiceTurn>[0]> = {}) {
     accessToken: () => 'token',
     conversationId: 'conv-1',
     requestId: 'vc_1',
-    linkedAgent: null,
+    linkedAgent: aliaGemie(),
     surfaceApplicationId: null,
     userMemory: null,
     oxyUser: null,

@@ -16,6 +16,7 @@ import type { Executor } from '../index';
 import { agents } from '../schema/agents';
 import { conversationMembers, conversations } from '../schema/chat';
 import { spaces } from '../schema/spaces';
+import { ROOM_GEMIE_ID } from '../../domain/alia-gemie';
 
 export interface SpaceRecord {
   id: string;
@@ -93,6 +94,8 @@ export async function createSpace(
       conversationId,
       title: input.name,
       source: 'app',
+      // A room's speakers are the space's members; the conversation belongs to Alia's gemie.
+      agentId: ROOM_GEMIE_ID,
     });
     const [row] = await tx
       .insert(spaces)

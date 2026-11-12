@@ -477,7 +477,7 @@ describe('the product runtime still runs the check (#139 ws6)', () => {
     const context = codeOfFile(path.join(API_SRC, 'lib/chat/request-context.ts'));
     const inputs = codeOfFile(path.join(API_SRC, 'lib/chat/turn-inputs.ts'));
     expect(context).toContain(snippet('export async function buildChatRequestContext'));
-    expect(context).toContain(snippet('prefetchTurnInputs({'));
+    expect(context).toContain(snippet('prefetchTurnInputs(identity, turnGemie)'));
     expect(inputs).toContain(snippet('getUserEntitlements(oxyUserId)'));
     for (const file of [context, inputs]) {
       expect(file).not.toContain('allowedModelIds');

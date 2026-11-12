@@ -275,9 +275,11 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
     state.resolved = ctx.resolved;
     state.modelId = ctx.modelId;
     const { autonomyRuntime } = ctx;
-    // A linked agent is always on its agent runtime. There is no client mode
-    // switch and, critically, no second paid session launched beside this turn.
-    const agentRuntimeEnabled = linkedAgent != null;
+    // A gemie whose work runs as sessions is always on its agent runtime: every
+    // chat turn is a turn of its durable thread. A standing-authority gemie
+    // (Alia) has no session. There is no client mode switch and, critically, no
+    // second paid session launched beside this turn.
+    const agentRuntimeEnabled = linkedAgent.taskAuthority === 'session';
 
     // The correlation record for this turn, before the first branch below can
     // take a request somewhere else. `kaana` is null because Alia serves this
@@ -297,6 +299,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
         modelId: state.modelId,
         userId: req.user.id,
         conversationId,
+        agentId: linkedAgent._id,
         assistantMessageId,
         ...(host === undefined ? {} : { originApp: host.app }),
         messages,
@@ -321,7 +324,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       }
     }
 
-    if (agentRuntimeEnabled && linkedAgent && req.user?.id && isDirectUserSession) {
+    if (agentRuntimeEnabled && req.user?.id && isDirectUserSession) {
       const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
       const task =
         typeof lastUserMessage?.content === 'string'
@@ -366,7 +369,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
         ? await conversationReactionContext(req.user.id, conversationId)
         : '';
     if (
-      linkedAgent &&
+      agentRuntimeEnabled &&
       req.user?.id &&
       isDirectUserSession &&
       (await isExternalAgent(linkedAgent._id))
@@ -395,7 +398,8 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
           tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
           requestStartTime,
           autonomyRuntime,
-          agentTurn: true,
+          agentId: linkedAgent._id,
+          gemieMemoryTurn: linkedAgent.memoryStore === 'gemie',
           ...(personalization ? {} : { personalization: false as const }),
           ...(host === undefined ? {} : { originApp: host.app }),
         },
@@ -600,7 +604,8 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       globalTimeoutMs: GLOBAL_TIMEOUT_MS,
       providerAbort,
       beforeFinish: observation?.beginFinish,
-      agentTurn: linkedAgent != null,
+      agentId: linkedAgent._id,
+      gemieMemoryTurn: linkedAgent.memoryStore === 'gemie',
       ...(personalization ? {} : { personalization: false }),
       state,
       body,

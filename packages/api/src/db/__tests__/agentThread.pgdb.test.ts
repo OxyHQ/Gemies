@@ -27,6 +27,7 @@
  * shares one database across every file in it.
  */
 
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
@@ -123,6 +124,7 @@ describe('a person may hold many conversations with one agent', () => {
     // there are far more of those than of these.
     const user = `${SUITE}-plain`;
     await createConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: user,
       conversationId: `${SUITE}-plain-1`,
       title: 'New chat',

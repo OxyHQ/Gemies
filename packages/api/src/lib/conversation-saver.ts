@@ -86,7 +86,8 @@ export interface SaveConversationParams {
   assistantMessageId?: string;
   toolInvocations?: ToolInvocation[];
   source?: ConversationSource;
-  agentId?: string;
+  /** The gemie the conversation belongs to, if this turn creates it: the turn's own. */
+  agentId: string;
   /** The embedding app (`host.app`); it labels the conversation only if this turn creates it. */
   originApp?: string;
   agentMessages?: Array<{ role: 'assistant'; content: string; agentInfo: AgentInfo }>;
@@ -216,7 +217,7 @@ export async function saveConversation(params: SaveConversationParams): Promise<
     ...(omitLeadReply && preview === '' ? {} : { lastMessage: preview }),
     titleOnInsert: title,
     source: source || 'app',
-    ...(agentId ? { agentId } : {}),
+    agentId,
     ...(originApp ? { originApp } : {}),
   });
 
@@ -294,7 +295,8 @@ export async function appendConversationMessages(params: {
   readonly userId: string;
   readonly conversationId: string;
   readonly messages: readonly AppendedMessage[];
-  readonly agentId?: string;
+  /** The gemie of the call, which a conversation it creates belongs to. */
+  readonly agentId: string;
   readonly titleOnInsert: string;
 }): Promise<void> {
   const { userId, conversationId, messages } = params;
@@ -306,7 +308,7 @@ export async function appendConversationMessages(params: {
     ...(last ? { lastMessage: last.content.slice(0, 100) } : {}),
     titleOnInsert: params.titleOnInsert,
     source: 'app',
-    ...(params.agentId ? { agentId: params.agentId } : {}),
+    agentId: params.agentId,
   });
   for (let attempt = 1; ; attempt++) {
     const [stored, count] = await Promise.all([

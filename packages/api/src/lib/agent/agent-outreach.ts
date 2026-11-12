@@ -177,6 +177,7 @@ export async function postAgentMessage(input: AgentOutreachInput): Promise<Agent
       conversationId: conversation.conversationId,
       lastMessage: content.slice(0, 100),
       titleOnInsert: name,
+      agentId: input.agentId,
     });
     return {
       posted: true as const,

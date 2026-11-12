@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ALIA_GEMIE_ID } from '../../../../domain/alia-gemie.js';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../../../../db/index.js';
@@ -26,6 +27,7 @@ async function fixture() {
   const userId = `reaction-commit-${randomUUID()}`,
     conversationId = randomUUID();
   await createConversation(db, {
+    agentId: ALIA_GEMIE_ID,
     oxyUserId: userId,
     conversationId,
     title: 'Feedback',

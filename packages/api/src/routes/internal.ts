@@ -28,6 +28,7 @@ import { aliaTaskQueueCounts } from '../lib/alia-task-queue.js';
 import { agentSessionQueueCounts } from '../lib/task-queue.js';
 import { getSafeErrorMessage } from '../lib/errors/sanitize.js';
 import { isInvalidToolCall } from '../lib/chat/tool-calls.js';
+import { loadAliaGemie } from '../lib/alia-gemie.js';
 
 const router = Router();
 
@@ -174,6 +175,8 @@ router.post('/trigger', oxyServiceAuth, async (req, res) => {
       toolsEnabled: true,
       webSearch: true,
       isLocalRuntime: false,
+      // It names no gemie, so it is Alia's.
+      agent: await loadAliaGemie(),
     });
 
     // Build the user message from the event

@@ -76,8 +76,10 @@ export interface NonStreamingParams {
    */
   assertLive?: () => void;
   beforeFinish?: () => Promise<void>;
-  /** The turn runs as an agent: Alia's after-chat learning skips it. */
-  agentTurn?: boolean;
+  /** The turn's gemie keeps its own memory: the learning into Alia's stores skips it. */
+  gemieMemoryTurn?: boolean;
+  /** The turn's gemie, which a conversation this turn creates belongs to. */
+  agentId: string;
   /** The person turned personalization off: nothing is learned about them from this turn. */
   personalization?: false;
 }
@@ -108,7 +110,8 @@ export async function runNonStreaming(params: NonStreamingParams): Promise<void>
     settlement,
     assertLive,
     beforeFinish,
-    agentTurn,
+    gemieMemoryTurn,
+    agentId,
     personalization,
   } = params;
 
@@ -155,6 +158,7 @@ export async function runNonStreaming(params: NonStreamingParams): Promise<void>
   const lifecycleCtx: LifecycleContext = {
     userId: req.user?.id,
     conversationId,
+    agentId,
     assistantMessageId,
     messages,
     modelId,
@@ -165,7 +169,7 @@ export async function runNonStreaming(params: NonStreamingParams): Promise<void>
     requestStartTime,
     skillNames: skills.activated().map((skill) => skill.name),
     autonomyRuntime,
-    ...(agentTurn ? { agentTurn: true } : {}),
+    ...(gemieMemoryTurn ? { gemieMemoryTurn: true } : {}),
     ...(personalization === false ? { personalization } : {}),
     ...(originApp === undefined ? {} : { originApp }),
   };

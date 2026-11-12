@@ -41,8 +41,9 @@
  * Oxy account, so the absence of a decision cannot keep meaning permission. An
  * agent with no grants gets {@link UNGRANTED_TOOLS} and nothing else.
  *
- * Ordinary Alia — a turn with no agent — is unaffected. It has no grants to read
- * and reaches whatever its surface structurally allows, exactly as before.
+ * Alia is a gemie too (ADR 0034 §2). Her fixed families are her row's grants,
+ * and her `reach = 'person'` is what makes every instanced row the person's —
+ * see {@link readGemieGrants}.
  */
 
 /**
@@ -327,29 +328,15 @@ export interface CapabilityGrantSet {
    * The granted rows of an instanced family.
    *
    * `null` means EVERY row, resolved by the source at the moment it is asked.
-   * {@link GRANTS_EVERYTHING} answers it for every instanced family; an agent's set
-   * answers it only for a family in {@link EVERY_ROW_FAMILIES} whose bare grant
-   * the owner actually wrote, and an ARRAY — empty when nothing was granted —
-   * for the others. That is what keeps `mcp` a per-row decision no matter
-   * what is stored, since the same array is also what a denied family answers.
+   * A `reach = 'person'` gemie answers it for every instanced family
+   * ({@link readGemieGrants}); a `grants` gemie answers it only for a family in
+   * {@link EVERY_ROW_FAMILIES} whose bare grant the owner actually wrote, and an
+   * ARRAY — empty when nothing was granted — for the others. That is what keeps
+   * `mcp` a per-row decision no matter what is stored, since the same array is
+   * also what a denied family answers.
    */
   instances(family: InstancedCapabilityFamily): readonly string[] | null;
 }
-
-/**
- * The answer for a turn with no agent: ordinary Alia, unpartitioned.
- *
- * Not "an agent with every grant". An agent's set returns `null` from
- * {@link CapabilityGrantSet.instances} for at most ONE family — `agent`, and
- * only when its owner wrote the bare grant — so for `mcp` and `integration`
- * the difference still holds exactly as it did: a missing agent
- * cannot read as a fully-granted one, which is what stops `mcpSelection` from
- * handing an agent every runnable connector.
- */
-export const GRANTS_EVERYTHING: CapabilityGrantSet = {
-  allows: () => true,
-  instances: () => null,
-};
 
 /**
  * Read a stored `capability_grants` array.
@@ -390,4 +377,27 @@ export function readCapabilityGrants(stored: readonly string[]): CapabilityGrant
     instances: (family) =>
       everyRow.has(family) && grantsEveryRow(family) ? null : (instances.get(family) ?? []),
   };
+}
+
+/**
+ * What a gemie may reach, by its `reach` (ADR 0034 §2).
+ *
+ * Its FIXED families are always its stored `capability_grants`, so a family a gemie lacks is
+ * configuration: Alia's row holds no `computer` (and no `browser`), which is "she has no machine".
+ *
+ * Its INSTANCED families depend on whose assistant it is. A `grants` gemie reaches the rows its owner
+ * named, one at a time, for the reason {@link INSTANCED_CAPABILITY_FAMILIES} argues: a connector can
+ * carry a credential, and "every one I will ever install" would be a blank cheque to a persona with an
+ * account of its own. A `person` gemie IS the person's own assistant, and the connectors, integrations
+ * and agents in question are the person's own, chosen by the person: she reaches every row, resolved
+ * again on every turn — which is what Alia always did.
+ */
+export function readGemieGrants(gemie: {
+  /** `AGENT_REACHES` in `domain/agent.ts`; anything but `person` reads as `grants`. */
+  readonly reach: string;
+  readonly capabilityGrants: readonly string[];
+}): CapabilityGrantSet {
+  const stored = readCapabilityGrants(gemie.capabilityGrants);
+  if (gemie.reach !== 'person') return stored;
+  return { allows: (family) => stored.allows(family), instances: () => null };
 }

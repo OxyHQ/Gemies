@@ -41,7 +41,8 @@ export interface ConversationRow {
   readonly icon: string | null;
   readonly iconColor: string | null;
   readonly isFavorite: boolean;
-  readonly agentId: string | null;
+  /** The gemie the conversation belongs to: Alia's unless the person opened another. */
+  readonly agentId: string;
   readonly agentThreadId: string | null;
   /** The app the conversation started in, or `null` for Alia's own surfaces. */
   readonly originApp: string | null;
@@ -55,7 +56,8 @@ export interface NewConversation {
   readonly conversationId: string;
   readonly title: string;
   readonly source: ConversationSource;
-  readonly agentId?: string;
+  /** The gemie it belongs to, already resolved: the default gemie when the person named none. */
+  readonly agentId: string;
   readonly agentThreadId?: string;
   /** The embedding app's slug (`domain/conversation.ts`); omitted for Alia's own surfaces. */
   readonly originApp?: string;
@@ -79,7 +81,7 @@ export async function createConversation(
       conversationId: input.conversationId,
       title: input.title,
       source: input.source,
-      agentId: input.agentId ?? null,
+      agentId: input.agentId,
       agentThreadId: input.agentThreadId ?? null,
       originApp: input.originApp ?? null,
     })
@@ -222,8 +224,8 @@ export interface ConversationUpsert {
   readonly titleOnInsert: string;
   /** The insert branch only. `undefined` takes the column default, `app`. */
   readonly source?: ConversationSource;
-  /** The insert branch only. */
-  readonly agentId?: string;
+  /** The insert branch only: the gemie it belongs to, already resolved. */
+  readonly agentId: string;
   readonly agentThreadId?: string;
   /** The insert branch only: an app labels the conversation it STARTS, once. */
   readonly originApp?: string;
@@ -273,7 +275,7 @@ export async function upsertConversation(
       conversationId: input.conversationId,
       title: input.title ?? input.titleOnInsert,
       ...(input.source === undefined ? {} : { source: input.source }),
-      agentId: input.agentId ?? null,
+      agentId: input.agentId,
       agentThreadId: input.agentThreadId ?? null,
       originApp: input.originApp ?? null,
       ...changed,
@@ -484,11 +486,11 @@ export async function latestMessagePerAgent(
     )
     .orderBy(conversations.agentId, desc(conversations.updatedAt), desc(conversations.id));
 
-  return rows.flatMap((row) =>
-    row.agentId === null
-      ? []
-      : [{ agentId: row.agentId, lastMessage: row.lastMessage, updatedAt: row.updatedAt }],
-  );
+  return rows.map((row) => ({
+    agentId: row.agentId,
+    lastMessage: row.lastMessage,
+    updatedAt: row.updatedAt,
+  }));
 }
 
 /** One day of the activity heatmap: threads this agent started that day. */

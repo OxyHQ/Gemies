@@ -48,6 +48,45 @@ export const AGENT_ACCESS = ['private', 'public'] as const;
 export type AgentAccess = (typeof AGENT_ACCESS)[number];
 
 /**
+ * Where a gemie remembers the person it works for (ADR 0034 §2). Never both, and never another
+ * gemie's: memory is per actor.
+ *
+ *  - `nilo`: in the person's Nilo `memories` database, through the `nilo-memories` catalogue
+ *    (`oxy_nilo_memories__*`), with the answer settings and learned writing style in
+ *    `user_memories`. Alia's.
+ *  - `gemie` (the default): in its own `agent_memory_documents`, per gemie and person (the
+ *    `memory` tool and `searchThread`, under the `memory` grant).
+ */
+export const AGENT_MEMORY_STORES = ['nilo', 'gemie'] as const;
+export type AgentMemoryStore = (typeof AGENT_MEMORY_STORES)[number];
+
+/**
+ * What a gemie reaches for the person present (ADR 0034 §2).
+ *
+ *  - `person`: it is the person's own assistant. Every connector, integration and agent the person
+ *    has (the instanced families answer "every row"), the skills the person installed, the person's
+ *    name and Inbox context, on Oxy's person lane (`lib/gemie-oxy-actor.ts`) and under the base
+ *    identity, with no remit of its own. Its fixed families are still its `capability_grants`.
+ *    Alia's.
+ *  - `grants` (the default): exactly what its `capability_grants` name, the skills linked to it,
+ *    under its own remit and name.
+ */
+export const AGENT_REACHES = ['person', 'grants'] as const;
+export type AgentReach = (typeof AGENT_REACHES)[number];
+
+/**
+ * How a gemie's work outside a chat turn is authorized and run (ADR 0034 §2).
+ *
+ *  - `standing`: under the person's standing Oxy authority, asked for when a task is saved with
+ *    the person present (`alia_task_authorizations`), on the `alia-tasks` queue. No agent
+ *    session: its chat turns are not durable thread turns either. Alia's.
+ *  - `session` (the default): durable agent sessions (ADR 0011, ADR 0033), and every chat turn is
+ *    a turn of its thread.
+ */
+export const AGENT_TASK_AUTHORITIES = ['standing', 'session'] as const;
+export type AgentTaskAuthority = (typeof AGENT_TASK_AUTHORITIES)[number];
+
+/**
  * `archetype_config`, and the ONE place its stored shape is narrowed.
  *
  * The column is `jsonb` and nothing validates it on the way in: it holds a union

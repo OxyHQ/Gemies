@@ -3,10 +3,12 @@
  *
  *  - an agent that is in a space is told about it in its system prompt, here and not only in a chat with
  *    the person, because this is the prompt of every group-room turn and every `consultAgent`;
- *  - Alia can be the CALLEE (`agent: null`, `askAlia`), and then she only ANSWERS: her tool set is cut to
+ *  - Alia can be the CALLEE (her gemie, `reach = 'person'`, `askAlia`), and then she only ANSWERS: her tool set is cut to
  *    read-only tools and her Oxy apps are held to `read_only`, so a question is never a way to borrow the
  *    powers she holds and the asking agent may not (sending messages, writing memory, connectors that act).
  */
+import { aliaGemie } from '../../../__tests__/support/gemies.js';
+import { ALIA_GEMIE_ID } from '../../../domain/alia-gemie.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const H = vi.hoisted(() => ({
@@ -101,6 +103,10 @@ const member = (spaceId: string | null) =>
     modelId: null,
     spaceId,
     featureGates: {},
+    memoryStore: 'gemie',
+    reach: 'grants',
+    mailbox: true,
+    taskAuthority: 'session',
   }) as unknown as NonNullable<Parameters<typeof runAgentTurn>[0]['agent']>;
 
 const ALL_TOOLS = {
@@ -184,7 +190,7 @@ describe('aliaConsultTools', () => {
 describe('a turn whose callee is Alia', () => {
   it('runs her read-only: Oxy apps at read_only, connectors that act not even fetched', async () => {
     const result = await runAgentTurn({
-      agent: null,
+      agent: aliaGemie(),
       task: 'What does the person usually eat?',
       person,
       payerOxyUserId: 'person-1',
@@ -193,7 +199,7 @@ describe('a turn whose callee is Alia', () => {
     expect(result.error).toBeUndefined();
     expect(result.response).toBe('an answer');
     expect(H.pipeline).toMatchObject({
-      agent: null,
+      agent: { _id: ALIA_GEMIE_ID, reach: 'person' },
       nested: true,
       actsForPerson: true,
       oxyAutonomy: 'read_only',
@@ -202,7 +208,7 @@ describe('a turn whose callee is Alia', () => {
   });
 
   it('gives her the answering prompt and no agent identity, and only the read-only tools', async () => {
-    await runAgentTurn({ agent: null, task: 'q', person, payerOxyUserId: 'person-1' });
+    await runAgentTurn({ agent: aliaGemie(), task: 'q', person, payerOxyUserId: 'person-1' });
 
     expect(H.streamed?.system).toContain('is asking you something');
     expect(H.streamed?.system).not.toContain('REMIT');
@@ -216,7 +222,7 @@ describe('a turn whose steps ran out on tool results', () => {
     H.owed = true;
 
     const result = await runAgentTurn({
-      agent: null,
+      agent: aliaGemie(),
       task: 'q',
       person,
       payerOxyUserId: 'person-1',
@@ -230,7 +236,7 @@ describe('a turn whose steps ran out on tool results', () => {
   });
 
   it('adds no pass when the loop answered', async () => {
-    await runAgentTurn({ agent: null, task: 'q', person, payerOxyUserId: 'person-1' });
+    await runAgentTurn({ agent: aliaGemie(), task: 'q', person, payerOxyUserId: 'person-1' });
 
     expect(H.streams).toHaveLength(1);
   });

@@ -6,6 +6,7 @@
  * revokes it. And the conversation list narrows
  * to one agent.
  */
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { sweepAllExpiredRows } from '@oxy.so/db/expiry';
@@ -329,6 +330,7 @@ describe('a share link', () => {
 describe('GET /conversations?agentId=', () => {
   it("lists only the person's conversations with that agent", async () => {
     await createConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: ALICE.id,
       conversationId: 'c-alia',
       title: 'Plain Alia',

@@ -8,6 +8,7 @@
  * registry calls.
  */
 
+import { aliaGemie } from '../../../__tests__/support/gemies.js';
 import { tool, type ToolSet } from 'ai';
 import { vi } from 'vitest';
 import { z } from 'zod';
@@ -155,7 +156,7 @@ export function harness(options: HarnessOptions = {}) {
               planId: options.voiceMode === false ? 'free' : 'go',
               entitlement: {} as never,
             },
-        turnAgent: options.turnAgent ?? { kind: 'none' },
+        turnAgent: options.turnAgent ?? { kind: 'agent', agent: aliaGemie() },
       };
     },
     credits: { reserve, finalize, refund },

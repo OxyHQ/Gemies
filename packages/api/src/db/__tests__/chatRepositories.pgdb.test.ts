@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { sql } from 'drizzle-orm';
 import { constraintNameOf, isUniqueViolation } from '@oxy.so/db';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
@@ -74,6 +75,7 @@ const rawMessage = (
 describe('upsertConversation', () => {
   it('creates the thread, then refreshes it without creating a second', async () => {
     const created = await upsertConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'up-user',
       conversationId: 'up-conv',
       lastMessage: 'first',
@@ -84,6 +86,7 @@ describe('upsertConversation', () => {
     expect(created.source).toBe('telegram');
 
     const refreshed = await upsertConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'up-user',
       conversationId: 'up-conv',
       lastMessage: 'second',
@@ -113,6 +116,7 @@ describe('upsertConversation', () => {
      * `timestamptz()` default instead of `updatedAt()` fails this case.
      */
     const first = await upsertConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'up-touch-user',
       conversationId: 'up-touch-conv',
       lastMessage: 'a',
@@ -120,6 +124,7 @@ describe('upsertConversation', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 5));
     const second = await upsertConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'up-touch-user',
       conversationId: 'up-touch-conv',
       lastMessage: 'b',
@@ -141,6 +146,7 @@ describe('upsertConversation', () => {
      * into the `set` turns the second assertion below to `null`.
      */
     await upsertConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'up-keep-user',
       conversationId: 'up-keep-conv',
       lastMessage: 'the preview',
@@ -148,6 +154,7 @@ describe('upsertConversation', () => {
     });
 
     const after = await upsertConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'up-keep-user',
       conversationId: 'up-keep-conv',
       titleOnInsert: 'T',
@@ -159,11 +166,13 @@ describe('upsertConversation', () => {
   it('writes an explicit title on BOTH branches', async () => {
     // The rename path: `POST /conversations` with a `title` must overwrite.
     await upsertConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'up-rename-user',
       conversationId: 'up-rename-conv',
       titleOnInsert: 'Auto',
     });
     const renamed = await upsertConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'up-rename-user',
       conversationId: 'up-rename-conv',
       title: 'Chosen by the user',
@@ -174,11 +183,13 @@ describe('upsertConversation', () => {
 
   it('scopes the conflict to the user, so two accounts can hold one conversation id', async () => {
     const mine = await upsertConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'up-alice',
       conversationId: 'up-shared',
       titleOnInsert: 'Alice',
     });
     const theirs = await upsertConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'up-bob',
       conversationId: 'up-shared',
       titleOnInsert: 'Bob',
@@ -193,6 +204,7 @@ describe('upsertConversation', () => {
 describe('reads and ownership', () => {
   it('finds a thread only for its owner', async () => {
     await createConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'read-alice',
       conversationId: 'read-conv',
       title: 'Private',
@@ -214,6 +226,7 @@ describe('reads and ownership', () => {
       ['page-c', 'C'],
     ]) {
       await createConversation(db, {
+        agentId: ALIA_GEMIE_ID,
         oxyUserId: 'page-user',
         conversationId: id,
         title,
@@ -232,6 +245,7 @@ describe('reads and ownership', () => {
 
   it('renames through db.update, which is what keeps $onUpdate applying', async () => {
     const before = await createConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'title-user',
       conversationId: 'title-conv',
       title: 'Old',
@@ -251,6 +265,7 @@ describe('reads and ownership', () => {
 
   it('deletes only the owner’s thread, and reports the count off count', async () => {
     await createConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'del-alice',
       conversationId: 'del-conv',
       title: 'T',
@@ -526,6 +541,7 @@ describe('voting picks exactly one row', () => {
 
   it('toggles a reaction on and off, keeps several, and reads them back with the message', async () => {
     await createConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'react-user',
       conversationId: 'react-conv',
       title: 'Reactions',
@@ -585,6 +601,7 @@ describe('voting picks exactly one row', () => {
 
   it('does not lose a reaction when two taps arrive together', async () => {
     await createConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: 'react-race-user',
       conversationId: 'react-race-conv',
       title: 'Reactions',

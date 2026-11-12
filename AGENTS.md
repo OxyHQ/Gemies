@@ -8,7 +8,7 @@ Este repo nació el 2026-11-12 de `OxyHQ/Alia`, con todo su historial y sin ser 
 
 - **Producción la despliega todavía `OxyHQ/Alia`.** Aquí solo está activo `ci.yml`. Los workflows de deploy, release, OTA, canaries y autobump están desactivados en GitHub (`disabled_manually`). No los actives hasta el corte de infraestructura (fase 4).
 - Lo que se fusiona en `main` de Alia se trae aquí haciendo merge desde `https://github.com/OxyHQ/Alia` `main`.
-- Vocabulario nuevo: un agente es un **gemie**. Alia es un gemie oficial global y Codea otro. No añadas ramas nuevas de «Alia = `agentId == null`».
+- Vocabulario nuevo: un agente es un **gemie**. Alia es un gemie oficial global y Codea otro. Alia es la fila `agents` `ALIA_GEMIE_ID` (`domain/alia-gemie.ts`) y lo que la distingue es su configuración (`memory_store`, `reach`, `mailbox`, `task_authority`, sus grants): decide por esos atributos, nunca por su id ni por un `agentId` nulo.
 
 ## Comandos
 
@@ -48,7 +48,7 @@ Nunca:
 - Otro `server.on('upgrade')`: Bun cierra los sockets ajenos; todo upgrade pasa por `lib/websocket-upgrades.ts`.
 - Copiar un componente de conversación a `packages/app`: viene de `AliaChatContent` en `packages/alia-chat` (ADR 0018).
 - Pasar a un agente la memoria de Alia o sus herramientas.
-- Exigir un agente para una tarea: sin `actorSelection` es `{ mode: 'alia' }`.
+- Exigir un agente para una tarea: sin `actorSelection` es `{ mode: 'fixed', agentId: ALIA_GEMIE_ID }`, el gemie Alia.
 
 Pregunta antes de: cambiar un contrato entre productos Oxy, añadir una ruta WebSocket o tocar `lib/tools/oxy-services.ts`; ver `docs/agent-rules.md` para cada regla.
 

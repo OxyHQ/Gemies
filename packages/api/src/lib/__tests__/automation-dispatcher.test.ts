@@ -74,6 +74,8 @@ vi.mock('../logger.js', () => {
   return { log: { triggers: child } };
 });
 
+import { aliaGemie } from '../../__tests__/support/gemies.js';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { dispatchStructuredAutomation } from '../automation-dispatcher.js';
 import {
   candidateCoversAction,
@@ -143,13 +145,18 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.reserve.mockResolvedValue(RESERVATION);
   database.transaction.mockImplementation(async (callback) => callback(database));
-  state.findAgent.mockImplementation(async (_db, id: string) => ({
-    id,
-    ownerOxyAccountId: 'owner-1',
-    access: 'private',
-    oxyAccountId: `bot-${id}`,
-    status: 'active',
-  }));
+  state.findAgent.mockImplementation(async (_db, id: string) =>
+    id === ALIA_GEMIE_ID
+      ? aliaGemie()
+      : {
+          id,
+          taskAuthority: 'session',
+          ownerOxyAccountId: 'owner-1',
+          access: 'private',
+          oxyAccountId: `bot-${id}`,
+          status: 'active',
+        },
+  );
   state.oxyMap.mockResolvedValue([
     { resource: inbox, maximumAutonomy: 'autonomous', limits: [], toolNames: ['searchNotes'] },
     { resource: mention, maximumAutonomy: 'autonomous', limits: [], toolNames: ['publishPost'] },
@@ -227,6 +234,7 @@ describe('normalized automation dispatch', () => {
   it('does not select an unavailable agent', async () => {
     state.findAgent.mockImplementation(async (_db, id: string) => ({
       id,
+      taskAuthority: 'session',
       ownerOxyAccountId: 'owner-1',
       access: 'private',
       oxyAccountId: `bot-${id}`,
@@ -246,6 +254,7 @@ describe('normalized automation dispatch', () => {
     // only tie to the owner is that field is somebody else's private agent.
     state.findAgent.mockImplementation(async (_db, id: string) => ({
       id,
+      taskAuthority: 'session',
       author: 'owner-1',
       ownerOxyAccountId: 'someone-else',
       access: 'private',
@@ -262,6 +271,7 @@ describe('normalized automation dispatch', () => {
   it('may run a public, active agent that somebody else owns', async () => {
     state.findAgent.mockImplementation(async (_db, id: string) => ({
       id,
+      taskAuthority: 'session',
       ownerOxyAccountId: 'someone-else',
       access: 'public',
       oxyAccountId: `bot-${id}`,
@@ -540,7 +550,7 @@ describe('a task Alia is responsible for', () => {
   const aliaTask = (overrides: Record<string, unknown> = {}) =>
     automation({
       objective: 'Track the latest releases from Meta',
-      actorSelection: { mode: 'alia' },
+      actorSelection: { mode: 'fixed', agentId: ALIA_GEMIE_ID },
       executionMode: 'execute',
       actions: [],
       resources: [],
@@ -549,12 +559,13 @@ describe('a task Alia is responsible for', () => {
       ...overrides,
     });
 
-  it('claims the run with Alia as its actor and queues an Alia job, not an agent session', async () => {
+  it('claims the run on the standing lane with her gemie recorded, and queues an Alia job, not an agent session', async () => {
     const result = await dispatchStructuredAutomation(aliaTask(), scheduleTrigger);
 
     expect(result).toEqual({ status: 'queued', runId: expect.any(String) });
     const runId = (result as { runId: string }).runId;
-    expect(state.findAgent).not.toHaveBeenCalled();
+    // Her gemie is read once, to learn its work runs under standing authority.
+    expect(state.findAgent).toHaveBeenCalledWith(database, ALIA_GEMIE_ID);
     expect(state.createRun).toHaveBeenCalledWith(
       expect.objectContaining({
         db: database,
@@ -565,7 +576,7 @@ describe('a task Alia is responsible for', () => {
         actorType: 'alia',
         stages: [
           expect.objectContaining({
-            selectedAgentId: null,
+            selectedAgentId: ALIA_GEMIE_ID,
             selectedActorAccountId: 'owner-1',
             actions: [],
             taskInput: expect.objectContaining({
@@ -593,7 +604,7 @@ describe('a task Alia is responsible for', () => {
     expect(state.observe).toHaveBeenCalledWith(
       expect.objectContaining({
         actorType: 'alia',
-        stages: [expect.objectContaining({ selectedAgentId: null })],
+        stages: [expect.objectContaining({ selectedAgentId: ALIA_GEMIE_ID })],
       }),
     );
     expect(state.reserve).not.toHaveBeenCalled();
@@ -667,7 +678,7 @@ describe('a task Alia is responsible for', () => {
         creditReservation: RESERVATION,
         stages: [
           expect.objectContaining({
-            selectedAgentId: null,
+            selectedAgentId: ALIA_GEMIE_ID,
             actions: [expect.objectContaining({ id: 'action-1', tool: 'publishPost' })],
           }),
         ],
@@ -696,7 +707,7 @@ describe('a watch task', () => {
   const watchTask = (watch: Record<string, unknown> = { query: 'Meta announcement' }) =>
     automation({
       objective: 'Tell me when Meta announces something new',
-      actorSelection: { mode: 'alia' },
+      actorSelection: { mode: 'fixed', agentId: ALIA_GEMIE_ID },
       executionMode: 'execute',
       actions: [],
       resources: [],

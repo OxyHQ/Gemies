@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ALIA_GEMIE_ID } from '../../../domain/alia-gemie.js';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { isUniqueViolation } from '@oxy.so/db';
 import { closePostgres, connectPostgres, getDb } from '../../../db/index.js';
@@ -39,7 +40,7 @@ function call(oxyUserId: string, holderTask = 'task-a') {
     id: `vc_${randomUUID()}`,
     oxyUserId,
     conversationId: `conv-${randomUUID()}`,
-    agentId: null,
+    agentId: ALIA_GEMIE_ID,
     holderTask,
     leaseMs: 30_000,
   };
@@ -118,7 +119,7 @@ describe('the registry', () => {
       callId: first.id,
       oxyUserId: user,
       conversationId: 'c1',
-      agentId: null,
+      agentId: ALIA_GEMIE_ID,
       call: oldCall,
     });
     const second = call(user);
@@ -126,7 +127,7 @@ describe('the registry', () => {
       callId: second.id,
       oxyUserId: user,
       conversationId: 'c1',
-      agentId: null,
+      agentId: ALIA_GEMIE_ID,
       call: { takenOver: vi.fn(async () => undefined) },
     });
     order.push('new goes on');
@@ -146,7 +147,7 @@ describe('the registry', () => {
       callId: mine.id,
       oxyUserId: user,
       conversationId: 'c',
-      agentId: null,
+      agentId: ALIA_GEMIE_ID,
       call: held,
     });
     // Another task takes over through the database alone, as without Redis.

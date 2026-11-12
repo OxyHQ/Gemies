@@ -1,10 +1,12 @@
 # Alia Agents
 
-An agent is one of Alia's two kinds of actor: a persona a person creates, with its
-own Oxy account, memory and computer, acting for the verified requester under the
-owner set or as itself. Alia, the other actor, needs no agent for anything. The
-map of both is [Actors: Alia and agents](./actors.mdx); this page is the detail
-for agents.
+An agent — a gemie (ADR 0034) — is a persona a person creates, with its own Oxy
+account, memory and computer, acting for the verified requester under the owner set
+or as itself. Alia is a gemie too: the official, global `agents` row `ALIA_GEMIE_ID`,
+whose configuration (`memory_store = 'nilo'`, `reach = 'person'`, `mailbox = false`,
+`task_authority = 'standing'`, no `computer` grant) is what makes her the person's own
+assistant; nobody needs another gemie for anything. The map of both is
+[Actors: Alia and agents](./actors.mdx); this page is the detail for agents.
 
 Agents, tools, the risk policy, deep research and triggers are Alia's own responsibility and stay that way under [ADR 0001](./adr/0001-alia-oxy-kaana-responsibility-boundary.md). None of it moves to the Kaana data plane.
 
@@ -49,8 +51,14 @@ the agent is created; a null owner fails closed for Oxy tools, and
 
 | Agent | Alia agent | `access` | Published | Where it opens |
 |---|---|---|---|---|
+| Alia (official, global) | `01a1cf00-cecf-7a24-868b-42b452105a6f` | `public` | yes | anywhere (migration 0135; see [Actors](./actors.mdx)) |
 | Sindi (Homiio) | `01a0646a-078f-7514-9800-9f43ceed7df8` | `public` | yes | anywhere |
 | Clarity's assistant | `01a0646a-078f-7642-95ef-439952f4f3f9` | `public` | no (not in the catalogue) | only in Clarity, by Oxy's registry (Oxy ADR 0044) |
+
+Alia's row cannot be edited through the API yet: who may edit a gemie is `act_as` over
+its Oxy account, and hers is pending in Oxy (`ALIA_PENDING_OXY_ACCOUNT_ID`). She is not
+a member of rooms or spaces (a member asks her with `askAlia`), has no threads or goals
+(`task_authority = 'standing'`), and does not answer reactions.
 
 Migration `0101` turned both former product agents into these rows (by id,
 never by name) before `0102` dropped `agents.application_id`, and moved into
@@ -498,8 +506,8 @@ Two properties are worth stating outright, because both reverse what came before
 ### Consulting another agent
 
 `consultAgent` (ADR 0020 §5) is the one way an agent is asked something inside
-another conversation. Ordinary Alia always has it; an agent has it through the
-`agent` family, separate from `delegation` (which finds and creates agents in the
+another conversation. Alia always has it (`agent` is in her grants and her `reach = 'person'` reaches every agent the
+person can open); another gemie has it through the `agent` family, separate from `delegation` (which finds and creates agents in the
 catalogue, `searchAgents` / `createAgent`).
 
 A NEW agent is created with the bare `agent` grant when its creator names no grants
@@ -524,7 +532,9 @@ on the original requester's effective account. It is
 reserved and settled against the account that funds the outer turn, and it
 streams: the client draws it joining the conversation (`alia.agent_start` …
 `alia.agent_end`, [Embedding an agent](./agent-embedding.md) §4). A nested turn
-never holds `consultAgent` itself — A can consult B, and B cannot consult back.
+never holds `consultAgent` itself — A can consult B, and B cannot consult back. When the
+callee is Alia (`reach = 'person'`), her nested turn only answers: the base identity, the
+consultation prompt, the person's Oxy apps at `read_only` and no connector that acts.
 
 `lib/__tests__/capability-grants.test.ts` is what says the vocabulary is wired:
 it grants one family, runs the real assembler and asserts the set gained exactly
@@ -667,9 +677,9 @@ connector, an unknown MCP tool).
 `/automations` is the control plane for background work; triggers, actor modes and
 how a run executes are in [Background work and proactive outreach](./proactive-intelligence.md).
 
-Every task has a responsible actor. Alia is the default (`actor_mode = 'alia'`):
-she runs it herself with no agent and posts results into a conversation of the
-task's own, reading the owner's Oxy apps and running its declared connected
+Every task has a responsible actor. Alia's gemie is the default (`actor_mode = 'fixed'`
+on `ALIA_GEMIE_ID`); her `task_authority = 'standing'` means she runs it herself with no
+agent session and posts results into a conversation of the task's own, reading the owner's Oxy apps and running its declared connected
 actions under her own standing Oxy authority; a watch task only wakes her when
 its source changed — see `docs/proactive-intelligence.md`. When a person names one of
 their agents instead, which agent may run it is one rule, shared by creation and
@@ -723,13 +733,14 @@ is told to say it is on it rather than do the work twice.
 **Alia remembers the person; each agent remembers them on its own.** Two stores,
 never mixed:
 
-| Actor | Store | Tools | In the prompt |
+| Gemie (`memory_store`) | Store | Tools | In the prompt |
 |---|---|---|---|
-| Alia | Nilo's `memories` database (the person's personal workspace); `user_memories` keeps only her answer settings and writing style | `oxy_nilo_memories__recallMemories`, `__remember`, `__updateMemory`, `__forgetMemory` | answer preferences (tone, length), writing style; she recalls the rest with the tools |
-| An agent (with the `memory` grant) | `agent_memory_documents` (MEMORY.md + `memory/<topic>.md`, per agent AND person) | `memory` (`list`, `read`, `append`, `replace`, `forget`) and `searchThread` | its own MEMORY.md (`agentMemoryPromptSection`) |
+| Alia (`nilo`) | Nilo's `memories` database (the person's personal workspace); `user_memories` keeps only her answer settings and writing style | `oxy_nilo_memories__recallMemories`, `__remember`, `__updateMemory`, `__forgetMemory` | answer preferences (tone, length), writing style; she recalls the rest with the tools |
+| Any other gemie (`gemie`, with the `memory` grant) | `agent_memory_documents` (MEMORY.md + `memory/<topic>.md`, per agent AND person) | `memory` (`list`, `read`, `append`, `replace`, `forget`) and `searchThread` | its own MEMORY.md (`agentMemoryPromptSection`) |
 
-An agent turn never receives Alia's tools or any of her memory, whatever it was
-granted (`lib/tool-pipeline.ts`, `lib/system-prompt-builder.ts`); before this,
+A turn of a gemie whose `memory_store` is not `nilo` never receives Alia's tools or any
+of her memory, whatever it was granted (`lib/tool-pipeline.ts`,
+`lib/system-prompt-builder.ts`, `alia-gemie-guarantees.test.ts`); before this,
 an agent with the grant read Alia's recall and wrote into her store, so one
 agent's notes surfaced in every other agent and under Alia's name. The
 `memory` family in `FIXED_FAMILY_TOOLS` is therefore just `memory` and

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { aliaGemie } from '../../__tests__/support/gemies.js';
 import { SystemPromptBuilder, type UserMemoryData } from '../system-prompt-builder.js';
 import { STYLE_PROMPT_MAX_CHARS, formatStyleForPrompt } from '../style/style-prompt.js';
 import type { IWritingStyleProfile } from '../../domain/writing-style.js';
@@ -59,14 +60,14 @@ function memory(overrides: Partial<UserMemoryData> = {}): UserMemoryData {
 async function build(opts: {
   userMemory?: UserMemoryData | null;
   isDirectUserSession?: boolean;
-  linkedAgent?: HydratedAgent | null;
+  linkedAgent?: HydratedAgent;
   personalization?: boolean;
 }): Promise<string> {
   return SystemPromptBuilder.build({
     surface: 'chat',
     isDirectUserSession: opts.isDirectUserSession ?? true,
     userMemory: opts.userMemory,
-    linkedAgent: opts.linkedAgent ?? null,
+    linkedAgent: opts.linkedAgent ?? aliaGemie(),
     ...(opts.personalization === undefined ? {} : { personalization: opts.personalization }),
   });
 }

@@ -1,3 +1,4 @@
+import { ALIA_GEMIE_ID } from '../../../domain/alia-gemie.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -9,6 +10,11 @@ const impl: { run: (input: unknown) => Promise<Outcome> } = {
   run: async () => ({ response: '', tokensUsed: 0, creditsCharged: 0 }),
 };
 const calls: unknown[] = [];
+// A turn that names no gemie is Alia's: her row, as migration 0135 seeds it.
+vi.mock('../../alia-gemie.js', async () => {
+  const { aliaGemie } = await import('../../../__tests__/support/gemies.js');
+  return { loadAliaGemie: async () => aliaGemie(), clearAliaGemieCache: () => undefined };
+});
 vi.mock('../agent-turn.js', () => ({
   runAgentTurn: (input: unknown) => {
     calls.push(input);
@@ -47,7 +53,7 @@ describe('askAlia', () => {
 
     expect(calls).toEqual([
       {
-        agent: null,
+        agent: expect.objectContaining({ _id: ALIA_GEMIE_ID, reach: 'person' }),
         task: 'what time zone is the person in?',
         person,
         payerOxyUserId: 'person-1',

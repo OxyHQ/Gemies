@@ -95,22 +95,28 @@ vi.mock('../../files/person-files.js', async (importOriginal) => {
 });
 const resolvedWith = vi.hoisted(() => [] as unknown[]);
 
-vi.mock('../turn-inputs.js', () => ({
-  EMPTY_SKILL_RUNTIME: { index: '', active: '', tools: {}, candidateIds: [] },
-  prefetchTurnInputs: async () => {
-    if (turn.prefetchFails) throw new Error('inputs down');
-    return {
-      userMemory: null,
-      oxyUser: null,
-      entitlements: null,
-      turnAgent: turn.agent === null ? { kind: 'none' } : { kind: 'agent', agent: turn.agent },
-    };
-  },
-  buildTurnSkills: async () => {
-    if (turn.failAfterReserve) throw new Error('skills down');
-    return null;
-  },
-}));
+vi.mock('../turn-inputs.js', async () => {
+  const { aliaGemie } = await import('../../../__tests__/support/gemies.js');
+  // `null` is a turn that named no gemie: Alia's.
+  const gemie = () => ({ kind: 'agent' as const, agent: turn.agent ?? aliaGemie() });
+  return {
+    EMPTY_SKILL_RUNTIME: { index: '', active: '', tools: {}, candidateIds: [] },
+    resolveTurnGemie: async () => gemie(),
+    prefetchTurnInputs: async () => {
+      if (turn.prefetchFails) throw new Error('inputs down');
+      return {
+        userMemory: null,
+        oxyUser: null,
+        entitlements: null,
+        turnAgent: gemie(),
+      };
+    },
+    buildTurnSkills: async () => {
+      if (turn.failAfterReserve) throw new Error('skills down');
+      return null;
+    },
+  };
+});
 
 vi.mock('../../../db/index.js', () => ({ getDb: () => ({}) }));
 vi.mock('../../../db/integrations/mcpServerRepository.js', () => ({

@@ -130,8 +130,8 @@ describe('the closed value sets reached the server', () => {
   it('refuses a conversation source outside the tuple', async () => {
     await expect(
       db.execute(sql`
-      insert into ${conversations} (id, oxy_user_id, conversation_id, source)
-      values ('chat-badsource', 'u', 'c', 'carrier-pigeon')
+      insert into ${conversations} (id, oxy_user_id, conversation_id, source, agent_id)
+      values ('chat-badsource', 'u', 'c', 'carrier-pigeon', 'gemie')
     `),
     ).rejects.toSatisfy((error: unknown) => {
       expect(constraintNameOf(error)).toBe('conversations_source_check');
@@ -143,14 +143,14 @@ describe('the closed value sets reached the server', () => {
 describe('a conversation id is unique per user, not globally', () => {
   it('refuses a second conversation with one id for one user', async () => {
     await db.execute(sql`
-      insert into ${conversations} (id, oxy_user_id, conversation_id)
-      values ('chat-conv-1', 'chat-dup-user', 'same-conv')
+      insert into ${conversations} (id, oxy_user_id, conversation_id, agent_id)
+      values ('chat-conv-1', 'chat-dup-user', 'same-conv', 'gemie')
     `);
 
     await expect(
       db.execute(sql`
-      insert into ${conversations} (id, oxy_user_id, conversation_id)
-      values ('chat-conv-2', 'chat-dup-user', 'same-conv')
+      insert into ${conversations} (id, oxy_user_id, conversation_id, agent_id)
+      values ('chat-conv-2', 'chat-dup-user', 'same-conv', 'gemie')
     `),
     ).rejects.toSatisfy((error: unknown) => {
       expect(constraintNameOf(error)).toBe('conversations_oxy_user_conversation_id_key');

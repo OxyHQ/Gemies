@@ -3,14 +3,16 @@
 Last updated: 2026-10-06
 
 Alia keeps three kinds of memory, and none of them is shared between actors
-([actors](./actors.mdx#memory-is-per-actor)):
+([actors](./actors.mdx#memory-is-per-actor)). Which one a gemie keeps is its
+`memory_store` (ADR 0034 §2), not whether it is Alia:
 
-1. **Alia's memory of the person** — preferences, long-term facts and context, in Nilo
-   (below); her learned writing style stays in `user_memories`.
-2. **Each agent's memory of the person** — MEMORY.md plus `memory/<topic>.md`
-   files, per agent AND person (`agent_memory_documents`). Documented in
-   [Agents → Memory is per actor](./agents.md#memory-is-per-actor); an agent turn
-   never receives Alia's memory or her memory tools.
+1. **Alia's memory of the person** (`memory_store = 'nilo'`) — preferences, long-term
+   facts and context, in Nilo (below); her learned writing style stays in `user_memories`.
+2. **Each other gemie's memory of the person** (`memory_store = 'gemie'`, the default) —
+   MEMORY.md plus `memory/<topic>.md` files, per gemie AND person
+   (`agent_memory_documents`). Documented in
+   [Agents → Memory is per actor](./agents.md#memory-is-per-actor); such a turn never
+   receives Alia's memory or her memory tools.
 3. **The context graph** — where to look, what worked, and why (autonomy state,
    below).
 
@@ -30,14 +32,17 @@ person's personal workspace, where they read, edit and delete it
 catalog `nilo-memories` is registered with Oxy and Alia lists its tools with her other app
 tools, calling them with an Oxy capability ticket and no consent screen.
 
-Chat tools (Alia only, `actors: ['alia']` in the catalog): `oxy_nilo_memories__recallMemories`,
+Chat tools (Alia only: `actors: ['alia']` in the catalog, which only Oxy's person lane speaks,
+and the assembler keeps them for a `nilo` gemie alone): `oxy_nilo_memories__recallMemories`,
 `__remember`, `__updateMemory`, `__forgetMemory`. They are **core** (`lib/tool-budget.ts`,
 never deferred behind `loadTools`), and `prompts/memory.md` tells her to recall before
 answering anything personal and to save durable facts as atomic memories. Nothing is
 recalled automatically before the turn: recalling is the model's call.
 
 `personalization: false` on a turn drops these tools and the memory prompt
-(`lib/tool-pipeline.ts`). An agent never gets them: it keeps its own memory (§ below).
+(`lib/tool-pipeline.ts`). Any other gemie never gets them: it keeps its own memory (§ below).
+The after-chat learning into Alia's stores (writing style, proactive suggestions, run scoring)
+skips a turn whose gemie keeps its own memory (`gemieMemoryTurn`).
 
 What was retired from Alia: `saveUserMemory`, `updateUserMemory`, `forgetUserMemory`,
 `updateUserPreferences`, `updateUserContext`, the `memory-recall` before-chat hook, the
@@ -58,8 +63,8 @@ the person does.
 `lib/hooks/built-in/style-learning-hook.ts` and read, edited and reset through
 `/writing-style` (`GET`, `PUT`, `DELETE`, `POST /writing-style/refresh`). Once the profile is ready (`STYLE_MIN_MESSAGES`),
 `SystemPromptBuilder` appends `formatStyleForPrompt`'s block to the system
-message under the same gate as the rest of the memory — a direct session, and an
-agent only with the `memory` grant — and additionally only while
+message under the same gate as the rest of Alia's memory — a direct session, a `nilo`
+gemie with the `memory` grant — and additionally only while
 `settings.recallEnabled` ("Use in AI responses") is on. The block is bounded by
 `STYLE_PROMPT_MAX_CHARS` and tells the model to use the style only when writing
 AS the person, never for Alia's own replies.

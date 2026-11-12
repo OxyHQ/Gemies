@@ -14,6 +14,7 @@
  * own editor tools. They are not defined in this repository, so they are stubbed
  * to nothing.
  */
+import { aliaGemie } from '../../../__tests__/support/gemies.js';
 import { encode } from 'gpt-tokenizer';
 import { asSchema, type ToolSet } from 'ai';
 
@@ -76,6 +77,7 @@ const sseEmitter = { emit: () => undefined };
 
 async function chatTools(opts: { direct: boolean }) {
   return ToolPipeline.forUser({
+    agent: aliaGemie(),
     userId: 'u1',
     accessToken: 'token',
     isDirectSession: opts.direct,
@@ -131,6 +133,7 @@ export async function measureScenarios(): Promise<ScenarioMeasure[]> {
   {
     const { tools, appCatalogPrompt } = await chatTools({ direct: true });
     const system = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
       surface: 'chat',
       model: MODEL,
       isDirectUserSession: true,
@@ -145,6 +148,7 @@ export async function measureScenarios(): Promise<ScenarioMeasure[]> {
   {
     const { tools } = await chatTools({ direct: true });
     const system = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
       surface: 'chat',
       model: MODEL,
       isDirectUserSession: true,
@@ -176,6 +180,7 @@ export async function measureScenarios(): Promise<ScenarioMeasure[]> {
   {
     const { tools } = await chatTools({ direct: false });
     const system = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
       surface: 'codea',
       model: MODEL,
       isDirectUserSession: false,

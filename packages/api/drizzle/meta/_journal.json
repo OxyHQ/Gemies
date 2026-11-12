@@ -939,6 +939,48 @@
       "when": 1794462888434,
       "tag": "0133_reaction_conversation_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1794474373255,
+      "tag": "0134_alia_gemie_attributes",
+      "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1794474419695,
+      "tag": "0135_alia_gemie",
+      "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1794474470387,
+      "tag": "0136_alia_gemie_rewrite_window",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1794474471574,
+      "tag": "0137_conversations_agent_required",
+      "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1794474472802,
+      "tag": "0138_conversations_agent_required_validate",
+      "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1794474503496,
+      "tag": "0139_conversations_agent_not_null",
+      "breakpoints": true
     }
   ]
 }

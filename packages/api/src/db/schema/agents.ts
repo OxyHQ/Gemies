@@ -82,7 +82,10 @@ import {
   AGENT_ACCESS,
   AGENT_ARCHETYPES,
   AGENT_COMPUTER_SOURCES,
+  AGENT_MEMORY_STORES,
+  AGENT_REACHES,
   AGENT_STATUSES,
+  AGENT_TASK_AUTHORITIES,
 } from '../../domain/agent.js';
 import type { AvatarCharacter } from '@oxy.so/contracts';
 
@@ -230,6 +233,23 @@ export const agents = pgTable(
     access: text({ enum: AGENT_ACCESS as unknown as [string, ...string[]] })
       .notNull()
       .default('private'),
+    /**
+     * What made Alia different, as configuration of a gemie rather than a `null` agent (ADR 0034
+     * §2). Every gemie has all four; the defaults are an ordinary gemie's, and Alia's row
+     * (`domain/alia-gemie.ts`) holds the other value of each. `domain/agent.ts` says what each
+     * value decides.
+     */
+    memoryStore: text({ enum: AGENT_MEMORY_STORES as unknown as [string, ...string[]] })
+      .notNull()
+      .default('gemie'),
+    reach: text({ enum: AGENT_REACHES as unknown as [string, ...string[]] })
+      .notNull()
+      .default('grants'),
+    /** Whether its own Oxy account is a working account: `self_*` tools and own-mailbox alerts. */
+    mailbox: boolean().notNull().default(true),
+    taskAuthority: text({ enum: AGENT_TASK_AUTHORITIES as unknown as [string, ...string[]] })
+      .notNull()
+      .default('session'),
     systemPrompt: text(),
     /** The agent's power level (ADR 0014) or `publisher/model`; null runs `auto`. */
     modelId: text(),
@@ -274,6 +294,9 @@ export const agents = pgTable(
     checkOneOf('agents_computer_source_check', t.computerSource, AGENT_COMPUTER_SOURCES),
     index('agents_space_idx').on(t.spaceId).where(sql`${t.spaceId} is not null`),
     checkOneOf('agents_access_check', t.access, AGENT_ACCESS),
+    checkOneOf('agents_memory_store_check', t.memoryStore, AGENT_MEMORY_STORES),
+    checkOneOf('agents_reach_check', t.reach, AGENT_REACHES),
+    checkOneOf('agents_task_authority_check', t.taskAuthority, AGENT_TASK_AUTHORITIES),
     checkOneOf('agents_archetype_check', t.archetype, AGENT_ARCHETYPES),
     /**
      * Bounded 0..5. A domain invariant, not input shaping:

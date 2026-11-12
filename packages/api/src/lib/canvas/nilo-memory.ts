@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { Tool, ToolSet } from 'ai';
 import { buildOxyServiceTools } from '../tools/oxy-services.js';
 import { ALIA_MEMORY_FAMILY } from '../tools/oxy-tool-names.js';
+import { personAssistantActor } from '../gemie-oxy-actor.js';
 
 export interface CanvasMemoryAccess {
   readonly userId: string;
@@ -44,7 +45,7 @@ async function toolsFor(access: CanvasMemoryAccess): Promise<ToolSet> {
   return buildOxyServiceTools(access.userId, {
     requesterAccountId: access.userId,
     ownerAccountId: access.userId,
-    actor: { type: 'alia', ownerAccountId: access.userId },
+    actor: personAssistantActor(access.userId),
     runId: access.runId,
     userAccessToken: access.accessToken,
   });

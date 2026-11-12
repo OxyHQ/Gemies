@@ -49,9 +49,11 @@ export async function reapAbandonedAliaRuns(now: Date = new Date()): Promise<{ f
       const automation = await findAutomationDefinitionById(getDb(), run.automationId);
       try {
         if (!automation) throw new Error('Alia task definition is gone');
+        if (run.selectedAgentId === null) throw new Error('Alia task run names no gemie');
         await postAliaMessage({
           oxyUserId: automation.ownerAccountId,
           automationId: automation.id,
+          agentId: run.selectedAgentId,
           objective: automation.objective,
           conversationId: automation.conversationId,
           content: INTERRUPTED_MESSAGE,

@@ -1,4 +1,5 @@
 import { TEST_CHARACTER } from './support/agent-character';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
@@ -219,6 +220,7 @@ describe('what the proactive path reads from chat', () => {
     expect(await hasAnyConversation(db, person)).toBe(false);
     const conversationId = randomUUID();
     await upsertConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: person,
       conversationId,
       titleOnInsert: 'Alia',

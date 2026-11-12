@@ -34,6 +34,7 @@ import {
 import { findAgentById } from '../db/agents/agentRepository.js';
 import type { ChannelId } from '../lib/channels/types.js';
 import { log } from '../lib/logger.js';
+import { personAssistantActor } from '../lib/gemie-oxy-actor.js';
 
 const router = express.Router();
 
@@ -400,7 +401,7 @@ router.post(
       const taskId = await createOxyTask({
         accessToken: req.accessToken,
         effectiveAccountId: req.user.id,
-        actor: { type: 'alia', ownerAccountId: req.user.id },
+        actor: personAssistantActor(req.user.id),
         origin: { kind: 'automation', id: `channel:${link.id}` },
       });
       try {
@@ -838,7 +839,7 @@ async function linkChannelTask(
   const taskId = await createOxyTask({
     accessToken: req.accessToken,
     effectiveAccountId: requesterAccountId,
-    actor: { type: 'alia', ownerAccountId: requesterAccountId },
+    actor: personAssistantActor(requesterAccountId),
     origin: { kind: 'automation', id: `channel:${botUser.id}` },
   });
   try {

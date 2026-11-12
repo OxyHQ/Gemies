@@ -33,6 +33,8 @@ import { stepCountIs } from 'ai';
 import { generateAnswered } from './chat/tool-synthesis.js';
 import type { User as OxyUser } from '@oxy.so/core';
 import { getDb } from '../db/index.js';
+import { findAgentById } from '../db/agents/agentRepository.js';
+import { attachAgentIdentity, type HydratedAgent } from './agent-identity.js';
 import { listAliaTaskAuthorizationsForRun } from '../db/automation/aliaTaskAuthorityRepository.js';
 import {
   findAutomationDefinitionById,
@@ -141,6 +143,15 @@ async function loadPersonContext(
 }
 
 /**
+ * The gemie the dispatcher recorded on a standing-lane run, which must still be one whose work runs
+ * under standing authority; `null` for anything else, which this lane may not drive.
+ */
+async function loadStandingGemie(agentId: string | null): Promise<HydratedAgent | null> {
+  const row = agentId === null ? null : await findAgentById(getDb(), agentId);
+  return row === null || row.taskAuthority !== 'standing' ? null : attachAgentIdentity(row);
+}
+
+/**
  * Run one queued Alia task. Returns `skipped` for a run that is not this
  * job's to drive (gone, not Alia's, or already settled); throws for a failure
  * the queue may retry.
@@ -160,6 +171,13 @@ export async function runAliaTask(
   if (!automation || automation.ownerAccountId !== data.userId) {
     if (await markAliaAutomationRun(getDb(), data.runId, 'failed')) {
       await safeRefund(data.creditReservation, 'Alia task definition not found');
+    }
+    return 'failed';
+  }
+  const gemie = await loadStandingGemie(run.selectedAgentId);
+  if (gemie === null) {
+    if (await markAliaAutomationRun(getDb(), data.runId, 'failed')) {
+      await safeRefund(data.creditReservation, 'Standing-authority gemie not found');
     }
     return 'failed';
   }
@@ -190,9 +208,9 @@ export async function runAliaTask(
       inputLimits: resolved.catalogue,
       userId: data.userId,
       isDirectSession: false,
-      // Alia acts for the task's owner, who asked for it.
+      // The gemie acts for the task's owner, who asked for it.
       actsForPerson: true,
-      agent: null,
+      agent: gemie,
       toolsEnabled: true,
       webSearch: true,
       isLocalRuntime: false,
@@ -282,6 +300,7 @@ export async function runAliaTask(
       await postAliaMessage({
         oxyUserId: data.userId,
         automationId: automation.id,
+        agentId: gemie._id,
         objective: automation.objective,
         conversationId: automation.conversationId,
         content: reply,
@@ -298,7 +317,7 @@ export async function runAliaTask(
     // Only the caller that closes the run refunds it (see the reaper).
     if (await markAliaAutomationRun(getDb(), data.runId, 'failed')) {
       await safeRefund(data.creditReservation, 'Alia task failed');
-      await notifyFailure(data, automation);
+      await notifyFailure(data, automation, gemie._id);
     }
     throw err;
   }
@@ -307,11 +326,13 @@ export async function runAliaTask(
 async function notifyFailure(
   data: AliaTaskJobData,
   automation: NonNullable<Awaited<ReturnType<typeof findAutomationDefinitionById>>>,
+  agentId: string,
 ): Promise<void> {
   try {
     await postAliaMessage({
       oxyUserId: data.userId,
       automationId: automation.id,
+      agentId,
       objective: automation.objective,
       conversationId: automation.conversationId,
       content: FAILURE_MESSAGE,

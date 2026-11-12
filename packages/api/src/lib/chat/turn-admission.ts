@@ -104,8 +104,8 @@ function featureRefusal(refusal: FeatureRefusal): FeatureAdmission {
  * (`local/…`) is not Alia's inference and is not gated.
  */
 export async function admitTurnFeatures(input: {
-  /** The turn's agent, when the request names one. */
-  turnAgent: Promise<TurnAgentResolution> | null;
+  /** The turn's gemie (Alia's when the request named none). */
+  turnAgent: Promise<TurnAgentResolution>;
   uses: readonly GatedPart[];
   fileRefs: ReadonlyMap<string, FilePartRef>;
   exactHostedModel: boolean;
@@ -117,9 +117,9 @@ export async function admitTurnFeatures(input: {
   };
   modelAcceptsFiles: boolean;
 }): Promise<FeatureAdmission> {
-  const resolution = input.turnAgent === null ? null : await input.turnAgent;
-  // An agent that did not resolve is refused after admission; it gates nothing.
-  const agent = resolution?.kind === 'agent' ? resolution.agent : null;
+  const resolution = await input.turnAgent;
+  // A gemie that did not resolve is refused after admission; it gates nothing.
+  const agent = resolution.kind === 'agent' ? resolution.agent : null;
   if (agent !== null && input.exactHostedModel && gatesAnyPowerLevel(agent)) {
     return {
       ok: false,

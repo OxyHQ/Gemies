@@ -21,6 +21,8 @@ import { messageExistsInConversation } from '../db/chat/messageRepository.js';
 export interface LifecycleContext {
   userId?: string;
   conversationId?: string;
+  /** The turn's gemie, which a conversation this turn creates belongs to. */
+  agentId: string;
   /** The client's id for this turn's reply, which the reply is stored under. */
   assistantMessageId?: string;
   messages: ChatMessage[];
@@ -36,11 +38,12 @@ export interface LifecycleContext {
   skillNames?: string[];
   autonomyRuntime: AutonomyRuntimeContext | null;
   /**
-   * The turn ran as an AGENT. Memory is per actor: what Alia learns about the
-   * person (writing style, proactive suggestions, run scoring) comes from
-   * Alia's turns, never from an agent's.
+   * The turn's gemie keeps its own memory (`memoryStore = 'gemie'`). Memory is
+   * per actor: what is learned about the person into Alia's stores (writing
+   * style, proactive suggestions, run scoring) comes from a Nilo-memory gemie's
+   * turns, never from another's.
    */
-  agentTurn?: boolean;
+  gemieMemoryTurn?: boolean;
   /**
    * The person turned personalization off for this turn: the hooks that learn about them
    * (writing style, proactive suggestions) skip it. The usage record does not.
@@ -126,7 +129,7 @@ export async function saveConversationResult(
     agentInfo: AgentInfo;
   }>,
 ): Promise<void> {
-  const { userId, conversationId, assistantMessageId, messages, originApp } = ctx;
+  const { userId, conversationId, assistantMessageId, messages, originApp, agentId } = ctx;
   if (!conversationId || !userId || !turnProducedOutput(assistantResponse, toolInvocations)) return;
 
   try {
@@ -137,6 +140,7 @@ export async function saveConversationResult(
       assistantResponse,
       assistantMessageId,
       toolInvocations,
+      agentId,
       agentMessages: agentMessages && agentMessages.length > 0 ? agentMessages : undefined,
       ...(originApp === undefined ? {} : { originApp }),
     });
@@ -300,7 +304,7 @@ export function runPostChatHooks(
     requestStartTime,
     skillNames,
     autonomyRuntime,
-    agentTurn,
+    gemieMemoryTurn,
   } = ctx;
 
   runAfterChatHooks({
@@ -322,12 +326,12 @@ export function runPostChatHooks(
     errorClass,
     cancelled: observation.cancelled,
     resolvedModelReference: observation.resolvedModelReference,
-    agentTurn: agentTurn === true,
+    gemieMemoryTurn: gemieMemoryTurn === true,
     ...(ctx.personalization === false ? { personalization: false as const } : {}),
   }).catch((err) => log.v1.error({ err }, 'Error in afterChat hooks'));
 
   // Alia's run scoring is about Alia's turns.
-  if (agentTurn) return;
+  if (gemieMemoryTurn) return;
   runAutonomyAfterChat({
     userId,
     runtimeContext: autonomyRuntime,

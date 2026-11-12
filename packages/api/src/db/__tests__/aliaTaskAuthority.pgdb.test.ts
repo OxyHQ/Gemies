@@ -1,4 +1,5 @@
 import { uuidv7 } from '@oxy.so/db';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -69,7 +70,8 @@ async function aliaTask(input: { actions?: boolean; inputs?: Record<string, unkn
     triggerKind: 'schedule',
     scheduleCron: '0 8 * * *',
     scheduleTimezone: 'Europe/Madrid',
-    actorMode: 'alia',
+    actorMode: 'fixed',
+    fixedAgentId: ALIA_GEMIE_ID,
     eligibleAgentIds: [],
     executionMode: 'execute',
     actions: input.actions
@@ -195,7 +197,7 @@ describe('Alia standing authority', () => {
       stages: [
         {
           stage: 0,
-          selectedAgentId: null,
+          selectedAgentId: ALIA_GEMIE_ID,
           selectedActorAccountId: OWNER,
           resource: mailbox,
           taskInput: {},
@@ -249,7 +251,8 @@ describe('Alia standing authority', () => {
       triggerKind: 'schedule',
       scheduleCron: '0 9 * * *',
       scheduleTimezone: 'Europe/Madrid',
-      actorMode: 'alia',
+      actorMode: 'fixed',
+      fixedAgentId: ALIA_GEMIE_ID,
       eligibleAgentIds: [],
       inputs: {},
       resources: [],
@@ -293,7 +296,7 @@ describe('Alia run lease, hold and reaper', () => {
       stages: [
         {
           stage: 0,
-          selectedAgentId: null,
+          selectedAgentId: ALIA_GEMIE_ID,
           selectedActorAccountId: OWNER,
           resource: root,
           taskInput: {},
@@ -338,6 +341,7 @@ describe('Alia run lease, hold and reaper', () => {
       id: lapsed,
       automationId: automation.id,
       requesterAccountId: OWNER,
+      selectedAgentId: ALIA_GEMIE_ID,
       creditReservation: HOLD,
     });
     expect(await failAbandonedAliaRun(db, lapsed, now, plannedBefore)).toBeNull();

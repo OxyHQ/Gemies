@@ -20,6 +20,8 @@ vi.mock('../../logger.js', () => ({
   log: { triggers: { error: vi.fn() } },
 }));
 
+import { aliaGemie, personaGemie } from '../../../__tests__/support/gemies.js';
+import { ALIA_GEMIE_ID } from '../../../domain/alia-gemie.js';
 import { createAutomationTool } from '../automation-create.js';
 
 interface ExecutableTool {
@@ -62,7 +64,11 @@ describe('structured automation creation tool', () => {
   });
 
   it('uses the same creation service as HTTP and returns the editable receipt', async () => {
-    const tool = createAutomationTool('owner-1', 'live-user-token') as unknown as ExecutableTool;
+    const tool = createAutomationTool(
+      'owner-1',
+      'live-user-token',
+      aliaGemie(),
+    ) as unknown as ExecutableTool;
     const result = await tool.execute(definition);
 
     expect(createStructuredAutomation).toHaveBeenCalledWith({
@@ -100,7 +106,11 @@ describe('structured automation creation tool', () => {
       dataFlow: { sources: [], destinations: [] },
       inputs: { instructions: 'Remind me to call Alex' },
     };
-    const tool = createAutomationTool('owner-1', 'live-user-token') as unknown as ExecutableTool;
+    const tool = createAutomationTool(
+      'owner-1',
+      'live-user-token',
+      aliaGemie(),
+    ) as unknown as ExecutableTool;
 
     await expect(tool.execute(assistantTask)).resolves.toEqual(
       expect.objectContaining({
@@ -118,7 +128,7 @@ describe('structured automation creation tool', () => {
     const tool = createAutomationTool(
       'owner-1',
       'live-user-token',
-      'eusebio',
+      personaGemie({ _id: 'eusebio' }),
     ) as unknown as ExecutableTool;
     const { actorSelection: _, ...withoutActor } = definition;
     await tool.execute(withoutActor);
@@ -131,13 +141,16 @@ describe('structured automation creation tool', () => {
     );
   });
 
-  it.each([{ mode: 'alia' }, { mode: 'fixed', agentId: 'someone-else' }])(
+  it.each([
+    { mode: 'fixed', agentId: ALIA_GEMIE_ID },
+    { mode: 'fixed', agentId: 'someone-else' },
+  ])(
     'refuses to silently hand an agent request to a different actor: %j',
     async (actorSelection) => {
       const tool = createAutomationTool(
         'owner-1',
         'live-user-token',
-        'eusebio',
+        personaGemie({ _id: 'eusebio' }),
       ) as unknown as ExecutableTool;
       expect(await tool.execute({ ...definition, actorSelection })).toEqual({
         success: false,

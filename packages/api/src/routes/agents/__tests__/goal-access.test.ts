@@ -188,6 +188,7 @@ const AGENT = {
   isPublished: true,
   access: 'private',
   status: 'active',
+  taskAuthority: 'session',
   price: 15,
   systemPrompt: 'p',
   capabilityGrants: [],

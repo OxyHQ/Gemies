@@ -1,3 +1,4 @@
+import { aliaGemie } from '../../__tests__/support/gemies.js';
 import { describe, expect, it } from 'vitest';
 
 import { SystemPromptBuilder } from '../system-prompt-builder.js';
@@ -10,7 +11,7 @@ import { SystemPromptBuilder } from '../system-prompt-builder.js';
 const MARKER = 'Asking the person (`askUserQuestion`)';
 
 const build = (extra: { askUserQuestion?: boolean; responseMode?: 'voice' | null }) =>
-  SystemPromptBuilder.build({ isDirectUserSession: true, ...extra });
+  SystemPromptBuilder.build({ linkedAgent: aliaGemie(), isDirectUserSession: true, ...extra });
 
 describe('the askUserQuestion prompt rule', () => {
   it('is present when the tool is registered', async () => {

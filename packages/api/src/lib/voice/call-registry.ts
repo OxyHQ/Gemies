@@ -175,7 +175,8 @@ export async function startCall(input: {
   readonly callId: string;
   readonly oxyUserId: string;
   readonly conversationId: string;
-  readonly agentId: string | null;
+  /** The call's gemie. */
+  readonly agentId: string;
   readonly call: HeldCall;
 }): Promise<{ replaced: number }> {
   ensureSubscriber();
