@@ -800,7 +800,7 @@ describe('mcp.ts — where a connector runs', () => {
         config: undefined,
         enabled: true,
       });
-      // Turning it on is a switch Codea reads; the server starts nothing.
+      // Turning it on is a switch the device reads; the server starts nothing.
       expect(mockFetch).not.toHaveBeenCalled();
     });
 

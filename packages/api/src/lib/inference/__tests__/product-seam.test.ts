@@ -315,7 +315,6 @@ describe("the seam's product vocabulary is frozen (#139 ws3)", () => {
     // -site census and are listed after them in the source.
     expect([...ALIA_INFERENCE_SURFACES]).toEqual([
       'chat',
-      'codea',
       'deep_research',
       'voice',
       'media',
