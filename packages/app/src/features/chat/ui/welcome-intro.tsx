@@ -5,6 +5,7 @@ import { Button } from '@oxy.so/bloom/button';
 import { Text } from '@oxy.so/bloom/typography';
 import { useAuth } from '@oxy.so/services/ui/client';
 import { useScreenOnShow } from '@/shared/platform/use-screen-on-show';
+import { GemiesMark } from '@/shared/ui/gemies-mark';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, View, type LayoutChangeEvent, type PointerEvent } from 'react-native';
 import Animated, {
@@ -75,11 +76,25 @@ export interface WelcomeIntroSlots {
   content: ReactNode;
 }
 
+/**
+ * Whose intro it is. `gemies` is the Gemies home's (its mark and its words, and no way past it
+ * without an account: every gemie belongs to somebody); `alia` is a new chat with Alia's, which
+ * can be tried signed out.
+ */
+export type WelcomeIntroBrand = 'alia' | 'gemies';
+
+const INTRO_COPY = {
+  alia: 'welcome.intro',
+  gemies: 'welcome.gemiesIntro',
+} as const;
+
 export function WelcomeIntro({
+  brand = 'alia',
   onExitStart,
   onDismissed,
   children,
 }: {
+  brand?: WelcomeIntroBrand;
   onExitStart?: () => void;
   onDismissed: () => void;
   children: (slots: WelcomeIntroSlots) => ReactNode;
@@ -90,7 +105,8 @@ export function WelcomeIntro({
   // A route pushed over the intro keeps it mounted; its field stops meanwhile.
   const onShow = useScreenOnShow();
 
-  const headline = t('welcome.intro.headline');
+  const copy = INTRO_COPY[brand];
+  const headline = t(`${copy}.headline`);
   const [typed, setTyped] = useState(0);
   const [exiting, setExiting] = useState(false);
   const [bodyHeight, setBodyHeight] = useState(0);
@@ -262,7 +278,7 @@ export function WelcomeIntro({
       <View className="w-full max-w-[640px] items-center gap-3">
         <Animated.View className="max-w-[560px] items-center gap-4">
           <Animated.View style={markStyle}>
-            <AliaAvatar size={40} interactive />
+            {brand === 'gemies' ? <GemiesMark size={56} /> : <AliaAvatar size={40} interactive />}
           </Animated.View>
           <Animated.View
             className="flex-row items-center justify-center"
@@ -283,17 +299,19 @@ export function WelcomeIntro({
           <View className="w-full items-center gap-6" onLayout={handleBodyLayout}>
             <Animated.View style={subtitleStyle}>
               <Text className="max-w-[520px] text-center text-muted-foreground">
-                {t('welcome.intro.subtitle')}
+                {t(`${copy}.subtitle`)}
               </Text>
             </Animated.View>
 
             <Animated.View className="items-center gap-2" style={ctaStyle}>
               <Button tone="action" onPress={handleGetStarted}>
-                {t('welcome.intro.cta')}
+                {t(`${copy}.cta`)}
               </Button>
-              <Button tone="neutral" appearance="plain" size="sm" onPress={startExit}>
-                {t('welcome.intro.skip')}
-              </Button>
+              {brand === 'alia' ? (
+                <Button tone="neutral" appearance="plain" size="sm" onPress={startExit}>
+                  {t('welcome.intro.skip')}
+                </Button>
+              ) : null}
             </Animated.View>
           </View>
         </Animated.View>

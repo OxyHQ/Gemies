@@ -1,11 +1,13 @@
 import { agentDisplayName } from '@/features/agents/model/identity';
+import { ChatWorkspace } from '@/features/chat/ui/chat-workspace';
+import { WelcomeIntro } from '@/features/chat/ui/welcome-intro';
 import { useMyAgents } from '@/features/agents/runtime/use-my-agents';
 import { useNewAgentConversation } from '@/features/agents/runtime/use-new-agent-conversation';
 import type { Agent } from '@/shared/contracts/agents';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { agentChatRoute } from '@/shared/routing/agent-address';
-import { GemiesLogo } from '@/shared/ui/gemies-mark';
 import { AliaAvatar, readAgentCharacter } from '@alia.onl/sdk';
+import { AiChatMobileHeader } from '@oxy.so/bloom/ai-chat';
 import { AgentAvatar } from '@oxy.so/bloom/agent-avatar';
 import { Button } from '@oxy.so/bloom/button';
 import { RiAddLine } from '@oxy.so/bloom/icons/RiAddLine';
@@ -15,6 +17,7 @@ import { Muted, Text } from '@oxy.so/bloom/typography';
 import { useAuth } from '@oxy.so/services/ui/client';
 import { Stack, useRouter } from 'expo-router';
 import Head from 'expo-router/head';
+import { useCallback, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
 /**
@@ -23,11 +26,20 @@ import { ScrollView, View } from 'react-native';
  *
  * A first version: Alia, then the gemies the person made (`GET /agents/me`, the sidebar's own
  * list), and the two ways to get more — creating one (by talking to Alia) and the catalogue.
- * Signed out it says what Gemies is and asks to sign in with Oxy.
+ * Signed out it is the welcome intro — the ambient field and the headline that types itself —
+ * with the Gemies mark and words, and its one way in is signing in with Oxy.
  */
 export default function GemiesHome() {
   const { t } = useTranslation();
   const { isAuthenticated, isAuthResolved } = useAuth();
+
+  // Latched once showing, as on Alia's new chat: the intro signs the person in while its exit is
+  // still playing, and letting `isAuthenticated` flip the gate mid-animation would tear it away.
+  const [introState, setIntroState] = useState<'idle' | 'showing' | 'done'>('idle');
+  if (introState === 'idle' && isAuthResolved && !isAuthenticated) {
+    setIntroState('showing');
+  }
+  const handleIntroDismissed = useCallback(() => setIntroState('done'), []);
 
   return (
     <>
@@ -39,25 +51,23 @@ export default function GemiesHome() {
         <meta property="og:description" content={t('gemies.metaDescription')} />
       </Head>
       <Stack.Screen options={{ title: t('gemies.name') }} />
-      {!isAuthResolved ? <GemieListSkeleton /> : isAuthenticated ? <GemieList /> : <SignedOut />}
+      {introState === 'showing' ? (
+        <WelcomeIntro brand="gemies" onDismissed={handleIntroDismissed}>
+          {(intro) => (
+            <ChatWorkspace
+              header={<AiChatMobileHeader title={t('gemies.name')} />}
+              background={intro.background}
+            >
+              {intro.content}
+            </ChatWorkspace>
+          )}
+        </WelcomeIntro>
+      ) : isAuthResolved && isAuthenticated ? (
+        <GemieList />
+      ) : (
+        <GemieListSkeleton />
+      )}
     </>
-  );
-}
-
-function SignedOut() {
-  const { t } = useTranslation();
-  const { signIn } = useAuth();
-  return (
-    <View className="flex-1 items-center justify-center gap-4 px-4 py-16">
-      <GemiesLogo size={40} />
-      <Text variant="headline-semibold" className="text-center">
-        {t('gemies.tagline')}
-      </Text>
-      <Muted className="max-w-md text-center">{t('gemies.signedOutHint')}</Muted>
-      <Button size="lg" tone="action" onPress={() => signIn().catch(() => {})}>
-        {t('gemies.signIn')}
-      </Button>
-    </View>
   );
 }
 

@@ -434,7 +434,7 @@
   "sidebar": {
     "loadError": "No se ha podido actualizar la barra lateral.",
     "newChat": "Nueva conversación",
-    "agents": "Agentes",
+    "agents": "Gemies",
     "library": "Biblioteca",
     "automations": "Automatizaciones",
     "skills": "Habilidades",
@@ -1064,6 +1064,11 @@
       "subtitle": "Un asistente que recuerda lo que importa, trabaja con tus herramientas y elige el mejor modelo para cada tarea.",
       "cta": "Empezar",
       "skip": "Seguir sin cuenta"
+    },
+    "gemiesIntro": {
+      "headline": "Crea tus Gemies",
+      "subtitle": "Haz que trabajen juntos. Los Gemies son compañeros de IA a los que tú das forma, y Alia es uno de ellos.",
+      "cta": "Empezar"
     }
   },
   "notifications": {
@@ -2361,8 +2366,6 @@
     "aliaTagline": "La asistente de Oxy, uno de tus Gemies",
     "create": "Crear un gemie",
     "explore": "Explorar gemies",
-    "signIn": "Iniciar sesión con Oxy",
-    "signedOutHint": "Inicia sesión para conocer a Alia y crear tus propios Gemies.",
     "emptyHint": "Aún no tienes Gemies propios. Crea uno contándole a Alia qué debe hacer.",
     "chatWith": "Hablar con {{name}}"
   }
