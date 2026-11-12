@@ -1,6 +1,14 @@
-# Alia
+# Gemies
 
-El asistente de Oxy («el ChatGPT de Oxy»): API Express + PostgreSQL, app Expo, Codea y SDK, en un monorepo de bun workspaces.
+La plataforma de gemies de Oxy («Create your Gemies. Let them work together.»): API Express + PostgreSQL, SDK y app Expo, en un monorepo de bun workspaces. Dominio `gemies.ai`, npm `@gemies/*`.
+
+## Estado: separación de Alia en curso (ADR 0034)
+
+Este repo nació el 2026-11-12 de `OxyHQ/Alia`, con todo su historial y sin ser un fork. El plan y sus fases están en [`docs/adr/0034-gemies-and-alia.md`](./docs/adr/0034-gemies-and-alia.md). Mientras la migración no termine, el código, los paquetes y los dominios siguen llamándose Alia (`@alia/api`, `@alia.onl/sdk`, `api.alia.onl`).
+
+- **Producción la despliega todavía `OxyHQ/Alia`.** Aquí solo está activo `ci.yml`. Los workflows de deploy, release, OTA, canaries y autobump están desactivados en GitHub (`disabled_manually`). No los actives hasta el corte de infraestructura (fase 4).
+- Lo que se fusiona en `main` de Alia se trae aquí haciendo merge desde `https://github.com/OxyHQ/Alia` `main`.
+- Vocabulario nuevo: un agente es un **gemie**. Alia es un gemie oficial global y Codea otro. No añadas ramas nuevas de «Alia = `agentId == null`».
 
 ## Comandos
 
