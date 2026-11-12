@@ -33,11 +33,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DIRS = ['app', 'src'];
 
 /** Files that are not rendered by React Native at all. */
-const SKIPPED_FILES = new Set([
-  // The static HTML shell Expo serves before the bundle loads: no runtime, no
-  // locale, and its copy is SEO metadata for crawlers.
-  'app/+html.tsx',
-]);
+const SKIPPED_FILES = new Set<string>([]);
 
 /** Props whose string value is read or heard by a person. */
 const COPY_PROPS = new Set([
