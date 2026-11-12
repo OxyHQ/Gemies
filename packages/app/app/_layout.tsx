@@ -138,8 +138,10 @@ function RootLayout() {
     // caught error would crash the boundary itself.
     <BloomProvider
       defaultMode="system"
-      // Bloom's Pine + Rose: the green and pink of the Gemies icon.
-      defaultColorPreset="pine"
+      // Gemies green (#1dfc00), Bloom's `gemies` brand preset. It is the app's
+      // default only: anyone keeps choosing their own colour in settings, and
+      // an account colour, once chosen, wins over it (useAccountColor).
+      defaultColorPreset="gemies"
       persistKey={BLOOM_THEME_PERSIST_KEY}
       storage={BLOOM_THEME_STORAGE}
     >
