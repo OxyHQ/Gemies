@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  *     session a `planPreview` tool (`lib/tool-pipeline.ts:124`); the model calls
  *     it and the callback pushes `alia.plan_preview` over SSE. Two shipped
  *     clients render that event — `packages/app/src/features/chat/runtime/use-streaming-chat.ts:523`
- *     and `packages/alia-chat/src/hooks/useAliaChat.ts:314` — and neither would
+ *     and `packages/sdk/src/hooks/useAliaChat.ts:314` — and neither would
  *     error if it stopped arriving; the plan card would simply never appear.
  *  2. **Agent-session planning.** The same route escalates an agent-linked
  *     conversation into an `AgentSession` (`routes/v1/chat-completions.ts:142`),

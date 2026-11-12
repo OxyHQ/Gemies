@@ -1,6 +1,6 @@
 import type { Agent } from '@/shared/contracts/agents';
 import type { Space } from '@/shared/contracts/spaces';
-import type { Conversation } from '@alia.onl/sdk/model';
+import type { Conversation } from '@gemies/sdk/model';
 import type { SidebarTreeItem } from '@oxy.so/bloom/sidebar';
 import { describe, expect, it } from 'vitest';
 import {

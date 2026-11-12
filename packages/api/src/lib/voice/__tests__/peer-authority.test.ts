@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ALIA_API_WORKLOAD_ID,
-  ALIA_APPLICATION_ID,
-  ALIA_SERVICE_AUDIENCE,
-} from '@alia.onl/server/internal';
+  GEMIES_API_WORKLOAD_ID,
+  GEMIES_APPLICATION_ID,
+  GEMIES_SERVICE_AUDIENCE,
+} from '@gemies/server/internal';
 
 const state = vi.hoisted(() => ({ introspect: vi.fn(), create: vi.fn() }));
 vi.mock('../../oxy.js', () => ({
@@ -24,12 +24,12 @@ describe('private voice peer authority uses shared Oxy verification', () => {
   const own = {
     active: true,
     authority: 'first_party',
-    applicationId: ALIA_APPLICATION_ID,
-    credentialId: ALIA_API_WORKLOAD_ID,
-    audience: ALIA_SERVICE_AUDIENCE,
+    applicationId: GEMIES_APPLICATION_ID,
+    credentialId: GEMIES_API_WORKLOAD_ID,
+    audience: GEMIES_SERVICE_AUDIENCE,
   };
   it('accepts only the exact live API workload and canonical recipient', async () => {
-    vi.stubEnv('ALIA_API_WORKLOAD_ID', ALIA_API_WORKLOAD_ID);
+    vi.stubEnv('GEMIES_API_WORKLOAD_ID', GEMIES_API_WORKLOAD_ID);
     state.introspect.mockResolvedValue(own);
     expect(await productionVoicePeerAuth.verify('opaque-proof')).toBe(true);
     expect(state.introspect).toHaveBeenCalledWith('opaque-proof');
@@ -55,7 +55,7 @@ describe('private voice peer authority uses shared Oxy verification', () => {
     expect(await productionVoicePeerAuth.token(url, signal)).toBe('opaque-proof');
     expect(state.create).toHaveBeenCalledWith({
       baseURL: 'http://10.20.1.2:3001',
-      audience: ALIA_SERVICE_AUDIENCE,
+      audience: GEMIES_SERVICE_AUDIENCE,
     });
     expect(getAccessToken).toHaveBeenCalledWith(url, { signal });
     expect(dispose).toHaveBeenCalledTimes(1);

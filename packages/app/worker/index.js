@@ -1,5 +1,5 @@
 /**
- * Files `@alia.onl/sdk` loads from this origin in every app that embeds it: the voice call's
+ * Files `@gemies/sdk` loads from this origin in every app that embeds it: the voice call's
  * worklets (`/sdk/voice-worklets/<revision>.js`). A cross-origin `audioWorklet.addModule` needs
  * CORS to run at all.
  */

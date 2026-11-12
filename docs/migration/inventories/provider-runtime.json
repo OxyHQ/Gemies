@@ -1354,13 +1354,13 @@
       "id": "sdk-livekit",
       "kind": "dependency",
       "name": "@livekit/agents, @livekit/rtc-node, livekit-server-sdk, livekit-client, @livekit/react-native",
-      "currentPath": "packages/api/package.json, packages/app/package.json, packages/alia-chat/package.json",
+      "currentPath": "packages/api/package.json, packages/app/package.json, packages/sdk/package.json",
       "summary": "Voice TRANSPORT, not provider inference. Alia terminates LiveKit and bridges audio to the provider realtime socket.",
       "proposedOwner": "alia",
       "targetPath": "keep",
       "dependsOn": ["behaviour-voice-realtime"],
       "removalGate": "Stays with Alia unless Kaana also terminates LiveKit, which would move the client SDKs' server target too.",
-      "evidence": "packages/api/package.json (@livekit/agents ^1.5.2, @livekit/rtc-node ^0.13.31, livekit-server-sdk ^2.17.0); packages/app/package.json; packages/alia-chat/package.json peerDependencies"
+      "evidence": "packages/api/package.json (@livekit/agents ^1.5.2, @livekit/rtc-node ^0.13.31, livekit-server-sdk ^2.17.0); packages/app/package.json; packages/sdk/package.json peerDependencies"
     },
     {
       "id": "env-grok-api-key",

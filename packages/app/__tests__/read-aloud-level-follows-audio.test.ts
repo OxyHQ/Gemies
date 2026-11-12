@@ -8,7 +8,7 @@ import {
   createAudioLevelMeter,
   levelFromDbfs,
   levelFromFrames,
-} from '../../alia-chat/src/lib/audio-level';
+} from '../../sdk/src/lib/audio-level';
 
 /**
  * One ambient field, one level, two sources.
@@ -171,11 +171,11 @@ describe('the read-aloud level', () => {
 });
 
 const HOOK_SOURCE = readFileSync(
-  fileURLToPath(new URL('../../alia-chat/src/hooks/useTTS.ts', import.meta.url)),
+  fileURLToPath(new URL('../../sdk/src/hooks/useTTS.ts', import.meta.url)),
   'utf8',
 );
 const WAVE_SOURCE = readFileSync(
-  fileURLToPath(new URL('../../alia-chat/src/hooks/useAmbientWave.ts', import.meta.url)),
+  fileURLToPath(new URL('../../sdk/src/hooks/useAmbientWave.ts', import.meta.url)),
   'utf8',
 );
 /**
@@ -184,11 +184,11 @@ const WAVE_SOURCE = readFileSync(
  * the native recorder, from `expo-audio`'s metering in dBFS (`levelFromDbfs`).
  */
 const STT_SOURCE = readFileSync(
-  fileURLToPath(new URL('../../alia-chat/src/lib/dictation-recorder.ts', import.meta.url)),
+  fileURLToPath(new URL('../../sdk/src/lib/dictation-recorder.ts', import.meta.url)),
   'utf8',
 );
 const STT_NATIVE_SOURCE = readFileSync(
-  fileURLToPath(new URL('../../alia-chat/src/lib/dictation-recorder.native.ts', import.meta.url)),
+  fileURLToPath(new URL('../../sdk/src/lib/dictation-recorder.native.ts', import.meta.url)),
   'utf8',
 );
 

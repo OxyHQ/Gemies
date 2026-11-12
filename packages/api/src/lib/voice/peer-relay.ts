@@ -2,10 +2,10 @@
 import type http from 'node:http';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import {
-  ALIA_API_WORKLOAD_ID,
-  ALIA_SERVICE_AUDIENCE,
-  isAliaWorkload,
-} from '@alia.onl/server/internal';
+  GEMIES_API_WORKLOAD_ID,
+  GEMIES_SERVICE_AUDIENCE,
+  isGemiesWorkload,
+} from '@gemies/server/internal';
 import { oxy } from '../oxy.js';
 import type { WebSocketRoute } from '../websocket-upgrades.js';
 import { VOICE_PEER_PATH, type VoiceRoute, type VoiceRouting } from './routing-directory.js';
@@ -25,7 +25,7 @@ export const productionVoicePeerAuth: VoicePeerAuth = {
     target.protocol = 'http:';
     const transport = oxy.createServiceClient({
       baseURL: target.origin,
-      audience: ALIA_SERVICE_AUDIENCE,
+      audience: GEMIES_SERVICE_AUDIENCE,
     });
     try {
       return await transport.getAccessToken(url, { signal });
@@ -38,8 +38,8 @@ export const productionVoicePeerAuth: VoicePeerAuth = {
       const principal = await oxy.introspectServiceToken(token);
       return (
         principal.active &&
-        principal.audience === ALIA_SERVICE_AUDIENCE &&
-        isAliaWorkload(principal, process.env.ALIA_API_WORKLOAD_ID || ALIA_API_WORKLOAD_ID)
+        principal.audience === GEMIES_SERVICE_AUDIENCE &&
+        isGemiesWorkload(principal, process.env.GEMIES_API_WORKLOAD_ID || GEMIES_API_WORKLOAD_ID)
       );
     } catch {
       return false;

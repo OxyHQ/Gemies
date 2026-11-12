@@ -33,8 +33,8 @@ WORKDIR /build
 COPY package.json bun.lock bunfig.toml ./
 COPY packages/api/package.json ./packages/api/
 COPY packages/app/package.json ./packages/app/
-COPY packages/alia-chat/package.json ./packages/alia-chat/
-COPY packages/alia-server/package.json ./packages/alia-server/
+COPY packages/sdk/package.json ./packages/sdk/
+COPY packages/server/package.json ./packages/server/
 COPY packages/integrations/package.json ./packages/integrations/
 COPY packages/alia-computer-host/package.json ./packages/alia-computer-host/
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 \

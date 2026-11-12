@@ -454,7 +454,7 @@
       "workstream": "6",
       "domain": "product-api",
       "kind": "dependency",
-      "currentPath": "packages/alia-chat/src/runtime/use-conversation-thread.ts",
+      "currentPath": "packages/sdk/src/runtime/use-conversation-thread.ts",
       "reachable": "live",
       "owner": "alia",
       "targetPath": "keep-alia-product",
@@ -583,7 +583,7 @@
       "workstream": "6",
       "domain": "product-api",
       "kind": "dependency",
-      "currentPath": "packages/alia-chat/src/runtime/use-conversation-stream.ts",
+      "currentPath": "packages/sdk/src/runtime/use-conversation-stream.ts",
       "reachable": "live",
       "owner": "alia",
       "targetPath": "keep-alia-product",
@@ -3041,14 +3041,14 @@
       "workstream": "4",
       "domain": "product-api",
       "kind": "behaviour",
-      "currentPath": "packages/alia-chat/src/hooks/useTTS.ts",
+      "currentPath": "packages/sdk/src/hooks/useTTS.ts",
       "reachable": "live",
       "owner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": ["alia-models", "sdk-chat-consumer"],
       "removalGate": "Baked into an npm package, so every already-installed copy sends it forever. This id can never be un-resolvable.",
       "provenance": "inventory-product-api",
-      "evidence": "packages/alia-chat/src/hooks/useTTS.ts:205; packages/alia-chat/src/hooks/useVoiceRoom.ts:332"
+      "evidence": "packages/sdk/src/hooks/useTTS.ts:205; packages/sdk/src/hooks/useVoiceRoom.ts:332"
     },
     {
       "id": "model-resolver",
@@ -3400,28 +3400,28 @@
       "workstream": "5",
       "domain": "frontend-admin",
       "kind": "behaviour",
-      "currentPath": "packages/alia-chat/src/runtime/use-conversation-stream.ts",
+      "currentPath": "packages/sdk/src/runtime/use-conversation-stream.ts",
       "reachable": "live",
       "owner": "alia",
       "targetPath": "keep-as-alia-product-setting",
       "dependsOn": [],
-      "removalGate": "Keep, and treat these three literals as the highest-inertia alias references in the repo: they are compiled into external consumers' apps (the package ships as RAW SOURCE), so retiring route:auto or route:voice breaks installed SDK versions that no Alia deploy can fix. Any alias retirement plan must keep both ids resolvable indefinitely or ship a major SDK version first. Verified there is no model picker component in the SDK: all 49 files under packages/alia-chat/src were enumerated.",
+      "removalGate": "Keep, and treat these three literals as the highest-inertia alias references in the repo: they are compiled into external consumers' apps (the package ships as RAW SOURCE), so retiring route:auto or route:voice breaks installed SDK versions that no Alia deploy can fix. Any alias retirement plan must keep both ids resolvable indefinitely or ship a major SDK version first. Verified there is no model picker component in the SDK: all 49 files under packages/sdk/src were enumerated.",
       "provenance": "inventory-frontend-admin",
-      "evidence": "packages/alia-chat/src/hooks/useAliaChat.ts:11,46; packages/alia-chat/src/components/AliaChatScreen.tsx:31; packages/alia-chat/src/components/AliaChatSheet.tsx:48; packages/alia-chat/src/hooks/useTTS.ts:205; packages/alia-chat/src/hooks/useVoiceRoom.ts:332"
+      "evidence": "packages/sdk/src/hooks/useAliaChat.ts:11,46; packages/sdk/src/components/GemieChatScreen.tsx:31; packages/sdk/src/components/GemieChatSheet.tsx:48; packages/sdk/src/hooks/useTTS.ts:205; packages/sdk/src/hooks/useVoiceRoom.ts:332"
     },
     {
       "id": "sdk-chat-consumer",
       "workstream": "6",
       "domain": "product-api",
       "kind": "dependency",
-      "currentPath": "packages/alia-chat/src/runtime/use-conversation-stream.ts",
+      "currentPath": "packages/sdk/src/runtime/use-conversation-stream.ts",
       "reachable": "live",
       "owner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": ["sse-legacy-tool-call-in-data", "v1-chat-completions-post", "alia-chat-post"],
-      "removalGate": "HIGHEST external blast radius: this is on npm, so its consumers are outside the repo entirely. Any wire change is a semver-major of @alia.onl/sdk and strands every unmigrated installer. || #244, as of 2026-09-10: the SDK is a PRODUCT client (it parses alia.reasoning, alia.tool_result, alia.research_progress, alia.plan_preview) that still defaults to /v1/chat/completions, because /alia/chat answers CORS preflights only for the exact origins in packages/api/src/lib/cors-origins.ts while /v1 answers '*' (pinned by packages/api/src/middleware/__tests__/chat-origin-policy.test.ts) and the raw-source package compiles into consumer apps on origins Alia does not enumerate. The CURRENT supported path for an external consumer is (c) the consumer-backend relay: useAliaChat({ apiUrl }) at the consumer's own backend, which calls POST /alia/chat server-to-server (no Origin header), forwards the user's Oxy token and streams the SSE body back unchanged - documented in packages/alia-chat/README.md, at the cost of one extra hop; hence the new dependsOn alia-chat-post. (a) a CORS policy for registered consumer origins is NOT Alia's to build and is blocked on OxyHQ/oxy#972 (the origin registry is Oxy Applications). (b) moving the default to /alia/chat in a semver-major is an ADOPTION WINDOW, not a switch: it reaches only consumers who upgrade AND rebuild, so /v1/chat/completions must keep serving installed copies afterwards and that route's gate is bounded by SDK adoption, not by the policy landing. All of it now sits on a RESOLVED gate: v1-chat-completions-post is a permanent product API (ADR 0010, 2026-09-10, amending ADR 0004 section 3 and superseding ADR 0006), so the SDK's consumers no longer sit on a surface with a removal gate and (b) is no longer needed to escape a sunset. (a) remains blocked on OxyHQ/oxy#972: per ADR 0010 section 3 the registered origins of an application in Oxy Console replace the /v1 wildcard, on both mounts. (c) the consumer-backend relay stays the supported path until then.",
+      "removalGate": "HIGHEST external blast radius: this is on npm, so its consumers are outside the repo entirely. Any wire change is a semver-major of @alia.onl/sdk and strands every unmigrated installer. || #244, as of 2026-09-10: the SDK is a PRODUCT client (it parses alia.reasoning, alia.tool_result, alia.research_progress, alia.plan_preview) that still defaults to /v1/chat/completions, because /alia/chat answers CORS preflights only for the exact origins in packages/api/src/lib/cors-origins.ts while /v1 answers '*' (pinned by packages/api/src/middleware/__tests__/chat-origin-policy.test.ts) and the raw-source package compiles into consumer apps on origins Alia does not enumerate. The CURRENT supported path for an external consumer is (c) the consumer-backend relay: useAliaChat({ apiUrl }) at the consumer's own backend, which calls POST /alia/chat server-to-server (no Origin header), forwards the user's Oxy token and streams the SSE body back unchanged - documented in packages/sdk/README.md, at the cost of one extra hop; hence the new dependsOn alia-chat-post. (a) a CORS policy for registered consumer origins is NOT Alia's to build and is blocked on OxyHQ/oxy#972 (the origin registry is Oxy Applications). (b) moving the default to /alia/chat in a semver-major is an ADOPTION WINDOW, not a switch: it reaches only consumers who upgrade AND rebuild, so /v1/chat/completions must keep serving installed copies afterwards and that route's gate is bounded by SDK adoption, not by the policy landing. All of it now sits on a RESOLVED gate: v1-chat-completions-post is a permanent product API (ADR 0010, 2026-09-10, amending ADR 0004 section 3 and superseding ADR 0006), so the SDK's consumers no longer sit on a surface with a removal gate and (b) is no longer needed to escape a sunset. (a) remains blocked on OxyHQ/oxy#972: per ADR 0010 section 3 the registered origins of an application in Oxy Console replace the /v1 wildcard, on both mounts. (c) the consumer-backend relay stays the supported path until then.",
       "provenance": "inventory-product-api",
-      "evidence": "packages/alia-chat/src/hooks/useAliaChat.ts:10,29,110-122,312,380; packages/api/src/index.ts:117,139-143; packages/api/src/lib/cors-origins.ts:53-58,87-92"
+      "evidence": "packages/sdk/src/hooks/useAliaChat.ts:10,29,110-122,312,380; packages/api/src/index.ts:117,139-143; packages/api/src/lib/cors-origins.ts:53-58,87-92"
     },
     {
       "id": "sdk-integrations-ai-sdk",
@@ -3442,14 +3442,14 @@
       "workstream": "7",
       "domain": "provider-runtime",
       "kind": "dependency",
-      "currentPath": "packages/alia-chat/package.json",
+      "currentPath": "packages/sdk/package.json",
       "reachable": "live",
       "owner": "alia",
       "targetPath": "keep — voice transport peer of the published SDK",
       "dependsOn": [],
       "removalGate": "Published package: a peer change is a semver-major of @alia.onl/sdk.",
       "provenance": "inventory-provider-runtime",
-      "evidence": "packages/alia-chat/package.json"
+      "evidence": "packages/sdk/package.json"
     },
     {
       "id": "sdk-livekit-api",
@@ -3484,7 +3484,7 @@
       "workstream": "6",
       "domain": "product-api",
       "kind": "dependency",
-      "currentPath": "packages/alia-chat/src/hooks/useSpeechToText.ts",
+      "currentPath": "packages/sdk/src/hooks/useSpeechToText.ts",
       "removedIn": "alia-adr-0017-voice-realtime",
       "reachable": "live",
       "owner": "alia",
@@ -3492,35 +3492,35 @@
       "dependsOn": ["v1-voice-transcribe"],
       "removalGate": "Published package.",
       "provenance": "inventory-product-api",
-      "evidence": "packages/alia-chat/src/hooks/useSpeechToText.ts:164"
+      "evidence": "packages/sdk/src/hooks/useSpeechToText.ts:164"
     },
     {
       "id": "sdk-tts-consumer",
       "workstream": "6",
       "domain": "product-api",
       "kind": "dependency",
-      "currentPath": "packages/alia-chat/src/hooks/useTTS.ts",
+      "currentPath": "packages/sdk/src/hooks/useTTS.ts",
       "reachable": "live",
       "owner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": ["model-id-route:voice", "v1-audio-speech"],
       "removalGate": "Retiring or renaming route:voice breaks a published package. Keep the id resolvable.",
       "provenance": "inventory-product-api",
-      "evidence": "packages/alia-chat/src/hooks/useTTS.ts:198,205"
+      "evidence": "packages/sdk/src/hooks/useTTS.ts:198,205"
     },
     {
       "id": "sdk-voice-room-consumer",
       "workstream": "6",
       "domain": "product-api",
       "kind": "dependency",
-      "currentPath": "packages/alia-chat/src/hooks/useVoiceRoom.ts",
+      "currentPath": "packages/sdk/src/hooks/useVoiceRoom.ts",
       "reachable": "live",
       "owner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": ["model-id-route:voice", "v1-voice-token"],
       "removalGate": "Published package. Same gate as sdk-tts-consumer. || Since @alia.onl/sdk 8.0.0 the hook recognizes speech on the device and sends each turn through /v1/chat/completions; it calls neither /v1/voice route.",
       "provenance": "inventory-product-api",
-      "evidence": "packages/alia-chat/src/hooks/useVoiceRoom.ts:325,332"
+      "evidence": "packages/sdk/src/hooks/useVoiceRoom.ts:325,332"
     },
     {
       "id": "shared-types-duplicate-registry",
@@ -3752,14 +3752,14 @@
       "workstream": "6",
       "domain": "product-api",
       "kind": "stream-event",
-      "currentPath": "packages/alia-chat/src/runtime/use-conversation-stream.ts",
+      "currentPath": "packages/sdk/src/runtime/use-conversation-stream.ts",
       "reachable": "dead",
       "owner": "delete",
       "targetPath": "delete",
       "dependsOn": ["sdk-chat-consumer"],
       "removalGate": "Client-side dead code, safe to delete in the next SDK major. Its existence is EVIDENCE that the stream format has already broken once - treat it as the precedent for how a format change strands published consumers.",
       "provenance": "inventory-product-api",
-      "evidence": "packages/alia-chat/src/hooks/useAliaChat.ts:337-338,350"
+      "evidence": "packages/sdk/src/hooks/useAliaChat.ts:337-338,350"
     },
     {
       "id": "sse-named-event-contract",
@@ -4650,7 +4650,7 @@
       "owner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": [],
-      "removalGate": "Consumed by the published SDK (packages/alia-chat/src/hooks/useVoiceRoom.ts:325, which sends model:'route:voice'). Any change is a breaking SDK major.",
+      "removalGate": "Consumed by the published SDK (packages/sdk/src/hooks/useVoiceRoom.ts:325, which sends model:'route:voice'). Any change is a breaking SDK major.",
       "provenance": "re-derived",
       "evidence": "packages/api/src/routes/v1/voice.ts:31",
       "removedIn": "voz-en-dispositivo"

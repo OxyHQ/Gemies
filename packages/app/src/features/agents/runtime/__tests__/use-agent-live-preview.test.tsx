@@ -6,13 +6,13 @@ import { describe, expect, it, vi } from 'vitest';
  * An edit of how an agent looks reaches every query that draws it as it is made, before the save.
  */
 
-vi.mock('@alia.onl/sdk/runtime', () => ({
-  aliaQueryKeys: { agents: { profile: (id: string) => ['alia', 'agents', 'profile', id] } },
+vi.mock('@gemies/sdk/runtime', () => ({
+  gemieQueryKeys: { agents: { profile: (id: string) => ['alia', 'agents', 'profile', id] } },
 }));
 
 import { useAgentLivePreview } from '@/features/agents/runtime/use-agent-live-preview';
 import { queryKeys } from '@/shared/api/query-keys';
-import { aliaQueryKeys } from '@alia.onl/sdk/runtime';
+import { gemieQueryKeys } from '@gemies/sdk/runtime';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -31,7 +31,7 @@ function setup() {
     tagline: 'hi',
     character: blue,
   });
-  client.setQueryData(aliaQueryKeys.agents.profile('a1'), {
+  client.setQueryData(gemieQueryKeys.agents.profile('a1'), {
     id: 'a1',
     name: 'Pepe',
     character: blue,
@@ -65,7 +65,7 @@ describe('showing an agent’s look ahead of its save', () => {
       client.getQueryData<{ character: unknown }>(queryKeys.agents.detail('a1'))?.character,
     ).toEqual(green);
     expect(
-      client.getQueryData<{ character: unknown }>(aliaQueryKeys.agents.profile('a1'))?.character,
+      client.getQueryData<{ character: unknown }>(gemieQueryKeys.agents.profile('a1'))?.character,
     ).toEqual(green);
   });
 
@@ -75,7 +75,7 @@ describe('showing an agent’s look ahead of its save', () => {
     expect(client.getQueryData<{ tagline: string }>(queryKeys.agents.detail('a1'))?.tagline).toBe(
       'new line',
     );
-    expect(client.getQueryData(aliaQueryKeys.agents.profile('a1'))).toEqual({
+    expect(client.getQueryData(gemieQueryKeys.agents.profile('a1'))).toEqual({
       id: 'a1',
       name: 'Pepe',
       character: blue,
@@ -95,6 +95,6 @@ describe('showing an agent’s look ahead of its save', () => {
     act(() => preview.revert());
     expect(client.getQueryState(queryKeys.agents.mine)?.isInvalidated).toBe(true);
     expect(client.getQueryState(queryKeys.agents.detail('a1'))?.isInvalidated).toBe(true);
-    expect(client.getQueryState(aliaQueryKeys.agents.profile('a1'))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(gemieQueryKeys.agents.profile('a1'))?.isInvalidated).toBe(true);
   });
 });

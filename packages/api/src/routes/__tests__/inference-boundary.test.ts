@@ -255,7 +255,7 @@ describe('every unauthenticated inbound entry point is replay-protected (#139 ws
   it('the Oxy event surface verifies central service identity before it acts', () => {
     const events = code('routes/oxy-service-events.ts');
     // Alia's own audience is set once, on the one server every mount uses.
-    expect(code('lib/oxy.ts')).toContain('expectedAudience: ALIA_SERVICE_AUDIENCE');
+    expect(code('lib/oxy.ts')).toContain('expectedAudience: GEMIES_SERVICE_AUDIENCE');
     expect(events).toContain("router.post('/', oxy.middleware.service(),");
     expect(events).toContain('registeredByApplicationId === publisher.appId');
     expect(events).toContain("publisher.authority !== 'first_party'");

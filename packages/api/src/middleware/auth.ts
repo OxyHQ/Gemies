@@ -52,7 +52,7 @@ const onOxyRefusal = ({ code, stage, reason, status, optional }: OxyAuthRefusal)
 
 /**
  * Every lane is built ONCE, from the one `OxyServer` (`lib/oxy.ts`), whose
- * `expectedAudience` is Alia's own (`oxy-service:<ALIA_APPLICATION_ID>`).
+ * `expectedAudience` is Alia's own (`oxy-service:<GEMIES_APPLICATION_ID>`).
  *
  * A user bearer is validated against Oxy; a service token is verified against
  * Oxy's public keys and its LIVE authority, and an `X-Oxy-User-Id` on it is

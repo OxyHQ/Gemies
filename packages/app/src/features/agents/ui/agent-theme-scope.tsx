@@ -1,8 +1,8 @@
 import { useMyAgents } from '@/features/agents/runtime/use-my-agents';
 import { activeAgentFor } from '@/features/agents/model/active-agent';
 import { useEditorFollowsAgent } from '@/features/agents/runtime/use-editor-follows-agent';
-import { readAgentCharacter } from '@alia.onl/sdk';
-import { useConversations } from '@alia.onl/sdk/runtime';
+import { readAgentCharacter } from '@gemies/sdk';
+import { useConversations } from '@gemies/sdk/runtime';
 import { avatarBodyHex, resolveAvatarCharacter } from '@oxy.so/bloom/agent-avatar';
 import { BloomSeedScope } from '@oxy.so/bloom/theme';
 import { usePathname } from 'expo-router';

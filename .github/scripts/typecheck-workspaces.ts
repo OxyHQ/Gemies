@@ -75,8 +75,8 @@ function readWorkspaces(): Workspace[] {
  */
 const CHECKED_ELSEWHERE: Readonly<Record<string, string>> = {
   '@alia/api': 'Lint & Test — "Typecheck API"',
-  '@alia.onl/sdk': 'Lint & Test — "Typecheck SDK"',
-  '@alia.onl/server': 'Lint & Test — "Typecheck server SDK"',
+  '@gemies/sdk': 'Lint & Test — "Typecheck SDK"',
+  '@gemies/server': 'Lint & Test — "Typecheck server SDK"',
   '@alia/integrations':
     'Integrations (Postgres) — "Typecheck integrations" (script is `type-check`)',
 };

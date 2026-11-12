@@ -1,7 +1,7 @@
 import { agentDisplayName } from '@/features/agents/model/identity';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import type { Agent } from '@/shared/contracts/agents';
-import { readAgentCharacter } from '@alia.onl/sdk';
+import { readAgentCharacter } from '@gemies/sdk';
 import { AgentAvatar } from '@oxy.so/bloom/agent-avatar';
 import { Button } from '@oxy.so/bloom/button';
 import { Item } from '@oxy.so/bloom/item';

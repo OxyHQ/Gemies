@@ -4,10 +4,10 @@ import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  ALIA_APPLICATION_ID,
-  ALIA_INTEGRATIONS_WORKLOAD_ID,
-  ALIA_SERVICE_AUDIENCE,
-} from '@alia.onl/server/internal';
+  GEMIES_APPLICATION_ID,
+  GEMIES_INTEGRATIONS_WORKLOAD_ID,
+  GEMIES_SERVICE_AUDIENCE,
+} from '@gemies/server/internal';
 
 vi.mock('@oxy.so/core/server', async () => {
   const { createRequire } = await import('node:module');
@@ -77,14 +77,14 @@ function token(
   const claims = {
     type: 'service',
     authority: 'first_party',
-    appId: ALIA_APPLICATION_ID,
+    appId: GEMIES_APPLICATION_ID,
     appName: 'Alia',
     credentialId,
     ownerAccountId: OWNER,
     environment: 'production',
     tier: 'internal',
     iss: 'oxy-auth',
-    aud: ALIA_SERVICE_AUDIENCE,
+    aud: GEMIES_SERVICE_AUDIENCE,
     iat: now,
     exp: now + 300,
     ...overrides,
@@ -155,7 +155,10 @@ beforeAll(async () => {
   });
   issuer = await listen(app);
   // As `lib/oxy.ts` builds it: Alia's own audience on the server.
-  fixture.oxy = new OxyServer({ baseURL: origin(issuer), expectedAudience: ALIA_SERVICE_AUDIENCE });
+  fixture.oxy = new OxyServer({
+    baseURL: origin(issuer),
+    expectedAudience: GEMIES_SERVICE_AUDIENCE,
+  });
   vi.spyOn(fixture.oxy, 'introspectServiceToken').mockImplementation(async (bearer) => {
     const result = await fetch(`${origin(issuer)}/auth/resources/introspect`, {
       method: 'POST',
@@ -233,7 +236,7 @@ describe('workload-only process readers over real HTTP', () => {
         failure === 'invalid-signature'
           ? generateKeyPairSync('ed25519').privateKey
           : KEY.privateKey;
-      for (const [path, workload] of [['/api/bot', ALIA_INTEGRATIONS_WORKLOAD_ID]]) {
+      for (const [path, workload] of [['/api/bot', GEMIES_INTEGRATIONS_WORKLOAD_ID]]) {
         const result = await send(path, {
           authorization: `Bearer ${token(failure === 'wrong-workload' ? 'wl_other' : workload, overrides, key)}`,
           'x-channel-bot-secret': 'legacy-bot-secret',
@@ -252,7 +255,7 @@ describe('workload-only process readers over real HTTP', () => {
     'resolves %s account from its live provider row without Oxy authority',
     async (platform, header, value, lookupKey) => {
       const headers = {
-        authorization: `Bearer ${token(ALIA_INTEGRATIONS_WORKLOAD_ID)}`,
+        authorization: `Bearer ${token(GEMIES_INTEGRATIONS_WORKLOAD_ID)}`,
         'x-alia-channel': platform,
         [header]: value,
         'x-alia-account-context': 'forged-account',
@@ -272,7 +275,7 @@ describe('workload-only process readers over real HTTP', () => {
   );
   it('accepts new administrative bot calls only for their declared channel', async () => {
     const headers = {
-      authorization: `Bearer ${token(ALIA_INTEGRATIONS_WORKLOAD_ID)}`,
+      authorization: `Bearer ${token(GEMIES_INTEGRATIONS_WORKLOAD_ID)}`,
       'x-alia-channel': 'telegram',
     };
     expect((await send('/api/bot', headers)).status).toBe(200);

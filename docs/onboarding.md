@@ -105,10 +105,10 @@ No level asks for approval (ADR 0020 §3): an agent's configuration is its permi
 | `app/_layout.tsx` | Root layout: OxyProvider, fonts, theme, auth setup | App-wide providers |
 | `app/(app)/_layout.tsx` | Main drawer layout: sidebar, screens, store hydration | Adding a new screen |
 | `app/(app)/c/[id]/index` | Chat conversation screen | Chat UI changes |
-| `packages/alia-chat/src/components/AliaChatContent.tsx`, `thread/AliaThread.tsx` | The conversation screen (thread, composer, voice) the sheet and the app share | Chat UX changes |
+| `packages/sdk/src/components/GemieChatContent.tsx`, `thread/GemieThread.tsx` | The conversation screen (thread, composer, voice) the sheet and the app share | Chat UX changes |
 | `src/features/chat/ui/conversation-screen.tsx` | The app around that screen: levels, add menu, breadcrumb, account dialogs | Chat wiring in the app |
 | `src/features/*/runtime/*-store.ts` | Zustand stores, each in the feature that owns it (see State Management below) | Client state changes |
-| `packages/alia-chat/src/runtime/conversations.ts` | TanStack Query hooks for conversation CRUD (the SDK's; the app and the sheet share them) | Conversation data layer |
+| `packages/sdk/src/runtime/conversations.ts` | TanStack Query hooks for conversation CRUD (the SDK's; the app and the sheet share them) | Conversation data layer |
 | `src/shared/api/client.ts` | API client with auth token injection | API communication |
 | `src/shared/api/routes.ts` | All API route constants | Adding/renaming endpoints |
 
@@ -122,7 +122,7 @@ What happens when a user sends a message:
 Frontend                            Backend
 --------                            -------
 1. User types message
-2. AliaChatContent (the SDK's conversation screen) calls
+2. GemieChatContent (the SDK's conversation screen) calls
    POST /v1/chat/completions ──────> 3. Auth middleware sets req.user
    with SSE streaming                4. Workspace/org middleware
                                      5. autonomy beforeChat (classify, recall, retrieve)

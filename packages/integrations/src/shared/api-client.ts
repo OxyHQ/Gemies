@@ -1,9 +1,9 @@
 import {
-  ALIA_CHANNEL_HEADER,
-  ALIA_PLATFORM_USER_HEADER,
-  ALIA_CHANNEL_SESSION_HEADER,
-  type AliaChannelIdentity,
-} from '@alia.onl/server/internal';
+  GEMIES_CHANNEL_HEADER,
+  GEMIES_PLATFORM_USER_HEADER,
+  GEMIES_CHANNEL_SESSION_HEADER,
+  type GemieChannelIdentity,
+} from '@gemies/server/internal';
 import { aliaApiFetch } from './oxy';
 import { errorCode, errorStatus } from './utils';
 import { parseCatalogue, resolveRequestModel, type Catalogue } from './catalogue';
@@ -68,15 +68,15 @@ export class APIClient {
   }
 
   private get authHeaders(): Record<string, string> {
-    return { [ALIA_CHANNEL_HEADER]: this.platform };
+    return { [GEMIES_CHANNEL_HEADER]: this.platform };
   }
 
-  private accountHeaders(identity: AliaChannelIdentity): Record<string, string> {
+  private accountHeaders(identity: GemieChannelIdentity): Record<string, string> {
     return {
       ...this.authHeaders,
       ...(identity.kind === 'bot'
-        ? { [ALIA_PLATFORM_USER_HEADER]: identity.platformUserId }
-        : { [ALIA_CHANNEL_SESSION_HEADER]: identity.sessionId }),
+        ? { [GEMIES_PLATFORM_USER_HEADER]: identity.platformUserId }
+        : { [GEMIES_CHANNEL_SESSION_HEADER]: identity.sessionId }),
     };
   }
 
@@ -150,7 +150,7 @@ export class APIClient {
   }
 
   async getConversation(
-    identity: AliaChannelIdentity,
+    identity: GemieChannelIdentity,
     conversationId: string,
   ): Promise<Conversation | null> {
     try {
@@ -165,7 +165,7 @@ export class APIClient {
   }
 
   async saveConversation(
-    identity: AliaChannelIdentity,
+    identity: GemieChannelIdentity,
     conversationId: string,
     messages: ConversationMessage[],
     title?: string,
@@ -178,7 +178,7 @@ export class APIClient {
     return response.data;
   }
 
-  async getConversations(identity: AliaChannelIdentity): Promise<Conversation[]> {
+  async getConversations(identity: GemieChannelIdentity): Promise<Conversation[]> {
     const response = await this.client.get('/conversations', {
       headers: this.accountHeaders(identity),
     });
@@ -247,7 +247,7 @@ export class APIClient {
 
   /** Shared product chat transport; channel identity is resolved live by Alia. */
   async chatCompletion(
-    identity: AliaChannelIdentity,
+    identity: GemieChannelIdentity,
     messages: Array<{ role: string; content: MessageContent }>,
     options: { model?: string; conversationId?: string } = {},
   ): Promise<{ content: string; finishReason: string }> {
@@ -294,7 +294,11 @@ export class APIClient {
   /**
    * Transcribe audio to text via the voice/transcribe API endpoint.
    */
-  async transcribe(identity: AliaChannelIdentity, audio: string, format?: string): Promise<string> {
+  async transcribe(
+    identity: GemieChannelIdentity,
+    audio: string,
+    format?: string,
+  ): Promise<string> {
     const response = await this.client.post(
       '/v1/voice/transcribe',
       { audio, format },
@@ -316,7 +320,7 @@ export class APIClient {
    * (`packages/api/src/index.ts`), which is what a long stream wants.
    */
   async *chatCompletionStream(
-    identity: AliaChannelIdentity,
+    identity: GemieChannelIdentity,
     messages: Array<{ role: string; content: MessageContent }>,
     options: { model?: string; conversationId?: string } = {},
   ): AsyncGenerator<string, void, undefined> {

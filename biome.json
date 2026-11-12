@@ -154,7 +154,7 @@
       }
     },
     {
-      "includes": ["packages/alia-chat/src/**"],
+      "includes": ["packages/sdk/src/**"],
       "linter": {
         "rules": {
           "style": {

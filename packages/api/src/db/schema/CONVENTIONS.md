@@ -36,7 +36,7 @@ second thing to keep in lockstep.
 This is the sharpest difference from integrations, which was a genuine greenfield
 and kept nothing.
 
-`packages/app` and `packages/alia-chat` read `._id` in **137 places**. It is a
+`packages/app` and `packages/sdk` read `._id` in **137 places**. It is a
 wire contract with shipped mobile builds that cannot be recalled. So older rows
 keep their 24-character hex `_id` as a `text` primary key — **not** a uuid v7,
 however much the rest of the ecosystem prefers one.

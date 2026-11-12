@@ -286,9 +286,9 @@ describe('inbound verification is @oxy.so/core, not a local implementation (#139
     expect(source).toContain('oxy.middleware.service(');
     // Alia's own audience is the integrations server's, set once.
     expect(code(path.join(REPO_ROOT, 'packages/integrations/src/shared/oxy.ts'))).toContain(
-      'expectedAudience: ALIA_SERVICE_AUDIENCE',
+      'expectedAudience: GEMIES_SERVICE_AUDIENCE',
     );
-    expect(source).toContain('isAliaWorkload(');
+    expect(source).toContain('isGemiesWorkload(');
     expect(source).not.toContain('INTEGRATIONS_SECRET');
   });
 

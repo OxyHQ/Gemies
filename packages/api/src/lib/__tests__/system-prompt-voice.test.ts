@@ -7,7 +7,7 @@ import { SystemPromptBuilder } from '../system-prompt-builder.js';
  * A voice call's turn asks for an answer meant to be heard.
  *
  * Voice calls run on the device and send each spoken turn through the chat
- * handler with `responseMode: 'voice'` (`@alia.onl/sdk` 8.0.0). The turn keeps
+ * handler with `responseMode: 'voice'` (`@gemies/sdk` 8.0.0). The turn keeps
  * the conversation's own routing profile, so the product prompt that profile
  * selects still loads, and `prompts/voice.md` is layered over it — the same
  * shape as extended reasoning.

@@ -58,8 +58,8 @@ vi.mock('@oxy.so/services/ui/client', () => ({
   useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true, isAccountCacheReady: true }),
 }));
 // The SDK's runtime is a native-module barrel: only the key of the chat's agent profile is read.
-vi.mock('@alia.onl/sdk/runtime', () => ({
-  aliaQueryKeys: { agents: { profile: (id: string) => ['alia-agent-profile', id] as const } },
+vi.mock('@gemies/sdk/runtime', () => ({
+  gemieQueryKeys: { agents: { profile: (id: string) => ['alia-agent-profile', id] as const } },
 }));
 
 import { useCreateAgent, useDeleteAgent, useUpdateAgent } from '../use-agents';

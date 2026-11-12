@@ -1,18 +1,18 @@
 import type { Request, Response, NextFunction } from 'express';
 import { isLiveEntityId } from '@oxy.so/db';
 import {
-  ALIA_SERVICE_AUDIENCE,
-  ALIA_API_WORKLOAD_ID,
-  ALIA_ACCOUNT_CONTEXT_HEADER,
-  isAliaWorkload,
-} from '@alia.onl/server/internal';
+  GEMIES_SERVICE_AUDIENCE,
+  GEMIES_API_WORKLOAD_ID,
+  GEMIES_ACCOUNT_CONTEXT_HEADER,
+  isGemiesWorkload,
+} from '@gemies/server/internal';
 import { oxy } from './oxy';
 
 const verifiedRequests = new WeakSet<object>();
 
 /** Alia's own audience is the server's (`shared/oxy.ts`). */
 const serviceAuth = oxy.middleware.service();
-const expectedWorkload = () => process.env.ALIA_API_WORKLOAD_ID || ALIA_API_WORKLOAD_ID;
+const expectedWorkload = () => process.env.GEMIES_API_WORKLOAD_ID || GEMIES_API_WORKLOAD_ID;
 
 /** Same-product process authentication. This never fabricates an Oxy user session. */
 export async function requireAliaApi(
@@ -33,7 +33,7 @@ export async function requireAliaApi(
       req as Request & { serviceApp?: { authority?: string; appId: string; credentialId: string } }
     ).serviceApp;
     if (
-      !isAliaWorkload(
+      !isGemiesWorkload(
         principal && { ...principal, applicationId: principal.appId },
         expectedWorkload(),
       )
@@ -48,7 +48,7 @@ export async function requireAliaApi(
 
 export function internalAccount(req: Pick<Request, 'headers'>): string | undefined {
   if (!verifiedRequests.has(req)) return undefined;
-  const value = req.headers[ALIA_ACCOUNT_CONTEXT_HEADER];
+  const value = req.headers[GEMIES_ACCOUNT_CONTEXT_HEADER];
   return typeof value === 'string' && isLiveEntityId(value) ? value : undefined;
 }
 
@@ -67,15 +67,15 @@ export async function authorizeInternalUpgrade(
   const authorization = headers.authorization;
   if (headers['x-oxy-user-id'] !== undefined || headers['x-oxy-requester-token'] !== undefined)
     return null;
-  const context = headers[ALIA_ACCOUNT_CONTEXT_HEADER];
+  const context = headers[GEMIES_ACCOUNT_CONTEXT_HEADER];
   const accountId = typeof context === 'string' && isLiveEntityId(context) ? context : undefined;
   if (!accountId || typeof authorization !== 'string' || !authorization.startsWith('Bearer '))
     return null;
   try {
     const principal = await oxy.introspectServiceToken(authorization.slice(7));
     return principal.active &&
-      principal.audience === ALIA_SERVICE_AUDIENCE &&
-      isAliaWorkload(principal, expectedWorkload())
+      principal.audience === GEMIES_SERVICE_AUDIENCE &&
+      isGemiesWorkload(principal, expectedWorkload())
       ? accountId
       : null;
   } catch {

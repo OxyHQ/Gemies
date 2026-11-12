@@ -9,14 +9,14 @@ import {
 } from '../protocol.js';
 
 /**
- * The SDK restates protocol 1 (`packages/alia-chat/src/lib/dictation-protocol.ts`)
+ * The SDK restates protocol 1 (`packages/sdk/src/lib/dictation-protocol.ts`)
  * because it does not depend on the API package. ADR 0024 holds the two copies
  * equal: the version, the path, the sample rate, and every name either side
  * sends or reads.
  */
 
 const sdkSource = readFileSync(
-  fileURLToPath(new URL('../../../../../alia-chat/src/lib/dictation-protocol.ts', import.meta.url)),
+  fileURLToPath(new URL('../../../../../sdk/src/lib/dictation-protocol.ts', import.meta.url)),
   'utf8',
 );
 const apiSource = readFileSync(fileURLToPath(new URL('../protocol.ts', import.meta.url)), 'utf8');

@@ -1,7 +1,7 @@
 # Embedding an agent: the wire contract
 
 Alia ADR 0020 §5–§7. This is the contract between Alia's API and every surface that
-opens a conversation through `@alia.onl/sdk` (21.0.0 and later): Homiio's "Ask
+opens a conversation through `@gemies/sdk` (21.0.0 and later): Homiio's "Ask
 Sindi", oxy accounts' "Ask Alia", and the Alia app itself.
 
 Alia is the lead of a conversation unless the surface names an agent. Any agent the
@@ -42,7 +42,7 @@ is that agent. Without `agentId`, the lead is Alia.
 An Oxy application may confine its own agent to its own app (Oxy ADR 0044). Every
 request the SDK sends that can open an agent — the REST routes above and in §6, the chat
 stream, the voice socket — carries the host's Oxy-signed app assertion as
-`X-Oxy-App-Assertion` (Oxy ADR 0045; `@alia.onl/sdk` 19.1.0 and later). On the voice
+`X-Oxy-App-Assertion` (Oxy ADR 0045; `@gemies/sdk` 19.1.0 and later). On the voice
 socket it is `appAssertion` in the `auth` frame. Alia verifies it against Oxy's JWKS,
 bound to the request's own person and session, and `canReachAgent` refuses a confined
 agent unless the assertion names one of its applications. Without a valid assertion
@@ -136,11 +136,11 @@ Some host tools exist to READ what only the client has: a browser's "this tab's 
 
 #### Rollout
 
-The API receiver ships first: migration `0109_chat_host_results` (pre-deploy, additive), the route and the waiter. Only after every API replica runs it may a host declare `awaitsResult`: an older API's strict schema refuses the unknown field with `invalid_host`, and an older replica would not know the route. `@alia.onl/sdk` 22.2.0 sends `awaitsResult` only for a tool that declares it, so existing hosts send the same bytes and are unaffected by the order. The SDK answers through the authenticated API layer with the app assertion, at most once per tool call, reports a failed answer to `AliaHostTools.onUndelivered` and never retries it; a result over the bound is answered as `failed` instead.
+The API receiver ships first: migration `0109_chat_host_results` (pre-deploy, additive), the route and the waiter. Only after every API replica runs it may a host declare `awaitsResult`: an older API's strict schema refuses the unknown field with `invalid_host`, and an older replica would not know the route. `@gemies/sdk` 22.2.0 sends `awaitsResult` only for a tool that declares it, so existing hosts send the same bytes and are unaffected by the order. The SDK answers through the authenticated API layer with the app assertion, at most once per tool call, reports a failed answer to `GemieHostTools.onUndelivered` and never retries it; a result over the bound is answered as `failed` instead.
 
 ### Personalization off for one turn
 
-`"personalization": false` on `POST /v1/chat/completions` (and `/alia/chat`, the same handler) turns personalization off for that turn: Alia reads no profile of the person, the model is offered no memory tools (Alia's `oxy_nilo_memories__*`, an agent's `memory` and `searchThread`) and an agent reads none of its own memory of them, and nothing is learned from the turn (writing style, proactive suggestions). The conversation is stored as usual. Absent or `true` changes nothing; any other value is refused `400` with `param: "personalization"`. The SDK sends it from `AliaTurnRequest.personalization` (`host.turnRequest()`), only when `false`.
+`"personalization": false` on `POST /v1/chat/completions` (and `/alia/chat`, the same handler) turns personalization off for that turn: Alia reads no profile of the person, the model is offered no memory tools (Alia's `oxy_nilo_memories__*`, an agent's `memory` and `searchThread`) and an agent reads none of its own memory of them, and nothing is learned from the turn (writing style, proactive suggestions). The conversation is stored as usual. Absent or `true` changes nothing; any other value is refused `400` with `param: "personalization"`. The SDK sends it from `GemieTurnRequest.personalization` (`host.turnRequest()`), only when `false`.
 
 ## 3. Tool results and renderers
 
@@ -150,7 +150,7 @@ The API receiver ships first: migration `0109_chat_host_results` (pre-deploy, ad
 {"eventVersion":1,"tool_call_id":"…","name":"oxy_homiio__searchListings","output":{…}}
 ```
 
-A surface registers renderers by `<app>:<tool>`, which is parsed from `oxy_<app>__<tool>` or `self_<app>__<tool>`. The key is never parsed from free text. `parseCatalogueTool` and `toolRendererKey` read it, from the pure `@alia.onl/sdk/tools` entry as well as the main one, so a host that draws a conversation itself can tell its catalogue's results apart without loading React Native.
+A surface registers renderers by `<app>:<tool>`, which is parsed from `oxy_<app>__<tool>` or `self_<app>__<tool>`. The key is never parsed from free text. `parseCatalogueTool` and `toolRendererKey` read it, from the pure `@gemies/sdk/tools` entry as well as the main one, so a host that draws a conversation itself can tell its catalogue's results apart without loading React Native.
 
 ## 4. Consulting another agent
 
@@ -250,9 +250,9 @@ The conversation endpoints:
 - **`GET /v1/conversations?agentId=<id>&app=<slug>`** lists the person's conversations, narrowed to one agent, one app or both. Without either it lists all of them, which is what the Alia app shows.
 - **`POST /v1/conversations/:id/share { "ttlHours": 1..168 }`** answers `{ "token", "expiresAt" }`.
 - **`DELETE /v1/conversations/:id/share`** revokes the share.
-- **The link is Alia's.** Every app shares `https://alia.onl/shared/<token>` (the SDK's `aliaSharedConversationUrl`, and `url` on what `useShareConversation().share` returns), a public page of the Alia web app that draws the conversation with the SDK's `AliaSharedConversation` and answers `X-Robots-Tag: noindex`. An app keeps no shared page of its own; one that minted links to its own address before redirects them there.
+- **The link is Gemies'.** Every app shares `https://gemies.ai/shared/<token>` (the SDK's `gemiesSharedConversationUrl`, and `url` on what `useShareConversation().share` returns; `@alia.onl/sdk` minted `https://alia.onl/shared/<token>`, which the Alia web app keeps serving), a public page of the Gemies web app that draws the conversation with the SDK's `GemieSharedConversation` and answers `X-Robots-Tag: noindex`. An app keeps no shared page of its own; one that minted links to its own address before redirects them there.
 - **`GET /v1/shared/:token`** needs no auth and is `noindex`. It answers `{ "title", "agent"?, "messages": [{ "role", "content", "agent"?, "artifacts"? }], "expiresAt" }`. That covers text, images, agent identity and the conversation's canvas artifacts; no other tool output is included, because it can hold the person's own data (`lib/shared-conversation.ts` is an allow-list).
-- **Artifacts are shared with the chat (owner, 2026-10-27).** A shared conversation shows the reports, decks, dashboards, charts and tables Alia drew in it, because the artifact is usually what the person is sharing. An assistant message carries them as `artifacts: [{ "id", "type", "title", "data" }]`: only the `canvas` tool's finished result, one entry per call in call order, `id` being the tool call. Never the call's arguments, a refused call (`{ error }`), or any other tool's result — `generateFile`, email, files, Oxy apps (`oxy_*`), connected apps and MCP servers, page text or host tools (`host_*`). They live behind the same token, expiry and revocation as the words: a revoked or expired link answers the same `404` with nothing in it. `AliaSharedConversation` draws each artifact inline under its reply (there is no canvas panel on the shared page). This replaces the rule of 2026-10-16 that a link never carried any tool output.
+- **Artifacts are shared with the chat (owner, 2026-10-27).** A shared conversation shows the reports, decks, dashboards, charts and tables Alia drew in it, because the artifact is usually what the person is sharing. An assistant message carries them as `artifacts: [{ "id", "type", "title", "data" }]`: only the `canvas` tool's finished result, one entry per call in call order, `id` being the tool call. Never the call's arguments, a refused call (`{ error }`), or any other tool's result — `generateFile`, email, files, Oxy apps (`oxy_*`), connected apps and MCP servers, page text or host tools (`host_*`). They live behind the same token, expiry and revocation as the words: a revoked or expired link answers the same `404` with nothing in it. `GemieSharedConversation` draws each artifact inline under its reply (there is no canvas panel on the shared page). This replaces the rule of 2026-10-16 that a link never carried any tool output.
 
 ### The app a conversation started in
 

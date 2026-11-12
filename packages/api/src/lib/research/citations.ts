@@ -8,7 +8,7 @@
  * `[n]` into a link when `n` names a known source, so every other spelling is
  * a marker the reader sees raw.
  *
- * The SDK carries a twin of this function (`packages/alia-chat/src/lib/citations.ts`)
+ * The SDK carries a twin of this function (`packages/sdk/src/lib/citations.ts`)
  * for messages persisted before the API normalised its output. The two must
  * agree; the SDK's tests pin the same cases.
  */

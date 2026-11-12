@@ -1,12 +1,12 @@
 import type { VerifiedChannelContext } from '../types/channel-context.js';
 import type { Request, Response, NextFunction } from 'express';
 import {
-  ALIA_INTEGRATIONS_WORKLOAD_ID,
-  ALIA_CHANNEL_HEADER,
-  ALIA_PLATFORM_USER_HEADER,
-  ALIA_CHANNEL_SESSION_HEADER,
-  isAliaWorkload,
-} from '@alia.onl/server/internal';
+  GEMIES_INTEGRATIONS_WORKLOAD_ID,
+  GEMIES_CHANNEL_HEADER,
+  GEMIES_PLATFORM_USER_HEADER,
+  GEMIES_CHANNEL_SESSION_HEADER,
+  isGemiesWorkload,
+} from '@gemies/server/internal';
 import { isLiveEntityId } from '@oxy.so/db';
 import { oxy } from '../lib/oxy.js';
 import { getDb } from '../db/index.js';
@@ -33,9 +33,9 @@ async function requireIntegrations(req: Request, res: Response, next: NextFuncti
   await serviceTokenAuth(req, res, () => {
     const principal = req.serviceApp;
     if (
-      !isAliaWorkload(
+      !isGemiesWorkload(
         principal && { ...principal, applicationId: principal.appId },
-        process.env.ALIA_INTEGRATIONS_WORKLOAD_ID || ALIA_INTEGRATIONS_WORKLOAD_ID,
+        process.env.GEMIES_INTEGRATIONS_WORKLOAD_ID || GEMIES_INTEGRATIONS_WORKLOAD_ID,
       )
     ) {
       res.status(403).json({ error: 'Integrations workload required' });
@@ -52,7 +52,7 @@ async function requireIntegrations(req: Request, res: Response, next: NextFuncti
 export function authenticateChannelBot(channelType: ChannelId) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     await requireIntegrations(req, res, () => {
-      if (req.headers[ALIA_CHANNEL_HEADER] !== channelType) {
+      if (req.headers[GEMIES_CHANNEL_HEADER] !== channelType) {
         res.status(403).json({ error: 'Channel mismatch' });
         return;
       }
@@ -63,7 +63,7 @@ export function authenticateChannelBot(channelType: ChannelId) {
 }
 
 export function hasChannelContext(req: Request): boolean {
-  return req.headers[ALIA_CHANNEL_HEADER] !== undefined;
+  return req.headers[GEMIES_CHANNEL_HEADER] !== undefined;
 }
 
 /** Resolve the account from the live provider link, never from an account header.
@@ -84,9 +84,9 @@ async function resolveChannelAccount(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const platform = req.headers[ALIA_CHANNEL_HEADER];
-    const platformUserId = req.headers[ALIA_PLATFORM_USER_HEADER];
-    const sessionId = req.headers[ALIA_CHANNEL_SESSION_HEADER];
+    const platform = req.headers[GEMIES_CHANNEL_HEADER];
+    const platformUserId = req.headers[GEMIES_PLATFORM_USER_HEADER];
+    const sessionId = req.headers[GEMIES_CHANNEL_SESSION_HEADER];
     if (typeof platform !== 'string' || (platformUserId !== undefined && sessionId !== undefined)) {
       res.status(401).json({ error: 'Channel context required' });
       return;

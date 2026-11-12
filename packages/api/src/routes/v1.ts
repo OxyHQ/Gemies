@@ -31,7 +31,7 @@ router.use('/models', modelsRouter);
 /**
  * The person's conversations, on the product API — the one the SDK talks to.
  *
- * `@alia.onl/sdk` is embedded by every Oxy app, on their own web origins, so it can only call
+ * `@gemies/sdk` is embedded by every Oxy app, on their own web origins, so it can only call
  * a surface with public CORS (this one: `cors({ origin: '*' })` in `index.ts`, bearer and no
  * cookies). The SAME router `/conversations` mounts, so there is one implementation and one
  * set of rules; only the door differs.

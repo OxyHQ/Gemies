@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   auth: { isAuthenticated: true, canUsePrivateApi: true, isAccountCacheReady: true },
 }));
 
-vi.mock('@alia.onl/sdk/runtime', () => ({ useStartConversation: () => mocks.startConversation }));
+vi.mock('@gemies/sdk/runtime', () => ({ useStartConversation: () => mocks.startConversation }));
 vi.mock('@oxy.so/services/ui/client', () => ({
   useAuth: () => ({ isAuthenticated: mocks.auth.isAuthenticated, signIn: mocks.signIn }),
 }));

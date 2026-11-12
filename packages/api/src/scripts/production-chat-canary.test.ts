@@ -84,7 +84,7 @@ describe('production chat canary safe projection', () => {
   it('enters the real HTTP auth router and has a bounded process lifetime', () => {
     const source = readFileSync(new URL('./production-chat-canary.ts', import.meta.url), 'utf8');
     expect(source).toContain('http://127.0.0.1:3001/alia/chat');
-    expect(source).toContain('createAliaTransportForOxyService');
+    expect(source).toContain('createGemieTransportForOxyService');
     expect(source).not.toContain('authorization: `Bearer');
     expect(source).not.toContain("'x-oxy-user-id':");
     expect(source).toContain('20 * 60 * 1_000');

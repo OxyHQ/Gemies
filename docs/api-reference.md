@@ -11,7 +11,7 @@ tools, research and the `alia.*` stream events — use this one. Keys for either
 Oxy Console. The page is organised by mount, because one handler sits behind two:
 
 - **[The Alia product runtime](#the-alia-product-runtime)** — everything the app,
-  the CLI call. Alia owns it and keeps owning it. `@alia.onl/sdk` is written
+  the CLI call. Alia owns it and keeps owning it. `@gemies/sdk` is written
   against it too, but its transport still enters through `/v1/chat/completions`, for the
   CORS reason under [Chat](#chat).
 - **[The `/v1/*` mount](#the-product-api-under-its-openai-compatible-shape-v1)** — `api.alia.onl/v1/*`,
@@ -111,7 +111,7 @@ credentials, one from a loopback dev origin the same, and one from any other ori
 no `access-control-allow-origin` at all. `/v1/*` answers `*` instead. A request with no
 `Origin` header — a server, a native app, `curl` — is never subject to either. The policy
 is pinned by `packages/api/src/middleware/__tests__/chat-origin-policy.test.ts`. That is why
-`@alia.onl/sdk`, embedded by every Oxy app on its own web origin, speaks only to `/v1`
+`@gemies/sdk`, embedded by every Oxy app on its own web origin, speaks only to `/v1`
 (`POST /v1/chat/completions`, `/v1/conversations`, `/v1/agents`, `/v1/shared`): the same handler
 and the same router, on the surface any origin may read. `/v1/conversations` and `/v1/agents`
 admit a person's session alone; `/v1/shared/:token` admits anyone holding the link.

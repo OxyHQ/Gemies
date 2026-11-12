@@ -9,7 +9,7 @@ The private ECS service has its own PostgreSQL database. The API uses
 Deploy the Oxy issuer and shared core reader before these consumers. Bind both
 `oxy-alia-task` and `oxy-alia-integrations-task` to Alia's registered application,
 with explicit deployment environments. Each receiver pins its exact opposite
-process and the canonical audience exported by `@alia.onl/server`. Temporary
+process and the canonical audience exported by `@gemies/server`. Temporary
 workload credentials replace internal scopes and shared gateway/bot passwords.
 External connector OAuth and provider webhook signatures remain.
 

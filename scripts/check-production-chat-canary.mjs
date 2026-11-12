@@ -60,7 +60,7 @@ export function checkProductionChatCanary({ workflow, runner, build }) {
   ])
     requireText(runner, binding, `runner lost requester binding: ${binding}`);
   if (
-    !/createAliaTransportForOxyService\(oxy,\s*\{\s*baseURL: 'http:\/\/127\.0\.0\.1:3001',\s*requester,\s*\}\)/.test(
+    !/createGemieTransportForOxyService\(oxy,\s*\{\s*baseURL: 'http:\/\/127\.0\.0\.1:3001',\s*requester,\s*\}\)/.test(
       runner,
     )
   )

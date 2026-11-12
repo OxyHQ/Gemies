@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { createAliaTransportForOxyService } from '@alia.onl/server';
+import { createGemieTransportForOxyService } from '@gemies/server';
 import { oxy } from '../lib/oxy.js';
 
 type Case = Readonly<{
@@ -271,7 +271,7 @@ async function waitUntilReady(signal: AbortSignal): Promise<void> {
 
 async function main(): Promise<void> {
   const requester = canaryRequester(process.env);
-  const transport = createAliaTransportForOxyService(oxy, {
+  const transport = createGemieTransportForOxyService(oxy, {
     baseURL: 'http://127.0.0.1:3001',
     requester,
   });

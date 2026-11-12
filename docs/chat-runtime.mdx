@@ -204,9 +204,9 @@ There are no approval events on either transport: no agent asks for approval
 (ADR 0020 §3). A tool effect runs under the actor's Oxy authority, or Oxy refuses
 it and the model is told `oxy_app_unavailable`.
 
-### Reading the stream from a server: `@alia.onl/server`
+### Reading the stream from a server: `@gemies/server`
 
-`packages/alia-server` is the supported reader for a backend that calls Alia
+`packages/server` is the supported reader for a backend that calls Alia
 itself. It is NOT the SDK: no React, no DOM beyond `fetch` and
 `ReadableStream`, compiled ESM and CommonJS, Node 22+.
 
@@ -227,8 +227,8 @@ the same commit rather than in a consumer's logs later.
 
 ## The client runtime
 
-One conversation runtime serves every first-party client: the bottom sheet and `AliaChatScreen`
-from `@alia.onl/sdk`, and the Alia app. It lives in `packages/alia-chat/src/runtime` and is
+One conversation runtime serves every first-party client: the bottom sheet and `GemieChatScreen`
+from `@gemies/sdk`, and the Alia app. It lives in `packages/sdk/src/runtime` and is
 layered so each layer depends only on the ones before it:
 
 1. **Transport** — `api.ts` (REST over the signed-in Oxy client: token, refresh and the single
@@ -241,30 +241,30 @@ layered so each layer depends only on the ones before it:
 3. **Hooks** — `useConversations`, `useConversation`, `useConversationThread`
    (send/edit/regenerate/retry/stop/clear), `useStartConversation`, `useTurnEdit`.
 
-What differs between the sheet and the app is only the `AliaRuntimeHost` they pass to
-`AliaRuntimeProvider` (navigation, credits, memory, artifacts panel, agent rows, where the work of
+What differs between the sheet and the app is only the `GemieRuntimeHost` they pass to
+`GemieRuntimeProvider` (navigation, credits, memory, artifacts panel, agent rows, where the work of
 a turn is shown) and what they put around the conversation (see below). A voice call
 always lives in a conversation: the open one, or one made when the call starts, opening on the
 screen that shows it (`lib/voice-call-request.ts`). The full API, with examples for both, is in
-`packages/alia-chat/README.md`.
+`packages/sdk/README.md`.
 
 The runtime exposes `composerPhase` separately from `isLoading`. It moves through `idle`,
 `submitting`, `streaming`, `stopping`, `error` and `complete`; `isLoading` remains the business state that keeps
-the Stop action active. `AliaChatContent` passes the phase to `AliaComposer`, which forwards it to
-Bloom's `ComposerLoader`. Hosts using `AliaComposer` directly can pass `loaderPhase` themselves.
+the Stop action active. `GemieChatContent` passes the phase to `GemieComposer`, which forwards it to
+Bloom's `ComposerLoader`. Hosts using `GemieComposer` directly can pass `loaderPhase` themselves.
 
 ### The conversation screen is the SDK's too
 
-The bottom sheet, `AliaChatScreen` and the Alia app are frames around ONE screen, `AliaChatContent`
-(`packages/alia-chat/src/components`). Above the runtime it has two more layers:
+The bottom sheet, `GemieChatScreen` and the Alia app are frames around ONE screen, `GemieChatContent`
+(`packages/sdk/src/components`). Above the runtime it has two more layers:
 
 4. **Hooks of what a person does** — `useChatComposer` (the draft, sending, rewriting a sent
    question, suggestions, the field's keys), `useChatVoice` (the call, its sounds and its
    transcript in the thread), `useThreadView` (the present or a moment of an agent's thread),
    `useOpenThought`, `useReadAloud`, `useMessageVote`, `useThreadRows`, `useTimelineWindow`.
-5. **UI** — `AliaThread` (the turns: Bloom's AI Chat turns, the work log, cards, the failed
+5. **UI** — `GemieThread` (the turns: Bloom's AI Chat turns, the work log, cards, the failed
    turn's toast, day lines, the window over a long history), `ThoughtPanel`, the composer, the
-   voice call bar, `AliaChatContent` itself.
+   voice call bar, `GemieChatContent` itself.
 
 What the app keeps is what only it has: the sidebar (which reads the runtime's lists), the right
 panel and the column layout that mounts them, its routes, and its callbacks. They reach the screen
@@ -272,7 +272,7 @@ through data and places, never through a second implementation: `conversationId`
 `model`/`onModelChange`/`deviceModels`, `addMenu`, `chrome`, `voice`, `renderUsageLimit`, and the
 host members `showThought`, `openAutomation`, `faviconUrl`. `packages/app/src/features/chat` is the
 inventory of that (see `docs/app-architecture.mdx`), and
-`packages/alia-chat/tests/components/thread/one-thread.test.tsx` holds that the sheet and the app
+`packages/sdk/tests/components/thread/one-thread.test.tsx` holds that the sheet and the app
 draw the same rows and that nothing else imports Bloom's thread.
 
 **The work of a turn** has two halves with a seam between them. The thread selects a turn
@@ -295,7 +295,7 @@ the host's: web search, deep research, skills and connected apps are rows with p
 gates, a router and a library behind them, so the SDK offers the slot (`addMenu`) and photos by
 default.
 
-## Browser origins and `@alia.onl/sdk`
+## Browser origins and `@gemies/sdk`
 
 The two mounts differ in who a browser may be. `/alia/chat` takes Alia's
 exact-origin CORS allowlist (`packages/api/src/lib/cors-origins.ts`, mounted
@@ -305,7 +305,7 @@ preflight from an origin Alia does not enumerate gets no
 header — a server, a native app — is subject to neither. The policy is pinned
 by `packages/api/src/middleware/__tests__/chat-origin-policy.test.ts`.
 
-`@alia.onl/sdk` is a product client that switches on the `alia.*` events above, and it is
+`@gemies/sdk` is a product client that switches on the `alia.*` events above, and it is
 embedded by every Oxy app on that app's own web origin. So it speaks **only to `/v1`** — a bearer
 of the person's Oxy session, no cookies, public CORS: turns go to `POST /v1/chat/completions` (the
 handler `/alia/chat` mounts) and conversations to `/v1/conversations`. The conversations router is
@@ -554,10 +554,10 @@ on `totalUsage` (every step), summed across the tools-disabled synthesis pass.
 
 On the clients: the app draws its failed-turn card — its own i18n line, `code ·
 Ref reference` and Retry — for the frame and for the HTTP envelope alike,
-keeping partial output when there was some. `@alia.onl/sdk` raises an
+keeping partial output when there was some. `@gemies/sdk` raises an
 `AliaChatStreamError` carrying `status`, `code`, `retryable`, `retryAfter` and
-`reference`; `@alia.onl/server` yields an `error` event (or throws
-`AliaRequestError`) with the same fields; clients raise an
+`reference`; `@gemies/server` yields an `error` event (or throws
+`GemieRequestError`) with the same fields; clients raise an
 `AliaChatError` with `code` and `retryable`. Alia does not re-send the failed
 step itself: Kaana owns retries, and the AI SDK cannot resume a multi-step run
 at the step that failed.

@@ -1,7 +1,7 @@
 import { AgentEditorPanel } from '@/features/agents/ui/agent-editor-panel';
 import { AgentPanel } from '@/features/chat/ui/workspace/agent-panel';
 import { CreditsLimits } from '@/features/chat/ui/workspace/credits-limits';
-import { CanvasComponent, type OutputActions, ThoughtPanel } from '@alia.onl/sdk';
+import { CanvasComponent, type OutputActions, ThoughtPanel } from '@gemies/sdk';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { useLibraryStore } from '@/features/library/runtime/library-store';
 import { canSaveImage, imageFilename, saveImage } from '@/features/chat/runtime/save-image';

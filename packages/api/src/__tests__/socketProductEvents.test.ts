@@ -254,7 +254,7 @@ describe('each product event is emitted under its own name, to its own room', ()
 
 /**
  * Every `socket.on('<name>', …)` in `packages/app` and in the SDK it mounts
- * (`packages/alia-chat`: the agent run's feed and the activity socket now live
+ * (`packages/sdk`: the agent run's feed and the activity socket now live
  * there), minus the three names Socket.IO itself owns.
  *
  * Read off disk deliberately: a list written here would be a list that agrees
@@ -273,7 +273,7 @@ const RETIRED_APPROVAL_EVENTS = new Set([
 
 function appSocketListeners(): { names: string[]; filesScanned: number } {
   const appRoot = path.resolve(import.meta.dirname, '../../../app');
-  const sdkRoot = path.resolve(import.meta.dirname, '../../../alia-chat');
+  const sdkRoot = path.resolve(import.meta.dirname, '../../../sdk');
   const names = new Set<string>();
   let filesScanned = 0;
 

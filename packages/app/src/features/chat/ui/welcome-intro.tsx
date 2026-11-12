@@ -1,6 +1,6 @@
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { useColorScheme } from '@/shared/platform/useColorScheme';
-import { AliaAvatar, AmbientField, PARALLAX_DURATION, PARALLAX_EASE } from '@alia.onl/sdk';
+import { GemieAvatar, AmbientField, PARALLAX_DURATION, PARALLAX_EASE } from '@gemies/sdk';
 import { Button } from '@oxy.so/bloom/button';
 import { Text } from '@oxy.so/bloom/typography';
 import { useAuth } from '@oxy.so/services/ui/client';
@@ -281,7 +281,7 @@ export function WelcomeIntro({
             {brand === 'gemies' ? (
               <GemiesWelcomeArt size={stage.width >= 768 ? 240 : 180} />
             ) : (
-              <AliaAvatar size={40} interactive />
+              <GemieAvatar size={40} interactive />
             )}
           </Animated.View>
           <Animated.View
@@ -290,7 +290,7 @@ export function WelcomeIntro({
             style={headlineStyle}
           >
             {/* Typeface matches the chat greeting in
-                the SDK's AliaWelcomeMessage — Text's own font-sans, no
+                the SDK's GemieWelcomeMessage — Text's own font-sans, no
                 display face. Editorial size stays. */}
             <Text className="text-center text-4xl font-light text-foreground md:text-5xl">
               {headline.slice(0, typed)}

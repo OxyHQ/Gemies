@@ -45,7 +45,7 @@ A bun workspaces monorepo, no Turborepo and no Nx. Alia is the exception to the 
 
 Three things worth knowing before your first pull request:
 
-- `packages/alia-chat` publishes to npm as `@alia.onl/sdk`, as **raw source**, so consumers compile `src/` with their own Metro or tsc. It has to resolve and typecheck under a real external install, not only inside this monorepo.
+- `packages/sdk` publishes to npm as `@gemies/sdk`, as **raw source**, so consumers compile `src/` with their own Metro or tsc. It has to resolve and typecheck under a real external install, not only inside this monorepo.
 - `packages/api/src/lib/gateway-client.ts` is the product seam for signed Kaana
   calls. It must not grow an in-process provider fallback or a second hosted
   inference path.
@@ -70,8 +70,8 @@ bun install --frozen-lockfile
 bunx biome ci .                           # Biome: format check + lint, whole repo
 bun run --filter @alia/api typecheck
 bun run --filter @alia/api test
-bun run --filter @alia.onl/sdk typecheck
-bun run --filter @alia.onl/sdk check:entries
+bun run --filter @gemies/sdk typecheck
+bun run --filter @gemies/sdk check:entries
 bun run build:api
 bun run --filter @alia/integrations type-check
 bun run --filter @alia/integrations test    # against a real Postgres

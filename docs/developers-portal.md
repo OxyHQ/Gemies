@@ -11,7 +11,7 @@ Three products, three roles, one console
   `/agents` and `/catalogue`. Three groups call it, all authorized by Oxy: Alia's own
   surfaces — the app (the VS Code extension and the CLI), which are Alia
   products and use `/alia/chat` with the user's Oxy session; other applications in the
-  Oxy ecosystem; and third parties through `@alia.onl/sdk`. It accepts an
+  Oxy ecosystem; and third parties through `@gemies/sdk`. It accepts an
   OpenAI-compatible request shape and streams `alia.*` product events; it does not sunset.
 
 **Pick the product, then get the key from Oxy Console.** For raw model access — a
@@ -47,9 +47,9 @@ acceptance went too:
 
 Section (c) of [the compatibility window](./migration/compatibility-window.md) is closed.
 
-## Using `@alia.onl/sdk` from your own application
+## Using `@gemies/sdk` from your own application
 
-`@alia.onl/sdk` (`packages/alia-chat`) is a **product** client, not a generic one: its
+`@gemies/sdk` (`packages/sdk`) is a **product** client, not a generic one: its
 conversation runtime parses the `alia.*` stream events above and stores conversations. It speaks
 only to `/v1` — `POST /v1/chat/completions` for a turn and `/v1/conversations` for the history —
 with the signed-in person's Oxy bearer and no cookies, on a surface with public CORS, so it works

@@ -4,10 +4,10 @@ import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  ALIA_APPLICATION_ID,
-  ALIA_API_WORKLOAD_ID,
-  ALIA_SERVICE_AUDIENCE,
-} from '@alia.onl/server/internal';
+  GEMIES_APPLICATION_ID,
+  GEMIES_API_WORKLOAD_ID,
+  GEMIES_SERVICE_AUDIENCE,
+} from '@gemies/server/internal';
 
 const fixture = vi.hoisted(() => ({
   oxy: undefined as any,
@@ -44,14 +44,14 @@ function token(
   const claims = {
     type: 'service',
     authority: 'first_party',
-    appId: ALIA_APPLICATION_ID,
+    appId: GEMIES_APPLICATION_ID,
     appName: 'Alia',
     credentialId,
     ownerAccountId: OWNER,
     environment: 'production',
     tier: 'internal',
     iss: 'oxy-auth',
-    aud: ALIA_SERVICE_AUDIENCE,
+    aud: GEMIES_SERVICE_AUDIENCE,
     iat: now,
     exp: now + 300,
     ...overrides,
@@ -119,7 +119,10 @@ beforeAll(async () => {
   });
   issuer = await listen(app);
   // As `shared/oxy.ts` builds it: Alia's own audience on the server.
-  fixture.oxy = new OxyServer({ baseURL: origin(issuer), expectedAudience: ALIA_SERVICE_AUDIENCE });
+  fixture.oxy = new OxyServer({
+    baseURL: origin(issuer),
+    expectedAudience: GEMIES_SERVICE_AUDIENCE,
+  });
   vi.spyOn(fixture.oxy, 'introspectServiceToken').mockImplementation(async (bearer) => {
     const result = await fetch(`${origin(issuer)}/auth/resources/introspect`, {
       method: 'POST',
@@ -171,7 +174,7 @@ describe('workload-only process readers over real HTTP', () => {
   it('accepts the exact new API workload and overwrites body owner', async () => {
     expect(
       await send('/gateway/sessions/connect', {
-        authorization: `Bearer ${token(ALIA_API_WORKLOAD_ID)}`,
+        authorization: `Bearer ${token(GEMIES_API_WORKLOAD_ID)}`,
         'x-alia-account-context': OWNER,
       }),
     ).toMatchObject({ status: 200, body: { bodyOwner: OWNER } });
@@ -190,7 +193,7 @@ describe('workload-only process readers over real HTTP', () => {
         failure === 'invalid-signature'
           ? generateKeyPairSync('ed25519').privateKey
           : KEY.privateKey;
-      for (const [path, workload] of [['/gateway/sessions/connect', ALIA_API_WORKLOAD_ID]]) {
+      for (const [path, workload] of [['/gateway/sessions/connect', GEMIES_API_WORKLOAD_ID]]) {
         const result = await send(path, {
           authorization: `Bearer ${token(failure === 'wrong-workload' ? 'wl_other' : workload, overrides, key)}`,
           'x-channel-bot-secret': 'legacy-bot-secret',
@@ -203,7 +206,7 @@ describe('workload-only process readers over real HTTP', () => {
     },
   );
   it('requires new account context and rejects another account row', async () => {
-    const authorization = `Bearer ${token(ALIA_API_WORKLOAD_ID)}`;
+    const authorization = `Bearer ${token(GEMIES_API_WORKLOAD_ID)}`;
     expect((await send('/gateway/sessions/owned', { authorization })).status).toBe(401);
     expect(
       (
@@ -219,7 +222,7 @@ describe('workload-only process readers over real HTTP', () => {
   });
   it('requires the canonical live workload audience for new sockets without legacy downgrade', async () => {
     const headers = {
-      authorization: `Bearer ${token(ALIA_API_WORKLOAD_ID)}`,
+      authorization: `Bearer ${token(GEMIES_API_WORKLOAD_ID)}`,
       'x-alia-account-context': OWNER,
       'x-gateway-secret': 'legacy-gateway-secret',
     };
@@ -227,13 +230,13 @@ describe('workload-only process readers over real HTTP', () => {
     expect(
       await authorizeInternalUpgrade({
         ...headers,
-        authorization: `Bearer ${token(ALIA_API_WORKLOAD_ID, { aud: 'oxy-api' })}`,
+        authorization: `Bearer ${token(GEMIES_API_WORKLOAD_ID, { aud: 'oxy-api' })}`,
       }),
     ).toBeNull();
     expect(
       await authorizeInternalUpgrade({
         ...headers,
-        authorization: `Bearer ${token(ALIA_API_WORKLOAD_ID, {}, generateKeyPairSync('ed25519').privateKey)}`,
+        authorization: `Bearer ${token(GEMIES_API_WORKLOAD_ID, {}, generateKeyPairSync('ed25519').privateKey)}`,
       }),
     ).toBeNull();
     fixture.revoked = true;

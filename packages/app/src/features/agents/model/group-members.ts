@@ -1,5 +1,5 @@
-import type { AliaParticipant } from '@alia.onl/sdk';
-import { readAgentCharacter } from '@alia.onl/sdk';
+import type { GemieParticipant } from '@gemies/sdk';
+import { readAgentCharacter } from '@gemies/sdk';
 import type { Agent } from '@/shared/contracts/agents';
 import { agentDisplayName } from './identity';
 import { agentHandle } from '@/shared/routing/agent-address';
@@ -14,9 +14,9 @@ import { agentHandle } from '@/shared/routing/agent-address';
 export function groupMembersOf(
   memberAgentIds: readonly string[] | undefined,
   agents: readonly Agent[] | undefined,
-): readonly AliaParticipant[] | undefined {
+): readonly GemieParticipant[] | undefined {
   if (memberAgentIds === undefined || agents === undefined) return undefined;
-  const members = memberAgentIds.flatMap((id): AliaParticipant[] => {
+  const members = memberAgentIds.flatMap((id): GemieParticipant[] => {
     const agent = agents.find((candidate) => candidate._id === id);
     return agent
       ? [

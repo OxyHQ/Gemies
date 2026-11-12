@@ -368,10 +368,10 @@ jobs:
         run: node .github/scripts/test-check-ts-directives.mjs
 
       # API and integrations consume the published server entry points.
-      # The package publishes compiled ESM + CJS + types, unlike @alia.onl/sdk.
+      # The package publishes compiled ESM + CJS + types, unlike @gemies/sdk.
       # A build that only runs at `npm publish` time is a build nobody has run.
       - name: Build server SDK
-        run: bun run --filter @alia.onl/server build
+        run: bun run --filter @gemies/server build
 
       - name: Typecheck API
         run: bun run --filter @alia/api typecheck
@@ -386,42 +386,42 @@ jobs:
         run: bun run --filter @alia/api test:bun-runtime
 
       - name: Typecheck SDK
-        run: bun run --filter @alia.onl/sdk typecheck
+        run: bun run --filter @gemies/sdk typecheck
 
       - name: Test SDK streaming contract
-        run: bun run --filter @alia.onl/sdk test
+        run: bun run --filter @gemies/sdk test
 
       - name: Test SDK optional Metro resolver
-        run: bun run --filter @alia.onl/sdk test:metro
+        run: bun run --filter @gemies/sdk test:metro
 
-      # @alia.onl/sdk ships raw source, so anything the root entry can reach is
+      # @gemies/sdk ships raw source, so anything the root entry can reach is
       # compiled into every text-chat consumer's bundle. Keeps the voice call
       # behind the ./voice entry, and the retired livekit-client out of both.
       - name: Check SDK entry isolation
-        run: bun run --filter @alia.onl/sdk check:entries
+        run: bun run --filter @gemies/sdk check:entries
 
       # The SDK's own typecheck compiles every file at once, so it cannot see an entry that leans
       # on something only another entry brings in (21.4.0–21.5.2: `/text` without NativeWind's
       # `className` types). This compiles a consumer of each entry alone.
       - name: Check SDK entry types
-        run: bun run --filter @alia.onl/sdk check:entry-types
+        run: bun run --filter @gemies/sdk check:entry-types
 
       - name: Typecheck server SDK
-        run: bun run --filter @alia.onl/server typecheck
+        run: bun run --filter @gemies/server typecheck
 
       # These fixtures are written by the API's OWN SSE writers, imported across
       # the workspace boundary — so a change to what `/v1/chat/completions` puts
       # on the wire fails here, in the same commit, rather than in a consumer's
       # production logs a week later.
       - name: Test server SDK against the API's own stream writers
-        run: bun run --filter @alia.onl/server test
+        run: bun run --filter @gemies/server test
 
       # Typecheck, tests and build all passed on 1.0.0 while the published
       # package could not be compiled against from a CommonJS backend — the
       # defect was in the exports map, which none of them read. This compiles a
       # real `module: node16` consumer against the built package.
       - name: Check server SDK entry points
-        run: bun run --filter @alia.onl/server check:entrypoints
+        run: bun run --filter @gemies/server check:entrypoints
 
   # The frontend packages had no typecheck, no lint and no test script between
   # them, and none of them was referenced by this workflow — so every frontend PR
@@ -463,7 +463,7 @@ jobs:
       # a named job elsewhere, explicitly excluded, or explicitly scriptless — so
       # a new package cannot join the repo unnoticed. See the script's header.
       - name: Build shared server SDK for desktop consumers
-        run: bun run --filter @alia.onl/server build
+        run: bun run --filter @gemies/server build
 
       - name: Typecheck workspaces
         run: bun .github/scripts/typecheck-workspaces.ts
@@ -760,7 +760,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build server SDK dependency
-        run: bun run --filter @alia.onl/server build
+        run: bun run --filter @gemies/server build
 
       - name: Typecheck integrations
         run: bun run --filter @alia/integrations type-check
@@ -843,7 +843,7 @@ jobs:
       # the REAL src/db/migrate.ts entrypoint, so this also exercises the phase
       # and --target-database guards an operator depends on.
       - name: Build server SDK dependency
-        run: bun run --filter @alia.onl/server build
+        run: bun run --filter @gemies/server build
 
       - name: Test API against Postgres
         env:

@@ -1,5 +1,5 @@
-import { readAgentCharacter } from '@alia.onl/sdk';
-import { aliaQueryKeys } from '@alia.onl/sdk/runtime';
+import { readAgentCharacter } from '@gemies/sdk';
+import { gemieQueryKeys } from '@gemies/sdk/runtime';
 import { queryKeys } from '@/shared/api/query-keys';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AvatarCharacter } from '@oxy.so/bloom/agent-avatar';
@@ -305,7 +305,7 @@ export function useAgentIdentityAutosave(agent: Agent) {
         void Promise.all([
           queryClient.invalidateQueries({ queryKey: queryKeys.agents.mine }),
           queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agent._id) }),
-          queryClient.invalidateQueries({ queryKey: aliaQueryKeys.agents.profile(agent._id) }),
+          queryClient.invalidateQueries({ queryKey: gemieQueryKeys.agents.profile(agent._id) }),
         ]);
         toast.success(t('agents.autoSaved'), { id: SAVE_TOAST_ID });
       } catch (error: unknown) {

@@ -24,7 +24,7 @@ import { describe, expect, it } from 'vitest';
  */
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const SDK = join(ROOT, '..', 'alia-chat', 'src');
+const SDK = join(ROOT, '..', 'sdk', 'src');
 const DIRS = [join(ROOT, 'app'), join(ROOT, 'src'), SDK];
 
 /** Files that may import Bloom's `Loading`, and the action each one shows it for. */
@@ -35,8 +35,8 @@ const ACTION_SPINNERS = new Map<string, string>([
   ],
   ['src/shell/sidebar-menus.tsx', 'the chat that is being answered right now (StreamingIndicator)'],
   ['src/features/shows/ui/episode-row.tsx', 'an episode being generated: the action itself'],
-  ['../alia-chat/src/components/voice/VoiceControls.tsx', 'a call connecting: the action itself'],
-  ['../alia-chat/src/components/thought/ToolStep.tsx', 'a tool call that is running'],
+  ['../sdk/src/components/voice/VoiceControls.tsx', 'a call connecting: the action itself'],
+  ['../sdk/src/components/thought/ToolStep.tsx', 'a tool call that is running'],
 ]);
 
 function sourceFiles(dir: string): string[] {

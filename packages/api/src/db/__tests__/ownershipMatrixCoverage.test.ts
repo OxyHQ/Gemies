@@ -241,7 +241,7 @@ interface MatrixRow {
  *
  * ## 154 -> 158: `voz-en-dispositivo`
  *
- * Voice runs on the device (`@alia.onl/sdk` 8.0.0), so `routes/v1/voice.ts` —
+ * Voice runs on the device (`@gemies/sdk` 8.0.0), so `routes/v1/voice.ts` —
  * the LiveKit token and transcription stubs that had refused every call since
  * #477 — is deleted: four rows named the file (both routes, its gateway-client
  * import and the transcription behaviour).

@@ -44,7 +44,7 @@ Alia is one of three things, and the three are not nested
   and `/alia/chat`, plus the product routes beside them). Three groups call it, all
   authorized by Oxy: Alia's own surfaces — the app (extension and CLI),
   on `/alia/chat` with the user's Oxy session; other applications in the Oxy ecosystem;
-  and third parties through `@alia.onl/sdk`. It accepts an OpenAI-compatible request
+  and third parties through `@gemies/sdk`. It accepts an OpenAI-compatible request
   shape and streams `alia.*` product events; it does not sunset.
 
 For raw model access use Kaana through Oxy (`api.oxy.so/v1`); for the assistant use
@@ -107,8 +107,8 @@ PostgreSQL is Alia's only product store: conversations, messages, agents, organi
 | `packages/app` | Expo + React Native | Main app (web + iOS + Android) |
 | `packages/api` | Express + TypeScript | Core API runtime |
 | `packages/integrations` | Express + TypeScript | Telegram / WhatsApp / Discord / browser bridges, and the MCP client |
-| `packages/alia-chat` | React | Published as `@alia.onl/sdk` — the CLIENT SDK (components, hooks, voice) |
-| `packages/alia-server` | TypeScript | Published as `@alia.onl/server` — the SERVER client a consumer backend calls Alia with |
+| `packages/sdk` | React | Published as `@gemies/sdk` — the CLIENT SDK (components, hooks, voice) |
+| `packages/server` | TypeScript | Published as `@gemies/server` — the SERVER client a consumer backend calls Alia with |
 | `packages/alia-computer-host` | Node + Docker (gVisor) | The agents' computer: sandboxed machines and browser, on its own Spot host ([actors](./actors.mdx#the-agents-computer)) |
 
 ## Install
@@ -182,7 +182,7 @@ One canonical page per topic; other pages link to it rather than repeat it.
 - [Embedding an agent: the wire contract](./agent-embedding.md) — opening any agent from any app, host tools, consultations, feature gates, documents, sharing
 - [Developer access to Alia](./developers-portal.md) and the [Console machine chat contract](./machine-chat-contract.md)
 - [Oxy authentication and packages](./oxyhq-auth.md)
-- [`@alia.onl/sdk`](../packages/alia-chat/README.md) and [`@alia.onl/server`](../packages/alia-server/README.md)
+- [`@gemies/sdk`](../packages/sdk/README.md) and [`@gemies/server`](../packages/server/README.md)
 
 ### Building the app and the repo
 

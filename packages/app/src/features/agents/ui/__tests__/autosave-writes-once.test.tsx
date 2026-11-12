@@ -212,7 +212,7 @@ vi.mock('@oxy.so/bloom/settings-list', async () => {
       ReactModule.createElement('SettingsListItem', props),
   };
 });
-vi.mock('@alia.onl/sdk', async () => {
+vi.mock('@gemies/sdk', async () => {
   const ReactModule = await import('react');
   return {
     IdentityMark: (props: Record<string, unknown>) =>

@@ -4,12 +4,12 @@ La plataforma de gemies de Oxy («Create your Gemies. Let them work together.»)
 
 ## Estado: separación de Alia en curso (ADR 0034)
 
-Este repo nació el 2026-11-12 de `OxyHQ/Alia`, con todo su historial y sin ser un fork. El plan y sus fases están en [`docs/adr/0034-gemies-and-alia.md`](./docs/adr/0034-gemies-and-alia.md). Mientras la migración no termine, el código, los paquetes y los dominios siguen llamándose Alia (`@alia/api`, `@alia.onl/sdk`, `api.alia.onl`).
+Este repo nació el 2026-11-12 de `OxyHQ/Alia`, con todo su historial y sin ser un fork. El plan y sus fases están en [`docs/adr/0034-gemies-and-alia.md`](./docs/adr/0034-gemies-and-alia.md). Mientras la migración no termine, el backend y la app siguen llamándose Alia por dentro (`@alia/api`, `@alia/app`, `api.alia.onl`); el SDK y el cliente de servidor ya son `@gemies/sdk` y `@gemies/server`.
 
 - **Gemies despliega el backend en producción desde el 2026-11-12** (servicio ECS `alia`, `alia-integrations`, computer host; runbook 65 de oxy-infra). Push a `main` despliega tras CI verde. La API responde en `api.gemies.ai` y en `api.alia.onl`.
-- **Los cambios de backend se hacen aquí, nunca en `OxyHQ/Alia`.** Alia conserva la app (`onl.alia.app`, `alia.onl`), el OTA, Android y la publicación de `@alia.onl/sdk`/`@alia.onl/server` hasta que existan `@gemies/*`; por eso esos workflows siguen desactivados aquí (`publish-update`, `android-release`, `release-packages`).
+- **Los cambios de backend se hacen aquí, nunca en `OxyHQ/Alia`.** Alia conserva su app (`onl.alia.app`, `alia.onl`), el OTA y Android; por eso esos workflows siguen desactivados aquí (`publish-update`, `android-release`).
 - **La web de Gemies (`gemies.ai`) se despliega desde aquí** con `deploy-frontends.yml`: Worker `gemies-app` en `gemies.ai` (`www` redirige al apex). Nunca `alia-app` ni `alia.onl`, que despliega `OxyHQ/Alia`; lo vigila `.github/scripts/check-frontend-worker-targets.mjs`. La app usa la aplicación de Oxy **Gemies** (`oxy_dk_f694…12de`) y `api.gemies.ai`.
-- Dependabot de este repo actualiza las dependencias del backend; las de app/SDK siguen en Alia mientras ese código viva allí.
+- **El SDK (`packages/sdk`, `@gemies/sdk`) y el cliente de servidor (`packages/server`, `@gemies/server`) viven y se publican aquí** (`release-packages.yml`, OIDC). Sustituyen sin paquete puente a `@alia.onl/sdk` y `@alia.onl/server`: componentes `Gemie*` (`GemieChatContent`, `GemieChatSheet`, `GemieAvatar`, `useAskGemie`…) y base URL `https://api.gemies.ai`. La app Alia los consume desde npm.
 - Vocabulario nuevo: un agente es un **gemie**. Alia es un gemie oficial global y Codea otro. Alia es la fila `agents` `ALIA_GEMIE_ID` (`domain/alia-gemie.ts`) y lo que la distingue es su configuración (`memory_store`, `reach`, `mailbox`, `task_authority`, sus grants): decide por esos atributos, nunca por su id ni por un `agentId` nulo.
 
 ## Comandos
@@ -19,7 +19,7 @@ bun install
 bun run lint                                          # Biome; CI: bunx biome ci .
 bun run --filter @alia/api typecheck && bun run --filter @alia/api test
 bun run --filter @alia/app typecheck && bun run --filter @alia/app test
-bun run --filter @alia.onl/sdk typecheck && bun run --filter @alia.onl/sdk test
+bun run --filter @gemies/sdk typecheck && bun run --filter @gemies/sdk test
 bun run --filter @alia/api test:pg                    # Postgres real; necesita TEST_DATABASE_URL
 bun run dev:api                                       # también dev:app, dev:integrations
 ```
@@ -48,7 +48,7 @@ Nunca:
 - Credenciales de proveedor ni claves de Kaana en Alia, ni claves `alia_sk_*` (retiradas): las claves viven en Oxy Console.
 - Un hostname de Kaana distinto de `https://kaana.ai`.
 - Otro `server.on('upgrade')`: Bun cierra los sockets ajenos; todo upgrade pasa por `lib/websocket-upgrades.ts`.
-- Copiar un componente de conversación a `packages/app`: viene de `AliaChatContent` en `packages/alia-chat` (ADR 0018).
+- Copiar un componente de conversación a `packages/app`: viene de `GemieChatContent` en `packages/sdk` (ADR 0018).
 - Pasar a un agente la memoria de Alia o sus herramientas.
 - Exigir un agente para una tarea: sin `actorSelection` es `{ mode: 'fixed', agentId: ALIA_GEMIE_ID }`, el gemie Alia.
 

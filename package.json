@@ -9,8 +9,8 @@
   "workspaces": [
     "packages/api",
     "packages/app",
-    "packages/alia-chat",
-    "packages/alia-server",
+    "packages/sdk",
+    "packages/server",
     "packages/integrations",
     "packages/alia-computer-host"
   ],

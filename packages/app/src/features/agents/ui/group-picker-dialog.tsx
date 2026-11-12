@@ -3,7 +3,7 @@ import { useStartGroup } from '@/features/agents/runtime/use-start-group';
 import { agentDisplayName } from '@/features/agents/model/identity';
 import { useUIStore } from '@/features/chat/runtime/ui-store';
 import { useTranslation } from '@/shared/i18n/use-translation';
-import { readAgentCharacter } from '@alia.onl/sdk';
+import { readAgentCharacter } from '@gemies/sdk';
 import { AgentAvatar } from '@oxy.so/bloom/agent-avatar';
 import { useAvatarFlights } from '@oxy.so/bloom/avatar-flight';
 import { Button } from '@oxy.so/bloom/button';

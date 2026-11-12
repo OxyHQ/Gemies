@@ -17,9 +17,9 @@
  *   that cannot attest keeps sending it anonymous; anything that NEEDS the
  *   service lane fails at the call, and that failure is reported as one.
  * - `expectedAudience`: every `middleware.auth()` / `service()` mount accepts
- *   service tokens minted for Alia (`oxy-service:<ALIA_APPLICATION_ID>`).
+ *   service tokens minted for Alia (`oxy-service:<GEMIES_APPLICATION_ID>`).
  */
-import { ALIA_APPLICATION_ID, ALIA_SERVICE_AUDIENCE } from '@alia.onl/server';
+import { GEMIES_APPLICATION_ID, GEMIES_SERVICE_AUDIENCE } from '@gemies/server';
 import { OxyServer } from '@oxy.so/core/server';
 import { createAwsWorkloadCredentialProvider } from '@oxy.so/core/server/aws';
 
@@ -39,9 +39,9 @@ function loopbackRequestTimeout(baseURL: string): number | undefined {
 
 export const oxy = new OxyServer({
   baseURL: OXY_API_URL,
-  applicationId: ALIA_APPLICATION_ID,
+  applicationId: GEMIES_APPLICATION_ID,
   serviceIdentity: 'when-anonymous',
-  expectedAudience: ALIA_SERVICE_AUDIENCE,
+  expectedAudience: GEMIES_SERVICE_AUDIENCE,
   workloadCredentials: createAwsWorkloadCredentialProvider(),
   requestTimeout: loopbackRequestTimeout(OXY_API_URL),
 });
