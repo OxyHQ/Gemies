@@ -1,5 +1,5 @@
 import { ScrollViewStyleReset } from 'expo-router/html';
-import { type PropsWithChildren } from 'react';
+import type { PropsWithChildren } from 'react';
 
 /**
  * Root HTML component for static rendering
@@ -34,33 +34,30 @@ export default function Root({ children }: PropsWithChildren) {
         />
 
         {/* Primary Meta Tags */}
-        <meta name="title" content="Alia" />
+        <meta name="title" content="Gemies" />
         <meta
           name="description"
-          content="Alia helps you get answers, explore ideas, and boost productivity. Chat with AI for work, learning, and creative inspiration."
+          content="Create your Gemies. Let them work together. Gemies are AI teammates you shape, and Alia is one of them."
         />
-        <meta
-          name="keywords"
-          content="AI chat, AI assistant, chatbot, artificial intelligence, productivity, AI conversation, machine learning, chat AI"
-        />
+        <meta name="keywords" content="Gemies, AI agents, AI teammates, AI assistant, Alia, Oxy" />
 
         {/* Open Graph / Facebook Meta Tags for social sharing */}
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://alia.onl/" />
-        <meta property="og:title" content="Alia" />
+        <meta property="og:url" content="https://gemies.ai/" />
+        <meta property="og:title" content="Gemies" />
         <meta
           property="og:description"
-          content="Alia helps you get answers, explore ideas, and boost productivity. Chat with AI for work, learning, and creative inspiration."
+          content="Create your Gemies. Let them work together. Gemies are AI teammates you shape, and Alia is one of them."
         />
         <meta property="og:image" content="/og-image.png" />
 
         {/* Twitter Card Meta Tags */}
         <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:url" content="https://alia.onl/" />
-        <meta property="twitter:title" content="Alia" />
+        <meta property="twitter:url" content="https://gemies.ai/" />
+        <meta property="twitter:title" content="Gemies" />
         <meta
           property="twitter:description"
-          content="Alia helps you get answers, explore ideas, and boost productivity. Chat with AI for work, learning, and creative inspiration."
+          content="Create your Gemies. Let them work together. Gemies are AI teammates you shape, and Alia is one of them."
         />
         <meta property="twitter:image" content="/og-image.png" />
 
@@ -73,7 +70,6 @@ export default function Root({ children }: PropsWithChildren) {
 
         {/* Favicons */}
         <link rel="icon" href="/favicon.ico" sizes="any" />
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
         <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
         <link rel="shortcut icon" href="/icon-192.png" />
@@ -82,7 +78,7 @@ export default function Root({ children }: PropsWithChildren) {
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
         {/* Apple Mobile Web App */}
-        <meta name="apple-mobile-web-app-title" content="Alia" />
+        <meta name="apple-mobile-web-app-title" content="Gemies" />
 
         {/* Disable body scrolling for native-like feel on web */}
         <ScrollViewStyleReset />
@@ -98,10 +94,10 @@ export default function Root({ children }: PropsWithChildren) {
             __html: JSON.stringify({
               '@context': 'https://schema.org',
               '@type': 'WebApplication',
-              name: 'Alia',
-              url: 'https://alia.onl',
+              name: 'Gemies',
+              url: 'https://gemies.ai',
               description:
-                'Alia helps you get answers, explore ideas, and boost productivity. Chat with AI for work, learning, and creative inspiration.',
+                'Create your Gemies. Let them work together. Gemies are AI teammates you shape, and Alia is one of them.',
               applicationCategory: 'BusinessApplication',
               operatingSystem: 'Web, iOS, Android',
               offers: {

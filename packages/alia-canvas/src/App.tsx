@@ -18,7 +18,7 @@ const queryClient = new QueryClient({
 
 const OXY_API_URL: string = import.meta.env.VITE_OXY_URL || 'https://api.oxy.so';
 const OXY_CLIENT_ID: string =
-  import.meta.env.VITE_OXY_CLIENT_ID || 'oxy_dk_06488927793f96922ef4f366a9800547b34c6aec025fece3';
+  import.meta.env.VITE_OXY_CLIENT_ID || 'oxy_dk_f69446329297cf395ee13c39c78678c4602e2cd989b112de';
 
 export default function App() {
   return (

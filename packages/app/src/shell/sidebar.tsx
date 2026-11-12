@@ -78,6 +78,7 @@ import { confirm } from '@oxy.so/bloom/surfaces';
 import { ProfileButton, useAuth, useOxy } from '@oxy.so/services/ui/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'expo-router';
+import { GemiesMark } from '@/shared/ui/gemies-mark';
 import React from 'react';
 import {
   Linking,
@@ -833,7 +834,8 @@ function useSidebarProps() {
         leading: <AliaAvatar size={32} portrait />,
         onPress: () => {
           closeNav?.();
-          router.replace('/(app)');
+          // A chat is always with a gemie (ADR 0034); this one is with Alia.
+          router.replace('/(app)/alia');
         },
       },
       {
@@ -882,9 +884,9 @@ function useSidebarProps() {
   const props = {
     // The panel's own header stays above the tools: the mark and name (home), and the collapse control.
     logo: {
-      // A still thumbnail: a permanent 26px spot should not hold a live 3D renderer on every page.
-      icon: <AliaAvatar size={26} portrait />,
-      wordmark: 'Alia',
+      // The Gemies mark (a placeholder until the brand exists); home is the person's gemies.
+      icon: <GemiesMark size={26} />,
+      wordmark: 'Gemies',
       onPress: () => {
         closeNav?.();
         router.replace('/(app)');

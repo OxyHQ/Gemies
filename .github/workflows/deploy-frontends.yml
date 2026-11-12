@@ -34,7 +34,7 @@ jobs:
     # the workflow, so that only a run `scope` judged to be main's head can
     # queue here and an older commit cannot displace a newer pending release.
     concurrency:
-      group: deploy-alia-app
+      group: deploy-gemies-app
       cancel-in-progress: false
     runs-on: ubuntu-latest
     # Measured 3-4 minutes; a backstop against the 6-hour default.
@@ -80,7 +80,10 @@ jobs:
       # migration `alia-app.pages.dev` returned a byte-identical copy of
       # `alia.onl` while being in NEITHER CORS allowlist: it rendered the shell
       # and failed every call it made. `workers_dev = false` in
-      # packages/app/wrangler.toml leaves `alia.onl` as the only way in.
+      # packages/app/wrangler.toml leaves `gemies.ai` (and `www`, which the
+      # Worker redirects to it) as the only way in. The Worker is `gemies-app`:
+      # `alia-app` and `alia.onl` belong to OxyHQ/Alia and are never deployed
+      # from here (.github/scripts/check-frontend-worker-targets.mjs).
       #
       # `bunx wrangler@4`, NOT `cloudflare/wrangler-action` (forbidden
       # fleet-wide). The action installs its own wrangler mid-deploy
@@ -105,7 +108,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/release-marker
-          key: alia-release-app-${{ env.RELEASE_SHA }}
+          key: gemies-release-app-${{ env.RELEASE_SHA }}
 
   deploy-canvas:
     needs: scope
@@ -114,7 +117,7 @@ jobs:
     # the workflow, so that only a run `scope` judged to be main's head can
     # queue here and an older commit cannot displace a newer pending release.
     concurrency:
-      group: deploy-alia-canvas
+      group: deploy-gemies-canvas
       cancel-in-progress: false
     runs-on: ubuntu-latest
     # Measured 3-4 minutes; a backstop against the 6-hour default.
@@ -154,12 +157,12 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
           NODE_ENV: production
-          VITE_API_URL: https://api.alia.onl
+          VITE_API_URL: https://api.gemies.ai
       # A WORKER, not a Pages project. A Pages project always serves
       # `<project>.pages.dev` and Cloudflare offers no way to switch it off, so
       # Canvas had a second working copy at a URL nobody chose. A Worker declines
       # its default hostname (`workers_dev = false` in
-      # packages/alia-canvas/wrangler.toml), leaving `canvas.alia.onl` as the only
+      # packages/alia-canvas/wrangler.toml), leaving `canvas.gemies.ai` as the only
       # name that reaches it. Everything else — the assets directory, the SPA
       # fallback, the custom domain — is declared in that file rather than passed
       # here, so a deploy cannot disagree with the config.
@@ -210,7 +213,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/release-marker
-          key: alia-release-canvas-${{ env.RELEASE_SHA }}
+          key: gemies-release-canvas-${{ env.RELEASE_SHA }}
 
   # The trigger guards, main's head and each frontend's path scope, decided
   # outside the release lanes (deploy-scope.sh). The scopes are the ones the
@@ -246,10 +249,10 @@ jobs:
         if: steps.gate.outputs.current == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash .github/scripts/deploy-scope.sh target app include '^(packages/app/|packages/alia-chat/|package\.json$|\.github/workflows/deploy-frontends\.yml$|bun\.lock$)' alia-release-app-
+        run: bash .github/scripts/deploy-scope.sh target app include '^(packages/app/|packages/alia-chat/|package\.json$|\.github/workflows/deploy-frontends\.yml$|bun\.lock$)' gemies-release-app-
       - name: Decide whether Canvas changed
         id: canvas
         if: steps.gate.outputs.current == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash .github/scripts/deploy-scope.sh target canvas include '^(packages/alia-canvas/|bun\.lock$)' alia-release-canvas-
+        run: bash .github/scripts/deploy-scope.sh target canvas include '^(packages/alia-canvas/|bun\.lock$)' gemies-release-canvas-

@@ -9,7 +9,7 @@ const env = {
   },
 };
 
-const get = (path: string) => worker.fetch(new Request(`https://alia.onl${path}`), env);
+const get = (path: string) => worker.fetch(new Request(`https://gemies.ai${path}`), env);
 
 describe('a shared conversation is never indexed', () => {
   it('says noindex on /shared/<token>, in the response', async () => {

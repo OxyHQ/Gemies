@@ -47,9 +47,22 @@ async function appShell(request, env) {
   return new Response(shell.body, shell);
 }
 
+/**
+ * Hosts this Worker answers only with a permanent redirect to the app's one origin. `www.gemies.ai`
+ * is a custom domain of this Worker (`wrangler.toml`) so that the name people type works, but the
+ * app runs on the apex only: that is the origin Oxy's application registry and the API's CORS
+ * list admit, and a second origin would be a second session store.
+ */
+const CANONICAL_ORIGIN = 'https://gemies.ai';
+const REDIRECT_HOSTS = new Set(['www.gemies.ai']);
+
 export default {
   async fetch(request, env) {
-    const { pathname } = new URL(request.url);
+    const url = new URL(request.url);
+    if (REDIRECT_HOSTS.has(url.hostname)) {
+      return Response.redirect(`${CANONICAL_ORIGIN}${url.pathname}${url.search}`, 301);
+    }
+    const { pathname } = url;
     const isDocumentRequest = request.method === 'GET' || request.method === 'HEAD';
     const response =
       isDocumentRequest && APP_ROUTE_WITH_RESERVED_CHARACTER.test(pathname)

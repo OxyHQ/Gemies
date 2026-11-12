@@ -36,14 +36,14 @@ describe('Chat, on a catalogue card', () => {
 });
 
 describe('Share', () => {
-  it('links to the agent on Alia’s own domain', () => {
+  it('links to the gemie on the Gemies domain', () => {
     const message = agentShareMessage({
       _id: 'a1',
       name: 'Pepe',
       handle: 'pepe',
       tagline: 'Finds flights',
     });
-    expect(message).toBe('Pepe — Finds flights\nhttps://alia.onl/@pepe/details');
+    expect(message).toBe('Pepe — Finds flights\nhttps://gemies.ai/@pepe/details');
     expect(message).not.toContain('alia.app');
   });
 
@@ -54,7 +54,7 @@ describe('Share', () => {
 
   it('never prints a null name', () => {
     const message = agentShareMessage({ _id: 'a1', name: null, handle: 'pepe', tagline: '' });
-    expect(message).toBe('pepe\nhttps://alia.onl/@pepe/details');
+    expect(message).toBe('pepe\nhttps://gemies.ai/@pepe/details');
   });
 });
 

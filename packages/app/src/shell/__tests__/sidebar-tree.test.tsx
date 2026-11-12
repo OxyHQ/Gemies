@@ -77,6 +77,9 @@ vi.mock('@oxy.so/services/ui/client', () => ({
   useOxy: () => ({ isAuthenticated: true, user: { id: 'user-a' }, showBottomSheet: vi.fn() }),
 }));
 
+// The header's mark is an image (expo-image), which this renderer does not load.
+vi.mock('@/shared/ui/gemies-mark', () => ({ GemiesMark: () => null }));
+
 vi.mock('@alia.onl/sdk', () => ({
   AliaAvatar: () => null,
   ALIA_AVATAR: { preset: 'blue_beret' },
@@ -519,7 +522,7 @@ describe('the sidebar list', () => {
     act(() => {
       props.createOptions[0].onPress();
     });
-    expect(state.replace).toHaveBeenCalledWith('/(app)');
+    expect(state.replace).toHaveBeenCalledWith('/(app)/alia');
   });
 
   it('filters the chats and the agents by what is typed', async () => {

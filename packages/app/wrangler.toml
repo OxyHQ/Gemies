@@ -1,4 +1,4 @@
-# The Alia web app is a Worker, not a Pages project, for the same reason Canvas
+# The Gemies web app (`gemies.ai`) is a Worker, not a Pages project, for the same reason Canvas
 # is: a Pages project ALWAYS serves `<project>.pages.dev` and Cloudflare offers
 # no way to switch it off — `wrangler pages project` has only `list`, `create`
 # and `delete`.
@@ -11,13 +11,18 @@
 # The same deployment under two names, and the second in NEITHER CORS allowlist
 # (`lib/cors-origins.ts` here, `BOOTSTRAP_CORE_ORIGINS` in the Oxy platform), so
 # it rendered the shell and failed every call it made. `workers_dev = false`
-# leaves `alia.onl` as the only name that reaches this deployment.
+# leaves the custom domains below as the only names that reach this deployment
+# (measured on Alia, which this repository was copied from).
 #
 # Verified against wrangler 4.125.0, control-verified: a `--dry-run` accepts
 # `workers_dev` and `assets.not_found_handling` without comment, while the same
 # run flags an invented top-level key as "Unexpected fields". Recognised, not
 # ignored.
-name = "alia-app"
+# `gemies-app`, never `alia-app`: this repository was copied from OxyHQ/Alia, whose
+# Worker `alia-app` still serves `alia.onl` from THAT repository. Deploying under
+# the old name or route from here would replace the Alia web app with this one.
+# `.github/scripts/check-frontend-worker-targets.mjs` fails CI if either comes back.
+name = "gemies-app"
 main = "worker/index.js"
 compatibility_date = "2026-08-24"
 
@@ -42,8 +47,15 @@ directory = "./dist"
 # the Canvas Worker, which uses this identical setting.
 not_found_handling = "single-page-application"
 
-# The only way in. `alia.onl` is the zone apex; Cloudflare writes the flattened
-# record for a custom domain, so no CNAME is declared by hand.
+# The only ways in. `gemies.ai` is the zone apex; Cloudflare writes the record
+# for a custom domain itself, so no DNS record is declared by hand. `www` is a
+# custom domain of the same Worker, which answers it with a permanent redirect
+# to the apex (`worker/index.js`), so the app has one origin: the one Oxy and
+# the API's CORS list admit.
 [[routes]]
-pattern = "alia.onl"
+pattern = "gemies.ai"
+custom_domain = true
+
+[[routes]]
+pattern = "www.gemies.ai"
 custom_domain = true

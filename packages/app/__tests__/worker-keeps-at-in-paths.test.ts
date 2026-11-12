@@ -31,7 +31,7 @@ function assets() {
   };
 }
 
-const get = (path: string, method = 'GET') => new Request(`https://alia.onl${path}`, { method });
+const get = (path: string, method = 'GET') => new Request(`https://gemies.ai${path}`, { method });
 
 describe('the Worker and a path with an @', () => {
   it.each(['/@pepe', '/@pepe?threadId=t1', '/@pepe/details', '/@pepe/edit'])(

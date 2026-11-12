@@ -1,12 +1,12 @@
 {
   "expo": {
     "owner": "oxyhq",
-    "name": "Alia",
+    "name": "Gemies",
     "slug": "alia",
     "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon-1024.png",
-    "scheme": "alia",
+    "scheme": "gemies",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
@@ -16,10 +16,9 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon-512-maskable.png",
+        "foregroundImage": "./assets/adaptive-icon-foreground.png",
         "monochromeImage": "./assets/adaptive-icon-monochrome.png",
-        "backgroundImage": "./assets/adaptive-icon-background.png",
-        "backgroundColor": "#42005C"
+        "backgroundColor": "#004403"
       },
       "googleServicesFile": "./google-services.json",
       "predictiveBackGestureEnabled": false,
@@ -40,13 +39,13 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow Alia to hear what you dictate and what you say in voice calls."
+          "microphonePermission": "Allow Gemies to hear what you dictate and what you say in voice calls."
         }
       ],
       [
         "react-native-audio-api",
         {
-          "iosMicrophonePermission": "Allow Alia to hear what you dictate and what you say in voice calls.",
+          "iosMicrophonePermission": "Allow Gemies to hear what you dictate and what you say in voice calls.",
           "iosBackgroundMode": false,
           "androidForegroundService": false,
           "androidPermissions": [
@@ -60,8 +59,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Alia to attach photos to your messages.",
-          "cameraPermission": "Allow Alia to take photos for your messages."
+          "photosPermission": "Allow Gemies to attach photos to your messages.",
+          "cameraPermission": "Allow Gemies to take photos for your messages."
         }
       ],
       "expo-secure-store",

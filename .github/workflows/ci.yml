@@ -268,6 +268,12 @@ jobs:
       - name: Verify the Canvas deploy is wired to a declared wrangler
         run: node .github/scripts/check-canvas-deploy-wiring.mjs
 
+      # Same job, same reason. This repository was copied from OxyHQ/Alia, which
+      # still deploys alia-app (alia.onl) and alia-canvas (canvas.alia.onl);
+      # a wrangler.toml naming either would overwrite Alia's web app.
+      - name: Verify the frontends deploy to Gemies' own Workers
+        run: node .github/scripts/check-frontend-worker-targets.mjs
+
       # The production images' build inputs (Dockerfile, context, target and
       # both .dockerignore files) must match the one reviewed pin in
       # .github/scripts/reviewed-images.json. deploy-aws.yml and
@@ -528,7 +534,7 @@ jobs:
       - name: Verify every static asset a source file names exists
         run: node scripts/check-static-assets.mjs
 
-      # The alia.onl and Canvas Workers: CORS on the SDK's shared files, a
+      # The gemies.ai and Canvas Workers: CORS on the SDK's shared files, a
       # year-long immutable cache on content-hashed files, a 404 (not the app
       # shell) for a hashed name a deploy lacks. Plain `node --test`, no build.
       - name: Test the asset Workers
@@ -560,7 +566,7 @@ jobs:
           bun run --cwd packages/alia-canvas deploy:dry
         env:
           NODE_ENV: production
-          VITE_API_URL: https://api.alia.onl
+          VITE_API_URL: https://api.gemies.ai
 
       # No client names a model: with nothing chosen a request carries no
       # `model` and the server's default answers. It spans every client source

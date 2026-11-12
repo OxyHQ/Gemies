@@ -42,6 +42,10 @@ import { log } from './logger.js';
  * for that browser flow to work.
  */
 export const PRODUCTION_ORIGINS: readonly string[] = [
+  // The Gemies web app and its Canvas (ADR 0034), Workers `gemies-app` and `gemies-canvas`;
+  // `www.gemies.ai` only redirects to the apex, so it is no origin of its own.
+  'https://gemies.ai',
+  'https://canvas.gemies.ai',
   'https://alia.onl',
   'https://console.alia.onl',
   'https://canvas.alia.onl',
