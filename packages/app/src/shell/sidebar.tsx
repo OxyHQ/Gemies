@@ -849,7 +849,7 @@ function useSidebarProps() {
         onPress: () => {
           closeNav?.();
           // A chat is always with a gemie (ADR 0034); this one is with Alia.
-          router.replace('/(app)/alia');
+          router.replace('/(app)');
         },
       },
       {
@@ -935,7 +935,7 @@ function useSidebarProps() {
       if (item.key.startsWith(SPACE_ADD_KEY) || item.key.startsWith(SPACE_KEY)) return;
       if (item.key === ALIA_KEY) {
         closeNav?.();
-        return router.push('/(app)/alia');
+        return router.replace('/(app)');
       }
       if (!item.key.startsWith(AGENT_KEY)) return openConversation(item.key);
       const agent = myAgents?.find((candidate) => `${AGENT_KEY}${candidate._id}` === item.key);
@@ -978,7 +978,7 @@ function useSidebarProps() {
 
 /** An agent thread's route (`/@pepe`) selects that agent's row. */
 function selectedTreeItemForPath(pathname: string, agents?: Agent[]): string | undefined {
-  if (pathname === '/alia') return ALIA_KEY;
+  if (pathname === '/') return ALIA_KEY;
   const match = /^\/@([^/]+)$/.exec(pathname);
   if (!match) return undefined;
   const handle = decodeURIComponent(match[1]!);
