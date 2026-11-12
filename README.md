@@ -1,9 +1,15 @@
-# Alia
+# Gemies
 
 <p align="center">
-  <b>Oxy's assistant: it acts for you in your Oxy apps, works in the background, and lets you create agents of your own.</b><br>
-  One chat runtime behind an app, a VS Code extension, a desktop client, a CLI and an HTTP API.
+  <b>Create your Gemies. Let them work together.</b><br>
+  The gemies platform from Oxy: the backend, the SDK and the app behind <a href="https://gemies.ai">gemies.ai</a>. Alia is one of its gemies.
 </p>
+
+> [!NOTE]
+> **Gemies was split out of [Alia](https://github.com/OxyHQ/Alia) on 2026-11-12, keeping its full
+> history.** The phases are in [ADR 0034](docs/adr/0034-gemies-and-alia.md). Until the migration
+> finishes, the packages, the code and the hostnames below still carry Alia's names
+> (`@alia.onl/sdk`, `api.alia.onl`). They become `@gemies/sdk`, `@gemies/server` and `api.gemies.ai`.
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@alia.onl/sdk"><img alt="@alia.onl/sdk" src="https://img.shields.io/npm/v/@alia.onl/sdk?style=flat-square&label=%40alia.onl%2Fsdk&labelColor=440151&color=D26AE7"></a>
