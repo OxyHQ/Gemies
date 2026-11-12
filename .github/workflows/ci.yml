@@ -686,7 +686,7 @@ jobs:
       # ONLY — there is no `--cache-to` here, so a pull request never writes a
       # scope a production build reads. A miss is just the cold build this was.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       # buildx's gha cache needs the Actions runtime token and cache URL, which
       # GitHub gives to JavaScript actions and NOT to `run:` steps.
       - name: Expose the Actions cache to buildx
@@ -742,7 +742,7 @@ jobs:
       # the same repository root; whatever does not match is the cold build
       # this was before.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Expose the Actions cache to buildx
         uses: crazy-max/ghaction-github-runtime@v4
 
