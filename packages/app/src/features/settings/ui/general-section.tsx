@@ -21,6 +21,10 @@ import { useAliaSettings } from './settings-context';
 export function GeneralSection() {
   const { mode, setMode } = useBloomTheme();
   const { colors, value: colorValue, saveColor } = useAccountColorSave();
+  // The app's own default (the reserved `gemies` brand preset) is worn by
+  // everyone until they pick a colour, but only its handle may save it; list the
+  // colour being worn so the row names it instead of showing its raw id.
+  const colorItems = colors.includes(colorValue) ? colors : [colorValue, ...colors];
   const { currentLanguage, currentLanguages, showBottomSheet, isAuthenticated } = useOxy();
   const { afterClose, open } = useAliaSettings();
   const { data: subscription } = useSubscription();
@@ -104,10 +108,11 @@ export function GeneralSection() {
             <SettingsSelect
               label={t('settings.accentColor.title')}
               value={colorValue}
-              onChange={(name) =>
-                saveColor(name).catch(() => toast.error(t('settings.accentColor.saveFailed')))
-              }
-              items={colors.map((name) => ({
+              onChange={(name) => {
+                if (name === colorValue) return;
+                saveColor(name).catch(() => toast.error(t('settings.accentColor.saveFailed')));
+              }}
+              items={colorItems.map((name) => ({
                 value: name,
                 label:
                   COLOR_PRESET_REGISTRY.find((preset) => preset.name === name)?.displayName ?? name,
