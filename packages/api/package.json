@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "3.0.137",
-    "@ai-sdk/provider": "3.0.19",
+    "@ai-sdk/provider": "4.0.37",
     "@aws-sdk/client-ec2": "^3.1086.0",
     "@aws-sdk/client-s3": "^3.1086.0",
     "@clarity.surf/sdk": "0.12.0",
