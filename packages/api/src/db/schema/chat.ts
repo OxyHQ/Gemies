@@ -81,8 +81,12 @@ export const conversations = pgTable(
     icon: text(),
     iconColor: text(),
     isFavorite: boolean().notNull().default(false),
-    /** An `agents` row. No foreign key — that table is a later batch. */
-    agentId: text(),
+    /**
+     * The gemie this conversation belongs to (ADR 0034 §1): Alia's (`ALIA_GEMIE_ID`) unless the
+     * person opened another. NOT NULL since 0139. A group's or a space room's speakers are its
+     * `conversation_members`, never this column. No foreign key — see the table comment.
+     */
+    agentId: text().notNull(),
     /** The durable agent thread this bounded conversation stretch belongs to. */
     agentThreadId: text(),
     /**

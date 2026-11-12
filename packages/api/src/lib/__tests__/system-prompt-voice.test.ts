@@ -1,3 +1,4 @@
+import { aliaGemie } from '../../__tests__/support/gemies.js';
 import { describe, expect, it } from 'vitest';
 
 import { SystemPromptBuilder } from '../system-prompt-builder.js';
@@ -19,7 +20,11 @@ async function build(options: {
   surface?: 'chat';
   responseMode?: 'voice' | null;
 }): Promise<string> {
-  return SystemPromptBuilder.build({ isDirectUserSession: false, ...options });
+  return SystemPromptBuilder.build({
+    linkedAgent: aliaGemie(),
+    isDirectUserSession: false,
+    ...options,
+  });
 }
 
 describe('the spoken-answer layer', () => {

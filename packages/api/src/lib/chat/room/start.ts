@@ -23,6 +23,7 @@ import type { RoomJobData } from './engine.js';
 import { enqueueRoomJob } from './queue.js';
 import type { RoomMember } from './policy.js';
 import type { GroupInputMessage } from './transcript.js';
+import { ROOM_GEMIE_ID } from '../../../domain/alia-gemie.js';
 
 type SaveParams = Parameters<typeof saveConversation>[0];
 
@@ -107,6 +108,7 @@ export const prepareRoom: PrepareRoom = async (input) => {
     messages: messages as unknown as SaveParams['messages'],
     assistantResponse: '',
     omitLeadReply: true,
+    agentId: ROOM_GEMIE_ID,
   });
   const latest = await findLatestUserMessage(getDb(), userId, conversationId);
   const trigger =

@@ -5,6 +5,7 @@ import {
   createOxyExecutionAuthorization,
   revokeOxyExecutionAuthorization,
 } from './oxy-capability-authority.js';
+import { personAssistantActor } from './gemie-oxy-actor.js';
 
 const AUTOMATION_AUTHORIZATION_LIFETIME_MS = 365 * 24 * 60 * 60_000;
 
@@ -165,8 +166,8 @@ export interface ProvisionedAliaTaskAuthorization {
 }
 
 /**
- * Alia's standing authority for a task she is responsible for, actor
- * `{ type: 'alia', ownerAccountId }`.
+ * The standing authority of a task a standing-authority gemie (Alia) is
+ * responsible for, on Oxy's person lane (`personAssistantActor`).
  *
  * - Declared connected actions are all-or-nothing, like the agent path: one
  *   refusal revokes everything created here and the error escapes.
@@ -183,7 +184,7 @@ export async function provisionAliaTaskAuthorizations(input: {
   reads: readonly AliaTaskAuthorityRead[];
 }): Promise<{ provisioned: ProvisionedAliaTaskAuthorization[]; refusedReads: number }> {
   const expiresAt = new Date(Date.now() + AUTOMATION_AUTHORIZATION_LIFETIME_MS);
-  const actor: ActorRef = { type: 'alia', ownerAccountId: input.ownerAccountId };
+  const actor: ActorRef = personAssistantActor(input.ownerAccountId);
   const actionKeys = new Set(
     input.actions.map((action) => authorityKey(action.resource, action.tool)),
   );

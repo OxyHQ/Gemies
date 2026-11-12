@@ -136,10 +136,13 @@ export interface ProviderLoopParams {
    */
   providerAbort?: AbortController;
   /**
-   * The turn runs as an agent. An agent's learning and memory are its own, so
-   * Alia's after-chat hooks (writing style, proactive suggestions) skip it.
+   * The turn's gemie keeps its own memory (`memoryStore = 'gemie'`), so the
+   * after-chat hooks that learn into Alia's stores (writing style, proactive
+   * suggestions) skip it.
    */
-  agentTurn?: boolean;
+  gemieMemoryTurn?: boolean;
+  /** The turn's gemie, which a conversation this turn creates belongs to. */
+  agentId: string;
   /** The person turned personalization off: nothing is learned about them from this turn. */
   personalization?: false;
 }
@@ -188,7 +191,8 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
     beforeStreamClose,
     beforeFinish,
     providerAbort,
-    agentTurn,
+    gemieMemoryTurn,
+    agentId,
     personalization,
   } = params;
 
@@ -227,6 +231,7 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
   const lifecycleContext = (): LifecycleContext => ({
     userId: req.user?.id,
     conversationId,
+    agentId,
     assistantMessageId,
     messages,
     modelId: state.modelId,
@@ -237,7 +242,7 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
     requestStartTime,
     skillNames: skills.activated().map((skill: { name: string }) => skill.name),
     autonomyRuntime,
-    ...(agentTurn ? { agentTurn: true } : {}),
+    ...(gemieMemoryTurn ? { gemieMemoryTurn: true } : {}),
     ...(personalization === false ? { personalization } : {}),
     ...(originApp === undefined ? {} : { originApp }),
   });
@@ -378,7 +383,8 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
             observation,
             assertLive,
             beforeFinish,
-            ...(agentTurn ? { agentTurn: true } : {}),
+            agentId,
+            ...(gemieMemoryTurn ? { gemieMemoryTurn: true } : {}),
             ...(personalization === false ? { personalization } : {}),
           });
           // Stable, metadata-free positive signal for the passive public status

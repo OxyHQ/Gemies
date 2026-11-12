@@ -145,7 +145,8 @@ export interface VoiceTurnInput {
   readonly accessToken: () => string;
   readonly conversationId: string;
   readonly requestId: string;
-  readonly linkedAgent: HydratedAgent | null;
+  /** The call's gemie: the one it named, or Alia's. */
+  readonly linkedAgent: HydratedAgent;
   /** The app the call comes from (ADR 0021), for `consultAgent` and `searchAgents`. */
   readonly surfaceApplicationId: string | null;
   readonly userMemory: UserMemoryProfile | null;

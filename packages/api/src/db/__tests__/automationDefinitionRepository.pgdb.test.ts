@@ -1,4 +1,5 @@
 import { uuidv7 } from '@oxy.so/db';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   automationHasActiveAuthorizationCoverage,
@@ -506,7 +507,8 @@ describe('tasks Alia is responsible for', () => {
       triggerKind: 'schedule',
       scheduleCron: '0 9 * * *',
       scheduleTimezone: 'Europe/Madrid',
-      actorMode: 'alia',
+      actorMode: 'fixed',
+      fixedAgentId: ALIA_GEMIE_ID,
       eligibleAgentIds: [],
       executionMode: 'execute',
       actions: [],
@@ -533,13 +535,16 @@ describe('tasks Alia is responsible for', () => {
     actions: [],
   });
 
-  it('stores Alia as the actor, with no agent and no conversation yet', async () => {
+  it('stores Alia’s gemie as the fixed actor, with no conversation yet', async () => {
     const automation = await createAliaTask('aut-owner-alia');
 
-    expect(automation.actorSelection).toEqual({ mode: 'alia' });
+    expect(automation.actorSelection).toEqual({ mode: 'fixed', agentId: ALIA_GEMIE_ID });
     expect(automation.conversationId).toBeNull();
     expect(await findAutomationDefinitionById(db, automation.id)).toEqual(
-      expect.objectContaining({ actorSelection: { mode: 'alia' }, conversationId: null }),
+      expect.objectContaining({
+        actorSelection: { mode: 'fixed', agentId: ALIA_GEMIE_ID },
+        conversationId: null,
+      }),
     );
   });
 
@@ -641,7 +646,8 @@ describe('countEnabledAutomationDefinitions', () => {
       triggerKind: 'schedule',
       scheduleCron: '0 9 * * *',
       scheduleTimezone: 'UTC',
-      actorMode: 'alia',
+      actorMode: 'fixed',
+      fixedAgentId: ALIA_GEMIE_ID,
       eligibleAgentIds: [],
       executionMode: 'execute',
       actions: [],

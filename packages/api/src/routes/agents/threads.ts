@@ -33,10 +33,15 @@ const route =
     void handler(req, res).catch(next);
   };
 
+/**
+ * A gemie whose work runs as sessions, reachable by this person. Threads and goals are durable
+ * sessions, so a standing-authority gemie (Alia) has none: 404, like one that does not exist.
+ */
 async function reachableAgent(req: Request, res: Response) {
   const agent = await findAgentById(getDb(), String(req.params.id));
   if (
     !agent ||
+    agent.taskAuthority !== 'session' ||
     !req.user?.id ||
     (await canReachAgent(agent, {
       oxyUserId: req.user.id,
@@ -179,6 +184,7 @@ router.post(
     if (
       !agent ||
       agent.status !== 'active' ||
+      agent.taskAuthority !== 'session' ||
       (await canReachAgent(agent, {
         oxyUserId: req.user.id,
         accessToken: req.accessToken,

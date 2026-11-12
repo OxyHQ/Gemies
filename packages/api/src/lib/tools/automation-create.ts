@@ -7,13 +7,22 @@ import {
 } from '../structured-automation-creation.js';
 import { getErrorMessage } from '../errors/index.js';
 import { log } from '../logger.js';
+import type { AgentTaskAuthority } from '../../domain/agent.js';
 
-/** Create a normalized automation through the same domain service as HTTP. */
+/**
+ * Create a normalized automation through the same domain service as HTTP.
+ *
+ * A gemie whose work runs as agent sessions (`taskAuthority = 'session'`) is responsible for the tasks
+ * it creates, so `actorSelection` is fixed to it. A standing-authority gemie (Alia) runs a task herself
+ * when none is named — the schema's default is her gemie — and may hand it to one of the person's
+ * agents when they name one.
+ */
 export function createAutomationTool(
   userId: string,
   accessToken: string | undefined,
-  agentId?: string,
+  gemie: { readonly _id: string; readonly taskAuthority: AgentTaskAuthority },
 ) {
+  const agentId = gemie.taskAuthority === 'session' ? gemie._id : undefined;
   const schema = agentId
     ? createAutomationSchema.extend({
         actorSelection: z

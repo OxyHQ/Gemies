@@ -90,9 +90,7 @@ async function eligibleAgents(automation: AutomationDefinitionRecord) {
   const candidateIds =
     selection.mode === 'fixed'
       ? [selection.agentId].filter((id): id is string => Boolean(id))
-      : selection.mode === 'automatic'
-        ? selection.eligibleAgentIds
-        : [];
+      : selection.eligibleAgentIds;
   const agents = await Promise.all(candidateIds.map((agentId) => findAgentById(getDb(), agentId)));
   const may = await Promise.all(
     agents.map((agent) =>
@@ -190,7 +188,13 @@ export async function dispatchStructuredAutomation(
     ...(trigger.kind === 'event' ? [trigger.resource] : []),
     ...automation.dataFlow.sources,
   ]);
-  if (automation.actorSelection.mode === 'alia') {
+  const eligible = await eligibleAgents(automation);
+  /**
+   * A gemie whose work runs under standing authority (Alia) runs the task herself on `alia-tasks`;
+   * creation only lets one be named `fixed`, alone (`structured-automation-creation.ts`).
+   */
+  const standing = eligible.find((agent) => agent.taskAuthority === 'standing');
+  if (standing && automation.actorSelection.mode === 'fixed') {
     const watch = watchConfigOf(automation.inputs);
     if (
       watch &&
@@ -198,11 +202,11 @@ export async function dispatchStructuredAutomation(
       trigger.kind === 'schedule' &&
       !trigger.watch
     ) {
-      return tickAliaWatch(automation, trigger, watch, sourceResources);
+      return tickAliaWatch(automation, standing, trigger, watch, sourceResources);
     }
-    return dispatchAliaTask(automation, trigger, sourceResources);
+    return dispatchAliaTask(automation, standing, trigger, sourceResources);
   }
-  const agents = await eligibleAgents(automation);
+  const agents = eligible.filter((agent) => agent.taskAuthority === 'session');
   if (automation.actions.length === 0) {
     const agent = agents[0];
     if (!agent) {
@@ -412,6 +416,7 @@ export async function dispatchStructuredAutomation(
  */
 async function tickAliaWatch(
   automation: AutomationDefinitionRecord,
+  gemie: StandingGemie,
   trigger: Extract<AutomationDispatchTrigger, { kind: 'schedule' }>,
   watch: WatchConfig,
   sourceResources: readonly AutomationResourceRef[],
@@ -457,6 +462,7 @@ async function tickAliaWatch(
   }
   const result = await dispatchAliaTask(
     automation,
+    gemie,
     {
       kind: 'schedule',
       id: watchTriggerId(automation.id, observation.hash),
@@ -489,17 +495,23 @@ async function claimHoldingCredits<T>(
   }
 }
 
+/** The gemie of a standing-authority task, as the dispatcher records it on the run. */
+type StandingGemie = { readonly id: string };
+
 /**
- * A task Alia is responsible for: no agent, no session. The run is claimed with
- * Alia as its actor and handed to the `alia-tasks` queue, whose job runs one
- * Alia turn for the owner and posts the answer into the task's conversation.
+ * A task a standing-authority gemie (Alia) is responsible for: no agent
+ * session. The run is claimed on the standing lane (`selected_actor_type =
+ * 'alia'`, the lane's stored name) with the gemie recorded on it, and handed to
+ * the `alia-tasks` queue, whose job runs one turn of that gemie for the owner
+ * and posts the answer into the task's conversation.
  *
- * Declared connected actions run under Alia's own standing Oxy authority
+ * Declared connected actions run under the gemie's standing Oxy authority
  * (`alia_task_authorizations`, provisioned while the owner was present). In
  * execute mode every declared action must still be covered, or nothing runs.
  */
 async function dispatchAliaTask(
   automation: AutomationDefinitionRecord,
+  gemie: StandingGemie,
   trigger: AutomationDispatchTrigger,
   sourceResources: readonly AutomationResourceRef[],
 ): Promise<AutomationDispatchResult> {
@@ -526,7 +538,8 @@ async function dispatchAliaTask(
   const runStages = [
     {
       stage: 0,
-      selectedAgentId: null,
+      selectedAgentId: gemie.id,
+      // The person lane: a standing-authority gemie acts as the owner's own assistant.
       selectedActorAccountId: automation.ownerAccountId,
       resource: primaryResource(automation, trigger, sourceResources),
       taskInput,

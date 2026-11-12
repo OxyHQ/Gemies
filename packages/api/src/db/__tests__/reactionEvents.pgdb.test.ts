@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
@@ -49,6 +50,7 @@ async function fixture() {
   const userId = `reaction-${randomUUID()}`;
   const conversationId = randomUUID();
   await createConversation(db, {
+    agentId: ALIA_GEMIE_ID,
     oxyUserId: userId,
     conversationId,
     title: 'Reaction fixture',

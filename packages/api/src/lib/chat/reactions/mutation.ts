@@ -30,7 +30,13 @@ export async function applyConversationReaction(input: {
       listGroupMembers(db, input.userId, input.conversationId),
       findAgentById(db, target.targetActorId),
     ]);
-    if (agent && (conversation?.agentId === agent.id || members.includes(agent.id))) {
+    // A reply to a reaction is background work of the gemie's own (ADR 0025), which only a gemie whose
+    // work runs as sessions does; a standing-authority gemie (Alia) keeps the feedback and answers nothing.
+    if (
+      agent &&
+      agent.taskAuthority === 'session' &&
+      (conversation?.agentId === agent.id || members.includes(agent.id))
+    ) {
       try {
         const reach = await canReachAgent(agent, {
           oxyUserId: input.userId,

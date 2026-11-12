@@ -37,6 +37,7 @@
  * partition assertions vacuous for them.
  */
 
+import { aliaGemie, personaGemie } from '../../__tests__/support/gemies.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolSet } from 'ai';
 import {
@@ -148,9 +149,7 @@ vi.mock('../../db/spaces/spaceRepository.js', () => ({
 const { ToolPipeline } = await import('../tool-pipeline.js');
 const { buildConsultAgentTool } = await import('../tools/consult-agent.js');
 const { buildOxyServiceTools } = await import('../tools/oxy-services.js');
-const { GRANTS_EVERYTHING, readCapabilityGrants } = await import(
-  '../../domain/capability-grants.js'
-);
+const { readCapabilityGrants, readGemieGrants } = await import('../../domain/capability-grants.js');
 
 /**
  * An agent carrying exactly these grants, and nothing else this test reads.
@@ -163,15 +162,14 @@ function agentWith(
   capabilityGrants: readonly string[],
   author = 'user-1',
 ): NonNullable<Parameters<typeof ToolPipeline.forUser>[0]['agent']> {
-  return {
+  return personaGemie({
     capabilityGrants: [...capabilityGrants],
-    featureGates: {},
-    primaryTools: [] as string[],
     author,
     _id: 'caller-agent',
+    id: 'caller-agent',
     oxyAccountId: 'bot-account-1',
     ownerOxyAccountId: author,
-  } as NonNullable<Parameters<typeof ToolPipeline.forUser>[0]['agent']>;
+  });
 }
 
 /**
@@ -200,7 +198,8 @@ async function namesFor(
       typeof ToolPipeline.forUser
     >[0]['deviceInfo'],
     runtime: runtimeDouble(),
-    agent: grants === null ? null : agentWith(grants),
+    // `null` is Alia's gemie: the person's own assistant, configured as 0135 seeds her.
+    agent: grants === null ? aliaGemie() : agentWith(grants),
     ...over,
   });
   return Object.keys(tools).sort();
@@ -584,16 +583,29 @@ describe('the grant string is read the way it is written', () => {
   });
 });
 
-describe('a turn with NO agent is not partitioned', () => {
-  it('reaches everything its surface allows, as before the vocabulary existed', async () => {
-    const withoutAgent = await namesFor(null);
-    const fullyGranted = await namesFor(EVERY_GRANT);
+describe("Alia's gemie reaches every row of the person's, under her own fixed families", () => {
+  it('reaches what her grants name, and no machine: she holds no computer nor browser grant', async () => {
+    // No runtime: her work never runs as a session (`taskAuthority = 'standing'`).
+    const alia = await namesFor(null, { runtime: undefined });
+    const sameGrants = await namesFor(aliaGemie().capabilityGrants, { runtime: undefined });
 
-    // Ordinary Alia is unaffected by deny-by-default. The two differ only in
-    // the instanced families, where "no agent" means every row and a granted
-    // agent means the rows it named.
-    expect(withoutAgent).toContain('browser');
-    expect(withoutAgent.length).toBeGreaterThan(fullyGranted.length - 5);
+    // Her fixed families are her row's grants, as a persona granted the same reaches them; what
+    // she adds is every row of the person's connectors and integrations, and nothing else.
+    // Her memory is Nilo's (`memoryStore = 'nilo'`): the persona's own memory tools are not hers.
+    expect(sameGrants.filter((name) => !alia.includes(name)).sort()).toEqual([
+      'memory',
+      'searchThread',
+    ]);
+    expect(
+      alia
+        .filter((name) => !sameGrants.includes(name))
+        .every((name) => /^(mcp|integration)_/.test(name)),
+    ).toBe(true);
+    expect(alia).not.toContain('browser');
+    expect(alia).not.toContain('computer_start');
+    for (const tool of [...FIXED_FAMILY_TOOLS.web, ...FIXED_FAMILY_TOOLS.artifacts]) {
+      if (tool !== 'getDeviceInfo') expect(alia).toContain(tool);
+    }
   });
 
   it('asks each bulk source for EVERYTHING rather than for a list', async () => {
@@ -605,7 +617,9 @@ describe('a turn with NO agent is not partitioned', () => {
     expect(asked.integration).toEqual([undefined]);
     expect(asked.oxy_service).toEqual([undefined]);
     expect(asked.agent).toEqual([undefined]);
-    expect(GRANTS_EVERYTHING.instances('mcp')).toBeNull();
+    expect(readGemieGrants(aliaGemie()).instances('mcp')).toBeNull();
+    // A persona never reads as the person's own assistant, whatever it was granted.
+    expect(readGemieGrants(agentWith(EVERY_GRANT)).instances('mcp')).not.toBeNull();
   });
 });
 
@@ -853,15 +867,15 @@ describe('the retired shell and files families stay gone', () => {
     }
   });
 
-  it('builds neither primitive for a fully granted agent, nor for ordinary Alia', async () => {
+  it('builds neither primitive for a fully granted agent, nor for Alia', async () => {
     for (const names of [await namesFor(EVERY_GRANT), await namesFor(null)]) {
       expect(names).not.toContain('shell');
       expect(names).not.toContain('file_edit');
       // The floor: the runtime primitives that DO work are still built, so the
       // absence above is not an empty set passing for a withheld one.
-      expect(names).toContain('browser');
       expect(names).toContain('plan');
     }
+    expect(await namesFor(EVERY_GRANT)).toContain('browser');
   });
 
   it('reads a stored retired grant as nothing, and keeps the rest of the row', async () => {

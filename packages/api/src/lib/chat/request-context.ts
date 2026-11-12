@@ -46,7 +46,13 @@ import type { UserMemoryProfile } from '../../db/memory/userMemoryRepository.js'
 import { getOrCreateUserCredits } from '../user-credits-helpers.js';
 import { reserveCredits, refundReservation, type CreditReservation } from '../credits-manager.js';
 import type { Entitlements } from '../plan-access.js';
-import { buildTurnSkills, EMPTY_SKILL_RUNTIME, prefetchTurnInputs } from './turn-inputs.js';
+import {
+  buildTurnSkills,
+  EMPTY_SKILL_RUNTIME,
+  prefetchTurnInputs,
+  resolveTurnGemie,
+  type TurnAgentResolution,
+} from './turn-inputs.js';
 import { secondsUntilReset, type UsageWindow } from '../usage-window.js';
 import { admitTurnFeatures, usageWindowFor, type FeatureAdmission } from './turn-admission.js';
 import {
@@ -177,7 +183,8 @@ export interface ChatRequestContext {
    */
   skills: SkillRuntime;
   entitlements: Entitlements | null;
-  linkedAgent: HydratedAgent | null;
+  /** The turn's gemie: the one the request named, or Alia's. */
+  linkedAgent: HydratedAgent;
   /** The app the turn comes from, by its verified app assertion (ADR 0021), or `null`. */
   surfaceApplicationId: string | null;
   /**
@@ -843,14 +850,16 @@ export async function buildChatRequestContext(
    */
   /** Which Oxy app this turn comes from, read once from its app assertion (ADR 0021). */
   const surfaceApplicationId = await appSurfaceOf(req);
-  const turnInputs = prefetchTurnInputs({
+  const identity = {
     oxyUserId: localAccountId,
     accessToken: req.accessToken,
     isDirectUserSession,
     requestedAgentId,
     surfaceApplicationId,
     loadUserMemory: personalization,
-  });
+  };
+  const turnGemie = resolveTurnGemie(identity);
+  const turnInputs = prefetchTurnInputs(identity, turnGemie);
 
   /**
    * What the turn uses that an agent can gate — its attachments, deep research,
@@ -868,12 +877,18 @@ export async function buildChatRequestContext(
   });
   /** A hosted model named exactly, which no power-level gate can see (`admitTurnFeatures`). */
   const exactHostedModel = localRuntime === null && resolved.powerLevel === null;
-  const admission: Promise<FeatureAdmission> =
+  /**
+   * Waits on the gemie alone (Alia's is cached), never on the other reads, so the reservation still
+   * runs beside them. A gemie with no feature gates has nothing to admit unless a document came.
+   */
+  const admission: Promise<FeatureAdmission> = turnGemie.then((resolution: TurnAgentResolution) =>
     fileRefs.size === 0 &&
-    (requestedAgentId === undefined || (featureUses.length === 0 && !exactHostedModel))
-      ? Promise.resolve({ ok: true, files: new Map() })
+    (resolution.kind !== 'agent' ||
+      Object.keys(resolution.agent.featureGates).length === 0 ||
+      (featureUses.length === 0 && !exactHostedModel))
+      ? { ok: true as const, files: new Map() }
       : admitTurnFeatures({
-          turnAgent: requestedAgentId === undefined ? null : turnInputs.then((i) => i.turnAgent),
+          turnAgent: Promise.resolve(resolution),
           uses: featureUses,
           fileRefs,
           exactHostedModel,
@@ -885,7 +900,8 @@ export async function buildChatRequestContext(
             runId: turnRequestId,
           },
           modelAcceptsFiles: resolved.catalogue?.inputModalities.includes('file') === true,
-        });
+        }),
+  );
 
   /**
    * The reservation promise is kept apart from the batch: a sibling read that
@@ -1123,7 +1139,8 @@ export async function buildChatRequestContext(
      * Missing and unauthorised are deliberately the same public refusal. The
      * typed internal reason remains useful for tests and telemetry, but exposing
      * it would let a caller probe private agent ids. Most importantly, neither
-     * outcome falls through to `linkedAgent = null`, which is ordinary Alia.
+     * outcome falls through to Alia: a turn that named a gemie is never answered
+     * by the default one.
      */
     if (turnAgent.kind === 'unavailable') {
       if (creditReservation) await refundReservation(creditReservation);
@@ -1142,7 +1159,8 @@ export async function buildChatRequestContext(
       return null;
     }
 
-    const linkedAgent = turnAgent.kind === 'agent' ? turnAgent.agent : null;
+    /** The gemie this turn is for: the one it named, or Alia's (`lib/chat/turn-inputs.ts`). */
+    const linkedAgent = turnAgent.agent;
 
     // The caller's already verified machine bearer reaches only Oxy inference,
     // which revalidates it and derives the application's payer. Never fall back

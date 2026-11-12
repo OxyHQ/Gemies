@@ -41,6 +41,7 @@ vi.mock('../../logger.js', () => {
   return { log: { agents: child } };
 });
 
+import { ALIA_GEMIE_ID } from '../../../domain/alia-gemie.js';
 import {
   buildEmailClassifierPrompt,
   composeEmailOutreach,
@@ -96,9 +97,14 @@ describe("an important email in the person's own Inbox", () => {
     });
     expect(H.claim).toHaveBeenCalledWith(
       {},
-      { mailboxAccountId: 'person-1', messageId: 'msg-1', oxyUserId: 'person-1', agentId: null },
+      {
+        mailboxAccountId: 'person-1',
+        messageId: 'msg-1',
+        oxyUserId: 'person-1',
+        agentId: ALIA_GEMIE_ID,
+      },
     );
-    expect(H.isEmailAlertEnabled).toHaveBeenCalledWith({}, 'person-1', null);
+    expect(H.isEmailAlertEnabled).toHaveBeenCalledWith({}, 'person-1', ALIA_GEMIE_ID);
     const [[posted]] = H.postAlia.mock.calls as [
       [
         {

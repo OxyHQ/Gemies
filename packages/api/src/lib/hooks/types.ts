@@ -40,11 +40,11 @@ export interface AfterChatContext extends ChatHookContext {
   /** The `AliaErrorCode` the turn ended with, or null when it succeeded. */
   errorClass: string | null;
   /**
-   * The turn ran as an agent. Memory is per actor, so the hooks that learn about
-   * the person for ALIA (writing style, proactive suggestions) skip it; the usage
-   * record does not.
+   * The turn's gemie keeps its own memory (`memoryStore = 'gemie'`). Memory is per
+   * actor, so the hooks that learn about the person into Alia's stores (writing
+   * style, proactive suggestions) skip it; the usage record does not.
    */
-  agentTurn?: boolean;
+  gemieMemoryTurn?: boolean;
   /** The person turned personalization off for this turn: learn nothing about them from it. */
   personalization?: false;
   /** Whether the caller withdrew before the turn finished. */

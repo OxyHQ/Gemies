@@ -1,5 +1,11 @@
+import { ALIA_GEMIE_ID } from '../../../domain/alia-gemie.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Where an agent opens (ADR 0021) is `app-confined-agents.test.ts`'s subject, not this file's.
+// A turn that names no gemie is Alia's: her row, as migration 0135 seeds it.
+vi.mock('../../alia-gemie.js', async () => {
+  const { aliaGemie } = await import('../../../__tests__/support/gemies.js');
+  return { loadAliaGemie: async () => aliaGemie(), clearAliaGemieCache: () => undefined };
+});
 vi.mock('../../agent-availability.js', () => ({ agentOpensOn: async () => 'reachable' }));
 vi.mock('@oxy.so/core/server', async () => {
   const { createRequire } = await import('node:module');
@@ -282,7 +288,7 @@ describe('app-only machine turn boundary and payer', () => {
     expect(ctx?.isDirectUserSession).toBe(false);
     expect(ctx?.creditReservation).toBeNull();
     expect(ctx?.webSearch).toBe(false);
-    expect(ctx?.linkedAgent).toBeNull();
+    expect(ctx?.linkedAgent?._id).toBe(ALIA_GEMIE_ID);
     expect(reserveCredits).not.toHaveBeenCalled();
     expect(findAgentById).not.toHaveBeenCalled();
     expect(findMcpServerForUser).not.toHaveBeenCalled();
@@ -334,6 +340,7 @@ const privateAgent = {
   access: 'private',
   status: 'active',
   systemPrompt: 'p',
+  featureGates: {},
 };
 
 describe('the turn resolves the agent it NAMED', () => {
@@ -347,6 +354,7 @@ describe('the turn resolves the agent it NAMED', () => {
       access: 'public',
       status: 'active',
       systemPrompt: 'p',
+      featureGates: {},
     });
 
     const { ctx } = await run(undefined, { directUserId: 'user-1', agentId: 'agent-1' });
@@ -357,13 +365,13 @@ describe('the turn resolves the agent it NAMED', () => {
     expect(ctx?.linkedAgent?.name).toBe('Pepe');
   });
 
-  it('resolves NOTHING when the turn named no agent', async () => {
+  it('resolves Alia’s gemie, and looks nothing up, when the turn named none', async () => {
     // The negative control. Without it the assertion above passes against a
-    // context that attaches an agent to every turn.
+    // context that attaches the named agent to every turn.
     const { ctx } = await run(undefined, { directUserId: 'user-1' });
 
     expect(findAgentById).not.toHaveBeenCalled();
-    expect(ctx?.linkedAgent).toBeNull();
+    expect(ctx?.linkedAgent?._id).toBe(ALIA_GEMIE_ID);
   });
 
   it('refuses a PRIVATE agent Oxy says the caller has no standing in', async () => {

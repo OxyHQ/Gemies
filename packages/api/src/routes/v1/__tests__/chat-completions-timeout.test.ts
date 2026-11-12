@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// A turn that names no gemie is Alia's: her row, as migration 0135 seeds it.
+vi.mock('../../../lib/alia-gemie.js', async () => {
+  const { aliaGemie } = await import('../../../__tests__/support/gemies.js');
+  return { loadAliaGemie: async () => aliaGemie(), clearAliaGemieCache: () => undefined };
+});
 vi.mock('../../../lib/chat/activity.js', () => ({
   holdConversationActivity: vi.fn(async () => async () => undefined),
 }));

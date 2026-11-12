@@ -59,7 +59,7 @@ export const voiceCalls = pgTable(
     oxyUserId: text().notNull(),
     /** A client-visible conversation id (`conversations.conversation_id`). */
     conversationId: text().notNull(),
-    /** The agent the call is with, or NULL for Alia. */
+    /** The gemie the call is with: Alia's unless the call named another (ADR 0034; 0135 rewrote the NULLs). */
     agentId: text(),
     holderTask: text().notNull(),
     status: text({ enum: VOICE_CALL_STATUSES as unknown as [string, ...string[]] }).notNull(),

@@ -39,7 +39,7 @@ beforeEach(() => {
     role: 'assistant',
     content: 'hello',
   });
-  h.agent.mockResolvedValue({ id: 'salina' });
+  h.agent.mockResolvedValue({ id: 'salina', taskAuthority: 'session' });
   h.members.mockResolvedValue(['salina']);
   h.conversation.mockResolvedValue({ agentId: null });
   h.reach.mockResolvedValue('reachable');
@@ -56,7 +56,7 @@ describe('reaction authority at mutation edge', () => {
     await applyConversationReaction(input);
     expect(h.target).toHaveBeenCalledWith({}, 'person', 'room', 'answer');
     expect(h.reach).toHaveBeenCalledWith(
-      { id: 'salina' },
+      { id: 'salina', taskAuthority: 'session' },
       { oxyUserId: 'person', accessToken: 'session', surfaceApplicationId: 'verified-app' },
     );
     expect(h.mutate).toHaveBeenCalledWith(
@@ -75,6 +75,14 @@ describe('reaction authority at mutation edge', () => {
     h.conversation.mockResolvedValue({ agentId: 'salina' });
     await applyConversationReaction(input);
     expect(h.mutate.mock.calls[0]?.[4].authorizedActorId).toBe('salina');
+  });
+  it('keeps feedback on a standing-authority gemie (Alia) without waking her: she runs no background turn', async () => {
+    h.members.mockResolvedValue([]);
+    h.agent.mockResolvedValue({ id: 'salina', taskAuthority: 'standing' });
+    h.conversation.mockResolvedValue({ agentId: 'salina' });
+    await applyConversationReaction(input);
+    expect(h.reach).not.toHaveBeenCalled();
+    expect(h.mutate.mock.calls[0]?.[4].authorizedActorId).toBeUndefined();
   });
   it.each(['out_of_reach', 'identity_unavailable'])(
     'preserves feedback without waking an unavailable recipient: %s',

@@ -1,4 +1,5 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -104,7 +105,8 @@ describe('email alert ownership over HTTP', () => {
     expect((await put('a', { agentId: null, enabled: false })).status).toBe(200);
     expect(fixture.writes.mock.calls.map(([value]) => value)).toEqual([
       { oxyUserId: 'account-a', agentId: 'agent-a', enabled: false },
-      { oxyUserId: 'account-a', agentId: null, enabled: false },
+      // Alia is `null` on the wire and her gemie's id in the store.
+      { oxyUserId: 'account-a', agentId: ALIA_GEMIE_ID, enabled: false },
     ]);
   });
 

@@ -27,26 +27,27 @@
  * session and plan to act on, a device to describe — never because of
  * which function happened to build the set.
  *
- * ## The agent is an INPUT, and its GRANTS are what partition the set
+ * ## The gemie is an INPUT, and its configuration is what partitions the set
  *
- * `agent` says whose turn this is. Before, the only identity in scope was
- * `userId`, so an agent saw exactly what its owner saw and no partition was
- * expressible. `agent.capabilityGrants` is that partition, and it is the only
- * input that decides what an agent may reach.
+ * `agent` says whose turn this is, and every turn has one: Alia is a gemie too
+ * (ADR 0034 §2), and a turn that named none is hers. Before, the only identity
+ * in scope was `userId`, so an agent saw exactly what its owner saw and no
+ * partition was expressible. The gemie's `capabilityGrants`, read through its
+ * `reach` (`readGemieGrants`), are that partition, and its `memoryStore`,
+ * `mailbox` and `reach` decide whose memory, whose account and which Oxy lane.
  *
- * Two properties follow, and both are behaviour changes worth stating:
+ * Two properties follow:
  *
- *  - **An agent with no grants gets nothing** beyond `UNGRANTED_TOOLS`. The
+ *  - **A gemie with no grants gets nothing** beyond `UNGRANTED_TOOLS`. The
  *    three vocabularies this replaced all defaulted the other way — a NULL
  *    `permissions` column meant ALLOWED — so an agent nobody had configured
  *    reached everything its owner could. `domain/capability-grants.ts` argues
  *    the reversal.
- *  - **A turn with NO agent is untouched.** Ordinary Alia has no grants to read
- *    and reaches whatever its surface structurally allows, exactly as before;
- *    `GRANTS_EVERYTHING` is what says so, and it is deliberately not the same
- *    value as "an agent granted every family" — an agent's set can never answer
- *    `null` to an instance question, so a missing agent cannot be mistaken for
- *    a fully-granted one.
+ *  - **Only a `reach = 'person'` gemie (Alia) reaches every row** of the
+ *    instanced families: the person's own connectors, integrations and agents.
+ *    A `grants` gemie's set answers `null` to an instance question only for a
+ *    bare `agent` grant, so no persona can be mistaken for the person's own
+ *    assistant.
  *
  * The grant is read at the point each tool is BUILT, never filtered out
  * afterwards. A filter would need its own copy of which tool belongs to which
@@ -100,11 +101,11 @@ import { log } from './logger.js';
 import type { SSEEmitter } from './sse-emitter.js';
 import type { HydratedAgent } from './agent-identity.js';
 import {
-  GRANTS_EVERYTHING,
-  readCapabilityGrants,
+  readGemieGrants,
   type CapabilityGrantSet,
   type InstancedToolSource,
 } from '../domain/capability-grants.js';
+import { oxyActorFor } from './gemie-oxy-actor.js';
 import type { DeviceInfo } from './tools/device-info.js';
 import {
   applyRuntimePolicy,
@@ -215,12 +216,11 @@ export interface ForUserOptions {
    */
   toolsEnabled: boolean;
   /**
-   * The agent this turn is FOR, already resolved and authorised.
-   *
-   * Present on a turn that named one, absent on ordinary Alia. It is an input
-   * rather than something worked out from `userId` — see the file comment.
+   * The gemie this turn is FOR, already resolved and authorised: the one the
+   * turn named, or Alia's (`lib/alia-gemie.ts`) when it named none. It is an
+   * input rather than something worked out from `userId` — see the file comment.
    */
-  agent?: HydratedAgent | null;
+  agent: HydratedAgent;
   /**
    * The device on the other end, when the surface knows it.
    *
@@ -453,23 +453,18 @@ export class ToolPipeline {
      * tools that find or start agents outside the space (`searchAgents`, `createAgent`, delegation) are
      * not built at all.
      */
-    const spacePeers: readonly string[] | null = agent?.spaceId
+    const spacePeers: readonly string[] | null = agent.spaceId
       ? await listSpacePeerIds(getDb(), agent._id, agent.spaceId)
       : null;
 
     const toolNameMapping = new Map<string, string>();
 
     /**
-     * What this turn may reach, family by family.
-     *
-     * A turn with no agent is ordinary Alia and is not partitioned at all. A
-     * turn WITH one reaches only what its owner granted, and an agent whose
-     * owner has granted nothing reaches nothing — see the file comment.
+     * What this turn may reach, family by family: the gemie's grants, and every
+     * instanced row only for the person's own assistant (`readGemieGrants`). A
+     * gemie whose owner has granted nothing reaches nothing — see the file comment.
      */
-    const agentGrants: CapabilityGrantSet =
-      agent === undefined || agent === null
-        ? GRANTS_EVERYTHING
-        : readCapabilityGrants(agent.capabilityGrants);
+    const agentGrants: CapabilityGrantSet = readGemieGrants(agent);
     const grants: CapabilityGrantSet = personalization
       ? agentGrants
       : {
@@ -489,9 +484,9 @@ export class ToolPipeline {
     }
 
     if (toolScope === 'preauthorized_oxy_automation') {
-      if (!agent || !runtime || oxyExecutionAuthorizations === undefined) {
+      if (!runtime || oxyExecutionAuthorizations === undefined) {
         throw new Error(
-          'Preauthorized Oxy automation scope requires an agent, runtime, and exact authorizations',
+          'Preauthorized Oxy automation scope requires a runtime and exact authorizations',
         );
       }
       // Legacy rows without a reconciled bot parent get no Oxy tools. `author`
@@ -502,7 +497,7 @@ export class ToolPipeline {
           : await buildOxyServiceTools(userId, {
               requesterAccountId: agent.ownerOxyAccountId,
               ownerAccountId: agent.ownerOxyAccountId,
-              actor: { type: 'agent', accountId: agent.oxyAccountId },
+              actor: oxyActorFor(agent, agent.ownerOxyAccountId),
               runId: runId ?? requestId,
               autonomy: oxyAutonomy,
               executionAuthorizations: oxyExecutionAuthorizations,
@@ -596,35 +591,28 @@ export class ToolPipeline {
      * for why an API-key turn must still be refused here.
      */
     if (actsForPerson) {
-      if (grants.allows('memory')) {
-        /**
-         * Memory is per ACTOR. Alia remembers the person in her memory
-         * (`user_memories`); each agent remembers them in its own files
-         * (`agent_memory_documents`) and never reads or writes hers. An agent
-         * turn with the grant used to get Alia's four tools too, so whatever
-         * one agent "remembered" landed in the memory every other agent and
-         * Alia read — and the person saw it under Alia.
-         *
-         * An agent's `memory` tool is also built by its runtime
-         * (`buildRuntimeTools`); built here too so a turn without a runtime has
-         * it, and the same tool under the same name either way.
-         */
-        if (agent !== undefined && agent !== null) {
-          aliaTools.memory = buildAgentMemoryTool({
-            oxyUserId: userId,
-            agentId: agent._id,
-            actorOxyAccountId: agent.oxyAccountId,
-          });
-          /**
-           * Only for a turn that HAS an agent, because a thread is a (person,
-           * agent) pair and there is nothing to search without one. Ordinary
-           * Alia has no thread, so it gets no `searchThread` — the structural
-           * precondition, the same shape as `deviceInfo` and `runtime`.
-           *
-           * The agent is closed over, never offered to the model.
-           */
-          aliaTools.searchThread = createSearchThreadTool(userId, agent._id);
-        }
+      /**
+       * Memory is per ACTOR, and the gemie's `memoryStore` says which store is
+       * its own. Alia's (`nilo`) is the person's Nilo memories, reached through
+       * the catalogue's `oxy_nilo_memories__*` tools below; every other gemie
+       * remembers the person in its own files (`agent_memory_documents`) and
+       * never reads or writes hers. An agent turn with the grant used to get
+       * Alia's four tools too, so whatever one agent "remembered" landed in the
+       * memory every other agent and Alia read — and the person saw it under Alia.
+       *
+       * A gemie's `memory` tool is also built by its runtime
+       * (`buildRuntimeTools`); built here too so a turn without a runtime has
+       * it, and the same tool under the same name either way. `searchThread`
+       * rides with it: a thread is a (person, gemie) pair of a gemie that keeps
+       * its own memory, and the gemie is closed over, never offered to the model.
+       */
+      if (grants.allows('memory') && agent.memoryStore === 'gemie') {
+        aliaTools.memory = buildAgentMemoryTool({
+          oxyUserId: userId,
+          agentId: agent._id,
+          actorOxyAccountId: agent.oxyAccountId,
+        });
+        aliaTools.searchThread = createSearchThreadTool(userId, agent._id);
       }
       if (grants.allows('messaging')) {
         Object.assign(aliaTools, {
@@ -647,7 +635,7 @@ export class ToolPipeline {
       }
       if (grants.allows('automation') && !nested) {
         if (isDirectSession) {
-          aliaTools.createAutomation = createAutomationTool(userId, accessToken, agent?._id);
+          aliaTools.createAutomation = createAutomationTool(userId, accessToken, agent);
         }
       }
       // `web`, not a family of its own: what it does is read the open web, and
@@ -661,7 +649,7 @@ export class ToolPipeline {
         !isLocalRuntime &&
         !nested &&
         grants.allows('web') &&
-        agent?.featureGates.deep_research === undefined
+        agent.featureGates.deep_research === undefined
       ) {
         aliaTools.deepResearch = createDeepResearchTool(userId);
       }
@@ -716,7 +704,7 @@ export class ToolPipeline {
       );
     }
     // A member keeps its space's shared notes. Membership is the permission, as it is for consulting.
-    if (agent?.spaceId && actsForPerson && !nested) {
+    if (agent.spaceId && actsForPerson && !nested) {
       aliaTools[SPACE_NOTES_TOOL] = buildSpaceNotesTool({
         spaceId: agent.spaceId,
         agentId: agent._id,
@@ -776,7 +764,13 @@ export class ToolPipeline {
     const wants = (family: InstancedToolSource): boolean =>
       instancedSources === undefined || instancedSources.includes(family);
 
-    const oxyOwnerAccountId = agent ? agent.ownerOxyAccountId : userId;
+    /**
+     * Whose apps the `oxy_*` tools bind. The person's own assistant (`reach =
+     * 'person'`) works for the person of this turn, who is its "owner" here; a
+     * persona's owner is its bot account's parent.
+     */
+    const personAssistant = agent.reach === 'person';
+    const oxyOwnerAccountId = personAssistant ? userId : agent.ownerOxyAccountId;
     // Owner data only for the owner: see `ForUserOptions.requesterAccountId`.
     const ownerIsPresent = oxyOwnerAccountId != null && requesterAccountId === oxyOwnerAccountId;
     /**
@@ -784,7 +778,7 @@ export class ToolPipeline {
      * agent and in a durable child task. Ownership does not substitute identity.
      */
     const requesterIsPresent =
-      agent != null &&
+      !personAssistant &&
       !ownerIsPresent &&
       requesterAccountId != null &&
       ((isDirectSession && accessToken !== undefined) || oxyTaskId !== undefined);
@@ -798,17 +792,18 @@ export class ToolPipeline {
       (isDirectSession && accessToken !== undefined) ||
       oxyTaskId !== undefined ||
       oxyExecutionAuthorizations !== undefined;
-    const agentIdentity = agent
-      ? requesterIsPresent
+    const agentIdentity = personAssistant
+      ? undefined
+      : requesterIsPresent
         ? { forUser: 'requester' as const, self: false }
         : {
             forUser: 'owner' as const,
-            // Only where a call can be authorized at all: the owner's bearer, or
+            // Only for a gemie whose account is a working one (`mailbox`), and
+            // only where a call can be authorized at all: the owner's bearer, or
             // the runner's agent-run lane. Elsewhere (a Telegram turn) the agent's
             // own account would be a list of tools Oxy refuses every time.
-            self: ownerIsPresent && hasOwnAuthority,
-          }
-      : undefined;
+            self: agent.mailbox && ownerIsPresent && hasOwnAuthority,
+          };
     const oxyPersonAccountId = requesterAccountId;
     const [mcpTools, integrationTools, oxyServiceTools, ownAgentTools] = await Promise.all([
       actsForPerson && wants('mcp')
@@ -820,7 +815,7 @@ export class ToolPipeline {
           )
         : {},
       !wants('oxy_service') ||
-      (!actsForPerson && !agent) ||
+      (!actsForPerson && personAssistant) ||
       (!ownerIsPresent && !requesterIsPresent) ||
       !hasOwnAuthority ||
       oxyPersonAccountId == null
@@ -828,9 +823,7 @@ export class ToolPipeline {
         : buildOxyServiceTools(userId, {
             requesterAccountId: oxyPersonAccountId,
             ownerAccountId: oxyPersonAccountId,
-            actor: agent
-              ? { type: 'agent', accountId: agent.oxyAccountId }
-              : { type: 'alia', ownerAccountId: oxyPersonAccountId },
+            actor: oxyActorFor(agent, oxyPersonAccountId),
             ...(agentIdentity ? { agentIdentity } : {}),
             runId: runId ?? requestId,
             autonomy: oxyAutonomy,
@@ -850,7 +843,7 @@ export class ToolPipeline {
               surfaceApplicationId,
             },
             payerOxyUserId: userId,
-            callerAgentId: agent?._id ?? null,
+            callerAgentId: agent._id,
             attachments,
             ...consultSelection(grants, spacePeers),
             ...(sseEmitter ? { sseEmitter } : {}),
@@ -864,9 +857,15 @@ export class ToolPipeline {
       aliaTools,
       byName(mcpTools),
       byName(integrationTools),
-      // Alia's memory of the person is Nilo's: with personalization off for the turn it is not offered.
+      /**
+       * Alia's memory of the person is Nilo's. It reaches only a gemie whose
+       * `memoryStore` is Nilo and that holds the `memory` grant, and not on a
+       * turn with personalization off (which denies the family). The catalogue
+       * already declares those tools for Oxy's person lane alone; this is the
+       * second, local half of "her memory never reaches another gemie".
+       */
       byName(
-        personalization
+        grants.allows('memory') && agent.memoryStore === 'nilo'
           ? oxyServiceTools
           : Object.fromEntries(
               Object.entries(oxyServiceTools).filter(([name]) => !isAliaMemoryTool(name)),
@@ -879,7 +878,8 @@ export class ToolPipeline {
     // model only through the candidate set `lib/skills/runtime.ts` already
     // resolved, so the tools carry their own authorization rather than
     // depending on the session kind.
-    if (skills && (!agent || skills.agentScoped)) Object.assign(aliaTools, skills.tools);
+    // The person's assistant offers the person's installed skills; a persona only those linked to it.
+    if (skills && (personAssistant || skills.agentScoped)) Object.assign(aliaTools, skills.tools);
 
     // 5. Merge server tools with the caller's editor and host tools (never inside a consultation).
     const hostTools =
@@ -920,7 +920,7 @@ export class ToolPipeline {
         ? Object.keys(mcpTools).map((name) => name.slice(0, name.indexOf('__')))
         : []),
       ...pickedApps,
-      ...(agent ? primaryToolNames(agent.primaryTools, oxyServiceTools) : []),
+      ...primaryToolNames(agent.primaryTools, oxyServiceTools),
     ];
     return withBudget(
       budgetTools({
@@ -943,8 +943,8 @@ function byName(tools: ToolSet): ToolSet {
  * Which agents this turn may consult, beyond what `canReachAgent` already
  * decides for the person present.
  *
- * Ordinary Alia, and an agent whose owner wrote the bare `agent` grant, consult
- * any agent the person could open themselves. An agent granted named ids
+ * The person's own assistant, and a gemie whose owner wrote the bare `agent`
+ * grant, consult any agent the person could open themselves. An agent granted named ids
  * consults only those, and an agent without the grant consults none (`[]`, and
  * the tool is not built). A member of a space consults exactly its peers.
  */
@@ -968,9 +968,9 @@ function consultSelection(
  * other, and a pick the agent was not granted has to expose nothing rather than
  * override the grant.
  *
- * `undefined` survives only when BOTH sides are unrestricted, which is a turn
- * with no agent and no pick: that is the one case that still means every
- * runnable connector, local relay servers included.
+ * `undefined` survives only when BOTH sides are unrestricted, which is the
+ * person's own assistant with no pick: that is the one case that still means
+ * every runnable connector, local relay servers included.
  */
 function mcpSelection(
   pick: string | null | undefined,

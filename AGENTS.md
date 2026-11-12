@@ -9,7 +9,7 @@ Este repo nació el 2026-11-12 de `OxyHQ/Alia`, con todo su historial y sin ser 
 - **Gemies despliega el backend en producción desde el 2026-11-12** (servicio ECS `alia`, `alia-integrations`, computer host; runbook 65 de oxy-infra). Push a `main` despliega tras CI verde. La API responde en `api.gemies.ai` y en `api.alia.onl`.
 - **Los cambios de backend se hacen aquí, nunca en `OxyHQ/Alia`.** Alia conserva la app (`onl.alia.app`, `alia.onl`), el OTA, Android y la publicación de `@alia.onl/sdk`/`@alia.onl/server` hasta que existan `@gemies/*`; por eso esos workflows siguen desactivados aquí (`deploy-frontends`, `publish-update`, `android-release`, `release-packages`).
 - Dependabot de este repo actualiza las dependencias del backend; las de app/SDK siguen en Alia mientras ese código viva allí.
-- Vocabulario nuevo: un agente es un **gemie**. Alia es un gemie oficial global y Codea otro. No añadas ramas nuevas de «Alia = `agentId == null`».
+- Vocabulario nuevo: un agente es un **gemie**. Alia es un gemie oficial global y Codea otro. Alia es la fila `agents` `ALIA_GEMIE_ID` (`domain/alia-gemie.ts`) y lo que la distingue es su configuración (`memory_store`, `reach`, `mailbox`, `task_authority`, sus grants): decide por esos atributos, nunca por su id ni por un `agentId` nulo.
 
 ## Comandos
 
@@ -49,7 +49,7 @@ Nunca:
 - Otro `server.on('upgrade')`: Bun cierra los sockets ajenos; todo upgrade pasa por `lib/websocket-upgrades.ts`.
 - Copiar un componente de conversación a `packages/app`: viene de `AliaChatContent` en `packages/alia-chat` (ADR 0018).
 - Pasar a un agente la memoria de Alia o sus herramientas.
-- Exigir un agente para una tarea: sin `actorSelection` es `{ mode: 'alia' }`.
+- Exigir un agente para una tarea: sin `actorSelection` es `{ mode: 'fixed', agentId: ALIA_GEMIE_ID }`, el gemie Alia.
 
 Pregunta antes de: cambiar un contrato entre productos Oxy, añadir una ruta WebSocket o tocar `lib/tools/oxy-services.ts`; ver `docs/agent-rules.md` para cada regla.
 

@@ -1,3 +1,4 @@
+import { aliaGemie } from '../../__tests__/support/gemies.js';
 import { describe, expect, it } from 'vitest';
 import type { HydratedAgent } from '../agent-identity.js';
 import { SystemPromptBuilder } from '../system-prompt-builder.js';
@@ -7,6 +8,7 @@ const MARKER = 'You keep the person';
 
 function build(extra: Partial<Parameters<typeof SystemPromptBuilder.build>[0]> = {}) {
   return SystemPromptBuilder.build({
+    linkedAgent: aliaGemie(),
     surface: 'chat',
     isDirectUserSession: true,
     toolNames: [RECALL, 'oxy_nilo_memories__remember'],

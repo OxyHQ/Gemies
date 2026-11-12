@@ -12,6 +12,7 @@
  * DOES fit, a history with nothing in it.
  */
 
+import { aliaGemie } from '../../__tests__/support/gemies.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asSchema, tool, type Tool, type ToolSet } from 'ai';
 import { z } from 'zod';
@@ -636,6 +637,7 @@ type ForUserOptions = Parameters<typeof ToolPipeline.forUser>[0];
 
 function forUser(over: Partial<ForUserOptions> = {}) {
   return ToolPipeline.forUser({
+    agent: aliaGemie(),
     userId: 'user-1',
     accessToken: 'token-1',
     isDirectSession: true,
@@ -804,6 +806,7 @@ describe('the system prompt carries the tool catalogue', () => {
   it('appends the catalogue section when the turn is routed', async () => {
     const { appCatalogPrompt } = budgetTools(productionTurn());
     const prompt = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
       isDirectUserSession: false,
       appCatalog: appCatalogPrompt,
     });
@@ -818,17 +821,29 @@ describe('the system prompt carries the tool catalogue', () => {
     // them there concludes they exist and calls them, or refuses.
     const { appCatalogPrompt } = budgetTools(productionTurn());
     const direct = { isDirectUserSession: true, userId: 'u1', accessToken: 'tok' } as const;
-    const routed = await SystemPromptBuilder.build({ ...direct, appCatalog: appCatalogPrompt });
+    const routed = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
+      ...direct,
+      appCatalog: appCatalogPrompt,
+    });
     expect(routed).toContain("## Tools from the person's apps");
     expect(routed).not.toContain('## Oxy apps');
 
     // The control: a turn that fits keeps the fragment.
-    const unrouted = await SystemPromptBuilder.build({ ...direct, appCatalog: '' });
+    const unrouted = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
+      ...direct,
+      appCatalog: '',
+    });
     expect(unrouted).toContain('## Oxy apps');
   });
 
   it('says nothing about apps when nothing is routed — the control', async () => {
-    const prompt = await SystemPromptBuilder.build({ isDirectUserSession: false, appCatalog: '' });
+    const prompt = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
+      isDirectUserSession: false,
+      appCatalog: '',
+    });
     expect(prompt).not.toContain("## Tools from the person's apps");
   });
 });

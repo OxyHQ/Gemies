@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { ROOM_GEMIE_ID } from '../../domain/alia-gemie';
 import { and, eq } from 'drizzle-orm';
 import { type ApiDatabase, connectPostgres } from '../index';
 import { conversationMembers } from '../schema/chat';
@@ -47,7 +48,7 @@ describe('group conversations', () => {
     const created = await group(id, ['c', 'a', 'b']);
     expect(created.memberAgentIds).toEqual(['c', 'a', 'b']);
     expect(await listGroupMembers(db, OWNER, id)).toEqual(['c', 'a', 'b']);
-    expect((await findConversation(db, OWNER, id))?.agentId).toBeNull();
+    expect((await findConversation(db, OWNER, id))?.agentId).toBe(ROOM_GEMIE_ID);
   });
 
   it('keeps one owner’s groups away from another', async () => {

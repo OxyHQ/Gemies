@@ -19,6 +19,7 @@ import {
 } from '../db/integrations/connectedAccountRepository.js';
 import { log } from '../lib/logger.js';
 import { CONNECTED_ACCOUNT_STATUSES } from '../db/schema/integrations.js';
+import { personAssistantActor } from '../lib/gemie-oxy-actor.js';
 
 /**
  * What the integrations service answers for a session, as far as this router
@@ -78,7 +79,7 @@ async function bindChannelTask(
   const taskId = await createOxyTask({
     accessToken: req.accessToken,
     effectiveAccountId: req.userId,
-    actor: { type: 'alia', ownerAccountId: req.userId },
+    actor: personAssistantActor(req.userId),
     origin: { kind: 'automation', id: `channel:${account.id}` },
   });
   try {

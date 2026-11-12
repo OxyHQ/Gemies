@@ -42,9 +42,15 @@ comprobable; aquí está el texto completo. Antes de tocar un área lee su doc
   la app de la aserción `X-Oxy-App-Assertion` verificada en `lib/app-surface.ts` y nada más; un
   agente confinado no abre sin ella. Una respuesta de Oxy ilegible nunca es «en cualquier sitio».
 - **Toda tarea tiene actor; Alia por defecto.** Sin `actorSelection` es
-  `{ mode: 'alia' }`: nunca exijas un agente para una tarea. Las de Alia usan su
-  autoridad permanente de Oxy y la cola `alia-tasks` —
-  `proactive-intelligence.md`.
+  `{ mode: 'fixed', agentId: ALIA_GEMIE_ID }`: nunca exijas otro gemie para una tarea. Un gemie con
+  `task_authority = 'standing'` (Alia) la corre con autoridad permanente de Oxy en la cola
+  `alia-tasks` — `proactive-intelligence.md`.
+- **Alia es un gemie (ADR 0034).** Una fila `agents` (`ALIA_GEMIE_ID`); lo que la distingue es
+  configuración: `memory_store = 'nilo'`, `reach = 'person'`, `mailbox = false`,
+  `task_authority = 'standing'` y sin grant `computer`. Decide por esos atributos, nunca por su id
+  ni por un `agentId` nulo. El único sitio que habla el lane `{ type: 'alia' }` de Oxy es
+  `lib/gemie-oxy-actor.ts` (y el cliente de Oxy en `tools/oxy-services.ts`); el wire público aún
+  escribe a Alia como sin `agentId` (`publicAgentId`).
 - **La conversación es del SDK (ADR 0018).** El hilo, sus tarjetas, el panel de pensamiento, el
   compositor con su selector de nivel y la llamada de voz los dibuja `AliaChatContent`
   (`packages/alia-chat`), el mismo que monta el bottom sheet. La app solo pone lo suyo (sidebar,

@@ -1,3 +1,4 @@
+import { aliaGemie } from '../../__tests__/support/gemies.js';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../tools/oxy-services.js', () => ({
@@ -16,6 +17,7 @@ const { SystemPromptBuilder } = await import('../system-prompt-builder.js');
 describe('prompt text that names a tool', () => {
   it('never names the messaging, agent-mode or clock tools itself', async () => {
     const prompt = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
       isDirectUserSession: true,
       toolNames: ['sendTelegramMessage', 'searchAgents', 'consultAgent', 'getCurrentDate'],
     });
@@ -31,6 +33,7 @@ describe('prompt text that names a tool', () => {
 
   it('layers the question rule from the registered tool name alone', async () => {
     const prompt = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
       isDirectUserSession: true,
       toolNames: ['askUserQuestion'],
     });
@@ -40,8 +43,12 @@ describe('prompt text that names a tool', () => {
 
 describe('prompt cache layout', () => {
   it('keeps every per-turn part after the static head', async () => {
-    const quiet = await SystemPromptBuilder.build({ isDirectUserSession: true });
+    const quiet = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
+      isDirectUserSession: true,
+    });
     const busy = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
       isDirectUserSession: true,
       oxyUser: { name: { full: 'Ada Lovelace' } },
     });
@@ -54,6 +61,7 @@ describe('prompt cache layout', () => {
 
   it('puts the date after the skills index and the Apps catalogue', async () => {
     const prompt = await SystemPromptBuilder.build({
+      linkedAgent: aliaGemie(),
       isDirectUserSession: true,
       appCatalog: '\n\n## Apps\n- inbox',
       skills: { index: '\n\n## Skills\n- pdf: reads PDFs', active: '' },

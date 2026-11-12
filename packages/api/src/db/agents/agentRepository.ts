@@ -78,7 +78,10 @@ import type {
   AgentAccess,
   AgentArchetype,
   AgentComputerSource,
+  AgentMemoryStore,
+  AgentReach,
   AgentStatus,
+  AgentTaskAuthority,
 } from '../../domain/agent';
 import type { AgentFeatureGates, AgentStarter } from '../../domain/agent-features';
 import { withoutRetiredGrants } from '../../domain/capability-grants';
@@ -165,6 +168,14 @@ export interface AgentRecord {
   /** The space (ADR 0028) this agent is in, or null. Changed only by the space repository. */
   spaceId: string | null;
   access: AgentAccess;
+  /** Where it remembers the person (ADR 0034 §2); see `AGENT_MEMORY_STORES`. */
+  memoryStore: AgentMemoryStore;
+  /** What it reaches for the person present; see `AGENT_REACHES`. */
+  reach: AgentReach;
+  /** Whether its own Oxy account is a working account (`self_*`, own-mailbox alerts). */
+  mailbox: boolean;
+  /** How its background work is authorized and run; see `AGENT_TASK_AUTHORITIES`. */
+  taskAuthority: AgentTaskAuthority;
   systemPrompt: string | null;
   /** The agent's power level or `publisher/model`; null runs `auto`. */
   modelId: string | null;
@@ -262,6 +273,10 @@ export function toAgentRecord(row: AgentRow): AgentRecord {
     computerSource: row.computerSource as AgentComputerSource,
     spaceId: row.spaceId,
     access: row.access as AgentAccess,
+    memoryStore: row.memoryStore as AgentMemoryStore,
+    reach: row.reach as AgentReach,
+    mailbox: row.mailbox,
+    taskAuthority: row.taskAuthority as AgentTaskAuthority,
     systemPrompt: row.systemPrompt,
     modelId: row.modelId,
     scheduleInterval: row.scheduleInterval,

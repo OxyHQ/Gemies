@@ -1,4 +1,5 @@
 import { TEST_CHARACTER } from './support/agent-character';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
@@ -46,22 +47,30 @@ async function agent(owner = `owner-${randomUUID()}`) {
 }
 
 describe('email_alert_preferences (migration 0084)', () => {
-  it('is on until switched off, per actor, with Alia as the NULL agent', async () => {
+  it('is on until switched off, per actor, with Alia as her gemie', async () => {
     const person = `person-${randomUUID()}`;
     const mine = await agent(person);
-    expect(await isEmailAlertEnabled(db, person, null)).toBe(true);
+    expect(await isEmailAlertEnabled(db, person, ALIA_GEMIE_ID)).toBe(true);
     expect(await isEmailAlertEnabled(db, person, mine._id)).toBe(true);
 
-    await setEmailAlertPreference(db, { oxyUserId: person, agentId: null, enabled: false });
-    await setEmailAlertPreference(db, { oxyUserId: person, agentId: null, enabled: false });
+    await setEmailAlertPreference(db, {
+      oxyUserId: person,
+      agentId: ALIA_GEMIE_ID,
+      enabled: false,
+    });
+    await setEmailAlertPreference(db, {
+      oxyUserId: person,
+      agentId: ALIA_GEMIE_ID,
+      enabled: false,
+    });
     await setEmailAlertPreference(db, { oxyUserId: person, agentId: mine._id, enabled: false });
     await setEmailAlertPreference(db, { oxyUserId: person, agentId: mine._id, enabled: true });
 
-    expect(await isEmailAlertEnabled(db, person, null)).toBe(false);
+    expect(await isEmailAlertEnabled(db, person, ALIA_GEMIE_ID)).toBe(false);
     expect(await isEmailAlertEnabled(db, person, mine._id)).toBe(true);
     expect(await listEmailAlertPreferences(db, person)).toEqual(
-      new Map<string | null, boolean>([
-        [null, false],
+      new Map<string, boolean>([
+        [ALIA_GEMIE_ID, false],
         [mine._id, true],
       ]),
     );
@@ -99,7 +108,7 @@ describe('email_outreach_decisions (migration 0084)', () => {
       mailboxAccountId: mailbox,
       messageId: 'msg-1',
       oxyUserId: mailbox,
-      agentId: null,
+      agentId: ALIA_GEMIE_ID,
     };
     const claim = await claimEmailOutreach(db, input);
     expect(claim).toEqual(expect.any(String));
@@ -121,8 +130,8 @@ describe('email_outreach_decisions (migration 0084)', () => {
   it('refuses a verdict outside the vocabulary', async () => {
     await expect(
       db.execute(sql`
-      insert into email_outreach_decisions (id, mailbox_account_id, message_id, oxy_user_id, verdict)
-      values (${randomUUID()}, 'm', ${randomUUID()}, 'u', 'maybe')
+      insert into email_outreach_decisions (id, mailbox_account_id, message_id, oxy_user_id, agent_id, verdict)
+      values (${randomUUID()}, 'm', ${randomUUID()}, 'u', ${ALIA_GEMIE_ID}, 'maybe')
     `),
     ).rejects.toMatchObject({ cause: { code: '23514' } });
   });
@@ -219,6 +228,7 @@ describe('what the proactive path reads from chat', () => {
     expect(await hasAnyConversation(db, person)).toBe(false);
     const conversationId = randomUUID();
     await upsertConversation(db, {
+      agentId: ALIA_GEMIE_ID,
       oxyUserId: person,
       conversationId,
       titleOnInsert: 'Alia',

@@ -22,6 +22,7 @@ import { agentPromptName, attachAgentIdentity } from '../lib/agent-identity.js';
 import { log } from '../lib/logger.js';
 import { sharedMessagesOf, type SharedAgent } from '../lib/shared-conversation.js';
 import { checkWindowLimit } from '../lib/sliding-window-limiter.js';
+import { publicAgentId } from '../domain/alia-gemie.js';
 
 const router = Router();
 
@@ -35,7 +36,9 @@ const SHARED_READS_PER_MINUTE = 60;
 /** The shape of a token `shareConversation` mints: 32 bytes, base64url. */
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
-async function conversationAgent(agentId: string | null): Promise<SharedAgent | undefined> {
+/** The conversation's gemie as the shared page names it; Alia's is unnamed there, as she always was. */
+async function conversationAgent(conversationAgentId: string): Promise<SharedAgent | undefined> {
+  const agentId = publicAgentId(conversationAgentId);
   if (agentId === null) return undefined;
   const agent = await findAgentById(getDb(), agentId);
   if (agent === null) return undefined;

@@ -11,7 +11,8 @@ export interface NewVoiceCall {
   readonly id: string;
   readonly oxyUserId: string;
   readonly conversationId: string;
-  readonly agentId: string | null;
+  /** The call's gemie: Alia's unless the call named another. */
+  readonly agentId: string;
   readonly holderTask: string;
   readonly leaseMs: number;
 }

@@ -1,4 +1,5 @@
 import { mutateMessageReaction } from '../../db/chat/reactionRepository.js';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 
@@ -112,6 +113,7 @@ const THREE_TURNS = [
 describe('saveConversation (append-only)', () => {
   it('(e) first save on an empty conversation appends without deleting', async () => {
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1' }],
@@ -134,6 +136,7 @@ describe('saveConversation (append-only)', () => {
 
   it('(a) second save appends only the new turn', async () => {
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1' }],
@@ -142,6 +145,7 @@ describe('saveConversation (append-only)', () => {
     const firstIds = (await stored()).map((row) => row.id);
 
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: THREE_TURNS,
@@ -165,6 +169,7 @@ describe('saveConversation (append-only)', () => {
 
   it('(b) an edited history diverges from the stored tail and forces a rewrite', async () => {
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1' }],
@@ -173,6 +178,7 @@ describe('saveConversation (append-only)', () => {
     const firstIds = (await stored()).map((row) => row.id);
 
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: THREE_TURNS,
@@ -200,6 +206,7 @@ describe('saveConversation (append-only)', () => {
     `);
 
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: THREE_TURNS,
@@ -231,6 +238,7 @@ describe('saveConversation (append-only)', () => {
      * that one, via the CHECK-violation case below.
      */
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1' }],
@@ -246,6 +254,7 @@ describe('saveConversation (append-only)', () => {
     };
 
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: THREE_TURNS,
@@ -277,6 +286,7 @@ describe('saveConversation (append-only)', () => {
      * it. The rows written by the first save must still be there.
      */
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1' }],
@@ -285,6 +295,7 @@ describe('saveConversation (append-only)', () => {
 
     await expect(
       saveConversation({
+        agentId: ALIA_GEMIE_ID,
         userId: USER,
         conversationId: CONV,
         messages: [
@@ -301,6 +312,7 @@ describe('saveConversation (append-only)', () => {
 
   it('records the agent’s attribution on the turns it produced', async () => {
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1' }],
@@ -330,6 +342,7 @@ describe('saveConversation (append-only)', () => {
      * OpenAI-shaped `/v1` client — still gets one per message, `msg-<seq>`.
      */
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1' }],
@@ -352,6 +365,7 @@ describe('saveConversation (append-only)', () => {
 describe('saveConversation keeps the client’s message ids', () => {
   it('stores the turn under the ids the client drew it with, and a vote and read-aloud find it', async () => {
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1', id: 'u-1' }],
@@ -371,6 +385,7 @@ describe('saveConversation keeps the client’s message ids', () => {
      * turn `<assistantMessageId>-agent-<n>`, and so does this.
      */
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1', id: 'u-1' }],
@@ -400,6 +415,7 @@ describe('saveConversation keeps the client’s message ids', () => {
 
   it('keeps the echoed ids through an append, including ones the server named', async () => {
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1' }],
@@ -407,6 +423,7 @@ describe('saveConversation keeps the client’s message ids', () => {
     });
     // A reload hands the client `msg-0` / `msg-1`; the next turn echoes them.
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [
@@ -428,6 +445,7 @@ describe('saveConversation keeps the client’s message ids', () => {
 
   it('keeps a vote across the rewrite an edit forces', async () => {
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1', id: 'u-1' }],
@@ -435,6 +453,7 @@ describe('saveConversation keeps the client’s message ids', () => {
       assistantMessageId: 'a-1',
     });
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [
@@ -451,6 +470,7 @@ describe('saveConversation keeps the client’s message ids', () => {
     // U2 edited: the client cuts back to it and sends the new version, which
     // diverges from the stored tail and rewrites the whole thread.
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [
@@ -475,6 +495,7 @@ describe('saveConversation keeps the client’s message ids', () => {
     // No ids from the client, so the rewrite names by position — and position
     // 1 is now a different answer. Its vote must not follow the name.
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1' }],
@@ -483,6 +504,7 @@ describe('saveConversation keeps the client’s message ids', () => {
     await voteMessage(db, USER, CONV, 'msg-1', 'up');
 
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1, reworded' }],
@@ -497,6 +519,7 @@ describe('saveConversation keeps the client’s message ids', () => {
 
   it('ignores an id that is not a usable name', async () => {
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1', id: 'x'.repeat(129) }],
@@ -524,6 +547,7 @@ describe('a message an agent wrote on its own survives the client that has not s
 
   it('keeps it, in place, when the next turn comes from a client that never saw it', async () => {
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1' }],
@@ -535,6 +559,7 @@ describe('a message an agent wrote on its own survives the client that has not s
     // Their client still holds U1/A1 and sends U2 on top of it — which used to
     // make storage converge on the client's copy and delete the report.
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: THREE_TURNS.map((m) =>
@@ -556,6 +581,7 @@ describe('a message an agent wrote on its own survives the client that has not s
 
   it('does not duplicate it when the client did see it and echoes it back', async () => {
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ role: 'user', content: 'U1' }],
@@ -564,6 +590,7 @@ describe('a message an agent wrote on its own survives the client that has not s
     await agentWrote('The price dropped', 2);
 
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [
@@ -589,6 +616,7 @@ describe('a message an agent wrote on its own survives the client that has not s
 describe('reaction preservation during server reconciliation', () => {
   it('keeps the latest reaction revision in a full rewrite and after another turn', async () => {
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [{ id: 'reaction-user', role: 'user', content: 'Hola' }],
@@ -601,6 +629,7 @@ describe('reaction preservation during server reconciliation', () => {
       mutationId: 'reaction-add',
     });
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [
@@ -620,6 +649,7 @@ describe('reaction preservation during server reconciliation', () => {
       mutationId: 'reaction-remove',
     });
     await saveConversation({
+      agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [

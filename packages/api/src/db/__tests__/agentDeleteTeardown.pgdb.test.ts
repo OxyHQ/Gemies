@@ -1,4 +1,5 @@
 import { uuidv7 } from '@oxy.so/db';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addInboxItem, upsertAgentSubscription } from '../agents/agentInboxRepository';
@@ -103,8 +104,8 @@ function automationFor(agentId: string | null) {
     triggerKind: 'schedule',
     scheduleCron: '0 9 * * *',
     scheduleTimezone: 'UTC',
-    actorMode: agentId ? 'fixed' : 'alia',
-    ...(agentId ? { fixedAgentId: agentId } : {}),
+    actorMode: 'fixed',
+    fixedAgentId: agentId ?? ALIA_GEMIE_ID,
     eligibleAgentIds: [],
     executionMode: 'execute',
     actions: [],

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { ALIA_GEMIE_ID, publicAgentId } from '../domain/alia-gemie.js';
 import Expo from 'expo-server-sdk';
 import { getDb } from '../db/index.js';
 import {
@@ -276,7 +277,7 @@ router.get('/email-alerts', async (req: Request, res: Response) => {
     ]);
     const agents = await attachAgentIdentities(owned);
     res.json({
-      alia: { enabled: preferences.get(null) ?? EMAIL_ALERTS_DEFAULT },
+      alia: { enabled: preferences.get(ALIA_GEMIE_ID) ?? EMAIL_ALERTS_DEFAULT },
       agents: agents.map((agent) => ({
         agentId: agent._id,
         name: agent.name,
@@ -294,7 +295,8 @@ router.get('/email-alerts', async (req: Request, res: Response) => {
 /**
  * PUT /notifications/email-alerts `{ agentId: string | null, enabled: boolean }`.
  *
- * `agentId` null is Alia. An agent's switch is its owner's alone: the same
+ * `agentId` null is Alia on the wire (`publicAgentId`), stored under her gemie's id; naming her id
+ * is the same switch. Any other agent's switch is its owner's alone: the same
  * `owner_oxy_account_id` that decides whom the agent tells decides who may
  * silence it, and anybody else gets the 404 an unknown agent does.
  */
@@ -308,13 +310,14 @@ router.put('/email-alerts', async (req: Request, res: Response) => {
         .status(400)
         .json({ error: 'agentId (string or null) and enabled (boolean) are required' });
     }
-    if (agentId !== null) {
-      const agent = await findAgentById(getDb(), agentId);
+    const gemieId = agentId ?? ALIA_GEMIE_ID;
+    if (gemieId !== ALIA_GEMIE_ID) {
+      const agent = await findAgentById(getDb(), gemieId);
       if (!agent || agent.ownerOxyAccountId !== userId)
         return res.status(404).json({ error: 'Agent not found' });
     }
-    await setEmailAlertPreference(getDb(), { oxyUserId: userId, agentId, enabled });
-    res.json({ agentId, enabled });
+    await setEmailAlertPreference(getDb(), { oxyUserId: userId, agentId: gemieId, enabled });
+    res.json({ agentId: publicAgentId(gemieId), enabled });
   } catch (error: unknown) {
     log.general.error({ err: error }, 'Error saving email alert setting');
     res.status(500).json({ error: 'Failed to save email alert setting' });

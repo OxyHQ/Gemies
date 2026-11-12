@@ -4,8 +4,10 @@ Last updated: 2026-10-06
 
 Alia proactive intelligence has one normalized control plane (`/automations`) and
 one elected scheduler (`trigger-engine.ts`). A task always owns its human objective,
-schedule and a responsible actor: Alia by default (`actorSelection: { mode: 'alia' }`,
-what an omitted `actorSelection` means), or one of the person's agents. Nobody has
+schedule and a responsible actor: Alia's gemie by default (`actorSelection: { mode: 'fixed',
+agentId: ALIA_GEMIE_ID }`, what an omitted `actorSelection` means), or one of the person's agents.
+A gemie whose `task_authority` is `standing` (Alia) runs its tasks herself on `alia-tasks`; any
+other runs them as agent sessions (ADR 0034 §2). Nobody has
 to pick an agent; agents are optional. Connected work additionally owns exact Oxy
 actions, data flow and limits; reminders, research and assistant responses
 deliberately carry no fabricated app resource or tool.
@@ -17,9 +19,11 @@ control-plane endpoints are in [API reference](./api-reference.md).
 
 | `actorSelection` (`automation_definitions.actor_mode`) | Who is responsible | How it runs |
 |---|---|---|
-| omitted, or `{ mode: 'alia' }` | Alia | One unattended Alia turn on the `alia-tasks` queue (below), under her standing authority. |
+| omitted, or `{ mode: 'fixed', agentId: ALIA_GEMIE_ID }` | Alia's gemie (`task_authority = 'standing'`) | One unattended Alia turn on the `alia-tasks` queue (below), under her standing authority. The run records her gemie (`selected_agent_id`) on the standing lane (`selected_actor_type = 'alia'`, the lane's stored name). |
 | `{ mode: 'fixed', agentId }` | that agent | The agent receives the prompt in a durable session; connected actions go through the coordinator. |
-| `{ mode: 'automatic', eligibleAgentIds }` | the first eligible agent per action | The coordinator assigns each ordered action to an agent whose live capability map covers it. |
+| `{ mode: 'automatic', eligibleAgentIds }` | the first eligible agent per action | The coordinator assigns each ordered action to an agent whose live capability map covers it. A standing-authority gemie is never a candidate (`standing_gemie_requires_fixed_selection`). |
+
+The retired `{ mode: 'alia' }` is refused; migration 0135 made every such task `fixed` on Alia's gemie.
 
 Which agent may be named is one rule shared by creation and dispatch
 (`mayRunForAutomationOwner`, `lib/automation-actors.ts`): the owner's own agent, or a

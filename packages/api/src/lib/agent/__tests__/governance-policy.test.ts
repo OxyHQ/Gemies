@@ -108,7 +108,17 @@ import { buildMcpTools } from '../../tools/mcp.js';
 import { classifyActionRisk } from '../governance.js';
 import { declareOxyAppTool, declareReadOnly } from '../tool-effects.js';
 import { insertRollbackRecord } from '../../../db/agents/rollbackRecordRepository.js';
-import { GRANTS_EVERYTHING, readCapabilityGrants } from '../../../domain/capability-grants.js';
+import {
+  FIXED_CAPABILITY_FAMILIES,
+  readCapabilityGrants,
+  readGemieGrants,
+} from '../../../domain/capability-grants.js';
+
+/** Every family, every row: the widest runtime surface a policy can be applied over. */
+const GRANTS_EVERYTHING = readGemieGrants({
+  reach: 'person',
+  capabilityGrants: [...FIXED_CAPABILITY_FAMILIES, 'agent'],
+});
 
 // ── Doubles for the session-scoped collaborators ───────────────────────────
 

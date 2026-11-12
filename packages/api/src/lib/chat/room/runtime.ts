@@ -9,6 +9,7 @@ import type { Executor } from '../../../db/index.js';
 import type { RoomEngineDeps, RoomJobData } from './engine.js';
 import { abandonRoomChain, processRoomStep } from './engine.js';
 import { getRoomLock } from './lock.js';
+import { ROOM_GEMIE_ID } from '../../../domain/alia-gemie.js';
 
 const SEQ_INDEX = 'messages_oxy_user_conversation_seq_key';
 /** The retries of the append, on exactly the conflict a concurrent writer claiming the same seq makes. */
@@ -164,6 +165,7 @@ export async function appendRoomReply(
       conversationId: input.conversationId,
       lastMessage: input.content.slice(0, 100),
       titleOnInsert: input.agentInfo.name,
+      agentId: ROOM_GEMIE_ID,
     });
     return { id: input.clientMessageId, seq, createdAt };
   });

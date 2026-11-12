@@ -63,6 +63,7 @@ describe('it suggests, and cannot create', () => {
       conversationId: 'c',
       title: 't',
       source: 'app',
+      agentId: 'gemie-1',
     });
     expect(createSpy).toHaveBeenCalledTimes(1);
     createSpy.mockClear();

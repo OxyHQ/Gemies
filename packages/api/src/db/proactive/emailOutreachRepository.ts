@@ -5,7 +5,8 @@
  * else reads or writes them.
  */
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import type { Executor } from '../index.js';
 import {
   emailAlertPreferences,
@@ -16,41 +17,49 @@ import {
 /** No row is ON, for Alia and for an agent's own mailbox alike. */
 export const EMAIL_ALERTS_DEFAULT = true;
 
-function actorIs(agentId: string | null) {
-  return agentId === null
-    ? isNull(emailAlertPreferences.agentId)
+/**
+ * ROLLOUT WINDOW ONLY (ADR 0034): until migration 0136 (post, same release) rewrites them, a switch
+ * set before the cut names Alia as `NULL`. Her gemie's own row wins over such a one. After 0136 no
+ * `NULL` exists (0139 makes the column NOT NULL) and this reads only her id.
+ */
+function gemieIs(agentId: string) {
+  return agentId === ALIA_GEMIE_ID
+    ? or(eq(emailAlertPreferences.agentId, agentId), isNull(emailAlertPreferences.agentId))
     : eq(emailAlertPreferences.agentId, agentId);
 }
 
-/** Whether this person wants to hear about important email from this actor (`null` = Alia). */
+/** Whether this person wants to hear about important email from this gemie (Alia's: their own Inbox). */
 export async function isEmailAlertEnabled(
   db: Executor,
   oxyUserId: string,
-  agentId: string | null,
+  agentId: string,
 ): Promise<boolean> {
   const [row] = await db
     .select({ enabled: emailAlertPreferences.enabled })
     .from(emailAlertPreferences)
-    .where(and(eq(emailAlertPreferences.oxyUserId, oxyUserId), actorIs(agentId)))
+    .where(and(eq(emailAlertPreferences.oxyUserId, oxyUserId), gemieIs(agentId)))
+    .orderBy(sql`${emailAlertPreferences.agentId} nulls last`)
     .limit(1);
   return row?.enabled ?? EMAIL_ALERTS_DEFAULT;
 }
 
-/** Every switch this person has set, keyed by agent id (`null` = Alia). Unset ones are absent. */
+/** Every switch this person has set, keyed by gemie id. Unset ones are absent. */
 export async function listEmailAlertPreferences(
   db: Executor,
   oxyUserId: string,
-): Promise<Map<string | null, boolean>> {
+): Promise<Map<string, boolean>> {
   const rows = await db
     .select({ agentId: emailAlertPreferences.agentId, enabled: emailAlertPreferences.enabled })
     .from(emailAlertPreferences)
-    .where(eq(emailAlertPreferences.oxyUserId, oxyUserId));
-  return new Map(rows.map((row) => [row.agentId, row.enabled]));
+    .where(eq(emailAlertPreferences.oxyUserId, oxyUserId))
+    // `nulls first`, so Alia's own row, read after, wins over a pre-cut NULL (see `gemieIs`).
+    .orderBy(sql`${emailAlertPreferences.agentId} nulls first`);
+  return new Map(rows.map((row) => [row.agentId ?? ALIA_GEMIE_ID, row.enabled]));
 }
 
 export async function setEmailAlertPreference(
   db: Executor,
-  input: { oxyUserId: string; agentId: string | null; enabled: boolean },
+  input: { oxyUserId: string; agentId: string; enabled: boolean },
 ): Promise<void> {
   await db
     .insert(emailAlertPreferences)
@@ -70,7 +79,7 @@ export async function setEmailAlertPreference(
  */
 export async function claimEmailOutreach(
   db: Executor,
-  input: { mailboxAccountId: string; messageId: string; oxyUserId: string; agentId: string | null },
+  input: { mailboxAccountId: string; messageId: string; oxyUserId: string; agentId: string },
 ): Promise<string | null> {
   const [row] = await db
     .insert(emailOutreachDecisions)

@@ -3,6 +3,7 @@ import type { ApiDatabase } from '../index.js';
 import { bots, botUsers } from '../schema/bots.js';
 import { connectedAccounts } from '../schema/integrations.js';
 import { createOxyTask, revokeOxyTask } from '../../lib/oxy-task-authority.js';
+import { personAssistantActor } from '../../lib/gemie-oxy-actor.js';
 
 /** Run only from a controlled server process. Never return/log a stored bearer. */
 export async function migrateChannelTaskAuthority(
@@ -49,7 +50,7 @@ export async function migrateChannelTaskAuthority(
         taskId = await create({
           accessToken: row.token,
           effectiveAccountId: row.oxyUserId,
-          actor: { type: 'alia', ownerAccountId: row.oxyUserId },
+          actor: personAssistantActor(row.oxyUserId),
           origin: { kind: 'automation', id: `channel:${row.id}` },
         });
       } catch (error: unknown) {

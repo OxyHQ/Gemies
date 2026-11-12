@@ -1,6 +1,8 @@
 import { uuidv7 } from '@oxy.so/db';
 import { z } from 'zod';
 import { findAgentById } from '../db/agents/agentRepository.js';
+import { ALIA_GEMIE_ID } from '../domain/alia-gemie.js';
+import type { AgentTaskAuthority } from '../domain/agent.js';
 import {
   listActiveTaskAuthorityIds,
   markTaskAuthorityRevoked,
@@ -107,7 +109,6 @@ export const automationTriggerSchema = z.discriminatedUnion('type', [
 ]);
 
 const automationActorSelectionSchema = z.discriminatedUnion('mode', [
-  z.object({ mode: z.literal('alia') }).strict(),
   z.object({ mode: z.literal('fixed'), agentId: z.string().min(1) }).strict(),
   z
     .object({
@@ -121,8 +122,9 @@ export const createAutomationSchema = z
   .object({
     objective: z.string().trim().min(1).describe('What the automation must accomplish'),
     trigger: automationTriggerSchema,
+    // A task that names no gemie is Alia's (ADR 0034 §2, §4).
     actorSelection: automationActorSelectionSchema
-      .default({ mode: 'alia' })
+      .default({ mode: 'fixed', agentId: ALIA_GEMIE_ID })
       .describe('Omit for Alia; an agent only if the user asked for one of theirs'),
     executionMode: z
       .enum(['observe', 'execute'])
@@ -296,10 +298,29 @@ function actionKey(action: CreateAutomationInput['actions'][number]): string {
   ]);
 }
 
-/** The agents a selection names; none for Alia, who needs no ownership check. */
+/** The gemies a selection names. */
 function selectedAgentIds(selection: CreateAutomationInput['actorSelection']): string[] {
-  if (selection.mode === 'alia') return [];
   return selection.mode === 'fixed' ? [selection.agentId] : selection.eligibleAgentIds;
+}
+
+/**
+ * Whether the task runs under standing authority: exactly one gemie, named `fixed`, whose
+ * `taskAuthority` is `standing` (Alia). Such a gemie runs a task herself on `alia-tasks` and is never
+ * one candidate among several, so an `automatic` selection naming one is refused, and so is a watch
+ * — the cheap tick that only wakes a standing-authority run — on any other gemie.
+ */
+function runsUnderStandingAuthority(
+  definition: CreateAutomationInput,
+  agents: readonly { readonly taskAuthority: AgentTaskAuthority }[],
+): boolean {
+  const standing = agents.some((agent) => agent.taskAuthority === 'standing');
+  if (standing && definition.actorSelection.mode !== 'fixed') {
+    throw new AutomationCreationError('standing_gemie_requires_fixed_selection', 400);
+  }
+  if (definition.inputs[WATCH_INPUT_KEY] !== undefined && !standing) {
+    throw new AutomationCreationError('watch_requires_alia', 400);
+  }
+  return standing;
 }
 
 function validateDefinition(definition: CreateAutomationInput): void {
@@ -312,9 +333,6 @@ function validateDefinition(definition: CreateAutomationInput): void {
   if (executionPolicyError) throw new AutomationCreationError(executionPolicyError, 400);
   if (definition.inputs[WATCH_INPUT_KEY] !== undefined) {
     if (!watchConfigOf(definition.inputs)) throw new AutomationCreationError('invalid_watch', 400);
-    if (definition.actorSelection.mode !== 'alia') {
-      throw new AutomationCreationError('watch_requires_alia', 400);
-    }
     if (definition.trigger.type !== 'schedule') {
       throw new AutomationCreationError('watch_requires_schedule', 400);
     }
@@ -539,7 +557,7 @@ export async function updateStructuredAutomation(input: {
       : []),
     ...definition.dataFlow.sources,
   ]);
-  const isAlia = selection.mode === 'alia';
+  const isAlia = runsUnderStandingAuthority(definition, agents);
   const authorityPairs =
     !isAlia &&
     definition.executionMode === 'execute' &&
@@ -711,7 +729,7 @@ export async function createStructuredAutomation(input: {
     ...(trigger.type === 'event' && trigger.resource ? [trigger.resource] : []),
     ...input.definition.dataFlow.sources,
   ]);
-  const isAlia = selection.mode === 'alia';
+  const isAlia = runsUnderStandingAuthority(input.definition, agents);
   const authorityPairs =
     !isAlia &&
     input.definition.executionMode === 'execute' &&

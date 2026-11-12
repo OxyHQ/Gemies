@@ -491,7 +491,7 @@ describe('Alia only learns from Alia’s answered turns', () => {
     H.timeline.length = 0;
 
     runPostChatHooks(
-      lifecycleContext({ agentTurn: true, autonomyRuntime: runtime }),
+      lifecycleContext({ gemieMemoryTurn: true, autonomyRuntime: runtime }),
       'answer',
       OBSERVED,
       null,

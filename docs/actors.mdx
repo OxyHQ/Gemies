@@ -9,8 +9,22 @@ order: 1
 Everything Alia does is done by an **actor**, and every actor acts either **for a
 person** (on that person's data) or **as itself** (on its own Oxy account). This
 page is the map; each section ends with the doc that holds the detail and the code
-where it is decided. The binding decision is
-[ADR 0015](./adr/0015-actors-and-identities.md).
+where it is decided. The binding decisions are
+[ADR 0015](./adr/0015-actors-and-identities.md) and, for what an actor is in code,
+[ADR 0034](./adr/0034-gemies-and-alia.md).
+
+**Every actor is a gemie: an `agents` row.** Alia is one too — the official, global
+gemie `ALIA_GEMIE_ID` (`domain/alia-gemie.ts`, seeded by migration 0135) — and a turn,
+conversation, call or task that names no gemie is hers (`lib/alia-gemie.ts`). What
+makes her different is the configuration of her row, never a `null` agent or her id:
+
+| Attribute (`agents`) | Alia | Every other gemie (the default) | What it decides |
+|---|---|---|---|
+| `memory_store` | `nilo` | `gemie` | Whose memory of the person: Nilo's (`oxy_nilo_memories__*`, answer settings, writing style) or its own `agent_memory_documents` |
+| `reach` | `person` | `grants` | The person's own assistant (Oxy's person lane, every connector, integration and agent of the person, their installed skills, their name and Inbox context, the base identity, no remit) or a persona under its grants, linked skills and remit |
+| `mailbox` | `false` | `true` | Whether its own Oxy account is a working one (`self_*` tools, own-mailbox alerts) |
+| `task_authority` | `standing` | `session` | Tasks under standing authority on `alia-tasks`, no agent session or thread; or durable sessions and thread turns |
+| `capability_grants` | no `computer`, no `browser` | its owner's | Its fixed families; Alia has no machine |
 
 ## The two actors
 
@@ -22,6 +36,16 @@ where it is decided. The binding decision is
 **Alia** is the assistant everyone gets: the orchestrator that answers, remembers,
 runs tasks and reaches the person's Oxy apps the way a mail assistant reads its
 owner's mail. Nobody has to create or pick an agent to use any of that.
+
+Her Oxy account is not there yet: Oxy reserves the username `alia` and models her as
+the actor `{ type: 'alia', ownerAccountId }`, with no account (Oxy contract). Until
+Oxy creates her gemie's account (ADR 0034 phase 2), her row's `oxy_account_id` holds
+`ALIA_PENDING_OXY_ACCOUNT_ID`, which Oxy resolves to nobody, and her Oxy calls keep
+speaking that lane through the one seam that chooses it, `lib/gemie-oxy-actor.ts`.
+The public wire still spells her as no `agentId` (`publicAgentId`), so a chat with
+her looks exactly as it did until the routes take the Gemies vocabulary. Her row is
+public (everybody uses it) but not listed in the catalogue or in `searchAgents` until
+that account exists: a card with no name would be a regression.
 
 **An agent** is optional. It is an Oxy `bot` account owned by the person who
 created it; Alia stores only its runtime (prompt, model, archetype, marketplace
@@ -70,11 +94,13 @@ question. See [Governance](./agents.md#governance).
 ## Background work: every task has an actor, Alia by default
 
 A task (`/automations`) always has a responsible actor. `actorSelection` omitted
-means `{ mode: 'alia' }` (`automation_definitions.actor_mode`: `alia`, `fixed` or
-`automatic`). Nobody has to pick an agent.
+means `{ mode: 'fixed', agentId: ALIA_GEMIE_ID }` (`automation_definitions.actor_mode`:
+`fixed` or `automatic`; the `alia` mode was retired by 0135–0139). Nobody has to pick an
+agent.
 
-- **Alia's tasks** run unattended on the `alia-tasks` queue (`lib/alia-task-queue.ts`,
-  `lib/alia-task-run.ts`) and post their result into the task's own conversation.
+- **Alia's tasks** (a gemie with `task_authority = 'standing'`) run unattended on the
+  `alia-tasks` queue (`lib/alia-task-queue.ts`, `lib/alia-task-run.ts`, which loads the
+  gemie recorded on the run) and post their result into the task's own conversation.
   They use **standing Oxy authority** asked for when the task is saved with the
   owner present (`provisionAliaTaskAuthorizations` in `lib/automation-authority.ts`).
 - **Watches** make a recurring "tell me when X changes" cheap: each tick is a hashed
@@ -105,9 +131,13 @@ are unanswered (`lib/agent/outreach-budget.ts`).
 
 ## Memory is per actor
 
-Alia remembers the person in `user_memories`; each agent remembers them separately
-in `agent_memory_documents` (MEMORY.md plus topic files, per agent and person). An
-agent turn never receives Alia's memory or her memory tools. The person sees, edits
+Alia (`memory_store = 'nilo'`) remembers the person in Nilo, with her answer settings
+and writing style in `user_memories`; each other gemie (`memory_store = 'gemie'`)
+remembers them separately in `agent_memory_documents` (MEMORY.md plus topic files, per
+gemie and person). A turn of any other gemie never receives Alia's memory or her
+memory tools: the catalogue declares them for Oxy's person lane only, and the assembler
+drops them for any gemie whose store is not Nilo (`lib/tool-pipeline.ts`;
+`alia-gemie-guarantees.test.ts`). The person sees, edits
 and forgets an agent's in that agent's editor (`GET|PUT|DELETE /agents/:id/memory`); Alia's
 lives in Nilo (Settings → Memory says so and opens it). Memory in a prompt is data, never
 instructions (`memoryDataBlock`, `lib/memory/memory-prompt.ts`).
@@ -126,8 +156,10 @@ An agent with the `computer` grant has its own Linux machine and a real browser:
   idle; the API wakes it on demand (`lib/computer/host-waker.ts`).
 - The person watches it live and can take control (agent page → Computer,
   `routes/agents/computer.ts`, `packages/app/src/features/agents/ui/computer/`).
-- Alia herself has no computer; the tools are built only for an agent's runtime turn
-  (`lib/agent/actions.ts`) and only when `ALIA_COMPUTER_HOST_URL` is set.
+- Alia herself has no computer: her row holds no `computer` grant, and her work never
+  runs on an agent runtime (`task_authority = 'standing'`); the tools are built only for
+  an agent's runtime turn (`lib/agent/actions.ts`) and only when `ALIA_COMPUTER_HOST_URL`
+  is set.
 
 - Detail: [Agents → The agent's computer](./agents.md#the-agents-computer-computer).
 - Operations: `OxyHQ/oxy-infra` `docs/runbooks/47-alia-computer-host.md`;

@@ -58,6 +58,7 @@ import { authenticateToken, authenticateTokenOrApiKey } from '../middleware/auth
 import type { Request, Response } from 'express';
 import { log } from '../lib/logger.js';
 import { z } from 'zod';
+import { ALIA_GEMIE_ID, publicAgentId } from '../domain/alia-gemie.js';
 
 const router = Router();
 
@@ -279,6 +280,9 @@ router.post('/new', authenticateToken, async (req: Request, res: Response) => {
         const agent = await findAgentById(getDb(), memberId);
         if (
           agent === null ||
+          // A room's members are personas. The person's own assistant (Alia) stays outside rooms
+          // as she stays outside spaces; a member asks her instead (`askAlia`).
+          agent.reach !== 'grants' ||
           (await canReachAgent(agent, {
             oxyUserId: req.user.id,
             accessToken: req.accessToken,
@@ -303,7 +307,7 @@ router.post('/new', authenticateToken, async (req: Request, res: Response) => {
         id: group.conversation.conversationId,
         title: group.conversation.title,
         source: group.conversation.source,
-        agentId: null,
+        agentId: publicAgentId(group.conversation.agentId),
         memberAgentIds: group.memberAgentIds,
         app: group.conversation.originApp,
         createdAt: group.conversation.createdAt,
@@ -330,7 +334,8 @@ router.post('/new', authenticateToken, async (req: Request, res: Response) => {
       conversationId,
       title: 'New chat',
       source: sourceFromBody(req.body?.source) ?? 'app',
-      ...(agentId === undefined ? {} : { agentId }),
+      // A conversation that names no gemie is Alia's (ADR 0034 §4).
+      agentId: agentId ?? ALIA_GEMIE_ID,
       ...(originApp === undefined ? {} : { originApp }),
     });
 
@@ -338,7 +343,7 @@ router.post('/new', authenticateToken, async (req: Request, res: Response) => {
       id: conversation.conversationId,
       title: conversation.title,
       source: conversation.source,
-      agentId: conversation.agentId,
+      agentId: publicAgentId(conversation.agentId),
       app: conversation.originApp,
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt,
@@ -426,7 +431,7 @@ router.get('/', authenticateTokenOrApiKey, async (req: Request, res: Response) =
         title: c.title,
         lastMessage: c.lastMessage,
         source: c.source,
-        agentId: c.agentId,
+        agentId: publicAgentId(c.agentId),
         memberAgentIds: groupMembers.get(c.conversationId) ?? [],
         spaceId: spaceIds.get(c.conversationId) ?? null,
         app: c.originApp,
@@ -469,7 +474,7 @@ router.get('/:id', authenticateTokenOrApiKey, async (req: Request, res: Response
       title: conversation.title,
       lastMessage: conversation.lastMessage,
       source: conversation.source,
-      agentId: conversation.agentId,
+      agentId: publicAgentId(conversation.agentId),
       memberAgentIds,
       spaceId,
       app: conversation.originApp,
@@ -536,6 +541,8 @@ router.post('/', authenticateTokenOrApiKey, async (req: Request, res: Response) 
         ...(lastMessage === undefined ? {} : { lastMessage }),
         ...(typeof title === 'string' && title.length > 0 ? { title } : {}),
         titleOnInsert,
+        // A thread first stored by a save names no gemie, so it is Alia's (ADR 0034 §4).
+        agentId: ALIA_GEMIE_ID,
         ...(onInsertSource === undefined ? {} : { source: onInsertSource }),
         ...(originApp === undefined ? {} : { originApp }),
       }),

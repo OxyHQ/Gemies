@@ -14,8 +14,13 @@ import {
   type NewConversation,
   createConversation,
 } from './conversationRepository';
+import { ROOM_GEMIE_ID } from '../../domain/alia-gemie';
 
-/** The fields `POST /conversations/new` sets for a group: an ordinary conversation, minus the lead. */
+/**
+ * The fields `POST /conversations/new` sets for a group: an ordinary conversation, minus the lead.
+ * A group's speakers are its members; the conversation itself belongs to Alia's gemie
+ * (`ROOM_GEMIE_ID`), never to one of them.
+ */
 export interface NewGroupConversation extends Omit<NewConversation, 'agentId' | 'agentThreadId'> {
   /** In the order they answer. The caller has already checked the count and that each is reachable. */
   readonly agentIds: readonly string[];
@@ -31,7 +36,10 @@ export async function createGroupConversation(
 ): Promise<{ conversation: ConversationRow; memberAgentIds: string[] }> {
   const { agentIds, ...conversationFields } = input;
   const write = async (tx: Executor) => {
-    const conversation = await createConversation(tx, conversationFields);
+    const conversation = await createConversation(tx, {
+      ...conversationFields,
+      agentId: ROOM_GEMIE_ID,
+    });
     await tx.insert(conversationMembers).values(
       agentIds.map((agentId, position) => ({
         oxyUserId: input.oxyUserId,

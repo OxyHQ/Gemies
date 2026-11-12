@@ -4,6 +4,7 @@
  * conversation it starts, once, and lists only its own (`GET /conversations?app=`),
  * while a list without `app` is all of them — the Alia app's.
  */
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 
@@ -85,6 +86,7 @@ beforeEach(async () => {
     await db.delete(table).where(sql`${table.oxyUserId} = ${ALICE.id}`);
   }
   await createConversation(db, {
+    agentId: ALIA_GEMIE_ID,
     oxyUserId: ALICE.id,
     conversationId: 'in-alia',
     title: 'Alia',
@@ -99,6 +101,7 @@ beforeEach(async () => {
     originApp: 'homiio',
   });
   await createConversation(db, {
+    agentId: ALIA_GEMIE_ID,
     oxyUserId: ALICE.id,
     conversationId: 'in-mercaria',
     title: 'Shoes',
@@ -153,6 +156,7 @@ describe('an app labels the conversation it starts, once', () => {
   it('a turn labels the conversation it creates from host.app, and only then', async () => {
     const turn = (conversationId: string) =>
       saveConversation({
+        agentId: ALIA_GEMIE_ID,
         userId: ALICE.id,
         conversationId,
         messages: [{ role: 'user', content: 'zapatos' }],
@@ -174,6 +178,7 @@ describe('an app labels the conversation it starts, once', () => {
   it('the database refuses one too, whoever writes it', async () => {
     await expect(
       createConversation(db, {
+        agentId: ALIA_GEMIE_ID,
         oxyUserId: ALICE.id,
         conversationId: 'bad',
         title: 'x',

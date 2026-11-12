@@ -42,7 +42,7 @@ const MEMORY_PROMPT = 'memory';
 
 import { log } from './logger.js';
 import { agentPromptName, type HydratedAgent } from './agent-identity.js';
-import { readCapabilityGrants } from '../domain/capability-grants.js';
+import { readGemieGrants } from '../domain/capability-grants.js';
 import type { IWritingStyleProfile } from '../domain/writing-style.js';
 import { formatStyleForPrompt } from './style/style-prompt.js';
 import { agentMemoryPromptSection } from './agent/agent-memory-runtime.js';
@@ -112,8 +112,11 @@ export interface SystemPromptOptions {
    * shape how the turn is answered. Neither goes above the identity guard.
    */
   skills?: { index: string; active: string; agentScoped?: boolean } | null;
-  /** Linked agent (for archetype prompt injection) */
-  linkedAgent?: HydratedAgent | null;
+  /**
+   * The turn's gemie: the one it named, or Alia's. Its `reach`, `memoryStore` and grants decide
+   * whose identity, memory and person context the prompt carries.
+   */
+  linkedAgent: HydratedAgent;
   /**
    * The names of the tools registered for THIS turn, the client's own included.
    * Prompt text that names a tool is loaded only when the tool is in this list,
@@ -208,23 +211,26 @@ export class SystemPromptBuilder {
      * an agent with no grants unable to CALL a memory tool while still reading
      * the same memory in its system prompt. A capability boundary applies to
      * information as well as effects, so every user-owned prompt fragment is
-     * gated from this same parsed set.
+     * gated from the gemie's own configuration.
      *
-     * Ordinary Alia has no linked agent and remains unpartitioned.
+     * The person's own assistant (`reach = 'person'`, Alia) is the person's:
+     * their name, their Inbox context and their installed skills reach her
+     * prompt, under the base identity and with no remit of her own.
      */
-    const agentGrants = linkedAgent
-      ? readCapabilityGrants(linkedAgent.capabilityGrants ?? [])
-      : null;
+    const personAssistant = linkedAgent.reach === 'person';
+    const agentGrants = readGemieGrants(linkedAgent);
     /**
-     * Memory is per actor. Alia's memory of the person (recall, facts,
-     * preferences, context, writing style) is read by ALIA only; an agent with
-     * the `memory` grant reads its OWN memory of the person
-     * (`agentMemoryPromptSection`) and nothing of hers.
+     * Memory is per actor, and `memoryStore` says which is the gemie's.
+     * Alia's memory of the person (`nilo`: answer settings, writing style and
+     * the memory prompt that sends her to Nilo) is read by a Nilo-memory gemie
+     * only; any other gemie with the `memory` grant reads its OWN memory of the
+     * person (`agentMemoryPromptSection`) and nothing of hers.
      */
-    const mayReadAliaMemory = agentGrants === null && personalization;
+    const mayReadAliaMemory =
+      linkedAgent.memoryStore === 'nilo' && agentGrants.allows('memory') && personalization;
     const mayReadAgentMemory =
-      agentGrants !== null && agentGrants.allows('memory') && personalization;
-    const mayReadSkills = agentGrants === null || skills?.agentScoped === true;
+      linkedAgent.memoryStore === 'gemie' && agentGrants.allows('memory') && personalization;
+    const mayReadSkills = personAssistant || skills?.agentScoped === true;
 
     // 1. Base prompt: the surface's prompt over `base.md`.
     let systemMessage = await loadBasePrompt(SURFACE_PROMPTS[surface], clientContext);
@@ -265,7 +271,7 @@ export class SystemPromptBuilder {
     // a prompt-safe projection, exposing the person's Inbox context here
     // would be a second, ungoverned authorization path.
     let oxyServiceCtx = '';
-    if (isDirectUserSession && agentGrants === null && userId && accessToken) {
+    if (isDirectUserSession && personAssistant && userId && accessToken) {
       try {
         const [oxyServicePrompt, ctx] = await Promise.all([
           getOxyServicePromptFragment(userId),
@@ -314,7 +320,7 @@ export class SystemPromptBuilder {
     // 8. The person (direct sessions only).
     if (isDirectUserSession) {
       const userName = oxyUser?.name?.full || oxyUser?.name?.first || oxyUser?.username;
-      if (agentGrants === null && userName) {
+      if (personAssistant && userName) {
         systemMessage += `\n\nThe user's name is ${userName}.`;
       }
       if (oxyServiceCtx) systemMessage += oxyServiceCtx;
@@ -362,7 +368,7 @@ export class SystemPromptBuilder {
     }
 
     // The agent's OWN memory of this person, under the same grant as the rest.
-    if (linkedAgent && mayReadAgentMemory && userId && isDirectUserSession) {
+    if (mayReadAgentMemory && userId && isDirectUserSession) {
       systemMessage += await agentMemoryPromptSection(userId, linkedAgent._id);
     }
 
@@ -375,16 +381,16 @@ export class SystemPromptBuilder {
     }
 
     /**
-     * The agent's remit (prepended — wraps everything including the skill).
+     * The gemie's remit (prepended — wraps everything including the skill).
      *
-     * Unconditional: an agent with no prompt of its own would otherwise get a
-     * NAME from the guard and no description of itself, which is the "it
-     * answers everything" bug. {@link agentRemitPrompt} always has something to
-     * say; the guard's remit rule points at what it says. Keyed on
-     * `linkedAgent` alone, exactly as the guard below is, so the two cannot
-     * disagree.
+     * Unconditional for a persona: one with no prompt of its own would
+     * otherwise get a NAME from the guard and no description of itself, which
+     * is the "it answers everything" bug. {@link agentRemitPrompt} always has
+     * something to say; the guard's remit rule points at what it says. Keyed on
+     * `personAssistant` alone, exactly as the guard below is, so the two cannot
+     * disagree: the person's own assistant has no remit, and answers anything.
      */
-    if (linkedAgent) {
+    if (!personAssistant) {
       systemMessage = `${agentRemitPrompt(linkedAgent)}${await agentSpacePrompt(linkedAgent)}\n\n---\n\n${systemMessage}`;
       log.general.info(
         { agentName: agentPromptName(linkedAgent), archetype: linkedAgent.archetype },
@@ -395,10 +401,10 @@ export class SystemPromptBuilder {
     // 0. Identity guard — prepended LAST so it sits above the skill/agent
     // prompts and every other layer. Nothing downstream can override the
     // Alia identity boundary.
-    // An agent's turn says the AGENT's name and carries the remit rule; an
-    // ordinary turn says the model's and stays general-purpose.
+    // A persona's turn says the GEMIE's name and carries the remit rule; the
+    // person's own assistant says she is Alia and stays general-purpose.
     systemMessage = `${buildIdentityGuard({
-      ...(linkedAgent ? { agentName: agentPromptName(linkedAgent) } : {}),
+      ...(personAssistant ? {} : { agentName: agentPromptName(linkedAgent) }),
       modelName: model?.name,
       publisherName: model?.publisher.name,
     })}\n\n---\n\n${systemMessage}`;

@@ -26,6 +26,7 @@
  * the state this repository was already in.
  */
 
+import { aliaGemie, personaGemie } from '../../__tests__/support/gemies.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../logger.js', () => {
@@ -48,6 +49,7 @@ const { agentPromptName } = await import('../agent-identity.js');
 /** A hydrated agent with its own prompt, in the shape the builder reads. */
 function agent(overrides: Record<string, unknown> = {}) {
   return {
+    ...personaGemie(),
     _id: 'agent-1',
     id: 'agent-1',
     oxyAccountId: 'oxy-bot-1',
@@ -92,8 +94,9 @@ let build: (linkedAgent: ReturnType<typeof agent> | null) => Promise<string>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // `null` is a turn that named no gemie: Alia's.
   build = (linkedAgent) =>
-    SystemPromptBuilder.build({ ...BASE, linkedAgent } as Parameters<
+    SystemPromptBuilder.build({ ...BASE, linkedAgent: linkedAgent ?? aliaGemie() } as Parameters<
       typeof SystemPromptBuilder.build
     >[0]);
 });

@@ -165,13 +165,13 @@ describe('the provider loop after the global timeout', () => {
   });
 
   it('marks an agent turn for the after-chat hooks', async () => {
-    const { loopParams } = params({ agentTurn: true });
+    const { loopParams } = params({ gemieMemoryTurn: true });
     H.runStream.mockResolvedValue(streamed);
 
     await runProviderLoop(loopParams);
 
     expect(vi.mocked(runPostChatHooks)).toHaveBeenCalledWith(
-      expect.objectContaining({ agentTurn: true }),
+      expect.objectContaining({ gemieMemoryTurn: true }),
       'Hola',
       expect.anything(),
       null,
