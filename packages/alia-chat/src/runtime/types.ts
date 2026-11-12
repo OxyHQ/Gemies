@@ -109,6 +109,12 @@ export interface Conversation {
    * space instead of among Alia's chats or the group chats.
    */
   spaceId?: string | null;
+  /**
+   * The thread row this conversation is a stretch of, or `null`. Set on the stretches of Alia's
+   * thread (`useGemieThread`): a client files them under the thread, never among her loose chats,
+   * though both carry `agentId: null` (Alia).
+   */
+  threadId?: string | null;
   /** The app the conversation started in, by its slug, or `null` for Alia's own surfaces. */
   app?: string | null;
   createdAt: Date;

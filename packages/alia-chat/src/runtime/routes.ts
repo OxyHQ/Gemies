@@ -41,15 +41,41 @@ export const API_ROUTES = {
 } as const;
 
 /**
+ * Which thread a person holds with a gemie: by the gemie's Oxy handle, or by its id — Alia's, whose
+ * Oxy account has no handle yet (ADR 0034). The two address the SAME thread and the same routes.
+ */
+export type AliaThreadAddress = { readonly handle: string } | { readonly gemieId: string };
+
+/** The thread's own path; its messages and its search hang off it. */
+function threadPath(thread: AliaThreadAddress): string {
+  return 'handle' in thread
+    ? `/agents/thread/${encodeURIComponent(thread.handle)}`
+    : `/agents/${encodeURIComponent(thread.gemieId)}/thread`;
+}
+
+/**
+ * The thread's cache key: the handle, as it always was (a host's own thread query lives under
+ * `aliaQueryKeys.threads.all(handle)`), or `id:<gemieId>`, which no handle can be.
+ */
+export function threadKey(thread: AliaThreadAddress): string {
+  return 'handle' in thread ? thread.handle : `id:${thread.gemieId}`;
+}
+
+/**
  * An agent's thread and its runs. These belong to Alia's own clients (the app), which are the only
  * ones with agents of their own: `agentId`, `threadHandle` and the agent panel are not for an
  * embedding Oxy app, and these routes answer Alia's origins alone, like `/conversations` does.
  */
 export const AGENT_ROUTES = {
+  /**
+   * Open the thread: `{ agent, conversationId, threadId }`, the active stretch (created the first
+   * time the two speak) and, for a gemie whose chats are loose (Alia), the thread row.
+   */
+  thread: (thread: AliaThreadAddress) => threadPath(thread),
   /** A page of the thread, oldest-first, crossing the seams between its conversations. */
-  threadMessages: (handle: string) => `/agents/thread/${encodeURIComponent(handle)}/messages`,
+  threadMessages: (thread: AliaThreadAddress) => `${threadPath(thread)}/messages`,
   /** Everything said in the thread that matches, across every conversation in it. */
-  threadSearch: (handle: string) => `/agents/thread/${encodeURIComponent(handle)}/search`,
+  threadSearch: (thread: AliaThreadAddress) => `${threadPath(thread)}/search`,
   /** What a run of an agent has done so far, to hydrate the live feed. */
   sessionStatus: (sessionId: string) => `/agents/sessions/${sessionId}/status`,
 } as const;

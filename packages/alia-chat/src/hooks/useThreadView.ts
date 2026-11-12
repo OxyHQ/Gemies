@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import type { AliaThreadAddress } from '../runtime/routes';
 import type { ThreadHistory, ThreadSearchHit } from '../runtime/thread/thread-history';
 import { useThreadHistory } from '../runtime/use-thread-history';
 import { useThreadWindow } from '../runtime/use-thread-search';
@@ -12,18 +13,18 @@ import { useThreadWindow } from '../runtime/use-thread-search';
  * it. The way back is leaving, not scrolling: the endpoint pages BACKWARDS only, so walking
  * forward from a jump would be a road that ends.
  *
- * `threadHandle` is the agent's handle; without it the chat is one conversation with nothing
- * behind it and there is nothing to page into, search or jump to.
+ * `thread` is the gemie's thread, by handle or by id; without it the chat is one conversation with
+ * nothing behind it and there is nothing to page into, search or jump to.
  */
 export function useThreadView(
-  threadHandle: string | undefined,
+  thread: AliaThreadAddress | undefined,
   conversationId: string | undefined,
 ) {
-  const present = useThreadHistory(threadHandle, conversationId);
+  const present = useThreadHistory(thread, conversationId);
   const [searchOpen, setSearchOpen] = useState(false);
   /** The message the reader jumped to, by cursor, or `null` for the present. */
   const [jumpedTo, setJumpedTo] = useState<string | null>(null);
-  const past = useThreadWindow(threadHandle, jumpedTo);
+  const past = useThreadWindow(thread, jumpedTo);
   const jumped = jumpedTo !== null;
 
   // Ask for the page above, unless one is already coming. Bloom fires `onStartReached` once per
@@ -38,10 +39,8 @@ export function useThreadView(
 
   const history = useMemo<ThreadHistory | undefined>(
     () =>
-      threadHandle === undefined
-        ? undefined
-        : { messages, loading, ...(hasMore ? { loadMore } : {}) },
-    [threadHandle, messages, loading, hasMore, loadMore],
+      thread === undefined ? undefined : { messages, loading, ...(hasMore ? { loadMore } : {}) },
+    [thread, messages, loading, hasMore, loadMore],
   );
 
   /**

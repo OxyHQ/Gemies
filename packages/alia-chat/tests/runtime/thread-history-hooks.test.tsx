@@ -33,6 +33,7 @@ vi.mock('../../src/runtime/api', () => ({
 import { useThreadView } from '../../src/hooks/useThreadView';
 import { useThreadHistory } from '../../src/runtime/use-thread-history';
 import { useThreadSearch } from '../../src/runtime/use-thread-search';
+import { useGemieThread } from '../../src/runtime/use-gemie-thread';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -80,7 +81,7 @@ afterEach(() => {
 
 describe('the history behind the conversation on screen', () => {
   it('asks for nothing until the thread has said which conversation is live', async () => {
-    render(() => useThreadHistory('pepe', undefined));
+    render(() => useThreadHistory({ handle: 'pepe' }, undefined));
     await settle();
     expect(api.calls).toEqual([]);
   });
@@ -99,7 +100,7 @@ describe('the history behind the conversation on screen', () => {
             nextCursor: 'k3',
           }
         : { messages: [wire('m1', 'c1', 'k1')], nextCursor: null };
-    const hook = render(() => useThreadHistory('pepe', 'c3'));
+    const hook = render(() => useThreadHistory({ handle: 'pepe' }, 'c3'));
     await settle();
 
     expect(api.calls).toEqual([
@@ -120,7 +121,7 @@ describe('the history behind the conversation on screen', () => {
 
   it('does not ask twice for an agent the server says is not there', async () => {
     api.fail = { status: 404 };
-    render(() => useThreadHistory('ghost', 'c3'));
+    render(() => useThreadHistory({ handle: 'ghost' }, 'c3'));
     await settle();
     await settle();
     expect(api.calls).toHaveLength(1);
@@ -129,7 +130,7 @@ describe('the history behind the conversation on screen', () => {
 
 describe('searching the thread', () => {
   it('is not a search until something is typed', async () => {
-    render(() => useThreadSearch('pepe', '   '));
+    render(() => useThreadSearch({ handle: 'pepe' }, '   '));
     await settle();
     expect(api.calls).toEqual([]);
   });
@@ -147,7 +148,7 @@ describe('searching the thread', () => {
         },
       ],
     });
-    const hook = render(() => useThreadSearch('pepe', '  invoice '));
+    const hook = render(() => useThreadSearch({ handle: 'pepe' }, '  invoice '));
     await settle();
 
     expect(api.calls).toEqual([
@@ -170,7 +171,7 @@ describe('what the thread is looking at', () => {
       params?.at === undefined
         ? { messages: [wire('m5', 'c2', 'k5')], nextCursor: null }
         : { messages: [wire('old1', 'c1', 'k1'), wire('old2', 'c1', 'k2')], nextCursor: 'k1' };
-    const view = render(() => useThreadView('pepe', 'c3'));
+    const view = render(() => useThreadView({ handle: 'pepe' }, 'c3'));
     await settle();
     expect(view.current().jumped).toBe(false);
     expect(view.current().history?.messages.map((m) => m.id)).toEqual(['m5']);
@@ -206,8 +207,56 @@ describe('what the thread is looking at', () => {
 
   it('offers to load more only while there is more', async () => {
     api.answer = () => ({ messages: [wire('m5', 'c2', 'k5')], nextCursor: null });
-    const view = render(() => useThreadView('pepe', 'c3'));
+    const view = render(() => useThreadView({ handle: 'pepe' }, 'c3'));
     await settle();
     expect(view.current().history?.loadMore).toBeUndefined();
+  });
+});
+
+describe('a thread addressed by its gemie id (Alia’s, who has no handle)', () => {
+  const ALIA = '01a1cf00-cecf-7a24-868b-42b452105a6f';
+
+  it('opens it with GET /agents/:id/thread and hands back the stretch and the thread row', async () => {
+    api.answer = () => ({
+      agent: { _id: ALIA, name: null, handle: null, character: null, tagline: '', description: '' },
+      conversationId: 'c9',
+      threadId: 'thread-1',
+    });
+    const hook = render(() => useGemieThread(ALIA));
+    await settle();
+
+    expect(api.calls).toEqual([{ path: `/agents/${ALIA}/thread`, params: undefined }]);
+    expect(hook.current().data).toMatchObject({ conversationId: 'c9', threadId: 'thread-1' });
+  });
+
+  it('opens nothing without an id, and does not ask twice after a 404', async () => {
+    render(() => useGemieThread(undefined));
+    await settle();
+    expect(api.calls).toEqual([]);
+
+    api.fail = { status: 404 };
+    render(() => useGemieThread('gone'));
+    await settle();
+    await settle();
+    expect(api.calls).toHaveLength(1);
+  });
+
+  it('pages and searches the same thread through /agents/:id/thread/…', async () => {
+    api.answer = (path) =>
+      path.endsWith('/search') ? { hits: [] } : { messages: [], nextCursor: null };
+    render(() => useThreadHistory({ gemieId: ALIA }, 'c9'));
+    render(() => useThreadSearch({ gemieId: ALIA }, 'banana'));
+    await settle();
+
+    expect(api.calls.map((call) => call.path).sort()).toEqual([
+      `/agents/${ALIA}/thread/messages`,
+      `/agents/${ALIA}/thread/search`,
+    ]);
+  });
+
+  it('asks nothing for an empty id', async () => {
+    render(() => useThreadHistory({ gemieId: '' }, 'c9'));
+    await settle();
+    expect(api.calls).toEqual([]);
   });
 });

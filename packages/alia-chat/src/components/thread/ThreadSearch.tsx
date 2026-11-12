@@ -1,4 +1,5 @@
 import type { ThreadSearchHit } from '../../runtime/thread/thread-history';
+import type { AliaThreadAddress } from '../../runtime/routes';
 import { useThreadSearch } from '../../runtime/use-thread-search';
 import { useLabels } from '../../lib/labels';
 import { Button } from '@oxy.so/bloom/button';
@@ -29,8 +30,8 @@ import { ScrollView, View } from 'react-native';
  */
 
 interface ThreadSearchProps {
-  /** The handle whose thread is searched. */
-  handle: string;
+  /** The thread searched: by its gemie's handle, or by the gemie's id. */
+  thread: AliaThreadAddress;
   /** Open the thread around this message. */
   onJump: (hit: ThreadSearchHit) => void;
   onClose: () => void;
@@ -45,10 +46,10 @@ function hitDay(createdAt: string, locale: string): string {
   });
 }
 
-export const ThreadSearch = ({ handle, onJump, onClose }: ThreadSearchProps) => {
+export const ThreadSearch = ({ thread, onJump, onClose }: ThreadSearchProps) => {
   const { t, locale } = useLabels();
   const [query, setQuery] = useState('');
-  const { data: hits, isFetching, isError } = useThreadSearch(handle, query);
+  const { data: hits, isFetching, isError } = useThreadSearch(thread, query);
 
   /**
    * Told apart deliberately: nothing typed is not a search that found nothing.

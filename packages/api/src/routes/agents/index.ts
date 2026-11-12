@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import crudRouter from './crud.js';
 import generateRouter from './generate.js';
-import threadRouter from './thread.js';
+import threadRouter, { gemieThreadByIdRouter } from './thread.js';
 import sessionsRouter from './sessions.js';
 import reviewsRouter from './reviews.js';
 import activityRouter from './activity.js';
@@ -48,5 +48,10 @@ router.use('/', reviewsRouter);
 
 // CRUD last (has catch-all /:id routes)
 router.use('/', crudRouter);
+
+// After CRUD, and that is load-bearing too: `/:id/thread` also matches `/handle/thread`, the card of
+// a gemie whose handle is `thread`, which CRUD must answer first. Nothing in CRUD has a two-segment
+// route ending in `thread`, so every real `/<id>/thread` falls through to here.
+router.use('/', gemieThreadByIdRouter);
 
 export default router;

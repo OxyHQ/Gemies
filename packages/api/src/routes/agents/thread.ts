@@ -15,6 +15,15 @@
  * no endpoint to create one: starting a new stretch is `POST /conversations/new`
  * with the same `agentId`, which Alia has always been able to do.
  *
+ * ## A gemie with loose chats keeps its thread apart (ADR 0034)
+ *
+ * Alia's chats are loose conversations, like ChatGPT's, so for her the pair is
+ * not the thread: her thread is one `agent_threads` row per person and its
+ * stretches carry that row's id. `lib/gemie-thread.ts` is the one place that
+ * says which conversations a thread is; every handler here reads it from there.
+ * She has no handle yet, so the same handlers also answer by gemie id
+ * (`/agents/:id/thread…`).
+ *
  * ## Which is why paging and search live HERE and not on a conversation
  *
  * A thread spans conversations, so `GET /conversations/:id/...` cannot serve
@@ -36,12 +45,7 @@
  */
 
 import { Router } from 'express';
-import { randomUUID } from 'crypto';
 import { getDb } from '../../db/index.js';
-import {
-  createConversation,
-  findActiveThreadConversation,
-} from '../../db/chat/conversationRepository.js';
 import {
   decodeThreadCursor,
   encodeThreadCursor,
@@ -51,15 +55,26 @@ import {
   toStoredMessage,
   type ThreadMessageRow,
 } from '../../db/chat/messageRepository.js';
-import { agentPromptName } from '../../lib/agent-identity.js';
-import { loadThreadAgent } from '../../lib/agent-account.js';
+import { loadThreadAgent, loadTurnAgent } from '../../lib/agent-account.js';
 import { appSurfaceOf } from '../../lib/app-surface.js';
+import { findGemieThread, openGemieThread } from '../../lib/gemie-thread.js';
 import { authenticateToken } from '../../middleware/auth.js';
 import { log } from '../../lib/logger.js';
 import type { HydratedAgent } from '../../lib/agent-identity.js';
 import type { Request, Response } from 'express';
 
+/** The thread addressed by the gemie's Oxy handle: `/agents/thread/:username…`. */
 const router = Router();
+
+/**
+ * The SAME thread addressed by the gemie's id: `/agents/:id/thread…`.
+ *
+ * For a gemie with no handle — Alia, whose Oxy account does not exist yet (ADR 0034 phase 2) — and
+ * for any client that already holds the id. Same handlers, same reads; only how the gemie is found
+ * differs. Mounted AFTER the CRUD router (`agents/index.ts`): `/:id/thread` also matches
+ * `/handle/thread`, which is the card of a gemie whose handle is `thread`.
+ */
+export const gemieThreadByIdRouter = Router();
 
 /** The one body a caller who cannot reach an agent ever sees. */
 const NO_THREAD = { error: 'Agent not found' };
@@ -69,8 +84,11 @@ const DEFAULT_PAGE = 30;
 const MAX_HITS = 50;
 const DEFAULT_HITS = 20;
 
+/** Finds the gemie a thread route addresses, or answers the refusal and returns `null`. */
+type ThreadGemieLoader = (req: Request, res: Response) => Promise<HydratedAgent | null>;
+
 /** The agent behind `:username`, or `null` after the route has answered 404. */
-async function reachAgent(req: Request, res: Response): Promise<HydratedAgent | null> {
+const byHandle: ThreadGemieLoader = async (req, res) => {
   const agent = await loadThreadAgent(getDb(), {
     username: String(req.params.username),
     oxyUserId: req.user?.id ?? '',
@@ -82,7 +100,30 @@ async function reachAgent(req: Request, res: Response): Promise<HydratedAgent | 
     return null;
   }
   return agent;
-}
+};
+
+/**
+ * The gemie behind `:id`, by the rule a turn naming it uses (`loadTurnAgent`, `canReachAgent`).
+ *
+ * Missing and out of reach are the same 404 body as a handle's. Oxy being unreachable is a 503
+ * instead: an id is not guessable the way a handle is (the header comment above), so saying "try
+ * again" leaks nothing, and the person is not told their gemie does not exist.
+ */
+const byId: ThreadGemieLoader = async (req, res) => {
+  const turnAgent = await loadTurnAgent(getDb(), {
+    agentId: String(req.params.id),
+    oxyUserId: req.user?.id ?? '',
+    accessToken: req.accessToken,
+    surfaceApplicationId: await appSurfaceOf(req),
+  });
+  if (turnAgent.kind === 'agent') return turnAgent.agent;
+  if (turnAgent.kind === 'identity_unavailable') {
+    res.status(503).json({ error: 'Agent identity unavailable' });
+  } else {
+    res.status(404).json(NO_THREAD);
+  }
+  return null;
+};
 
 function clamp(raw: unknown, fallback: number, max: number): number {
   return Math.min(Math.max(parseInt(String(raw), 10) || fallback, 1), max);
@@ -108,31 +149,18 @@ function toThreadMessage(row: ThreadMessageRow) {
  *
  * `conversationId` is the ACTIVE stretch — the most recent conversation of the
  * pair, or a new one when the two have never spoken. It is not "the thread's
- * id", because a thread has none.
+ * id", because a thread has none — except a gemie's with loose chats, whose
+ * thread is a row (`threadId`, `lib/gemie-thread.ts`).
  */
-router.get('/thread/:username', authenticateToken, async (req: Request, res: Response) => {
+const openThread = (load: ThreadGemieLoader) => async (req: Request, res: Response) => {
   try {
     if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
     const oxyUserId = req.user.id;
 
-    const agent = await reachAgent(req, res);
+    const agent = await load(req, res);
     if (agent === null) return undefined;
 
-    const active = await findActiveThreadConversation(getDb(), oxyUserId, agent._id);
-    const conversation =
-      active ??
-      (await createConversation(getDb(), {
-        oxyUserId,
-        conversationId: randomUUID(),
-        /**
-         * `agentPromptName` rather than `agent.name`, which is nullable — a
-         * conversation titled `null` is what an unresolvable Oxy account would
-         * otherwise produce in the sidebar.
-         */
-        title: agentPromptName(agent),
-        source: 'app',
-        agentId: agent._id,
-      }));
+    const { scope, conversation } = await openGemieThread(getDb(), agent, oxyUserId);
 
     res.json({
       /**
@@ -150,12 +178,19 @@ router.get('/thread/:username', authenticateToken, async (req: Request, res: Res
         description: agent.description,
       },
       conversationId: conversation.conversationId,
+      /**
+       * The `agent_threads` row the thread is, for a gemie whose other chats are loose (Alia's):
+       * what `POST /conversations/new` takes as `threadId` to start the thread's next stretch.
+       * `null` for every other gemie, whose thread is every conversation the two hold — a new
+       * stretch of it is `POST /conversations/new` with its `agentId`, as before.
+       */
+      threadId: scope.agentThreadId ?? null,
     });
   } catch (error: unknown) {
     log.agents.error({ err: error }, 'Error resolving an agent thread');
     res.status(500).json({ error: 'Failed to open the thread' });
   }
-});
+};
 
 /**
  * A page of the thread, oldest-first, crossing the seams.
@@ -176,7 +211,7 @@ router.get('/thread/:username', authenticateToken, async (req: Request, res: Res
  * wrong at the exact boundary where the thread's length is a multiple of the
  * page size — the one case a reader reaches by scrolling.
  */
-router.get('/thread/:username/messages', authenticateToken, async (req: Request, res: Response) => {
+const threadMessages = (load: ThreadGemieLoader) => async (req: Request, res: Response) => {
   try {
     if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
     const oxyUserId = req.user.id;
@@ -195,16 +230,19 @@ router.get('/thread/:username/messages', authenticateToken, async (req: Request,
       return res.status(400).json({ error: 'Invalid cursor' });
     }
 
-    const agent = await reachAgent(req, res);
+    const agent = await load(req, res);
     if (agent === null) return undefined;
+
+    // A thread never opened has nothing in it, and is not the pair's loose chats.
+    const scope = await findGemieThread(getDb(), agent, oxyUserId);
+    if (scope === null) return res.json({ messages: [], nextCursor: null });
 
     const limit = clamp(req.query.limit, DEFAULT_PAGE, MAX_PAGE);
     const page =
       rawAt !== undefined && decoded !== undefined && decoded !== null
-        ? await listThreadWindow(getDb(), { oxyUserId, agentId: agent._id, limit, at: decoded })
+        ? await listThreadWindow(getDb(), { ...scope, limit, at: decoded })
         : await listThreadPage(getDb(), {
-            oxyUserId,
-            agentId: agent._id,
+            ...scope,
             limit,
             ...(decoded === undefined || decoded === null ? {} : { before: decoded }),
           });
@@ -221,7 +259,7 @@ router.get('/thread/:username/messages', authenticateToken, async (req: Request,
     log.agents.error({ err: error }, 'Error reading an agent thread');
     res.status(500).json({ error: 'Failed to read the thread' });
   }
-});
+};
 
 /**
  * Search everything said in the thread, across every conversation in it.
@@ -235,20 +273,22 @@ router.get('/thread/:username/messages', authenticateToken, async (req: Request,
  * be present — `websearch_to_tsquery` ANDs unquoted terms, measured — with
  * quoted phrases and `-` exclusion on top.
  */
-router.get('/thread/:username/search', authenticateToken, async (req: Request, res: Response) => {
+const threadSearch = (load: ThreadGemieLoader) => async (req: Request, res: Response) => {
   try {
     if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
     const oxyUserId = req.user.id;
 
-    const agent = await reachAgent(req, res);
+    const agent = await load(req, res);
     if (agent === null) return undefined;
 
     const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     if (query === '') return res.json({ hits: [] });
 
+    const scope = await findGemieThread(getDb(), agent, oxyUserId);
+    if (scope === null) return res.json({ hits: [] });
+
     const hits = await searchThread(getDb(), {
-      oxyUserId,
-      agentId: agent._id,
+      ...scope,
       query,
       limit: clamp(req.query.limit, DEFAULT_HITS, MAX_HITS),
     });
@@ -269,6 +309,14 @@ router.get('/thread/:username/search', authenticateToken, async (req: Request, r
     log.agents.error({ err: error }, 'Error searching an agent thread');
     res.status(500).json({ error: 'Failed to search the thread' });
   }
-});
+};
+
+router.get('/thread/:username', authenticateToken, openThread(byHandle));
+router.get('/thread/:username/messages', authenticateToken, threadMessages(byHandle));
+router.get('/thread/:username/search', authenticateToken, threadSearch(byHandle));
+
+gemieThreadByIdRouter.get('/:id/thread', authenticateToken, openThread(byId));
+gemieThreadByIdRouter.get('/:id/thread/messages', authenticateToken, threadMessages(byId));
+gemieThreadByIdRouter.get('/:id/thread/search', authenticateToken, threadSearch(byId));
 
 export default router;

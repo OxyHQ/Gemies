@@ -79,9 +79,10 @@ export type AgentReach = (typeof AGENT_REACHES)[number];
  *
  *  - `standing`: under the person's standing Oxy authority, asked for when a task is saved with
  *    the person present (`alia_task_authorizations`), on the `alia-tasks` queue. No agent
- *    session: its chat turns are not durable thread turns either. Alia's.
+ *    session: its chat turns are not durable thread turns either. Its chats are loose, and its
+ *    thread with a person is one `agent_threads` row (`lib/gemie-thread.ts`). Alia's.
  *  - `session` (the default): durable agent sessions (ADR 0011, ADR 0033), and every chat turn is
- *    a turn of its thread.
+ *    a turn of its thread: every conversation with the person.
  */
 export const AGENT_TASK_AUTHORITIES = ['standing', 'session'] as const;
 export type AgentTaskAuthority = (typeof AGENT_TASK_AUTHORITIES)[number];

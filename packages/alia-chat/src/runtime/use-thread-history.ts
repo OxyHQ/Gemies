@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { useAliaApi } from './api';
 import { errorStatus } from './error-utils';
 import { aliaQueryKeys } from './query-keys';
-import { AGENT_ROUTES } from './routes';
+import { AGENT_ROUTES, type AliaThreadAddress, threadKey } from './routes';
 import { type ThreadPage, threadHistory } from './thread/thread-history';
 
 /**
@@ -23,20 +23,29 @@ import { type ThreadPage, threadHistory } from './thread/thread-history';
 /** How many messages a page carries. The server clamps its own maximum. */
 const PAGE_SIZE = 50;
 
+/** Whether there is a thread to ask about: an address with a non-empty handle or gemie id. */
+export function isThreadAddress(
+  thread: AliaThreadAddress | undefined,
+): thread is AliaThreadAddress {
+  if (thread === undefined) return false;
+  return ('handle' in thread ? thread.handle : thread.gemieId).length > 0;
+}
+
 /** A 404 is the answer — the agent does not exist or is not the person's, and asking again does not change it. */
 export function retryThreadRead(failureCount: number, error: unknown): boolean {
   return errorStatus(error) !== 404 && failureCount < 2;
 }
 
 export function useThreadHistory(
-  handle: string | undefined,
+  thread: AliaThreadAddress | undefined,
   activeConversationId: string | undefined,
 ) {
   const api = useAliaApi();
   const query = useInfiniteQuery({
-    queryKey: aliaQueryKeys.threads.messages(handle ?? ''),
+    queryKey: aliaQueryKeys.threads.messages(thread === undefined ? '' : threadKey(thread)),
     queryFn: async ({ pageParam }): Promise<ThreadPage> => {
-      const { data } = await api.get<ThreadPage>(AGENT_ROUTES.threadMessages(handle ?? ''), {
+      if (thread === undefined) throw new Error('No thread to read');
+      const { data } = await api.get<ThreadPage>(AGENT_ROUTES.threadMessages(thread), {
         params: { limit: PAGE_SIZE, before: pageParam },
       });
       return data;
@@ -45,7 +54,7 @@ export function useThreadHistory(
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     // Nothing to page through until the thread has answered which conversation is the live one:
     // without it every message would be history, including the ones already on screen.
-    enabled: (handle?.length ?? 0) > 0 && activeConversationId !== undefined,
+    enabled: isThreadAddress(thread) && activeConversationId !== undefined,
     retry: retryThreadRead,
   });
 

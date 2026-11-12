@@ -34,8 +34,9 @@ const route =
   };
 
 /**
- * A gemie whose work runs as sessions, reachable by this person. Threads and goals are durable
- * sessions, so a standing-authority gemie (Alia) has none: 404, like one that does not exist.
+ * A gemie whose work runs as sessions, reachable by this person. Independent threads and goals are
+ * durable sessions, so a standing-authority gemie (Alia) has none: 404, like one that does not
+ * exist. Her one continuous thread with the person is `GET /agents/:id/thread` (`thread.ts`).
  */
 async function reachableAgent(req: Request, res: Response) {
   const agent = await findAgentById(getDb(), String(req.params.id));

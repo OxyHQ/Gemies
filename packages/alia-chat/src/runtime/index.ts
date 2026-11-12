@@ -117,6 +117,9 @@ export type {
 } from './thought-store';
 export { useThreadHistory } from './use-thread-history';
 export { useThreadSearch, useThreadWindow } from './use-thread-search';
+export { useGemieThread } from './use-gemie-thread';
+export type { GemieThread } from './use-gemie-thread';
+export type { AliaThreadAddress } from './routes';
 export { useStartConversation } from './use-start-conversation';
 export type { StartConversationOptions } from './use-start-conversation';
 export { useTurnEdit } from './use-turn-edit';

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { ApiDatabase, Executor } from '../index.js';
 import { agentGoals, agentThreads, type AgentGoalCriterion } from '../schema/agent-runtime.js';
 import { agentSessions } from '../schema/agent-sessions.js';
@@ -6,7 +6,7 @@ import { agentSessions } from '../schema/agent-sessions.js';
 export type AgentThreadRow = typeof agentThreads.$inferSelect;
 
 export async function createAgentThread(
-  db: ApiDatabase,
+  db: Executor,
   input: {
     oxyUserId: string;
     agentId: string;
@@ -36,6 +36,20 @@ export async function listAgentThreads(db: ApiDatabase, oxyUserId: string, agent
     .from(agentThreads)
     .where(and(eq(agentThreads.oxyUserId, oxyUserId), eq(agentThreads.agentId, agentId)))
     .orderBy(desc(agentThreads.updatedAt));
+}
+
+/**
+ * The person's first thread with this gemie, oldest first: what a gemie whose other chats are loose
+ * holds as its one continuous thread (`lib/gemie-thread.ts`). Read under that module's lock.
+ */
+export async function findFirstAgentThread(db: Executor, oxyUserId: string, agentId: string) {
+  const [row] = await db
+    .select()
+    .from(agentThreads)
+    .where(and(eq(agentThreads.oxyUserId, oxyUserId), eq(agentThreads.agentId, agentId)))
+    .orderBy(asc(agentThreads.createdAt), asc(agentThreads.id))
+    .limit(1);
+  return row;
 }
 
 export async function findAgentThread(db: ApiDatabase, oxyUserId: string, threadId: string) {
