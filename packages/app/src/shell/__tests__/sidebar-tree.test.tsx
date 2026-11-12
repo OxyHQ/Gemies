@@ -363,13 +363,15 @@ describe('the sidebar list', () => {
   it("lists Alia's chats as title-only rows in their own section, with no folders of their own", async () => {
     await mount();
     expect(flat()).toEqual([]);
-    expect(sections()[0]).toMatchObject({ key: 'chats', label: 'sidebar.chats' });
+    // Alia's row heads the gemies even for somebody with no gemie of their own (ADR 0034).
+    expect(sections()[0]).toMatchObject({ key: 'agents', label: 'sidebar.agents' });
+    expect(sections()[1]).toMatchObject({ key: 'chats', label: 'sidebar.chats' });
     expect(chatIds()).toEqual(['alpha', 'beta']);
     // Title only: a chat row draws no avatar.
     expect(chatItems().every((item) => item.leading === undefined)).toBe(true);
     // Projects and folders are the tree's; with none, it stands empty (it holds "new project").
     expect(folderItems()).toEqual({});
-    expect(sections()[1]!.key).toBe('projects');
+    expect(sections()[2]!.key).toBe('projects');
   });
 
   it('puts a pinned chat first and keeps the pin for this account', async () => {
@@ -464,13 +466,14 @@ describe('the sidebar list', () => {
     ];
     await mount();
     const agents = sections().find((section) => section.key === 'agents')!;
-    // The group stands first among the contacts, a row of its own that opens the conversation.
+    // Alia first, then the group, a row of its own that opens the conversation, then the agents.
     expect(agents.items.map((item: { key: string }) => item.key)).toEqual([
+      'gemie:alia',
       'g1',
       'agent:a1',
       'agent:a2',
     ]);
-    expect(agents.items[0]).toMatchObject({ label: 'Los tres', description: 'Hola a todos' });
+    expect(agents.items[1]).toMatchObject({ label: 'Los tres', description: 'Hola a todos' });
     expect(chatIds()).toEqual(['alpha']);
     act(() => {
       state.sidebarProps!.onTreeItemPress({ key: 'g1' });
@@ -492,16 +495,25 @@ describe('the sidebar list', () => {
     // The agents are the first titled section, with their avatars; Alia's chats follow in theirs.
     expect(flat()).toEqual([]);
     expect(sections()[0]).toMatchObject({ key: 'agents', label: 'sidebar.agents' });
-    expect(sections()[0]!.items.map((item: { key: string }) => item.key)).toEqual(['agent:a1']);
-    expect(sections()[0]!.items[0].label).toBe('Pepe');
+    expect(sections()[0]!.items.map((item: { key: string }) => item.key)).toEqual([
+      'gemie:alia',
+      'agent:a1',
+    ]);
+    expect(sections()[0]!.items[0].label).toBe('Alia');
+    expect(sections()[0]!.items[1].label).toBe('Pepe');
     // Under the name, the last line of the thread.
-    expect(sections()[0]!.items[0].description).toBe('Sent the notes');
+    expect(sections()[0]!.items[1].description).toBe('Sent the notes');
     expect(sections()[1]).toMatchObject({ key: 'chats', label: 'sidebar.chats' });
     expect(chatIds()).toEqual(['alpha', 'beta']);
     act(() => {
       state.sidebarProps!.onTreeItemPress({ key: 'agent:a1' });
     });
     expect(state.push).toHaveBeenCalledWith('/@pepe');
+    // Alia's row opens a chat with her.
+    act(() => {
+      state.sidebarProps!.onTreeItemPress({ key: 'gemie:alia' });
+    });
+    expect(state.push).toHaveBeenCalledWith('/(app)/alia');
   });
 
   it('offers the three tools: search, the agents\' catalogue and "+" with its create menu', async () => {
@@ -624,7 +636,7 @@ describe('spaces in the sidebar', () => {
     expect(folder.items[0]).toMatchObject({ label: 'spaces.general', description: 'Listo' });
     // Only the agent in no space stays in the flat Agents list; the room is in neither list.
     const agents = sections().find((s) => s.key === 'agents')!;
-    expect(keysOf(agents.items)).toEqual(['agent:a3']);
+    expect(keysOf(agents.items)).toEqual(['gemie:alia', 'agent:a3']);
     expect(chatIds()).toEqual(['alpha']);
   });
 
@@ -634,7 +646,8 @@ describe('spaces in the sidebar', () => {
     state.conversations = [chat('alpha'), room({ memberAgentIds: ['a1'] })];
     await mount();
     expect(chatIds()).toEqual(['alpha']);
-    expect(sections().find((s) => s.key === 'agents')).toBeUndefined();
+    // Only Alia is left in the flat gemies list.
+    expect(keysOf(sections().find((s) => s.key === 'agents')!.items)).toEqual(['gemie:alia']);
   });
 
   it('shows an empty space as a section with one row that opens the picker, and no room', async () => {
@@ -706,7 +719,9 @@ describe('spaces in the sidebar', () => {
     ];
     await mount();
     const member = spaceSection().items.find((i: { key: string }) => i.key === 'agent:a1');
-    const flatAgent = sections().find((s) => s.key === 'agents')!.items[0];
+    const flatAgent = sections()
+      .find((s) => s.key === 'agents')!
+      .items.find((i: { key: string }) => i.key === 'agent:a3');
     expect(flatAgent.actions).toBeDefined();
     let menu!: ReactTestRenderer;
     await act(async () => {

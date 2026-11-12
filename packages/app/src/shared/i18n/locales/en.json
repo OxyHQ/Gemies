@@ -434,7 +434,7 @@
   "sidebar": {
     "loadError": "Could not refresh your sidebar.",
     "newChat": "New Chat",
-    "agents": "Agents",
+    "agents": "Gemies",
     "library": "Library",
     "automations": "Automations",
     "skills": "Skills",
@@ -1064,6 +1064,11 @@
       "subtitle": "An assistant that remembers what matters, works across your tools, and picks the right model for the job.",
       "cta": "Get started",
       "skip": "Continue without an account"
+    },
+    "gemiesIntro": {
+      "headline": "Create your Gemies",
+      "subtitle": "Let them work together. Gemies are AI teammates you shape, and Alia is one of them.",
+      "cta": "Get started"
     }
   },
   "notifications": {
@@ -2361,8 +2366,6 @@
     "aliaTagline": "Oxy's assistant, one of your Gemies",
     "create": "Create a gemie",
     "explore": "Explore gemies",
-    "signIn": "Sign in with Oxy",
-    "signedOutHint": "Sign in to meet Alia and create your own Gemies.",
     "emptyHint": "You have no Gemies of your own yet. Create one by telling Alia what it should do.",
     "chatWith": "Chat with {{name}}"
   }

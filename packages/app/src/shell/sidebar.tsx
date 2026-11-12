@@ -96,6 +96,8 @@ const TERMS_URL = 'https://oxy.so/legal/terms';
 
 /** Tree keys of agent rows: `agent:<handle>`. Chat rows are keyed by conversation id. */
 const AGENT_KEY = 'agent:';
+/** Alia's row: the official gemie everybody has (ADR 0034), first among the person's own. */
+const ALIA_KEY = 'gemie:alia';
 
 /** A conversation of several agents (a group chat), as opposed to a chat with Alia or with one agent. */
 const isGroupConversation = (conversation: Conversation): boolean =>
@@ -556,7 +558,19 @@ function useSidebarProps() {
     const agentRows = agentsOutsideSpaces(myAgents ?? [])
       .filter((agent) => !query || agentIdentityMatches(agent, query))
       .map(agentRow);
-    const rows = [...groupRows, ...agentRows];
+    // Alia is nobody's own gemie, so `/agents/me` never lists her; she is everybody's, always first.
+    const aliaRow: SidebarTreeItem[] =
+      !query || 'alia'.includes(query)
+        ? [
+            {
+              key: ALIA_KEY,
+              label: 'Alia',
+              leading: <AliaAvatar size={AGENT_ROW_AVATAR} portrait />,
+              description: t('gemies.aliaTagline'),
+            },
+          ]
+        : [];
+    const rows = [...aliaRow, ...groupRows, ...agentRows];
     return rows.length ? { key: 'agents', label: t('sidebar.agents'), items: rows } : undefined;
   }, [isAuthenticated, myAgents, groupConversations, row, agentRow, searchQuery, t]);
 
@@ -919,6 +933,10 @@ function useSidebarProps() {
     onTreeItemPress: (item: { key: string }) => {
       // The muted row of an empty space opens the picker itself; a folder is not a destination.
       if (item.key.startsWith(SPACE_ADD_KEY) || item.key.startsWith(SPACE_KEY)) return;
+      if (item.key === ALIA_KEY) {
+        closeNav?.();
+        return router.push('/(app)/alia');
+      }
       if (!item.key.startsWith(AGENT_KEY)) return openConversation(item.key);
       const agent = myAgents?.find((candidate) => `${AGENT_KEY}${candidate._id}` === item.key);
       if (agent) {
@@ -960,6 +978,7 @@ function useSidebarProps() {
 
 /** An agent thread's route (`/@pepe`) selects that agent's row. */
 function selectedTreeItemForPath(pathname: string, agents?: Agent[]): string | undefined {
+  if (pathname === '/alia') return ALIA_KEY;
   const match = /^\/@([^/]+)$/.exec(pathname);
   if (!match) return undefined;
   const handle = decodeURIComponent(match[1]!);
