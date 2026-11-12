@@ -43,7 +43,7 @@ jobs:
       QA_TASK_ID: ${{ vars.ALIA_CANARY_OXY_TASK_ID }}
     steps:
       - uses: actions/checkout@v7
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::237343248947:role/oxy-github-deploy
           aws-region: ${{ env.AWS_REGION }}
