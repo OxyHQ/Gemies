@@ -47,7 +47,7 @@
     "ai": "6.0.323",
     "bullmq": "^6.3.15",
     "cors": "^2.8.6",
-    "cron-parser": "4.9.0",
+    "cron-parser": "5.10.4",
     "drizzle-orm": "0.45.2",
     "esbuild": "^0.28.1",
     "expo-server-sdk": "^7.2.0",
