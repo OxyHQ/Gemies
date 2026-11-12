@@ -13,7 +13,7 @@ const at = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 const layout = readFileSync(at('../_layout.tsx'), 'utf8');
 const names = [
   ...(layout.match(/const CHAT_ROUTES = new Set\(\[(.*?)\]\);/)?.[1] ?? '').matchAll(/'([^']+)'/g),
-].map((match) => match[1]!);
+].map((match) => match[1] ?? '');
 
 describe('the routes the layout leaves to draw their own chat', () => {
   it('include the home, which is the chat with Alia', () => {
