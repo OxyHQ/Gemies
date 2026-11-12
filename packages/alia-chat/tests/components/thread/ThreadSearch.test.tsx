@@ -87,7 +87,7 @@ vi.mock('../../../src/lib/labels', () => ({
 }));
 
 vi.mock('../../../src/runtime/use-thread-search', () => ({
-  useThreadSearch: (_handle: string, query: string) => {
+  useThreadSearch: (_thread: unknown, query: string) => {
     state.askedWith.push(query);
     return {
       data: query.trim() === '' ? undefined : state.hits,
@@ -167,7 +167,9 @@ describe('searching a thread', () => {
   it('asks nothing until something is typed', () => {
     // An empty field is an invitation, not a search that found nothing — and
     // "everything" is not a result.
-    const r = render(<ThreadSearch handle="pepe" onJump={vi.fn()} onClose={vi.fn()} />);
+    const r = render(
+      <ThreadSearch thread={{ handle: 'pepe' }} onJump={vi.fn()} onClose={vi.fn()} />,
+    );
 
     expect(state.askedWith).toEqual(['']);
     expect(texts(r)).toContain('chat.searchThreadHint');
@@ -175,7 +177,9 @@ describe('searching a thread', () => {
   });
 
   it('draws a row per hit once there is a query', () => {
-    const r = render(<ThreadSearch handle="pepe" onJump={vi.fn()} onClose={vi.fn()} />);
+    const r = render(
+      <ThreadSearch thread={{ handle: 'pepe' }} onJump={vi.fn()} onClose={vi.fn()} />,
+    );
     type(r, 'migration');
 
     expect(state.askedWith).toContain('migration');
@@ -185,7 +189,9 @@ describe('searching a thread', () => {
 
   it('hands back the whole hit, cursor included, which is what can be jumped to', () => {
     const onJump = vi.fn();
-    const r = render(<ThreadSearch handle="pepe" onJump={onJump} onClose={vi.fn()} />);
+    const r = render(
+      <ThreadSearch thread={{ handle: 'pepe' }} onJump={onJump} onClose={vi.fn()} />,
+    );
     type(r, 'migration');
     act(() => results(r)[0].props.onPress());
 
@@ -200,7 +206,9 @@ describe('searching a thread', () => {
     // written by the server. A row that leans on it — to key, to jump — has
     // nothing to lean on for those.
     const onJump = vi.fn();
-    const r = render(<ThreadSearch handle="pepe" onJump={onJump} onClose={vi.fn()} />);
+    const r = render(
+      <ThreadSearch thread={{ handle: 'pepe' }} onJump={onJump} onClose={vi.fn()} />,
+    );
     type(r, 'migration');
     act(() => results(r)[1].props.onPress());
 
@@ -210,7 +218,9 @@ describe('searching a thread', () => {
 
   it('says a search found nothing, which is not the same as not having searched', () => {
     state.hits = [];
-    const r = render(<ThreadSearch handle="pepe" onJump={vi.fn()} onClose={vi.fn()} />);
+    const r = render(
+      <ThreadSearch thread={{ handle: 'pepe' }} onJump={vi.fn()} onClose={vi.fn()} />,
+    );
     type(r, 'nothing like this was ever said');
 
     expect(texts(r)).toContain('chat.searchThreadEmpty');

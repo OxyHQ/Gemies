@@ -561,7 +561,13 @@ export function useClearConversation() {
   });
 }
 
-/** Create a conversation (optionally the next stretch of an agent's thread). */
+/**
+ * Create a conversation (optionally the next stretch of an agent's thread).
+ *
+ * The next stretch of a thread whose open answered a `threadId` (Alia's: `useGemieThread`) is
+ * `{ threadId }`; `{ agentId }` alone would start one more loose chat with her. Of any other
+ * gemie's thread it is `{ agentId }`.
+ */
 export function useCreateConversation() {
   const queryClient = useQueryClient();
   const client = useConversationsClient();
@@ -572,11 +578,14 @@ export function useCreateConversation() {
       agentId?: string;
       /** Two to six agents: a group conversation, answered by each in turn. */
       agentIds?: readonly string[];
+      /** The thread row whose next stretch this is (`GemieThread.threadId`). */
+      threadId?: string;
     }): Promise<Conversation> => {
       try {
         const { data } = await client.api.post<ApiConversation>(API_ROUTES.conversations.create, {
           ...(params?.agentId && { agentId: params.agentId }),
           ...(params?.agentIds && { agentIds: params.agentIds }),
+          ...(params?.threadId && { threadId: params.threadId }),
           ...(client.app === undefined ? {} : { app: client.app }),
         });
         return {
@@ -587,6 +596,7 @@ export function useCreateConversation() {
           agentId: data.agentId,
           memberAgentIds: data.memberAgentIds,
           spaceId: data.spaceId,
+          threadId: data.threadId,
           app: data.app,
           createdAt: new Date(data.createdAt),
           updatedAt: new Date(data.updatedAt),

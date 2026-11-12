@@ -23,7 +23,7 @@ makes her different is the configuration of her row, never a `null` agent or her
 | `memory_store` | `nilo` | `gemie` | Whose memory of the person: Nilo's (`oxy_nilo_memories__*`, answer settings, writing style) or its own `agent_memory_documents` |
 | `reach` | `person` | `grants` | The person's own assistant (Oxy's person lane, every connector, integration and agent of the person, their installed skills, their name and Inbox context, the base identity, no remit) or a persona under its grants, linked skills and remit |
 | `mailbox` | `false` | `true` | Whether its own Oxy account is a working one (`self_*` tools, own-mailbox alerts) |
-| `task_authority` | `standing` | `session` | Tasks under standing authority on `alia-tasks`, no agent session or thread; or durable sessions and thread turns |
+| `task_authority` | `standing` | `session` | Tasks under standing authority on `alia-tasks`, no agent session; her chats are loose and her thread with a person is one `agent_threads` row. Or durable sessions, and every conversation with the person is a stretch of its thread |
 | `capability_grants` | no `computer`, no `browser` | its owner's | Its fixed families; Alia has no machine |
 
 ## The two actors
@@ -46,6 +46,15 @@ The public wire still spells her as no `agentId` (`publicAgentId`), so a chat wi
 her looks exactly as it did until the routes take the Gemies vocabulary. Her row is
 public (everybody uses it) but not listed in the catalogue or in `searchAgents` until
 that account exists: a card with no name would be a regression.
+
+**Her thread.** Besides her loose chats (each one a conversation of its own, like
+ChatGPT's) and voice, a person has one continuous thread with her, the same mechanism
+every gemie's thread is (`lib/gemie-thread.ts`): one `agent_threads` row per person,
+whose stretches carry its id in `conversations.agent_thread_id`. A loose chat carries
+none, so the two never mix. She has no handle yet, so the thread is opened by her
+gemie id (`GET /agents/:id/thread`). A turn in it is a turn of her gemie like any
+other: Nilo memory, the person's reach, her tools, standing authority and no agent
+session.
 
 **An agent** is optional. It is an Oxy `bot` account owned by the person who
 created it; Alia stores only its runtime (prompt, model, archetype, marketplace

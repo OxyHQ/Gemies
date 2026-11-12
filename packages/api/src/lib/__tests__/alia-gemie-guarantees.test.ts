@@ -6,7 +6,8 @@
  *  - consulting a gemie stays one level deep, whoever is consulted;
  *  - a chat with her runs as it did: Oxy's person lane, no `self_*` account (no mailbox), no
  *    machine, the person's installed skills, the base identity and no remit;
- *  - the public wire still spells her as no `agentId`.
+ *  - the public wire still spells her as no `agentId`;
+ *  - her thread with a person is apart from her loose chats, and a turn in it is still hers.
  *
  * The real assembler and prompt builder run here; only the bulk sources are stubbed, and the Oxy
  * source answers with BOTH Alia's memory tools and an own-account tool whatever it is asked, so the
@@ -15,6 +16,9 @@
 import type { ToolSet } from 'ai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { aliaGemie, personaGemie } from '../../__tests__/support/gemies.js';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { codeOfFile } from '../../__tests__/support/source-code.js';
 import { ALIA_GEMIE_ID, ROOM_GEMIE_ID, publicAgentId } from '../../domain/alia-gemie.js';
 
 const seen = vi.hoisted(() => ({
@@ -54,6 +58,9 @@ vi.mock('../agent/agent-memory-runtime.js', () => ({
 
 const { ToolPipeline } = await import('../tool-pipeline.js');
 const { SystemPromptBuilder } = await import('../system-prompt-builder.js');
+const { threadIsThePair } = await import('../gemie-thread.js');
+
+const API_SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const NILO = ['oxy_nilo_memories__recallMemories', 'oxy_nilo_memories__remember'];
 
@@ -222,5 +229,29 @@ describe('the public wire', () => {
     expect(publicAgentId(ALIA_GEMIE_ID)).toBeNull();
     expect(publicAgentId(ROOM_GEMIE_ID)).toBeNull();
     expect(publicAgentId('gemie-1')).toBe('gemie-1');
+  });
+});
+
+describe('her thread (ADR 0034: the Alia app’s continuous mode)', () => {
+  it('is apart from her loose chats; a persona’s thread is still every conversation of the pair', () => {
+    expect(threadIsThePair(aliaGemie())).toBe(false);
+    expect(threadIsThePair(persona())).toBe(true);
+  });
+
+  it('a turn in it is assembled exactly as any turn of hers: nothing on the turn path reads the stretch', () => {
+    /**
+     * Which gemie speaks, its memory, reach, tools, prompt and authority come from the request and
+     * the gemie's row, never from the conversation's thread. Pinned here so a later "thread mode"
+     * branch has to come through this file: the cases above then hold for a turn in her thread too.
+     */
+    for (const file of [
+      'lib/tool-pipeline.ts',
+      'lib/system-prompt-builder.ts',
+      'lib/chat/turn-inputs.ts',
+      'lib/chat/request-context.ts',
+      'routes/v1/chat-completions.ts',
+    ]) {
+      expect(codeOfFile(path.join(API_SRC, file))).not.toMatch(/agentThreadId|agent_thread_id/);
+    }
   });
 });

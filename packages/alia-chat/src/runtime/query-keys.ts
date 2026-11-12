@@ -28,19 +28,22 @@ export const aliaQueryKeys = {
   },
   /** A conversation somebody shared, by its token. */
   shared: (token: string) => ['alia-shared-conversation', token] as const,
-  /** An agent's permanent thread: the stretches behind the open conversation, and finding in them. */
+  /**
+   * An agent's permanent thread: the stretches behind the open conversation, and finding in them.
+   * Keyed by `threadKey(address)`: the handle, or `id:<gemieId>`.
+   */
   threads: {
     /** The thread itself (which conversation is active): the host's own query lives under it. */
-    all: (handle: string) => ['agent-thread', handle] as const,
+    all: (thread: string) => ['agent-thread', thread] as const,
     /**
      * The history, kept apart from the thread itself: re-reading which conversation is active is
      * cheap and happens whenever a new stretch starts, while the pages behind it are immutable and
      * expensive to refetch.
      */
-    messages: (handle: string) => ['agent-thread-messages', handle] as const,
+    messages: (thread: string) => ['agent-thread-messages', thread] as const,
     /** Keyed by the query as typed, so each one is cached and none is re-asked. */
-    search: (handle: string, query: string) => ['agent-thread-search', handle, query] as const,
+    search: (thread: string, query: string) => ['agent-thread-search', thread, query] as const,
     /** One window of the thread, addressed by the cursor a search hit carries. */
-    window: (handle: string, cursor: string) => ['agent-thread-window', handle, cursor] as const,
+    window: (thread: string, cursor: string) => ['agent-thread-window', thread, cursor] as const,
   },
 };

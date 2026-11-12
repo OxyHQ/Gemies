@@ -135,7 +135,8 @@ Since 2026-11-12 this repository deploys the backend, and backend changes are ma
     identity with no remit — or a persona under its grants, linked skills and remit;
   - `mailbox` (boolean): `self_*` tools and own-mailbox alerts;
   - `task_authority` (`standing` | `session`): tasks on `alia-tasks` under standing authority,
-    no agent session or thread; or durable sessions and thread turns.
+    no agent session or thread; or durable sessions and thread turns. (Since step 2 a standing
+    gemie has one thread per person too, kept apart from her loose chats; see below.)
 
   "No computer" is configuration too: her row holds no `computer` (nor `browser`) grant. Every
   `agentId == null` branch in the turn (`tool-pipeline`, `turn-inputs`, `system-prompt-builder`,
@@ -192,3 +193,39 @@ Since 2026-11-12 this repository deploys the backend, and backend changes are ma
 - **Not yet done:** the Codea gemie is not seeded; the default gemie is Alia for everybody until the
   per-person and per-app setting (§4) exists; the three "rollout window only" reads are dead once
   this release's post phase has run, and are deleted by the next change that touches them.
+
+### Phase 3, step 2: Alia's thread (2026-11-12)
+
+**The owner's decision:** the Alia app has three modes — loose chats like ChatGPT's (as before),
+voice (as before), and **one continuous thread with Alia, like the one a person has with any
+gemie**. Step 1 had left her without one on purpose, so as not to change behaviour.
+
+- **The same mechanism, not a second one.** Her thread is opened, paged and searched by the
+  routes and reads every gemie's thread uses (`routes/agents/thread.ts`,
+  `findActiveThreadConversation`, `listThreadPage`, `listThreadWindow`, `searchThread`).
+  `lib/gemie-thread.ts` is the one place that says which conversations of the (person, gemie)
+  pair a thread covers, from configuration: with `task_authority = 'session'` every conversation
+  of the pair, as before; with `standing` (Alia) her chats are loose, so her thread is ONE
+  `agent_threads` row per person and its stretches are the conversations carrying its id in
+  `conversations.agent_thread_id`. The rows and the column already existed (ADR 0009); there is
+  **no migration**. The row is found or created under a per-pair advisory lock (no index can say
+  "one per person for a gemie with loose chats" without naming her), and a thread never opened
+  reads as empty rather than as the pair, which would be every loose chat.
+- **Addressed by gemie id as well as by handle.** She has no handle until Oxy creates her
+  account, so `GET /agents/:id/thread`, `/agents/:id/thread/messages` and
+  `/agents/:id/thread/search` answer with the same handlers as `/agents/thread/:username/…`, for
+  any gemie. Chosen over a fake handle or an Alia-only route: an id is what every client already
+  holds, it keeps working once she has a handle, and it adds no second implementation. The open
+  answers `threadId` (her row; `null` for a gemie whose thread is the pair).
+- **The next stretch** is `POST /conversations/new { threadId }` (Alia's `agentId` alone starts a
+  loose chat), and every conversation on the wire carries `threadId` so a client files her stretches
+  under the thread, not among her chats.
+- **Her turns there are still hers.** Nothing on the turn path reads the stretch; the turn's gemie
+  is the request's (none, or her id), and her row decides memory (Nilo), reach (`person`), tools
+  and authority (standing, no agent session). `alia-gemie-guarantees.test.ts` pins that the turn
+  path reads no `agent_thread_id`; `alia-thread.pgdb.test.ts` holds one thread per person, the
+  loose chats apart, the next stretch, and that a persona's thread is unchanged.
+- **Still excluded, deliberately:** independent threads and goals (`POST /agents/:id/threads`, a
+  goal is a paid session), answers to reactions (background work of a session gemie), rooms and
+  spaces, and `searchThread` (a tool of gemie memory; she recalls through Nilo, and the person
+  searches her thread through the route).

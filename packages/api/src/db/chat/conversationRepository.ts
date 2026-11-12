@@ -408,16 +408,27 @@ export async function deleteConversation(
  * Ordered by `created_at DESC` with `id` breaking the tie, so two conversations
  * minted in the same millisecond do not make "the active one" depend on the
  * planner.
+ *
+ * `agentThreadId` narrows the pair to one `agent_threads` row's stretches: the
+ * thread of a gemie whose other chats are loose (Alia's, `lib/gemie-thread.ts`).
+ * Absent, every conversation of the pair is the thread.
  */
 export async function findActiveThreadConversation(
   db: Executor,
   oxyUserId: string,
   agentId: string,
+  agentThreadId?: string,
 ): Promise<ConversationRow | undefined> {
   const [row] = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.oxyUserId, oxyUserId), eq(conversations.agentId, agentId)))
+    .where(
+      and(
+        eq(conversations.oxyUserId, oxyUserId),
+        eq(conversations.agentId, agentId),
+        agentThreadId === undefined ? undefined : eq(conversations.agentThreadId, agentThreadId),
+      ),
+    )
     .orderBy(desc(conversations.createdAt), desc(conversations.id))
     .limit(1);
   return row;

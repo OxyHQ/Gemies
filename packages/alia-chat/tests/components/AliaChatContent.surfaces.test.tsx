@@ -34,6 +34,10 @@ const world = vi.hoisted(() => ({
   composer: { mounts: 0, unmounts: 0, props: null as null | Record<string, any> },
   field: [] as Record<string, unknown>[],
   call: null as null | Record<string, unknown>,
+  /** What the gemie suggested this turn: a new stretch of its thread, or nothing. */
+  suggested: null as null | string,
+  /** Every conversation the chat asked to create, by what it named. */
+  created: [] as Record<string, unknown>[],
 }));
 
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text' }));
@@ -175,7 +179,7 @@ vi.mock('../../src/runtime/use-conversation-stream', () => ({
     clearError: world.clearError,
     setMessages: () => {},
     stop: () => {},
-    suggestedNewConversation: null,
+    suggestedNewConversation: world.suggested,
     dismissSuggestedNewConversation: () => {},
     agentRun: null,
     failedTurn: null,
@@ -187,7 +191,12 @@ vi.mock('../../src/runtime/use-conversation-stream', () => ({
 vi.mock('../../src/runtime/conversations', () => ({
   ConversationNotFoundError: class ConversationNotFoundError extends Error {},
   useConversation: () => ({ data: undefined, error: null, isLoading: false, isFetching: false }),
-  useCreateConversation: () => ({ mutateAsync: async () => ({ id: 'made' }), mutate: () => {} }),
+  useCreateConversation: () => ({
+    mutateAsync: async () => ({ id: 'made' }),
+    mutate: (params: Record<string, unknown>) => {
+      world.created.push(params);
+    },
+  }),
   useDeleteConversation: () => ({ mutateAsync: async () => {} }),
   useClearConversation: () => ({ mutateAsync: async () => {} }),
 }));
@@ -195,7 +204,10 @@ vi.mock('../../src/runtime/attachment-utils', () => ({
   buildMessageContent: async (text: string) => ({ content: text, dropped: [] }),
 }));
 
-import { AliaChatContent as TextChatContent } from '../../src/components/AliaChatContent';
+import {
+  type AliaChatState,
+  AliaChatContent as TextChatContent,
+} from '../../src/components/AliaChatContent';
 import { withVoiceCall } from '../../src/components/voice/withVoiceCall';
 import { useComposerDraftStore } from '../../src/runtime/composer-draft-store';
 import { UsageLimitError } from '../../src/runtime/usage-limit-error';
@@ -237,6 +249,8 @@ beforeEach(() => {
   world.composer = { mounts: 0, unmounts: 0, props: null };
   world.field = [];
   world.call = null;
+  world.suggested = null;
+  world.created = [];
   world.clearError.mockClear();
   useVoiceCallRequests.getState().clear();
   useComposerDraftStore.setState({ account: 'u1', drafts: {} });
@@ -497,5 +511,42 @@ describe('conversation membership', () => {
     expect(members()).toEqual(new Set(['sindi']));
     update();
     expect(members()).toEqual(new Set());
+  });
+});
+
+describe('the next stretch of a thread', () => {
+  const accept = () => {
+    const offer = renderer?.root.findByType('Thread' as never).props.newConversationOffer as
+      | { onAccept: () => void }
+      | undefined;
+    act(() => offer?.onAccept());
+  };
+
+  it('continues Alia’s thread by its row, never as a loose chat with her', () => {
+    world.suggested = 'a new topic';
+    mount({ gemieThread: { gemieId: 'alia-gemie', threadId: 'thread-1' } });
+    accept();
+    expect(world.created).toEqual([{ threadId: 'thread-1' }]);
+  });
+
+  it('continues any other gemie’s thread by its agent, by handle or by id', () => {
+    world.suggested = 'a new topic';
+    mount({ agent: { id: 'pepe-1' }, threadHandle: 'pepe' });
+    accept();
+    update({ agent: { id: 'pepe-1' }, gemieThread: { gemieId: 'pepe-1', threadId: null } });
+    accept();
+    expect(world.created).toEqual([{ agentId: 'pepe-1' }, { agentId: 'pepe-1' }]);
+  });
+
+  it('offers search on a thread addressed by id, as on one addressed by handle', () => {
+    const states: AliaChatState[] = [];
+    const chrome = (state: AliaChatState) => {
+      states.push(state);
+      return {};
+    };
+    mount({ gemieThread: { gemieId: 'alia-gemie', threadId: 'thread-1' }, chrome });
+    expect(states.at(-1)?.openSearch).toBeTypeOf('function');
+    update({ chrome });
+    expect(states.at(-1)?.openSearch).toBeUndefined();
   });
 });

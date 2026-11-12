@@ -57,8 +57,11 @@ the agent is created; a null owner fails closed for Oxy tools, and
 
 Alia's row cannot be edited through the API yet: who may edit a gemie is `act_as` over
 its Oxy account, and hers is pending in Oxy (`ALIA_PENDING_OXY_ACCOUNT_ID`). She is not
-a member of rooms or spaces (a member asks her with `askAlia`), has no threads or goals
-(`task_authority = 'standing'`), and does not answer reactions.
+a member of rooms or spaces (a member asks her with `askAlia`), opens no independent
+threads and takes no goals (`task_authority = 'standing'`: no agent session), and does
+not answer reactions (a reply to one is background work of a session gemie). She does
+have **one continuous thread with each person**, apart from her loose chats: see
+"Alia's thread" below.
 
 Migration `0101` turned both former product agents into these rows (by id,
 never by name) before `0102` dropped `agents.application_id`, and moved into
@@ -213,6 +216,55 @@ second paid session beside the answer.
 - A completed run moves its goal to `candidate`; `POST
   /agents/threads/:threadId/goals/:goalId/verify` requires evidence for every
   criterion before the goal becomes `completed`.
+
+### Alia's thread (ADR 0034)
+
+The Alia app has three modes: loose chats like ChatGPT's, voice, and one continuous
+thread with Alia, like the one a person has with any gemie. The thread is the same
+mechanism as every gemie's — the same routes, the same reads (`findActiveThreadConversation`,
+`listThreadPage`, `listThreadWindow`, `searchThread`) — and `lib/gemie-thread.ts` is the one
+place that says which conversations of the (person, gemie) pair it covers, from the gemie's
+configuration and never its id:
+
+- `task_authority = 'session'` (every persona): every conversation of the pair is a stretch of
+  its thread, as below. Nothing is written to mark it.
+- `task_authority = 'standing'` (Alia): her chats are loose, so the pair is not her thread. Her
+  thread is ONE `agent_threads` row per person, found or created under a per-pair advisory lock
+  (two devices opening it at once open the same one), and its stretches are the conversations
+  carrying that row's id in `conversations.agent_thread_id`. A loose chat carries none. A thread
+  never opened has nothing in it: the reads answer empty rather than falling back to the pair.
+
+**Addressed by id as well as by handle.** Alia's Oxy account does not exist yet, so she has no
+handle; the thread routes also answer by gemie id, with the same handlers:
+
+| By handle | By gemie id | Answers |
+|---|---|---|
+| `GET /agents/thread/:username` | `GET /agents/:id/thread` | `{ agent, conversationId, threadId }`: the active stretch (created the first time) and, for a gemie with loose chats, the thread row; `null` for any other |
+| `GET /agents/thread/:username/messages` | `GET /agents/:id/thread/messages` | a page (`before=` / `at=`), crossing the seams |
+| `GET /agents/thread/:username/search?q=` | `GET /agents/:id/thread/search?q=` | hits with the cursor that opens each |
+
+By id, a missing or unreachable gemie is the same 404 body; Oxy being unreachable is a 503
+(an id is not guessable the way a handle is). The id router is mounted after CRUD, because
+`/:id/thread` also matches `/handle/thread`, the card of a gemie whose handle is `thread`.
+
+**Its next stretch** is `POST /conversations/new` (or `/v1/…`) with `{ threadId }`: the thread
+must be the person's and its gemie reachable, an `agentId` sent beside it must be that gemie's,
+and every refusal is a 404. `{ agentId }` alone with Alia's id starts a loose chat. Every
+conversation on the wire (`GET /conversations`, `GET /conversations/:id`, `POST
+/conversations/new`) carries `threadId`, so a client files a stretch under the thread and
+never among the loose chats, though both are Alia's (`agentId: null`).
+
+**A turn in it is a turn of Alia.** Nothing on the turn path reads the stretch: the gemie is the
+one the request names (none, or her id, is Alia), and her row decides the rest — Nilo memory, the
+person's reach, her tools, standing authority, no `AgentTurnCoordinator` session.
+`alia-gemie-guarantees.test.ts` pins it. `searchThread` stays a tool of gemie memory
+(`memory_store = 'gemie'`); Alia recalls the person through Nilo, and the person searches her
+thread through the route above.
+
+The SDK (`@alia.onl/sdk`): `useGemieThread(gemieId)` opens it, and `<AliaChatContent
+conversationId={thread.conversationId} gemieThread={{ gemieId, threadId: thread.threadId }} />`
+pages and searches it and continues it by its row (`AliaThreadAddress` is `{ handle }` or
+`{ gemieId }` for the thread hooks).
 
 ## Spaces (ADR 0028)
 

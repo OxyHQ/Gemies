@@ -492,3 +492,66 @@ describe('the three ways in', () => {
     expect(res.body).toEqual(NOT_FOUND_BODY);
   });
 });
+
+describe('the same thread, addressed by the gemie id', () => {
+  const OWNER = {
+    kind: 'bot',
+    relationship: 'owner',
+    callerMembership: { permissions: ['account:act_as'] },
+  };
+
+  beforeEach(() => {
+    repository.findAgentById.mockImplementation(async (_db: unknown, id: string) =>
+      id === 'agent-1' ? AGENT_ROW : null,
+    );
+  });
+
+  async function byId(id = 'agent-1') {
+    const res = await fetch(`${baseUrl}/agents/${id}/thread`);
+    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+  }
+
+  it('answers what the handle answers, with no thread row for a gemie whose thread is the pair', async () => {
+    state.account = OWNER;
+
+    const res = await byId();
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ...(await thread()).body, threadId: null });
+    // The pair, as by handle: no thread row narrows it.
+    expect(threads.findActiveThreadConversation.mock.calls[0]).toEqual([
+      {},
+      'oxy-caller',
+      'agent-1',
+    ]);
+  });
+
+  it('gives an id that is no gemie, and one out of reach, the body a handle gets', async () => {
+    expect(await byId('nobody')).toEqual({ status: 404, body: NOT_FOUND_BODY });
+    // A draft of somebody else's, asked after Oxy said no.
+    expect(await byId()).toEqual({ status: 404, body: NOT_FOUND_BODY });
+    expect(threads.findActiveThreadConversation).not.toHaveBeenCalled();
+  });
+
+  it('says "try again" rather than "not found" when Oxy cannot be asked', async () => {
+    // An id is not guessable the way a handle is, so the owner is not told their gemie is gone.
+    state.unreachable = true;
+    const res = await byId();
+    expect(res.status).toBe(503);
+    expect(threads.findActiveThreadConversation).not.toHaveBeenCalled();
+  });
+
+  it('leaves `/agents/handle/thread` to the card of the gemie whose handle is `thread`', async () => {
+    /**
+     * `/:id/thread` matches `/handle/thread` exactly, with the id read as the word `handle`. Mounted
+     * after the CRUD router, the card answers first — measured: mount the id router before CRUD
+     * and this goes red.
+     */
+    state.account = OWNER;
+    state.users = [{ id: 'acct-bot', username: 'thread', name: { displayName: 'Thread' } }];
+
+    await fetch(`${baseUrl}/agents/handle/thread`);
+
+    expect(repository.findAgentById.mock.calls.map((call) => call[1])).not.toContain('handle');
+  });
+});

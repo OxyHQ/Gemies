@@ -68,6 +68,7 @@ import { type AliaRuntimeHost, AliaRuntimeProvider, useAliaRuntime } from '../ru
 import { type AliaHostTools, APP_SLUG } from '../runtime/host-tools';
 import { useCreateConversation } from '../runtime/conversations';
 import { aliaQueryKeys } from '../runtime/query-keys';
+import { type AliaThreadAddress, threadKey } from '../runtime/routes';
 import type { AgentExchange } from '../runtime/thread/agent-exchange';
 import type { Message } from '../runtime/types';
 import { useAgentActivity } from '../runtime/use-agent-activity';
@@ -108,7 +109,7 @@ export interface AliaChatState {
    * Draw it with `AliaParticipants` wherever the chrome puts the conversation's title.
    */
   participants: AliaChatParticipants;
-  /** Search what was said in the agent's thread. Present only on a thread (`threadHandle`). */
+  /** Search what was said in the agent's thread. Present only on a thread (`threadHandle`, `gemieThread`). */
   openSearch: (() => void) | undefined;
   /** The conversation as it stands now, for an export. Read when called, not when rendered. */
   getMessages: () => readonly Message[];
@@ -146,6 +147,13 @@ export interface AliaChatContentProps {
    * the chat is one conversation with nothing behind it.
    */
   threadHandle?: string;
+  /**
+   * The same, for a thread addressed by its gemie's id — Alia's, whose account has no handle yet
+   * (ADR 0034): what `useGemieThread` answers. `threadId` is her thread row, so the next stretch the
+   * chat offers stays in the thread instead of becoming a loose chat. Give one of `threadHandle` and
+   * `gemieThread`; the handle wins if both are given.
+   */
+  gemieThread?: { readonly gemieId: string; readonly threadId: string | null };
   /** The chat opened a conversation (a new one, from a first turn or a call) or left it (`undefined`). */
   onConversationChange?: (conversationId: string | undefined) => void;
   /** The host's side of the conversation runtime: navigation, artifacts, credits… */
@@ -321,6 +329,7 @@ function AliaConversationView({
   agent,
   hostTools,
   threadHandle,
+  gemieThread,
   ephemeral = false,
   onError,
   welcomeGreeting,
@@ -415,7 +424,17 @@ function AliaConversationView({
     [group, consulted],
   );
   const asked = usePendingQuestions(messages, isLoading);
-  const view = useThreadView(threadHandle, conversationId);
+  const gemieId = gemieThread?.gemieId;
+  const threadAddress = useMemo<AliaThreadAddress | undefined>(
+    () =>
+      threadHandle !== undefined
+        ? { handle: threadHandle }
+        : gemieId !== undefined
+          ? { gemieId }
+          : undefined,
+    [threadHandle, gemieId],
+  );
+  const view = useThreadView(threadAddress, conversationId);
   // The internal conversation of a consulted agent, read-only, drawn over the chat (which stays
   // mounted under it, so its scroll and the draft are exactly as they were on the way back).
   const [exchange, setExchange] = useState<AgentExchange | null>(null);
@@ -586,29 +605,32 @@ function AliaConversationView({
    * one the thread calls active, so re-reading the thread is what moves the screen onto it. On a
    * chat that is not a thread there is nothing to continue: the offer empties the chat, which is
    * "start a new conversation" on a screen that has no thread.
+   *
+   * A thread with a row of its own (Alia's: `gemieThread.threadId`) is continued by that row, since
+   * a conversation with her that names only her gemie is a loose chat, not her thread's.
    */
+  const threadRowId = gemieThread?.threadId ?? null;
   const acceptNewConversation = useCallback(() => {
     dismissSuggestedNewConversation();
-    if (agentId === undefined || threadHandle === undefined) {
+    const next =
+      threadRowId !== null ? { threadId: threadRowId } : agentId !== undefined ? { agentId } : null;
+    if (threadAddress === undefined || next === null) {
       void startOver();
       return;
     }
-    createConversation.mutate(
-      { agentId },
-      {
-        onSuccess: () => {
-          void queryClient.invalidateQueries({ queryKey: aliaQueryKeys.threads.all(threadHandle) });
-          // And the history with it: the stretch that was live becomes history the moment a new
-          // one is active, and the pages held were fetched before its last turns existed.
-          void queryClient.invalidateQueries({
-            queryKey: aliaQueryKeys.threads.messages(threadHandle),
-          });
-        },
+    const key = threadKey(threadAddress);
+    createConversation.mutate(next, {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: aliaQueryKeys.threads.all(key) });
+        // And the history with it: the stretch that was live becomes history the moment a new
+        // one is active, and the pages held were fetched before its last turns existed.
+        void queryClient.invalidateQueries({ queryKey: aliaQueryKeys.threads.messages(key) });
       },
-    );
+    });
   }, [
     agentId,
-    threadHandle,
+    threadAddress,
+    threadRowId,
     createConversation,
     queryClient,
     dismissSuggestedNewConversation,
@@ -638,7 +660,7 @@ function AliaConversationView({
       clearMessages: clearConversation,
       markState: voice.markState,
       participants,
-      openSearch: threadHandle === undefined ? undefined : view.openSearch,
+      openSearch: threadAddress === undefined ? undefined : view.openSearch,
       getMessages: () => latestMessages.current,
     }),
     [
@@ -648,7 +670,7 @@ function AliaConversationView({
       clearConversation,
       voice.markState,
       participants,
-      threadHandle,
+      threadAddress,
       view.openSearch,
     ],
   );
@@ -799,8 +821,8 @@ function AliaConversationView({
               </Button>
             </View>
           )}
-          {!view.searchOpen || threadHandle === undefined ? null : (
-            <ThreadSearch handle={threadHandle} onJump={view.jump} onClose={view.closeSearch} />
+          {!view.searchOpen || threadAddress === undefined ? null : (
+            <ThreadSearch thread={threadAddress} onJump={view.jump} onClose={view.closeSearch} />
           )}
         </AiChatContainer>
       </InertWhen>

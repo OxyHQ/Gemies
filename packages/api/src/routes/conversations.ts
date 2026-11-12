@@ -9,6 +9,7 @@ import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import { getDb } from '../db/index.js';
 import { findAgentById } from '../db/agents/agentRepository.js';
+import { findAgentThread } from '../db/agents/agentRuntimeRepository.js';
 import {
   createGroupConversation,
   listGroupMembers,
@@ -264,6 +265,17 @@ router.post('/new', authenticateToken, async (req: Request, res: Response) => {
     const agentId = typeof req.body?.agentId === 'string' ? req.body.agentId : undefined;
 
     /**
+     * `threadId` starts the next stretch of a thread that is an `agent_threads` row: Alia's, whose
+     * loose chats are not her thread (`lib/gemie-thread.ts`), so `agentId` alone would start one
+     * more loose chat. The thread must be this person's, its gemie must still be reachable, and an
+     * `agentId` sent beside it must be that gemie's; every refusal is the same 404.
+     */
+    const threadId = req.body?.threadId;
+    if (threadId !== undefined && (typeof threadId !== 'string' || threadId === '')) {
+      return res.status(400).json({ error: 'threadId must be a non-empty thread id' });
+    }
+
+    /**
      * `agentIds` starts a GROUP: two to six agents that each answer every message, in this order.
      * It is the alternative to `agentId` (one agent's thread), never an addition to it. Each
      * member passes the same reach rule as a single agent, and any that does not is the same 404,
@@ -272,6 +284,9 @@ router.post('/new', authenticateToken, async (req: Request, res: Response) => {
     if (req.body?.agentIds !== undefined) {
       if (agentId !== undefined) {
         return res.status(400).json({ error: 'agentId and agentIds are exclusive' });
+      }
+      if (threadId !== undefined) {
+        return res.status(400).json({ error: 'threadId and agentIds are exclusive' });
       }
       const members = parseGroupMembers(req.body.agentIds);
       if (!members.ok) return res.status(400).json({ error: members.error });
@@ -315,8 +330,18 @@ router.post('/new', authenticateToken, async (req: Request, res: Response) => {
       });
     }
 
-    if (agentId !== undefined) {
-      const agent = await findAgentById(getDb(), agentId);
+    const thread =
+      threadId === undefined ? undefined : await findAgentThread(getDb(), req.user.id, threadId);
+    if (
+      threadId !== undefined &&
+      (thread === undefined || (agentId ?? thread.agentId) !== thread.agentId)
+    ) {
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+    const gemieId = thread?.agentId ?? agentId;
+
+    if (gemieId !== undefined) {
+      const agent = await findAgentById(getDb(), gemieId);
       if (
         agent === null ||
         (await canReachAgent(agent, {
@@ -335,7 +360,8 @@ router.post('/new', authenticateToken, async (req: Request, res: Response) => {
       title: 'New chat',
       source: sourceFromBody(req.body?.source) ?? 'app',
       // A conversation that names no gemie is Alia's (ADR 0034 §4).
-      agentId: agentId ?? ALIA_GEMIE_ID,
+      agentId: gemieId ?? ALIA_GEMIE_ID,
+      ...(thread === undefined ? {} : { agentThreadId: thread.id }),
       ...(originApp === undefined ? {} : { originApp }),
     });
 
@@ -344,6 +370,7 @@ router.post('/new', authenticateToken, async (req: Request, res: Response) => {
       title: conversation.title,
       source: conversation.source,
       agentId: publicAgentId(conversation.agentId),
+      threadId: conversation.agentThreadId,
       app: conversation.originApp,
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt,
@@ -432,6 +459,9 @@ router.get('/', authenticateTokenOrApiKey, async (req: Request, res: Response) =
         lastMessage: c.lastMessage,
         source: c.source,
         agentId: publicAgentId(c.agentId),
+        // The thread this is a stretch of, so a client files it there and never among the loose
+        // chats (Alia's thread: `lib/gemie-thread.ts`). `null` for a conversation of no thread row.
+        threadId: c.agentThreadId,
         memberAgentIds: groupMembers.get(c.conversationId) ?? [],
         spaceId: spaceIds.get(c.conversationId) ?? null,
         app: c.originApp,
@@ -475,6 +505,7 @@ router.get('/:id', authenticateTokenOrApiKey, async (req: Request, res: Response
       lastMessage: conversation.lastMessage,
       source: conversation.source,
       agentId: publicAgentId(conversation.agentId),
+      threadId: conversation.agentThreadId,
       memberAgentIds,
       spaceId,
       app: conversation.originApp,

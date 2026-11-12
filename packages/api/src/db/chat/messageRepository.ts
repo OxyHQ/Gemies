@@ -353,11 +353,26 @@ function olderThan(cursor: ThreadCursor) {
   return sql`(${messages.createdAt}, ${messages.id}) < ${cursorTuple(cursor)}`;
 }
 
-/** Every message of one (person, agent) pair, whichever conversation it is in. */
-function threadScope(oxyUserId: string, agentId: string) {
+/**
+ * Which conversations a thread read covers: one person's with one gemie, and — for a gemie whose
+ * other chats are loose (Alia's) — only the stretches of one `agent_threads` row. Absent
+ * `agentThreadId`, every conversation of the pair is the thread. `lib/gemie-thread.ts` decides
+ * which; a route never takes it from the request.
+ */
+export interface ThreadScope {
+  readonly oxyUserId: string;
+  readonly agentId: string;
+  readonly agentThreadId?: string;
+}
+
+/** Every message of the thread, whichever of its conversations it is in. */
+function threadScope(scope: ThreadScope) {
   return and(
-    eq(conversations.oxyUserId, oxyUserId),
-    eq(conversations.agentId, agentId),
+    eq(conversations.oxyUserId, scope.oxyUserId),
+    eq(conversations.agentId, scope.agentId),
+    scope.agentThreadId === undefined
+      ? undefined
+      : eq(conversations.agentThreadId, scope.agentThreadId),
     eq(messages.oxyUserId, conversations.oxyUserId),
     eq(messages.conversationId, conversations.conversationId),
   );
@@ -376,9 +391,7 @@ function threadScope(oxyUserId: string, agentId: string) {
  */
 export async function listThreadPage(
   db: ApiDatabase,
-  params: {
-    oxyUserId: string;
-    agentId: string;
+  params: ThreadScope & {
     limit: number;
     before?: ThreadCursor;
   },
@@ -389,7 +402,7 @@ export async function listThreadPage(
       threadConversationId: conversations.conversationId,
     })
     .from(messages)
-    .innerJoin(conversations, threadScope(params.oxyUserId, params.agentId))
+    .innerJoin(conversations, threadScope(params))
     .where(params.before === undefined ? undefined : olderThan(params.before))
     .orderBy(desc(messages.createdAt), desc(messages.id))
     .limit(params.limit + 1);
@@ -417,7 +430,7 @@ export async function listThreadPage(
  */
 export async function listThreadWindow(
   db: ApiDatabase,
-  params: { oxyUserId: string; agentId: string; limit: number; at: ThreadCursor },
+  params: ThreadScope & { limit: number; at: ThreadCursor },
 ): Promise<{ messages: ThreadMessageRow[]; hasMore: boolean }> {
   const half = Math.max(1, Math.floor(params.limit / 2));
 
@@ -425,7 +438,7 @@ export async function listThreadWindow(
     db
       .select({ message: messages, threadConversationId: conversations.conversationId })
       .from(messages)
-      .innerJoin(conversations, threadScope(params.oxyUserId, params.agentId));
+      .innerJoin(conversations, threadScope(params));
 
   const project = (rows: { message: MessageRow; threadConversationId: string }[]) =>
     rows.map((row) => ({ ...row.message, threadConversationId: row.threadConversationId }));
@@ -511,7 +524,7 @@ export interface ThreadSearchHit {
  */
 export async function searchThread(
   db: ApiDatabase,
-  params: { oxyUserId: string; agentId: string; query: string; limit: number },
+  params: ThreadScope & { query: string; limit: number },
 ): Promise<ThreadSearchHit[]> {
   return db
     .select({
@@ -523,7 +536,7 @@ export async function searchThread(
       createdAt: messages.createdAt,
     })
     .from(messages)
-    .innerJoin(conversations, threadScope(params.oxyUserId, params.agentId))
+    .innerJoin(conversations, threadScope(params))
     .where(
       and(
         /**
