@@ -513,7 +513,7 @@ describe('the sidebar list', () => {
     act(() => {
       state.sidebarProps!.onTreeItemPress({ key: 'gemie:alia' });
     });
-    expect(state.push).toHaveBeenCalledWith('/(app)/alia');
+    expect(state.replace).toHaveBeenCalledWith('/(app)');
   });
 
   it('offers the three tools: search, the agents\' catalogue and "+" with its create menu', async () => {
@@ -534,7 +534,7 @@ describe('the sidebar list', () => {
     act(() => {
       props.createOptions[0].onPress();
     });
-    expect(state.replace).toHaveBeenCalledWith('/(app)/alia');
+    expect(state.replace).toHaveBeenCalledWith('/(app)');
   });
 
   it('filters the chats and the agents by what is typed', async () => {

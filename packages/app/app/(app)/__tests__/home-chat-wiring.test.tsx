@@ -14,7 +14,7 @@ import { APP_ROOT } from '@/shared/testing/app-root';
  * fresh thread had no answer. In ghost mode the WHOLE conversation happens on this screen, so
  * those capabilities were missing for its entire life.
  *
- * The cure is structural rather than a longer prop list: `/alia`, `/c/:id` and `/@agent` are three
+ * The cure is structural rather than a longer prop list: `/`, `/c/:id` and `/@agent` are three
  * doors onto ONE `ConversationScreen`, which mounts the SDK's conversation (`AliaChatContent`,
  * the same one the bottom sheet mounts) and brings the app around it. So this file pins the doors:
  * the new-chat route names no conversation (that absence is what makes its first turn create
@@ -73,7 +73,7 @@ vi.mock('@/features/chat/ui/welcome-intro', async () => {
   };
 });
 
-import ChatPage from '../alia';
+import ChatPage from '../index';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -93,7 +93,7 @@ beforeEach(() => {
   captured.dismiss = null;
 });
 
-describe('the new-chat route with Alia (`/alia`)', () => {
+describe('the new-chat route', () => {
   it('mounts the conversation screen and names no conversation, because there is not one yet', () => {
     const renderer = mount();
 
@@ -128,7 +128,7 @@ describe('the new-chat route with Alia (`/alia`)', () => {
 describe('the three doors onto one chat', () => {
   const route = (file: string) => readFileSync(join(APP_ROOT, 'app/(app)', file), 'utf8');
 
-  it.each(['alia.tsx', 'c/[id]/index.tsx', '[username]/index.tsx'])(
+  it.each(['index.tsx', 'c/[id]/index.tsx', '[username]/index.tsx'])(
     '%s mounts the conversation screen and draws no thread of its own',
     (file) => {
       const source = route(file);
