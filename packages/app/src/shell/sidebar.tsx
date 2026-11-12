@@ -571,7 +571,7 @@ function useSidebarProps() {
           ]
         : [];
     const rows = [...aliaRow, ...groupRows, ...agentRows];
-    return rows.length ? { key: 'agents', label: t('sidebar.agents'), items: rows } : undefined;
+    return rows.length ? { key: 'agents', label: t('sidebar.yourGemies'), items: rows } : undefined;
   }, [isAuthenticated, myAgents, groupConversations, row, agentRow, searchQuery, t]);
 
   // Alia's own chats: a section of title-only rows, the ones filed nowhere, pinned and favourites first.
