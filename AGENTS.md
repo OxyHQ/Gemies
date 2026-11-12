@@ -6,8 +6,9 @@ La plataforma de gemies de Oxy («Create your Gemies. Let them work together.»)
 
 Este repo nació el 2026-11-12 de `OxyHQ/Alia`, con todo su historial y sin ser un fork. El plan y sus fases están en [`docs/adr/0034-gemies-and-alia.md`](./docs/adr/0034-gemies-and-alia.md). Mientras la migración no termine, el código, los paquetes y los dominios siguen llamándose Alia (`@alia/api`, `@alia.onl/sdk`, `api.alia.onl`).
 
-- **Producción la despliega todavía `OxyHQ/Alia`.** Aquí solo está activo `ci.yml`. Los workflows de deploy, release, OTA, canaries y autobump están desactivados en GitHub (`disabled_manually`). No los actives hasta el corte de infraestructura (fase 4).
-- Lo que se fusiona en `main` de Alia se trae aquí haciendo merge desde `https://github.com/OxyHQ/Alia` `main`.
+- **Gemies despliega el backend en producción desde el 2026-11-12** (servicio ECS `alia`, `alia-integrations`, computer host; runbook 65 de oxy-infra). Push a `main` despliega tras CI verde. La API responde en `api.gemies.ai` y en `api.alia.onl`.
+- **Los cambios de backend se hacen aquí, nunca en `OxyHQ/Alia`.** Alia conserva la app (`onl.alia.app`, `alia.onl`), el OTA, Android y la publicación de `@alia.onl/sdk`/`@alia.onl/server` hasta que existan `@gemies/*`; por eso esos workflows siguen desactivados aquí (`deploy-frontends`, `publish-update`, `android-release`, `release-packages`).
+- Dependabot de este repo actualiza las dependencias del backend; las de app/SDK siguen en Alia mientras ese código viva allí.
 - Vocabulario nuevo: un agente es un **gemie**. Alia es un gemie oficial global y Codea otro. Alia es la fila `agents` `ALIA_GEMIE_ID` (`domain/alia-gemie.ts`) y lo que la distingue es su configuración (`memory_store`, `reach`, `mailbox`, `task_authority`, sus grants): decide por esos atributos, nunca por su id ni por un `agentId` nulo.
 
 ## Comandos
@@ -19,7 +20,7 @@ bun run --filter @alia/api typecheck && bun run --filter @alia/api test
 bun run --filter @alia/app typecheck && bun run --filter @alia/app test
 bun run --filter @alia.onl/sdk typecheck && bun run --filter @alia.onl/sdk test
 bun run --filter @alia/api test:pg                    # Postgres real; necesita TEST_DATABASE_URL
-bun run dev:api                                       # también dev:app, dev:codea
+bun run dev:api                                       # también dev:app, dev:canvas, dev:integrations
 ```
 
 ## Mapa

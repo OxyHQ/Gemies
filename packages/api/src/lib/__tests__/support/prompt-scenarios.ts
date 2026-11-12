@@ -114,7 +114,7 @@ async function finish(
 }
 
 async function promptSections(
-  surface: 'chat' | 'codea',
+  surface: 'chat',
   extra: { voice?: boolean; ask?: boolean },
 ): Promise<Array<[string, number]>> {
   const names = [surface === 'chat' ? 'general' : surface, 'base'];
@@ -174,20 +174,6 @@ export async function measureScenarios(): Promise<ScenarioMeasure[]> {
         {},
       ),
     );
-  }
-
-  // 4. A developer-key client. Its own editor tools belong to the client.
-  {
-    const { tools } = await chatTools({ direct: false });
-    const system = await SystemPromptBuilder.build({
-      linkedAgent: aliaGemie(),
-      surface: 'codea',
-      model: MODEL,
-      isDirectUserSession: false,
-      toolNames: Object.keys(tools),
-    });
-    const sections = await promptSections('codea', {});
-    out.push(await finish('4 dev-key codea', system, sections, tools));
   }
 
   // 5. An autonomous agent run holding only `browser`.

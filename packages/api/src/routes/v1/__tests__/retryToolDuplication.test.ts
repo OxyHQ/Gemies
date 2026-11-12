@@ -276,7 +276,6 @@ vi.mock('../../../lib/logger.js', () => {
       chat: child,
       general: child,
       providers: child,
-      codea: child,
       correlation: child,
     },
   };

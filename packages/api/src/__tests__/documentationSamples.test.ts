@@ -429,7 +429,7 @@ describe('the census reads what it claims to read', () => {
     expect(FENCE_DELIMITERS).toBeGreaterThan(200);
     expect(SOURCE_FILES).toBeGreaterThan(1_000);
     expect(COMMENTS.length).toBeGreaterThan(10_000);
-    expect(JSX_TEXT.length).toBeGreaterThan(4_000);
+    expect(JSX_TEXT.length).toBeGreaterThan(3_000);
     expect(TRANSLATIONS.length).toBeGreaterThan(1_500);
     expect(LOCALE_FILES.size).toBe(2);
     expect(IMAGE_ASSETS.length).toBeGreaterThan(30);
@@ -693,8 +693,8 @@ describe('no sample presents an alia-* identifier as a model (#139 ws20)', () =>
 describe('every screenshot a document embeds exists (#139 ws20)', () => {
   it('resolves every local image reference', () => {
     /**
-     * Found by this census: `packages/alia-codea/resources/walkthrough/step1.md`
-     * through `step4.md` each embedded a PNG that has never been tracked —
+     * Found by this census: an onboarding walkthrough embedded PNGs that
+     * had never been tracked —
      * `welcome.png`, `click.png`, `chat.png`, `past.png`. The four files are
      * `contributes.walkthroughs` steps in the VS Code extension, so the
      * extension's onboarding rendered four broken images to every new user.

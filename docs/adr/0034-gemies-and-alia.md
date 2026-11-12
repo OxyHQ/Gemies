@@ -94,15 +94,16 @@ agent, and the agent platform becomes its own product with its own brand.
    - migrate the rows (pre/post), then make `conversations.agent_id NOT NULL`;
    - add the default-gemie setting;
    - adopt the Gemies vocabulary.
-4. Infrastructure: ECS, SSM, ECR and Terraform renamed; `api.gemies.ai`; deploys move here and
-   leave `OxyHQ/Alia` in the same change.
+4. Infrastructure. **Done 2026-11-12:** the backend's deploys moved here and left `OxyHQ/Alia` in
+   the same window (oxy-infra runbook 65), and `api.gemies.ai` serves the same target group as
+   `api.alia.onl`. Still to do: rename ECS, SSM, ECR and Terraform.
 5. `@gemies/sdk` 1.0 and `@gemies/server` 1.0, then one PR per consuming repository.
 6. The Gemies app (new bundle, `gemies.ai`).
 7. `OxyHQ/Alia` reduced to its single-gemie app.
 8. `api.alia.onl` removed.
 
-Until phase 4, `OxyHQ/Alia` still deploys production. Changes merged there are merged into this
-repository from Alia's `main`.
+Since 2026-11-12 this repository deploys the backend, and backend changes are made here only.
+`OxyHQ/Alia` keeps its app, OTA, Android and the `@alia.onl/*` releases until phase 7.
 
 ## Consequences
 
