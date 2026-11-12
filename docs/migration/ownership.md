@@ -121,13 +121,13 @@ adapters, and all 22 remain byte-untouched.
 | surface | entry | what it serves |
 | --- | --- | --- |
 | `lib/chat-core.ts` | AI SDK clients | streaming chat, agents, tools |
-| `internal/providers/lib/provider-api.ts` | its own `PROVIDER_BASES` + `fetch` | images, TTS, transcription, embeddings, audio generation, show SFX, avatars, canvas |
+| `internal/providers/lib/provider-api.ts` | its own `PROVIDER_BASES` + `fetch` | images, TTS, transcription, embeddings, audio generation, show SFX, avatars |
 | `internal/providers/lib/voice-session-manager.ts` + the 2 realtime adapters | provider WebSocket | realtime voice |
 
-`callProviderAPI` has eight live call sites (`lib/memory/embeddings.ts:20`,
+`callProviderAPI` has seven live call sites (`lib/memory/embeddings.ts:20`,
 `lib/show/show-pipeline.ts:371`, `lib/synthesize-speech.ts:45`,
-`routes/agents-avatar.ts:143`, `routes/canvas/execute.ts:260`, `routes/v1/audio.ts:249`,
-`routes/v1/images.ts:69`, `routes/v1/voice.ts:311`). A plan that repoints chat-core alone
+`routes/agents-avatar.ts:143`, `routes/v1/audio.ts:249`, `routes/v1/images.ts:69`,
+`routes/v1/voice.ts:311`). A plan that repoints chat-core alone
 leaves two thirds of Alia's provider egress where it is.
 
 ### 7. Three things the inventories treated as live are already dead
@@ -319,10 +319,9 @@ deleted service and today fetches the literal string `undefined/gateway/v1/keys`
    `currentPath`s of the dead rows), and it shrinks every later diff.
 3. `chat-core.ts` is the central gate: 32 non-test files import it (measured), and every
    one must accept a model object it did not construct.
-4. Repoint the eight `callProviderAPI` sites together. Three of them (`v1/images.ts`,
-   `agents-avatar.ts`, `canvas/execute.ts`) are three copies of one image loop with
-   different error mapping; `agents-avatar.ts` maps `content_filter` to a 400 that Kaana
-   must keep distinguishable.
+4. Repoint the seven `callProviderAPI` sites together. Two of them (`v1/images.ts`,
+   `agents-avatar.ts`) are two copies of one image loop with different error mapping;
+   `agents-avatar.ts` maps `content_filter` to a 400 that Kaana must keep distinguishable.
 5. `voice-session-manager.ts` splits rather than moves: LiveKit lifecycle, credit
    reservation and tool execution are product logic; only the provider socket is Kaana's.
 
@@ -458,10 +457,10 @@ catalogue, playground and documentation pages stay as Alia product surfaces.
 with health metrics and no provider column, driven entirely by `GET /models/stats`. Its
 DTO having no `provider` field is a load-bearing invariant that nothing currently enforces.
 
-**The app, SDK and Canvas all stay** — and they are where alias retirement
+**The app and SDK both stay** — and they are where alias retirement
 actually hurts. `route:auto` and `route:voice` are compiled into a published npm package
 that ships as raw source; `route:code` is the default of a VS Code SETTING that
-persists in users' `settings.json` after an update; `route:instant` is pinned in saved Canvas workflow node data; and
+persists in users' `settings.json` after an update; and
 `packages/app`'s model store persists the selected id to AsyncStorage with no validation
 against the catalogue. **No alias may be retired by deletion — only behind the
 `is_legacy` flag `GET /v1/models` already exposes.**
@@ -546,10 +545,7 @@ Inherited from the four inventories, and stated per row where it bites:
 
 Added by this matrix:
 
-- **Domains were enumerated, not sampled**, with one exception: `packages/alia-canvas`
-  was covered only where
-  another inventory reached into them. Canvas has six alias sites and its own `/v1/models`
-  client, both recorded.
+- **Domains were enumerated, not sampled.**
 - **The coverage gate binds only `packages/api/src/internal/providers/**`.** Nothing
   enforces completeness for `packages/app`, the console, the SDK or the docs — for those,
   absence from the matrix means nobody wrote a row, not that no row is owed.

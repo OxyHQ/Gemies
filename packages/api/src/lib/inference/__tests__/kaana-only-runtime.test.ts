@@ -30,7 +30,6 @@ const HOSTED_RUNTIME_FILES = [
   'routes/v1/audio.ts',
   'routes/v1/chat-completions.ts',
   'routes/v1/images.ts',
-  'routes/canvas/execute.ts',
 ] as const;
 
 describe('Kaana-only hosted inference architecture', () => {

@@ -9,10 +9,6 @@
       "sha256": "1834b5250f35ccb1b43de162eb3d496eae3fda485c23f10735230019bc73cb8b"
     },
     {
-      "path": "packages/alia-canvas/package.json",
-      "sha256": "b27e80722b874028a3e8d07fe3dff5941aee4d579bb61ae300168e6008d59dea"
-    },
-    {
       "path": "packages/alia-computer-host/package.json",
       "sha256": "8357033f155845a784ab633db4e0a7ef17cd4bf143019db22c201cb6ff2956d3"
     },

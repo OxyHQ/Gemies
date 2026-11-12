@@ -43,9 +43,8 @@ const ROOT = resolve(import.meta.dirname, '..');
  * with "say which" instead of with noise, and a census that fires on the wrong
  * thing gets deleted by the next person who reads it.
  *
- * The trees added by #244 — canvas, a webview and integrations — were each a
- * live defect rather than a latent one, because `GET /v1/models` has served an
- * empty list since #178: canvas rendered a hardcoded `Instant` and the Telegram
+ * The trees added by #244 were each a live defect rather than a latent one,
+ * because `GET /v1/models` has served an empty list since #178: the Telegram
  * and Discord bots printed `Model: route:instant` to every user. This script
  * was green throughout, reporting `245 files walked`, because none of them was
  * in this list.
@@ -53,7 +52,6 @@ const ROOT = resolve(import.meta.dirname, '..');
 export const TREES = [
   'packages/app/app',
   'packages/app/src',
-  'packages/alia-canvas/src',
   'packages/alia-chat/src',
   'packages/integrations/src',
 ];
@@ -191,8 +189,8 @@ function main() {
   // Exact counts. Each list may only change in a diff that also changes the
   // number beside it, which is the review this gate exists to force.
   const counts = [
-    ['workspaces', workspaces.length, 7],
-    ['TREES', TREES.length, 5],
+    ['workspaces', workspaces.length, 6],
+    ['TREES', TREES.length, 4],
     ['NOT_A_CLIENT', Object.keys(NOT_A_CLIENT).length, 3],
   ];
   const partition = [
@@ -220,8 +218,8 @@ function main() {
   // Vacuity floor. An empty walk satisfies every check below, and "I found less"
   // and "there is less" look identical without one.
   //
-  // #244 found a walk of 245 files reporting OK while canvas and the bots all
-  // showed an alias. The walk is 611 files
+  // #244 found a walk of 245 files reporting OK while the bots all showed an
+  // alias. The walk is 571 files
   // today; a floor of 200 still catches losing a whole tree of that size.
   if (files.length < 200) {
     console.error(`check-model-defaults: walked only ${files.length} files; expected 200+.`);

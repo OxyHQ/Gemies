@@ -237,7 +237,7 @@
       "proposedOwner": "kaana",
       "targetPath": "kaana:catalogue/tier-mappings.ts",
       "dependsOn": ["model-capabilities-data", "alia-models"],
-      "removalGate": "Read by gateway-client's getModelMappingsForTier, which 8 product call sites use (images, TTS, transcription, avatars, canvas, chat-completions, voice, chat.service). Every one must resolve tiers through Kaana first. NOTE: a live Postgres table `alia_model_provider_mappings` exists but the runtime reads the CODE table, not the table.",
+      "removalGate": "Read by gateway-client's getModelMappingsForTier, which 7 product call sites use (images, TTS, transcription, avatars, chat-completions, voice, chat.service). Every one must resolve tiers through Kaana first. NOTE: a live Postgres table `alia_model_provider_mappings` exists but the runtime reads the CODE table, not the table.",
       "evidence": "packages/api/src/internal/providers/lib/generate-model-mappings.ts:34-... (GENERATED_TIER_MAPPINGS); packages/api/src/db/schema/providers.ts:228 (aliaModelProviderMappings, not read by the resolver)"
     },
     {
@@ -297,7 +297,7 @@
       "proposedOwner": "kaana",
       "targetPath": "kaana:providers/digitalocean-async.ts",
       "dependsOn": ["provider-api", "hostname-digitalocean"],
-      "removalGate": "LIVE and its helpers leak OUT of internal/: extractImageUrl/extractAudioUrl are imported by 5 product files (routes/agents-avatar.ts:9, routes/canvas/execute.ts:19, routes/v1/audio.ts:18, routes/v1/images.ts:8, lib/show/show-pipeline.ts:23). Kaana must return a normalised {url} so those 5 imports disappear.",
+      "removalGate": "LIVE and its helpers leak OUT of internal/: extractImageUrl/extractAudioUrl are imported by 4 product files (routes/agents-avatar.ts:9, routes/v1/audio.ts:18, routes/v1/images.ts:8, lib/show/show-pipeline.ts:23). Kaana must return a normalised {url} so those 4 imports disappear.",
       "evidence": "packages/api/src/internal/providers/lib/digitalocean-async.ts:12-14, :66-148, :154-163; 5 product importers listed above"
     },
     {
@@ -611,18 +611,6 @@
       "evidence": "packages/api/src/routes/billing.ts:22, :90, :117, :175, :221, :238-240, :256, :343, :453, :466, :471, :725"
     },
     {
-      "id": "gwc-import-canvas-execute",
-      "kind": "route",
-      "name": "gateway-client importer: routes/canvas/execute.ts",
-      "currentPath": "packages/api/src/routes/canvas/execute.ts",
-      "summary": "PRODUCT. The canvas aiImage node duplicates the image-generation loop (v1-image mappings, 30s, 1 attempt) — a third copy of the same pattern.",
-      "proposedOwner": "kaana",
-      "targetPath": "kaana:images",
-      "dependsOn": ["gateway-client", "provider-api", "digitalocean-async", "behaviour-images"],
-      "removalGate": "Same as gwc-import-agents-avatar.",
-      "evidence": "packages/api/src/routes/canvas/execute.ts:18-19, :256-280"
-    },
-    {
       "id": "gwc-import-health",
       "kind": "route",
       "name": "gateway-client importer: routes/health.ts (getAllProviderHealth)",
@@ -828,7 +816,7 @@
       "id": "sanitize-call-sites",
       "kind": "sanitizer",
       "name": "Sanitization call sites (15 production files, 3 test files)",
-      "currentPath": "packages/api/src/routes/{billing,referrals,credits,internal}.ts, routes/v1/{voice,audio,images,chat-completions,shows}.ts, routes/canvas/execute.ts, lib/show/show-pipeline.ts, lib/chat-modes/deep-research-handler.ts, lib/errors/{index,sanitize}.ts, lib/routing/policy.ts",
+      "currentPath": "packages/api/src/routes/{billing,referrals,credits,internal}.ts, routes/v1/{voice,audio,images,chat-completions,shows}.ts, lib/show/show-pipeline.ts, lib/chat-modes/deep-research-handler.ts, lib/errors/{index,sanitize}.ts, lib/routing/policy.ts",
       "summary": "15 production files reference a sanitizer. Densest: billing.ts (16), errors/sanitize.ts (6), routing/policy.ts (5), referrals.ts (5), v1/audio.ts (4). Counted at #139 ws20, comment lines excluded.",
       "proposedOwner": "alia",
       "targetPath": "keep",
@@ -859,18 +847,6 @@
       "dependsOn": ["failover-error-classifier", "sanitize-message"],
       "removalGate": "Documented and intentional; the gate is that formatErrorResponse only ever emits userMessage (verified at sanitize.ts:108-117).",
       "evidence": "packages/api/src/lib/errors/failover-error.ts:389-398, :411-417; packages/api/src/lib/errors/sanitize.ts:108-117"
-    },
-    {
-      "id": "leak-canvas-provider-badge",
-      "kind": "sanitizer",
-      "name": "LEAK: canvas AI text node renders a provider name",
-      "currentPath": "packages/alia-canvas/src/components/workflow/nodes/ai-text-node.tsx",
-      "summary": "Renders `{data.provider || \"openai\"}` in a user-visible workflow node — a provider name defaulted into the UI.",
-      "proposedOwner": "alia",
-      "targetPath": "keep (fix)",
-      "dependsOn": ["sanitize-message"],
-      "removalGate": "Model-abstraction defect independent of the epic; fix by rendering the Alia model name.",
-      "evidence": "packages/alia-canvas/src/components/workflow/nodes/ai-text-node.tsx:24"
     },
     {
       "id": "leak-external-models-public",
@@ -1081,12 +1057,12 @@
       "kind": "behaviour",
       "name": "MODALITY images: timeouts, retries, fallback, cancellation",
       "currentPath": "packages/api/src/routes/v1/images.ts",
-      "summary": "Global 60s AbortController; walk v1-image mappings in priority order with timeout 30s and maxAttempts 1 each (fail fast, next provider); abort checked at the top of each iteration; exhaustion returns 504 if the global abort fired else 503. THREE independent copies of this loop exist (v1/images.ts, agents-avatar.ts, canvas/execute.ts) with slightly different error mapping.",
+      "summary": "Global 60s AbortController; walk v1-image mappings in priority order with timeout 30s and maxAttempts 1 each (fail fast, next provider); abort checked at the top of each iteration; exhaustion returns 504 if the global abort fired else 503. TWO independent copies of this loop exist (v1/images.ts, agents-avatar.ts) with slightly different error mapping.",
       "proposedOwner": "kaana",
       "targetPath": "kaana:images",
       "dependsOn": ["provider-api", "digitalocean-async", "tier-mappings-generated"],
       "removalGate": "All three copies must move together; agents-avatar additionally maps content_filter to a 400, which Kaana must preserve as a distinguishable reason.",
-      "evidence": "packages/api/src/routes/v1/images.ts:21-23, :66-101, :103-107; packages/api/src/routes/agents-avatar.ts:137-170; packages/api/src/routes/canvas/execute.ts:256-280"
+      "evidence": "packages/api/src/routes/v1/images.ts:21-23, :66-101, :103-107; packages/api/src/routes/agents-avatar.ts:137-170"
     },
     {
       "id": "behaviour-tts",
@@ -1593,8 +1569,8 @@
   "counts": {
     "adapters": 21,
     "adaptersDetail": "19 text-chat Provider adapters + 2 realtime VoiceProvider adapters; 22 files in the directory including index.ts. Only the 2 voice adapters are reachable at runtime.",
-    "gatewayClientImporters": 21,
-    "gatewayClientImportersDetail": "21 non-test importer files plus 1 test that vi.mocks the module. Of the 21, 3 are billing-only (plan-access, stripe-prices, billing) and touch no provider data. The larger real chokepoint is chat-core.ts with 32 non-test importers.",
+    "gatewayClientImporters": 20,
+    "gatewayClientImportersDetail": "20 non-test importer files plus 1 test that vi.mocks the module. Of the 20, 3 are billing-only (plan-access, stripe-prices, billing) and touch no provider data. The larger real chokepoint is chat-core.ts with 32 non-test importers.",
     "providerHostnames": 20,
     "providerHostnamesDetail": "19 inference hostnames (openai, openai-realtime-wss, anthropic, google, groq, openrouter, digitalocean, xai incl. wss, mistral, deepseek, cerebras, together, fireworks, perplexity, novita, hyperbolic, sambanova, cohere, replicate, cloudflare — counted as 19 distinct hosts since api.openai.com and api.x.ai each serve both https and wss) plus api.zeroeval.com which is NOT inference. Excludes the unbounded dynamic asset URLs returned by DO async-invoke.",
     "providerEnvVars": 12,
@@ -1603,6 +1579,6 @@
     "providerSdkDepsDetail": "The 2 openai declarations are CLIENTS of Alia's own API, not provider deps. Excludes the 5 LiveKit packages (voice transport).",
     "deadCodeFiles": 26,
     "deadCodeFilesDetail": "internal/providers/index.ts + 12 route files + middleware/auth.ts + ws.ts + broadcast-helpers.ts + lib/db.ts + 4 seed modules + lib/auth-health.ts + 19 text adapters reachable only through routes/providers.ts + packages/integrations/src/shared/model-resolver.ts. Counted as distinct FILES that no live import path reaches.",
-    "inventoryItems": 126
+    "inventoryItems": 124
   }
 }

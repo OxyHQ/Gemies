@@ -33,7 +33,7 @@ party runtime internals require instrumentation at their owning services.
 
 ## Static web traffic
 
-The web apps' traffic (`alia.onl` and `canvas.alia.onl`) is measured keylessly by Oxy from Cloudflare's own analytics; see OxyHQ/oxy `docs/operations/cloudflare-web-activity.md`. Alia holds no Oxy activity secret and its Workers run no activity code: each one hands the request straight to its `ASSETS` binding. The `OXY_EDGE_ACTIVITY_*` bindings were never provisioned and nothing reads them now; if one is ever found on a deployment, delete it.
+The web app's traffic (`alia.onl`) is measured keylessly by Oxy from Cloudflare's own analytics; see OxyHQ/oxy `docs/operations/cloudflare-web-activity.md`. Alia holds no Oxy activity secret and its Worker runs no activity code: it hands the request straight to its `ASSETS` binding. The `OXY_EDGE_ACTIVITY_*` bindings were never provisioned and nothing reads them now; if one is ever found on a deployment, delete it.
 
 ## Package versions
 

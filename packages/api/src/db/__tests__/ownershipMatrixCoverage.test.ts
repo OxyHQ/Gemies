@@ -269,7 +269,7 @@ interface MatrixRow {
  * Codea's extension and CLI moved to OxyHQ/Codea, so the eleven rows that described their files
  * leave the matrix the same way; none of them was annotated as removed.
  */
-const REMOVED_ROW_COUNT = 147;
+const REMOVED_ROW_COUNT = 145;
 
 const OWNERS = new Set(['alia', 'oxy', 'kaana', 'delete']);
 const REACHABLE = new Set(['live', 'dead', 'unverified', 'loaded-not-invoked']);

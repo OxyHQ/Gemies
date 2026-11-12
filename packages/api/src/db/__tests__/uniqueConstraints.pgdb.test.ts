@@ -76,8 +76,6 @@ const REQUIRED_UNIQUES: readonly UniqueRequirement[] = [
     note: 'A PLAIN unique on a nullable column — correct, because a Postgres unique is NULLS DISTINCT by default, so rows without a dedup key never collide.',
   },
   { table: 'transactions', constraint: 'transactions_stripe_payment_intent_id_key' },
-  { table: 'workflows', constraint: 'workflows_workflow_id_key' },
-  { table: 'workflow_executions', constraint: 'workflow_executions_execution_id_key' },
   { table: 'context_nodes', constraint: 'context_nodes_oxy_user_node_key_key' },
   { table: 'context_edges', constraint: 'context_edges_oxy_user_from_to_type_key' },
   { table: 'context_sources', constraint: 'context_sources_oxy_user_source_key_key' },

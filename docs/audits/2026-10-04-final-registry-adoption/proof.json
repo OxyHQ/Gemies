@@ -10,10 +10,6 @@
       "sha256": "011be0c23e8eaea15b384a78e629bed11aeb5bed8df8a17dbd27f1c99641bfb0"
     },
     {
-      "path": "packages/alia-canvas/package.json",
-      "sha256": "8d701385a1d719a09a5613363cbea317a5c220533b25c043d90c66cae1fc9dbc"
-    },
-    {
       "path": "packages/alia-computer-host/package.json",
       "sha256": "f76f6c3dff0f274cc594975a8dc1360aed307951ffe05f829ef3dfcb931b6c27"
     },
@@ -80,11 +76,6 @@
       "path": "docs/audits/2026-10-04-final-registry-adoption/records/app-types.log",
       "sha256": "96d542c0cb8f6274a10d96fbd948cb023a16bb616a258ed4f419b79f1d1ac07d",
       "bytes": 73
-    },
-    {
-      "path": "docs/audits/2026-10-04-final-registry-adoption/records/canvas-build.log",
-      "sha256": "6feb4a8c3ef039bae3e6134e142039c9ff3cc0a74df949830af0be2055ddb0dc",
-      "bytes": 16495
     },
     {
       "path": "docs/audits/2026-10-04-final-registry-adoption/records/contracts-registry.json",
@@ -158,7 +149,7 @@
     "apiTestsSkipped": 1,
     "apiTypesBuild": "PASS",
     "allConsumerTypes": "PASS",
-    "appAndCanvasBuilds": "PASS",
+    "appBuild": "PASS",
     "registryInstalledMemberChecks": 12920
   },
   "limits": [

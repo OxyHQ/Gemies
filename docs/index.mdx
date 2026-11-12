@@ -106,7 +106,6 @@ PostgreSQL is Alia's only product store: conversations, messages, agents, organi
 | --- | --- | --- |
 | `packages/app` | Expo + React Native | Main app (web + iOS + Android) |
 | `packages/api` | Express + TypeScript | Core API runtime |
-| `packages/alia-canvas` | Vite + React | Canvas / diagram editor |
 | `packages/integrations` | Express + TypeScript | Telegram / WhatsApp / Discord / browser bridges, and the MCP client |
 | `packages/alia-chat` | React | Published as `@alia.onl/sdk` — the CLIENT SDK (components, hooks, voice) |
 | `packages/alia-server` | TypeScript | Published as `@alia.onl/server` — the SERVER client a consumer backend calls Alia with |
@@ -135,7 +134,6 @@ Or run individual workspaces:
 ```sh
 bun run dev:api          # Express API only
 bun run dev:app          # Expo app (web + tunnel)
-bun run dev:canvas       # Canvas app
 ```
 
 Hit the unified chat endpoint:

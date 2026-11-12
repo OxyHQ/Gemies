@@ -37,7 +37,6 @@ import integrationsOauthRouter from './routes/integrations-oauth.js';
 import toolsProxyRouter from './routes/tools-proxy.js';
 import billingRouter from './routes/billing.js';
 import organizationRouter from './routes/organization.js';
-import canvasRouter from './routes/canvas/index.js';
 import catalogueRouter from './routes/catalogue.js';
 import localRuntimesRouter from './routes/local-runtimes.js';
 import internalRouter from './routes/internal.js';
@@ -329,7 +328,6 @@ app.use('/integrations', integrationsOauthRouter);
 app.use('/tools', toolsProxyRouter);
 app.use('/billing', billingRouter);
 app.use('/organization', organizationRouter);
-app.use('/api', canvasRouter);
 // Outside `/v1` on purpose: ADR 0004 keeps that surface frozen at the routes it
 // already has. See routes/catalogue.ts for the full shape argument.
 app.use('/catalogue', catalogueRouter);

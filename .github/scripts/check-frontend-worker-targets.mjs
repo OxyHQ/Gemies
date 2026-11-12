@@ -1,14 +1,14 @@
 /**
- * The web frontends deploy to Gemies' own Workers and hostnames, never to Alia's.
+ * The web app deploys to Gemies' own Worker and hostnames, never to Alia's.
  *
  * This repository was created from OxyHQ/Alia with its whole history (ADR 0034). Alia still
- * deploys its web app (`alia-app` on `alia.onl`) and Canvas (`alia-canvas` on `canvas.alia.onl`)
- * from THAT repository. `wrangler deploy` replaces whatever Worker has the configured name and
- * claims whatever custom domain is configured, so a `wrangler.toml` here that named either of
- * Alia's would overwrite Alia's production web app with this one, with no error from Cloudflare.
+ * deploys its web app (`alia-app` on `alia.onl`) from THAT repository. `wrangler deploy` replaces
+ * whatever Worker has the configured name and claims whatever custom domain is configured, so a
+ * `wrangler.toml` here that named Alia's would overwrite Alia's production web app with this one,
+ * with no error from Cloudflare.
  *
- * So each config must name exactly the Worker and the custom domains listed below, and no Worker
- * name or route anywhere in the frontend configs may mention Alia's. Static: it reads the files
+ * So the config must name exactly the Worker and the custom domains listed below, and no Worker
+ * name or route in it may mention Alia's. Static: it reads the files
  * `deploy-frontends.yml` deploys from, in the CI job that installs nothing.
  */
 
@@ -20,15 +20,10 @@ const EXPECTED = [
     name: 'gemies-app',
     routes: ['gemies.ai', 'www.gemies.ai'],
   },
-  {
-    file: 'packages/alia-canvas/wrangler.toml',
-    name: 'gemies-canvas',
-    routes: ['canvas.gemies.ai'],
-  },
 ];
 
 /** Alia's production Workers and hostnames, deployed from OxyHQ/Alia. */
-const FORBIDDEN = /alia-app|alia-canvas|alia\.onl/;
+const FORBIDDEN = /alia-app|alia\.onl/;
 
 /** The TOML lines that carry meaning: comments and blank lines dropped. */
 function significantLines(text) {
@@ -70,11 +65,9 @@ for (const { file, name, routes } of EXPECTED) {
 }
 
 if (failures.length > 0) {
-  console.error('check-frontend-worker-targets: the frontends would deploy somewhere else:\n');
+  console.error('check-frontend-worker-targets: the web app would deploy somewhere else:\n');
   for (const failure of failures) console.error(`  - ${failure}`);
-  console.error(
-    '\nOxyHQ/Alia deploys alia-app (alia.onl) and alia-canvas (canvas.alia.onl); never name them here.',
-  );
+  console.error('\nOxyHQ/Alia deploys alia-app (alia.onl); never name it here.');
   process.exit(1);
 }
 

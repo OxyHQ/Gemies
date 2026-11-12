@@ -156,7 +156,7 @@ jobs:
   # and `Integrations (Postgres)` reads `packages/integrations` alone. Shared
   # inputs — the lockfile, the root manifest, bunfig and this workflow — mark
   # both affected. `Deploy Script Tests` reads only `.github/`, the Dockerfiles
-  # and their .dockerignore files, the Canvas manifest and the bun-pin script.
+  # and their .dockerignore files and the bun-pin script.
   changes:
     name: Changes
     if: github.event_name == 'pull_request'
@@ -197,7 +197,6 @@ jobs:
               - '**/Dockerfile'
               - '**/Dockerfile.*'
               - '**/.dockerignore'
-              - 'packages/alia-canvas/package.json'
               - 'scripts/check-bun-pin.mjs'
 
   # Gates the rollout logic deploy-aws.yml runs against production. The script
@@ -260,18 +259,10 @@ jobs:
       - name: Verify workflow concurrency
         run: node .github/scripts/check-workflow-concurrency.mjs
 
-      # Same job, same reason. The Canvas Worker deploy is a post-merge job that
-      # a paths-filter skips on most pushes, so "is Deploy Frontends green"
-      # answers the same whether or not it works — it failed five consecutive
-      # real runs unnoticed. This asserts the wiring; the step below in
-      # `Frontend Typecheck` exercises the behaviour.
-      - name: Verify the Canvas deploy is wired to a declared wrangler
-        run: node .github/scripts/check-canvas-deploy-wiring.mjs
-
       # Same job, same reason. This repository was copied from OxyHQ/Alia, which
-      # still deploys alia-app (alia.onl) and alia-canvas (canvas.alia.onl);
-      # a wrangler.toml naming either would overwrite Alia's web app.
-      - name: Verify the frontends deploy to Gemies' own Workers
+      # still deploys alia-app (alia.onl); a wrangler.toml naming it would
+      # overwrite Alia's web app.
+      - name: Verify the web app deploys to Gemies' own Worker
         run: node .github/scripts/check-frontend-worker-targets.mjs
 
       # The production images' build inputs (Dockerfile, context, target and
@@ -493,15 +484,6 @@ jobs:
       - name: Test computer host
         run: bun run --filter @alia/computer-host test
 
-      # `alia-canvas` had a `tsc -b` and a wrangler dry-run between them and
-      # nothing else. Its first subject is `lib/product-modes.ts`, which decides
-      # what a person is offered and what identifier a node stores — the file
-      # whose own header records that the module it replaced showed a hardcoded
-      # alias name under a label reading "Model", for every node, for as long as
-      # the editor existed.
-      - name: Test Canvas
-        run: bun run --filter alia-canvas test
-
       # `@alia/app` has had a `test` script and, until now, no job calling it —
       # a suite that cannot fail. The effort selector is
       # its first real subject: the control it renders depends on platform and
@@ -534,39 +516,11 @@ jobs:
       - name: Verify every static asset a source file names exists
         run: node scripts/check-static-assets.mjs
 
-      # The gemies.ai and Canvas Workers: CORS on the SDK's shared files, a
+      # The gemies.ai Worker: CORS on the SDK's shared files, a
       # year-long immutable cache on content-hashed files, a 404 (not the app
       # shell) for a hashed name a deploy lacks. Plain `node --test`, no build.
-      - name: Test the asset Workers
+      - name: Test the asset Worker
         run: node --test scripts/asset-worker.test.mjs
-
-      # `alia-canvas` is a solution-style project (`"files": []`, references
-      # only), so `tsc --noEmit` in it compiles NOTHING and exits 0 — which is
-      # why `typecheck-workspaces.ts` lists it as scriptless and points at the
-      # `tsc -b` inside its own `build`. That build only ran in
-      # `deploy-frontends.yml`, on main, AFTER merge. This is the same check,
-      # before it.
-      - name: Typecheck the solution-style frontend
-        run: bunx tsc -b packages/alia-canvas
-
-      # The Canvas Worker deploy, minus the publish — the same wrangler, the
-      # same wrangler.toml and the same build output that `deploy-frontends.yml`
-      # ships, run on every pull request instead of only after merge. That
-      # timing is the point: the deploy job is behind a paths-filter, so it is
-      # SKIPPED on most pushes, and a workflow whose only failing job is skipped
-      # reports success.
-      #
-      # `--dry-run` needs no credentials — it stops before authenticating — and
-      # it is not a no-op: it fails if the assets directory is missing and if
-      # wrangler does not recognise a key in the config, both verified against
-      # wrangler 4.125.0. The build is ~3s.
-      - name: Dry-run the Canvas Worker deploy
-        run: |
-          bun run build:canvas
-          bun run --cwd packages/alia-canvas deploy:dry
-        env:
-          NODE_ENV: production
-          VITE_API_URL: https://api.gemies.ai
 
       # No client names a model: with nothing chosen a request carries no
       # `model` and the server's default answers. It spans every client source

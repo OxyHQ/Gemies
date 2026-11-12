@@ -21,11 +21,6 @@ import { log } from './logger.js';
 /**
  * The trusted browser origins that consume Alia's credentialed product routes.
  *
- * `packages/alia-canvas` is served on `canvas.alia.onl` and nowhere else: it is
- * a Cloudflare WORKER with `workers_dev = false` (see its `wrangler.toml`), so
- * it has no default hostname to admit. The Pages project it used to live on,
- * and that project's `alia-canvas.pages.dev`, were deleted in the migration.
- *
  * This list is Alia's OWN CORS surface. `api.oxy.so` is a separate one, whose
  * origins come from `BOOTSTRAP_CORE_ORIGINS` and the Application registry in
  * the Oxy platform — authorising an origin there cannot be done from this repo,
@@ -42,13 +37,11 @@ import { log } from './logger.js';
  * for that browser flow to work.
  */
 export const PRODUCTION_ORIGINS: readonly string[] = [
-  // The Gemies web app and its Canvas (ADR 0034), Workers `gemies-app` and `gemies-canvas`;
-  // `www.gemies.ai` only redirects to the apex, so it is no origin of its own.
+  // The Gemies web app (ADR 0034), Worker `gemies-app`; `www.gemies.ai` only redirects to the
+  // apex, so it is no origin of its own.
   'https://gemies.ai',
-  'https://canvas.gemies.ai',
   'https://alia.onl',
   'https://console.alia.onl',
-  'https://canvas.alia.onl',
   'https://mention.earth',
   // Inbosh (the Oxy email client). inbox.oxy.so rides the `*.oxy.so` family; inbo.sh does not.
   'https://inbo.sh',

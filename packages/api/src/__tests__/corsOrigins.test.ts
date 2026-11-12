@@ -197,19 +197,17 @@ describe('the internal-routes CORS middleware', () => {
     });
   });
 
-  it('allows the Gemies web app and its Canvas, but not www, over GET and preflight', async () => {
-    for (const origin of ['https://gemies.ai', 'https://canvas.gemies.ai']) {
-      expect(await ask(MOUNTS.shipped, origin)).toEqual({
-        status: 200,
-        allowOrigin: origin,
-        allowCredentials: 'true',
-      });
-      expect(await ask(MOUNTS.shipped, origin, 'OPTIONS')).toEqual({
-        status: 204,
-        allowOrigin: origin,
-        allowCredentials: 'true',
-      });
-    }
+  it('allows the Gemies web app, but not www, over GET and preflight', async () => {
+    expect(await ask(MOUNTS.shipped, 'https://gemies.ai')).toEqual({
+      status: 200,
+      allowOrigin: 'https://gemies.ai',
+      allowCredentials: 'true',
+    });
+    expect(await ask(MOUNTS.shipped, 'https://gemies.ai', 'OPTIONS')).toEqual({
+      status: 204,
+      allowOrigin: 'https://gemies.ai',
+      allowCredentials: 'true',
+    });
     // `www.gemies.ai` redirects to the apex (`packages/app/worker/index.js`): it runs no app.
     expect((await ask(MOUNTS.shipped, 'https://www.gemies.ai')).allowOrigin).toBeNull();
   });
