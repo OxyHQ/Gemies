@@ -8,7 +8,7 @@ const VOICE_ERRORS: Record<VoiceErrorCode, string> = {
   'credential-not-supported': 'La voz solo está disponible con tu sesión de Alia',
   'plan-required': 'El modo voz necesita un plan de pago',
   'credits-exhausted': 'Te has quedado sin créditos para esta llamada',
-  'agent-unavailable': 'Este gemie no está disponible para una llamada',
+  'agent-unavailable': 'Este Gemie no está disponible para una llamada',
   'invalid-request': 'No se pudo iniciar la llamada',
   'resume-unavailable': 'No se pudo retomar la llamada: empieza una nueva',
   'realtime-unavailable': 'La voz no está disponible ahora mismo: inténtalo más tarde',

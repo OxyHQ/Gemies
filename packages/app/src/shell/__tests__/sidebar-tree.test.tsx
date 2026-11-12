@@ -364,7 +364,7 @@ describe('the sidebar list', () => {
     await mount();
     expect(flat()).toEqual([]);
     // Alia's row heads the gemies even for somebody with no gemie of their own (ADR 0034).
-    expect(sections()[0]).toMatchObject({ key: 'agents', label: 'sidebar.agents' });
+    expect(sections()[0]).toMatchObject({ key: 'agents', label: 'sidebar.yourGemies' });
     expect(sections()[1]).toMatchObject({ key: 'chats', label: 'sidebar.chats' });
     expect(chatIds()).toEqual(['alpha', 'beta']);
     // Title only: a chat row draws no avatar.
@@ -494,7 +494,7 @@ describe('the sidebar list', () => {
     await mount();
     // The agents are the first titled section, with their avatars; Alia's chats follow in theirs.
     expect(flat()).toEqual([]);
-    expect(sections()[0]).toMatchObject({ key: 'agents', label: 'sidebar.agents' });
+    expect(sections()[0]).toMatchObject({ key: 'agents', label: 'sidebar.yourGemies' });
     expect(sections()[0]!.items.map((item: { key: string }) => item.key)).toEqual([
       'gemie:alia',
       'agent:a1',
