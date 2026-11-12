@@ -36,8 +36,12 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-/** Routes that compose their own `AiChatContainer` (theirs holds the composer). */
-const CHAT_ROUTES = new Set(['alia', 'c/[id]/index', '[username]/index']);
+/**
+ * Routes that compose their own `AiChatContainer` (theirs holds the composer). The home is one: it
+ * is the chat with Alia. A name here that is no route file leaves that screen with two headers, the
+ * shell's and its own (`__tests__/chat-routes.test.ts`).
+ */
+const CHAT_ROUTES = new Set(['index', 'c/[id]/index', '[username]/index']);
 
 /**
  * Routes whose screen draws its own header, with Bloom's own controls (the agent editor's undo, title
@@ -46,13 +50,13 @@ const CHAT_ROUTES = new Set(['alia', 'c/[id]/index', '[username]/index']);
  */
 const OWN_HEADER_ROUTES = new Set(['[username]/edit']);
 
+/** The agent editor's panel width: Bloom's own multi-agent chat sets its editor at this order. */
+const EDITOR_PANEL_WIDTH = 380;
+
 /**
  * A chat route — or a local visual fixture (`__*.tsx`, never committed), which
  * mounts a chat screen and composes its own container the same way.
  */
-/** The agent editor's panel width: Bloom's own multi-agent chat sets its editor at this order. */
-const EDITOR_PANEL_WIDTH = 380;
-
 const isChatRoute = (name: string) => CHAT_ROUTES.has(name) || name.startsWith('__');
 
 /** The crumb each page's section gets. */
