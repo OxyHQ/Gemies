@@ -70,7 +70,7 @@
     "@aws-sdk/credential-provider-node": "3.972.84"
   },
   "devDependencies": {
-    "@ai-sdk/provider-utils": "4.0.64",
+    "@ai-sdk/provider-utils": "5.0.76",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/multer": "2.2.0",
