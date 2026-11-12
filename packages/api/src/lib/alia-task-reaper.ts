@@ -19,6 +19,7 @@
  * was only slow never settles a run this sweep already refunded.
  */
 
+import { ALIA_GEMIE_ID } from '../domain/alia-gemie.js';
 import { getDb } from '../db/index.js';
 import {
   failAbandonedAliaRun,
@@ -49,11 +50,12 @@ export async function reapAbandonedAliaRuns(now: Date = new Date()): Promise<{ f
       const automation = await findAutomationDefinitionById(getDb(), run.automationId);
       try {
         if (!automation) throw new Error('Alia task definition is gone');
-        if (run.selectedAgentId === null) throw new Error('Alia task run names no gemie');
         await postAliaMessage({
           oxyUserId: automation.ownerAccountId,
           automationId: automation.id,
-          agentId: run.selectedAgentId,
+          // ROLLOUT WINDOW ONLY (ADR 0034): a run the replaced image queued names no gemie until
+          // 0136 (post, same release) rewrites it; on this lane that is Alia's.
+          agentId: run.selectedAgentId ?? ALIA_GEMIE_ID,
           objective: automation.objective,
           conversationId: automation.conversationId,
           content: INTERRUPTED_MESSAGE,

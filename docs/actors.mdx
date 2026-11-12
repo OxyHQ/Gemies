@@ -43,7 +43,9 @@ Oxy creates her gemie's account (ADR 0034 phase 2), her row's `oxy_account_id` h
 `ALIA_PENDING_OXY_ACCOUNT_ID`, which Oxy resolves to nobody, and her Oxy calls keep
 speaking that lane through the one seam that chooses it, `lib/gemie-oxy-actor.ts`.
 The public wire still spells her as no `agentId` (`publicAgentId`), so a chat with
-her looks exactly as it did until the routes take the Gemies vocabulary.
+her looks exactly as it did until the routes take the Gemies vocabulary. Her row is
+public (everybody uses it) but not listed in the catalogue or in `searchAgents` until
+that account exists: a card with no name would be a regression.
 
 **An agent** is optional. It is an Oxy `bot` account owned by the person who
 created it; Alia stores only its runtime (prompt, model, archetype, marketplace

@@ -22,7 +22,8 @@ export const ALIA_GEMIE_CONFIGURATION = {
     'agent',
   ],
   access: 'public',
-  isPublished: true,
+  // Not listed until Oxy creates her account: a card with no identity would be a regression.
+  isPublished: false,
   status: 'active',
 } as const;
 

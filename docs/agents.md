@@ -51,7 +51,7 @@ the agent is created; a null owner fails closed for Oxy tools, and
 
 | Agent | Alia agent | `access` | Published | Where it opens |
 |---|---|---|---|---|
-| Alia (official, global) | `01a1cf00-cecf-7a24-868b-42b452105a6f` | `public` | yes | anywhere (migration 0135; see [Actors](./actors.mdx)) |
+| Alia (official, global) | `01a1cf00-cecf-7a24-868b-42b452105a6f` | `public` | not yet: once Oxy creates her account | anywhere, and the default of every turn (migration 0135; see [Actors](./actors.mdx)) |
 | Sindi (Homiio) | `01a0646a-078f-7514-9800-9f43ceed7df8` | `public` | yes | anywhere |
 | Clarity's assistant | `01a0646a-078f-7642-95ef-439952f4f3f9` | `public` | no (not in the catalogue) | only in Clarity, by Oxy's registry (Oxy ADR 0044) |
 

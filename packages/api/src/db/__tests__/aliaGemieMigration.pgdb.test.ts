@@ -5,7 +5,12 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ALIA_GEMIE_CONFIGURATION } from '../../__tests__/support/gemies';
 import { ALIA_GEMIE_ID, ALIA_PENDING_OXY_ACCOUNT_ID } from '../../domain/alia-gemie';
-import { findAgentById } from '../agents/agentRepository';
+import { findAgentById, listAgentCatalogue, searchActiveAgents } from '../agents/agentRepository';
+import { findAutomationDefinitionById } from '../automation/automationDefinitionRepository';
+import {
+  isEmailAlertEnabled,
+  listEmailAlertPreferences,
+} from '../proactive/emailOutreachRepository';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
 
 /**
@@ -82,6 +87,20 @@ describe('0135: Alia is one official, global gemie', () => {
     });
   });
 
+  it('is not listed while her Oxy account is pending: no catalogue card, no search hit', async () => {
+    const { agents: listed } = await listAgentCatalogue(db, { limit: 500, offset: 0 });
+    expect(listed.map((agent) => agent.id)).not.toContain(ALIA_GEMIE_ID);
+    for (const query of ['assistant', 'Oxy', 'everybody', 'Nilo']) {
+      const found = await searchActiveAgents(db, query, 50);
+      expect(found.map((agent) => agent.id)).not.toContain(ALIA_GEMIE_ID);
+    }
+    // Still public and active: everybody's default gemie, reachable with no Oxy round trip.
+    expect(await findAgentById(db, ALIA_GEMIE_ID)).toMatchObject({
+      access: 'public',
+      status: 'active',
+    });
+  });
+
   it('is seeded only once: replaying the seed changes nothing', async () => {
     const before = await findAgentById(db, ALIA_GEMIE_ID);
     for (const statement of statements(SEED).filter((s) => /insert into "agents"/i.test(s))) {
@@ -101,7 +120,7 @@ describe('0139: every conversation belongs to a gemie', () => {
   });
 });
 
-describe('0135/0136: the rows that spelled Alia as null now name her gemie', () => {
+describe('0136: the rows that spelled Alia as null now name her gemie', () => {
   it('rewrites conversations, calls, system bots, feedback on her replies and her tasks — and nothing else', async () => {
     const person = `person-${randomUUID()}`;
     const alias = {
@@ -115,6 +134,7 @@ describe('0135/0136: the rows that spelled Alia as null now name her gemie', () 
       aliaTask: randomUUID(),
       agentTask: randomUUID(),
       aliaRun: randomUUID(),
+      mailbox: randomUUID(),
       agentRun: randomUUID(),
       reply: randomUUID(),
       question: randomUUID(),
@@ -150,6 +170,25 @@ describe('0135/0136: the rows that spelled Alia as null now name her gemie', () 
           (${alias.aliaRun}, ${alias.aliaTask}, ${person}, 'alia', null, ${randomUUID()}, 'planned', now()),
           (${alias.agentRun}, ${alias.agentTask}, ${person}, 'agent', 'sindi', ${randomUUID()}, 'planned', now())`);
 
+        await tx.execute(
+          sql`alter table email_alert_preferences alter column agent_id drop not null`,
+        );
+        await tx.execute(
+          sql`alter table email_outreach_decisions alter column agent_id drop not null`,
+        );
+        await tx.execute(
+          sql`insert into email_alert_preferences (oxy_user_id, agent_id, enabled) values (${person}, null, false)`,
+        );
+        await tx.execute(sql`insert into email_outreach_decisions (id, mailbox_account_id, message_id, oxy_user_id, agent_id, verdict) values
+          (${randomUUID()}, ${person}, ${alias.mailbox}, ${person}, null, 'important')`);
+
+        // The rollout window: the image that runs reads the pre-cut spellings as Alia's gemie.
+        const window = {
+          task: (await findAutomationDefinitionById(tx, alias.aliaTask))?.actorSelection,
+          alerts: await isEmailAlertEnabled(tx, person, ALIA_GEMIE_ID),
+          switches: await listEmailAlertPreferences(tx, person),
+        };
+
         for (const statement of statements(REWRITE)) await tx.execute(sql.raw(statement));
 
         const rows = async (query: ReturnType<typeof sql>) =>
@@ -157,6 +196,13 @@ describe('0135/0136: the rows that spelled Alia as null now name her gemie', () 
             (await tx.execute<{ k: string; v: string | null }>(query)).map((row) => [row.k, row.v]),
           );
         observed = {
+          window,
+          alerts: await rows(
+            sql`select 'switch' as k, agent_id as v from email_alert_preferences where oxy_user_id = ${person}`,
+          ),
+          decisions: await rows(
+            sql`select message_id as k, agent_id as v from email_outreach_decisions where oxy_user_id = ${person}`,
+          ),
           conversations: await rows(
             sql`select conversation_id as k, agent_id as v from conversations where oxy_user_id = ${person}`,
           ),
@@ -183,6 +229,13 @@ describe('0135/0136: the rows that spelled Alia as null now name her gemie', () 
     }
 
     expect(observed).toEqual({
+      window: {
+        task: { mode: 'fixed', agentId: ALIA_GEMIE_ID },
+        alerts: false,
+        switches: new Map([[ALIA_GEMIE_ID, false]]),
+      },
+      alerts: { switch: ALIA_GEMIE_ID },
+      decisions: { [alias.mailbox]: ALIA_GEMIE_ID },
       conversations: {
         [alias.aliaChat]: ALIA_GEMIE_ID,
         [alias.agentChat]: 'sindi',

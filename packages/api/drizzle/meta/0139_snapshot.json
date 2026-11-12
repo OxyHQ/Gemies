@@ -1,5 +1,5 @@
 {
-  "id": "0a10bfd0-baf9-4b92-b9c1-d513384695f6",
+  "id": "09bcb777-d425-4c41-bf3c-ce8e4d334ece",
   "prevId": "5b2e618b-803c-4a5b-a416-cc2e0553228b",
   "version": "7",
   "dialect": "postgresql",
@@ -11352,7 +11352,7 @@
           "name": "agent_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "enabled": {
           "name": "enabled",
@@ -11438,7 +11438,7 @@
           "name": "agent_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "verdict": {
           "name": "verdict",

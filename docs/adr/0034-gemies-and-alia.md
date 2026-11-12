@@ -138,9 +138,13 @@ repository from Alia's `main`.
 
   "No computer" is configuration too: her row holds no `computer` (nor `browser`) grant. Every
   `agentId == null` branch in the turn (`tool-pipeline`, `turn-inputs`, `system-prompt-builder`,
-  `agent-turn`, the chat route, voice, channels, automations) reads these attributes instead.
-- **The row** is seeded by migration 0135 with the fixed id `ALIA_GEMIE_ID`
-  (`01a1cf00-cecf-7a24-868b-42b452105a6f`), public and published.
+  `agent-turn`, the chat route, voice, channels, automations, email alerts) reads these attributes
+  instead.
+- **The row** is seeded by migration 0135 (pre) with the fixed id `ALIA_GEMIE_ID`
+  (`01a1cf00-cecf-7a24-868b-42b452105a6f`), public. It is **not listed** (`is_published = false`)
+  until her Oxy account exists: a catalogue or `searchAgents` card with no name would be a visible
+  regression. Being public is what makes her usable by everybody; listing is a separate question
+  (ADR 0020 §1), and the migration that writes her account publishes her.
 - **Her Oxy account does not exist yet.** Oxy reserves the username `alia` and models her as the
   actor `{ type: 'alia', ownerAccountId }`, which its schema requires to have no account. Until Oxy
   creates the gemie's account (phase 2, Oxy's contract), the row's `oxy_account_id` holds
@@ -152,27 +156,38 @@ repository from Alia's `main`.
   chooses Oxy's actor for a gemie: `reach = 'person'` speaks `{ type: 'alia', ownerAccountId }`,
   every other gemie `{ type: 'agent', accountId }`. When Oxy accepts `agent:<alia>`, that function
   and Alia's `oxy_account_id` are what change.
-- **The public wire does not change in this step.** Responses and the shared page spell Alia's
-  gemie as no `agentId` (`publicAgentId`), and a request that names no gemie gets hers, so a chat
-  with Alia looks and behaves as before. The routes and events take the Gemies vocabulary in their
-  own phase, with `@gemies/sdk`.
-- **Rows rewritten** (0135 pre, 0136 post for what the replaced image wrote meanwhile):
-  `conversations.agent_id` (groups and space rooms included: a room belongs to her gemie,
-  `ROOM_GEMIE_ID`, and its speakers stay its `conversation_members`), `voice_calls.agent_id`, the
-  system bots' `bots.agent_id` (a user's bot with no agent is unbound, not Alia's, and stays so),
-  the feedback on her replies (`message_reaction_states.target_actor_id`), `actor_mode = 'alia'`
-  tasks (now `fixed` on her gemie) and the standing lane's runs and steps (which now name her
-  gemie). `messages.agent_info_*` is not rewritten: a `NULL` there means "the conversation's own
-  gemie spoke". 0137–0139 make `conversations.agent_id` NOT NULL (CHECK NOT VALID, VALIDATE, SET
-  NOT NULL) and narrow `actor_mode` to `fixed` | `automatic`.
+- **The public wire does not change in this step.** Responses, the shared page and the email-alert
+  settings spell Alia's gemie as no `agentId` (`publicAgentId`), and a request that names no gemie
+  gets hers, so a chat with Alia looks and behaves as before. The routes and events take the Gemies
+  vocabulary in their own phase, with `@gemies/sdk`.
+- **Rows rewritten in POST (0136), not pre.** The replaced image reads Alia's id as an ordinary
+  public agent's; rewritten before it drains, every Alia conversation it served would come back with
+  her id, the app would send it with the next turn, and that image would answer as a nameless agent
+  with no Nilo memory and the person's Oxy apps refused (Oxy knows no such account), start her tasks
+  as failing agent sessions, make her answer reactions and read switched-off email alerts as on. So
+  during the rollout the new image reads both spellings — a `NULL` conversation gemie is already what
+  the wire calls Alia, and three readers say so explicitly, marked "rollout window only"
+  (`actorSelectionOf`, the standing lane's run in `alia-task-run`/`alia-task-reaper`,
+  `isEmailAlertEnabled`/`listEmailAlertPreferences`) — and the post phase of the same release
+  leaves only the new one. Rewritten: `conversations.agent_id` (groups and space rooms included: a
+  room belongs to her gemie, `ROOM_GEMIE_ID`, and its speakers stay its `conversation_members`),
+  `voice_calls.agent_id`, the system bots' `bots.agent_id` (a user's bot with no agent is unbound,
+  not Alia's, and stays so), the feedback on her replies (`message_reaction_states.target_actor_id`),
+  `actor_mode = 'alia'` tasks (now `fixed` on her gemie), the standing lane's runs and steps, and
+  `email_alert_preferences` / `email_outreach_decisions`. `messages.agent_info_*` is not rewritten:
+  a `NULL` there means "the conversation's own gemie spoke". 0137–0139 make
+  `conversations.agent_id` NOT NULL (CHECK NOT VALID, VALIDATE, SET NOT NULL), the two email
+  columns NOT NULL, and narrow `actor_mode` to `fixed` | `automatic`. What remains for the replaced
+  image in the window is a conversation, task or switch the NEW image created during those
+  minutes: it names her id, which the old image misreads if a request about it reaches it.
 - **Guarantees, tested** (`lib/__tests__/alia-gemie-guarantees.test.ts`,
   `db/__tests__/aliaGemieMigration.pgdb.test.ts`): her memory never reaches another gemie (tools
   or prompt); consulting stays one level deep for her and for a persona; her chat keeps the person
-  lane, no `self_*`, no machine, the person's skills and no remit.
+  lane, no `self_*`, no machine, the person's skills and no remit; she is in no catalogue or search
+  result while unlisted; the window reads and the post rewrite.
 - **Kept, by name, for the vocabulary phase:** the standing lane's stored value
   (`automation_runs.selected_actor_type = 'alia'`, `automation_steps.actor_type`), the `alia-tasks`
   queue and `alia_task_authorizations`.
-- **Not yet migrated:** `email_alert_preferences.agent_id` and `email_outreach_decisions.agent_id`
-  still use `NULL` for "the person's own Inbox, told by Alia" (and so does
-  `PUT /notifications/email-alerts`); the Codea gemie is not seeded; the default gemie is Alia
-  for everybody until the per-person and per-app setting (§4) exists.
+- **Not yet done:** the Codea gemie is not seeded; the default gemie is Alia for everybody until the
+  per-person and per-app setting (§4) exists; the three "rollout window only" reads are dead once
+  this release's post phase has run, and are deleted by the next change that touches them.

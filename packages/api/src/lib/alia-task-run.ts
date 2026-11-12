@@ -29,6 +29,7 @@
  * conditional on the run still being open, so the two never both refund.
  */
 
+import { ALIA_GEMIE_ID } from '../domain/alia-gemie.js';
 import { stepCountIs } from 'ai';
 import { generateAnswered } from './chat/tool-synthesis.js';
 import type { User as OxyUser } from '@oxy.so/core';
@@ -146,8 +147,8 @@ async function loadPersonContext(
  * The gemie the dispatcher recorded on a standing-lane run, which must still be one whose work runs
  * under standing authority; `null` for anything else, which this lane may not drive.
  */
-async function loadStandingGemie(agentId: string | null): Promise<HydratedAgent | null> {
-  const row = agentId === null ? null : await findAgentById(getDb(), agentId);
+async function loadStandingGemie(agentId: string): Promise<HydratedAgent | null> {
+  const row = await findAgentById(getDb(), agentId);
   return row === null || row.taskAuthority !== 'standing' ? null : attachAgentIdentity(row);
 }
 
@@ -174,7 +175,9 @@ export async function runAliaTask(
     }
     return 'failed';
   }
-  const gemie = await loadStandingGemie(run.selectedAgentId);
+  // ROLLOUT WINDOW ONLY (ADR 0034): a run the replaced image queued names no gemie until 0136 (post,
+  // same release) rewrites it; on this lane that is Alia's.
+  const gemie = await loadStandingGemie(run.selectedAgentId ?? ALIA_GEMIE_ID);
   if (gemie === null) {
     if (await markAliaAutomationRun(getDb(), data.runId, 'failed')) {
       await safeRefund(data.creditReservation, 'Standing-authority gemie not found');

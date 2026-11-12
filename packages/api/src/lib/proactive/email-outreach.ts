@@ -39,6 +39,7 @@ import { emailIsBatched } from '../../db/agents/agentInboxRepository.js';
  * finds the claim and stops. Nothing of the email is stored there.
  */
 
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { z } from 'zod';
 import { zodSchema } from 'ai';
 import { getDb } from '../../db/index.js';
@@ -158,8 +159,13 @@ const CLASSIFIER_BUDGET_MS = 15_000;
 interface Audience {
   /** Who is told. */
   readonly oxyUserId: string;
-  /** `null` for Alia (the person's own Inbox); the agent whose own mailbox it is otherwise. */
-  readonly agentId: string | null;
+  /**
+   * The gemie that tells them: the agent whose own mailbox it is, or — for the person's own Inbox —
+   * their own assistant, Alia's gemie.
+   */
+  readonly agentId: string;
+  /** The email arrived in the person's own Inbox, not in an agent's own mailbox. */
+  readonly ownInbox: boolean;
 }
 
 async function resolveAudience(accountId: string): Promise<Audience | null> {
@@ -167,10 +173,10 @@ async function resolveAudience(accountId: string): Promise<Audience | null> {
   if (agent) {
     // An agent with no reconciled owner has nobody to tell.
     return agent.ownerOxyAccountId
-      ? { oxyUserId: agent.ownerOxyAccountId, agentId: agent._id }
+      ? { oxyUserId: agent.ownerOxyAccountId, agentId: agent._id, ownInbox: false }
       : null;
   }
-  return { oxyUserId: accountId, agentId: null };
+  return { oxyUserId: accountId, agentId: ALIA_GEMIE_ID, ownInbox: true };
 }
 
 /** One line, no control characters, bounded. */
@@ -360,14 +366,14 @@ export async function handleInboxEmailEvent(event: InboxEmailEvent): Promise<Ema
   const audience = await resolveAudience(event.accountId);
   if (!audience) return { status: 'ignored', reason: 'no_audience' };
   if (
-    audience.agentId &&
+    !audience.ownInbox &&
     event.eventId &&
     (await emailIsBatched(db, audience.agentId, event.eventId))
   ) {
     return { status: 'ignored', reason: 'batched' };
   }
 
-  if (audience.agentId === null && !(await hasAnyConversation(db, audience.oxyUserId))) {
+  if (audience.ownInbox && !(await hasAnyConversation(db, audience.oxyUserId))) {
     return { status: 'ignored', reason: 'not_an_alia_user' };
   }
   if (!(await isEmailAlertEnabled(db, audience.oxyUserId, audience.agentId))) {
@@ -383,10 +389,9 @@ export async function handleInboxEmailEvent(event: InboxEmailEvent): Promise<Ema
   if (claim === null) return { status: 'ignored', reason: 'duplicate' };
 
   try {
-    const refusal =
-      audience.agentId === null
-        ? await aliaCheckInRefusal(audience.oxyUserId)
-        : await agentCheckInRefusal(audience.oxyUserId, audience.agentId);
+    const refusal = audience.ownInbox
+      ? await aliaCheckInRefusal(audience.oxyUserId)
+      : await agentCheckInRefusal(audience.oxyUserId, audience.agentId);
     if (refusal) {
       await settleEmailOutreach(db, claim, { verdict: 'skipped', reason: refusal });
       return { status: 'skipped', reason: refusal };
@@ -396,7 +401,7 @@ export async function handleInboxEmailEvent(event: InboxEmailEvent): Promise<Ema
     const subject = oneLine(data.subject, MAX_SUBJECT_CHARS);
     const classification = await classifyEmail({
       oxyUserId: audience.oxyUserId,
-      forAgent: audience.agentId !== null,
+      forAgent: !audience.ownInbox,
       from,
       subject,
       snippet: oneLine(data.snippet, MAX_SNIPPET_CHARS),
@@ -416,28 +421,27 @@ export async function handleInboxEmailEvent(event: InboxEmailEvent): Promise<Ema
 
     const message = composeEmailOutreach({
       language: await languageOf(audience.oxyUserId),
-      forAgent: audience.agentId !== null,
+      forAgent: !audience.ownInbox,
       category,
       from,
       subject,
     });
-    const posted =
-      audience.agentId === null
-        ? await postAliaCheckIn({
-            oxyUserId: audience.oxyUserId,
-            content: message.content,
-            title: message.title,
-            conversationTitle: message.conversationTitle,
-            notificationBody: message.notificationBody,
-            data: { kind: 'important_email', emailId: data.messageId },
-          })
-        : await postAgentMessage({
-            oxyUserId: audience.oxyUserId,
-            agentId: audience.agentId,
-            kind: 'check_in',
-            content: message.content,
-            notificationBody: message.notificationBody,
-          });
+    const posted = audience.ownInbox
+      ? await postAliaCheckIn({
+          oxyUserId: audience.oxyUserId,
+          content: message.content,
+          title: message.title,
+          conversationTitle: message.conversationTitle,
+          notificationBody: message.notificationBody,
+          data: { kind: 'important_email', emailId: data.messageId },
+        })
+      : await postAgentMessage({
+          oxyUserId: audience.oxyUserId,
+          agentId: audience.agentId,
+          kind: 'check_in',
+          content: message.content,
+          notificationBody: message.notificationBody,
+        });
     if (!posted.posted) {
       await settleEmailOutreach(db, claim, { verdict: 'skipped', reason: posted.reason });
       return { status: 'skipped', reason: posted.reason };

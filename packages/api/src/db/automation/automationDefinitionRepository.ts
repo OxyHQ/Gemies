@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { ALIA_GEMIE_ID } from '../../domain/alia-gemie';
 import { uuidv7 } from '@oxy.so/db';
 import type { ApiDatabase, Executor } from '../index';
 import {
@@ -137,6 +138,9 @@ function actorSelectionOf(
   row: DefinitionRow,
   eligibleAgentIds: string[],
 ): AutomationActorSelection {
+  // ROLLOUT WINDOW ONLY (ADR 0034): until 0136 (post, same release) rewrites them, tasks saved before
+  // the cut say `alia`, which is Alia's gemie, fixed. 0139 then forbids the value.
+  if ((row.actorMode as string) === 'alia') return { mode: 'fixed', agentId: ALIA_GEMIE_ID };
   if (row.actorMode === 'fixed') return { mode: 'fixed', agentId: row.fixedAgentId };
   return { mode: 'automatic', eligibleAgentIds };
 }

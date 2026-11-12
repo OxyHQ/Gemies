@@ -4,11 +4,10 @@
  * Two tables, both small and both owned by that one module:
  *
  * - `email_alert_preferences` — the person's "tell me about important emails"
- *   switch, per actor. `agent_id` NULL is Alia (the person's own Inbox); an
+ *   switch, per gemie. Alia's gemie id is the person's own Inbox; any other
  *   agent id is that agent's OWN mailbox (ADR 0015), the switch belonging to the
  *   agent's owner. No row means the default, which is ON for both: the owner's
  *   decision is that a friend tells you, not that you have to ask it to.
- *   `NULLS NOT DISTINCT` makes the Alia row unique per person like any other.
  * - `email_outreach_decisions` — one row per (mailbox, message) that was
  *   considered, claimed BEFORE the classifier runs. It is the idempotency key:
  *   Oxy delivers an event at least once, and a second delivery of the same
@@ -34,8 +33,11 @@ export const emailAlertPreferences = pgTable(
   'email_alert_preferences',
   {
     oxyUserId: text().notNull(),
-    /** NULL is Alia, about the person's own Inbox; otherwise the agent's own mailbox. */
-    agentId: text(),
+    /**
+     * The gemie that tells: Alia's (`ALIA_GEMIE_ID`), about the person's own Inbox, or the agent
+     * whose own mailbox it is. NOT NULL since 0139 (it was NULL for Alia before ADR 0034).
+     */
+    agentId: text().notNull(),
     enabled: boolean().notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -77,8 +79,8 @@ export const emailOutreachDecisions = pgTable(
     messageId: text().notNull(),
     /** Who would be told. */
     oxyUserId: text().notNull(),
-    /** NULL for Alia; the agent whose own mailbox it is otherwise. */
-    agentId: text(),
+    /** Alia's gemie for the person's own Inbox; the agent whose own mailbox it is otherwise. */
+    agentId: text().notNull(),
     verdict: text({ enum: EMAIL_OUTREACH_VERDICTS as unknown as [string, ...string[]] })
       .$type<EmailOutreachVerdict>()
       .notNull(),
