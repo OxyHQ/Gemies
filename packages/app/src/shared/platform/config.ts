@@ -10,7 +10,8 @@ import { Platform } from 'react-native';
 // Default API URLs for different environments
 const DEV_API_BASE_URL = 'http://localhost:4150';
 const STAGING_API_BASE_URL = 'https://staging-api.alia.onl';
-const PROD_API_BASE_URL = 'https://api.alia.onl';
+// Gemies' own name for the backend (ADR 0034); `api.alia.onl` serves the same one until it is retired.
+const PROD_API_BASE_URL = 'https://api.gemies.ai';
 
 const ENV = {
   dev: {

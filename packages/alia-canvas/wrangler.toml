@@ -10,7 +10,9 @@
 # the same run flags an invented top-level key as "Unexpected fields", so the
 # silence on `workers_dev` and `not_found_handling` means they are recognised
 # rather than ignored.
-name = "alia-canvas"
+# `gemies-canvas`, never `alia-canvas`: OxyHQ/Alia still deploys that Worker to
+# `canvas.alia.onl`. Checked by `.github/scripts/check-frontend-worker-targets.mjs`.
+name = "gemies-canvas"
 main = "worker/index.js"
 compatibility_date = "2026-08-24"
 
@@ -44,5 +46,5 @@ not_found_handling = "single-page-application"
 
 # The only way in.
 [[routes]]
-pattern = "canvas.alia.onl"
+pattern = "canvas.gemies.ai"
 custom_domain = true

@@ -36,7 +36,7 @@ preventNativeSplashAutoHide();
 const OXY_API_URL = process.env.EXPO_PUBLIC_OXY_API_URL || 'https://api.oxy.so';
 const OXY_CLIENT_ID =
   process.env.EXPO_PUBLIC_OXY_CLIENT_ID ??
-  'oxy_dk_06488927793f96922ef4f366a9800547b34c6aec025fece3';
+  'oxy_dk_f69446329297cf395ee13c39c78678c4602e2cd989b112de';
 const AUTH_REDIRECT_URI = Linking.createURL('/');
 
 // Before any sticker renders: on web, where the animation renderer is served from.
@@ -138,7 +138,8 @@ function RootLayout() {
     // caught error would crash the boundary itself.
     <BloomProvider
       defaultMode="system"
-      defaultColorPreset="purple"
+      // Bloom's Pine + Rose: the green and pink of the Gemies icon.
+      defaultColorPreset="pine"
       persistKey={BLOOM_THEME_PERSIST_KEY}
       storage={BLOOM_THEME_STORAGE}
     >

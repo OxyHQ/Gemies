@@ -55,9 +55,9 @@ Disallow: /developers/billing
 Disallow: /developers/organizations/
 
 # Sitemaps
-Sitemap: https://alia.onl/sitemap.xml
-Sitemap: https://alia.onl/sitemap-blog.xml
-Sitemap: https://alia.onl/sitemap-roles.xml
+Sitemap: https://gemies.ai/sitemap.xml
+Sitemap: https://gemies.ai/sitemap-blog.xml
+Sitemap: https://gemies.ai/sitemap-roles.xml
 
 # Crawl rate hints para Google
-# Host: https://alia.onl
+# Host: https://gemies.ai

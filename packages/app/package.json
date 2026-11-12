@@ -5,7 +5,7 @@
   "scripts": {
     "stamp:voice-worklets": "bun scripts/stamp-voice-worklets.mjs",
     "start": "RCT_METRO_PORT=8150 expo start --clear --tunnel",
-    "dev": "RCT_METRO_PORT=8150 expo start --scheme alia",
+    "dev": "RCT_METRO_PORT=8150 expo start --scheme gemies",
     "android": "RCT_METRO_PORT=8150 expo run:android",
     "ios": "RCT_METRO_PORT=8150 expo run:ios",
     "web": "RCT_METRO_PORT=8150 expo start --web",

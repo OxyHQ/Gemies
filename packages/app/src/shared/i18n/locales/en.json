@@ -2352,5 +2352,18 @@
       "project": "Project",
       "channel": "Channel"
     }
+  },
+  "gemies": {
+    "name": "Gemies",
+    "tagline": "Create your Gemies. Let them work together.",
+    "metaDescription": "Create your Gemies. Let them work together. Gemies are AI teammates you shape, and Alia is one of them.",
+    "yourGemies": "Your Gemies",
+    "aliaTagline": "Oxy's assistant, one of your Gemies",
+    "create": "Create a gemie",
+    "explore": "Explore gemies",
+    "signIn": "Sign in with Oxy",
+    "signedOutHint": "Sign in to meet Alia and create your own Gemies.",
+    "emptyHint": "You have no Gemies of your own yet. Create one by telling Alia what it should do.",
+    "chatWith": "Chat with {{name}}"
   }
 }

@@ -1,13 +1,18 @@
 {
-  "name": "Alia - AI-Powered Chat Assistant",
-  "short_name": "Alia",
-  "description": "Your intelligent AI assistant for seamless conversations and productivity",
+  "name": "Gemies",
+  "short_name": "Gemies",
+  "description": "Create your Gemies. Let them work together.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#040711",
-  "theme_color": "#d269e6",
+  "background_color": "#004403",
+  "theme_color": "#004403",
   "orientation": "portrait",
   "icons": [
+    {
+      "src": "/favicon.ico",
+      "type": "image/x-icon",
+      "sizes": "16x16 32x32"
+    },
     {
       "src": "/icon-192.png",
       "sizes": "192x192",

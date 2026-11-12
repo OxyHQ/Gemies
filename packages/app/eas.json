@@ -21,7 +21,7 @@
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_OXY_CLIENT_ID": "oxy_dk_06488927793f96922ef4f366a9800547b34c6aec025fece3"
+        "EXPO_PUBLIC_OXY_CLIENT_ID": "oxy_dk_f69446329297cf395ee13c39c78678c4602e2cd989b112de"
       }
     }
   }

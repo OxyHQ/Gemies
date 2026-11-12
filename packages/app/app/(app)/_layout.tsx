@@ -37,7 +37,7 @@ import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** Routes that compose their own `AiChatContainer` (theirs holds the composer). */
-const CHAT_ROUTES = new Set(['index', 'c/[id]/index', '[username]/index']);
+const CHAT_ROUTES = new Set(['alia', 'c/[id]/index', '[username]/index']);
 
 /**
  * Routes whose screen draws its own header, with Bloom's own controls (the agent editor's undo, title
