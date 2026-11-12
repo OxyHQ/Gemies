@@ -50,7 +50,7 @@
     "@alia.onl/server": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.20.1",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.2.17",
     "@types/ws": "^8.18.1",
     "tsup": "^8.5.1",
