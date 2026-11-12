@@ -80,9 +80,8 @@ export const learningRules = pgTable(
  *
  * It is required and indexed but is NOT a retention rule, so these rows
  * accumulate and `db/expiryTargets.ts` gets no entry for this table. Adding one
- * would delete history — the
- * `workflow_executions` call, for the same reason. The column bounds the
- * rollback WINDOW; it does not bound the row's life.
+ * would delete history. The column bounds the rollback WINDOW; it does not bound
+ * the row's life.
  *
  * ## Nothing reads this table
  *

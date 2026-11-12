@@ -24,7 +24,7 @@
     ],
     "residual": [
       "packages/api/src/routes/v1/audio.ts contains a job-queue surface (POST /generate, GET /jobs/:jobId) whose async completion arrives over the Socket.IO event 'audio:job-update'. Whether that job model should move to Kaana or stay Alia product could not be decided from the route alone - it depends on whether the generation provider call is inference (out of scope for this inventory).",
-      "Socket.IO events 'agent-approval-request', 'agent-approval-result', 'agent-approval-decision', 'canvas-update' and 'workflow-progress' are emitted by packages/api but have ZERO in-repo listeners (checked across all *.ts/*.tsx in packages/, and packages/alia-canvas has no socket client at all). Cannot classify: either dead code or consumed by an out-of-repo client.",
+      "Socket.IO events 'agent-approval-request', 'agent-approval-result', 'agent-approval-decision' and 'canvas-update' are emitted by packages/api but have ZERO in-repo listeners (checked across all *.ts/*.tsx in packages/). Cannot classify: either dead code or consumed by an out-of-repo client.",
       "packages/api/src/routes/models-stats.ts (GET /models/stats, /models/stats/:modelId) and packages/api/src/routes/external-models.ts (GET /, /organizations, /:modelId) are mounted and live but have ZERO in-repo HTTP callers. They are model-metadata endpoints, so they plausibly belong to the removal set, but no client evidence exists either way.",
       "The exact ownership split for /v1/voice/* (LiveKit token minting vs transcription) was not decided: token minting is an Alia product concern, transcription is inference. Both live in one file (packages/api/src/routes/v1/voice.ts), so the file will have to be split.",
       "docs/superpowers/specs/*.md are inside docsPath and therefore PUBLISHED, but are historical planning documents. Whether they should be in the public docs corpus at all is a docs decision, not an API one."
@@ -64,7 +64,7 @@
       "proposedOwner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": ["alia-models-registry"],
-      "removalGate": "Cannot be removed or reshaped until model-selector.tsx, chatProvider.ts, canvas lib/models.ts and integrations api-client.ts all migrate. Note it is UNAUTHENTICATED - external scrapers may depend on it.",
+      "removalGate": "Cannot be removed or reshaped until model-selector.tsx, chatProvider.ts and integrations api-client.ts all migrate. Note it is UNAUTHENTICATED - external scrapers may depend on it.",
       "evidence": "packages/api/src/routes/v1.ts:28; packages/api/src/routes/v1/models.ts:52"
     },
     {
@@ -220,7 +220,7 @@
       "proposedOwner": "kaana",
       "targetPath": "kaana:image-generation (Alia keeps the /v1/images/generations facade)",
       "dependsOn": ["gateway-client-seam"],
-      "removalGate": "Declared in the app route registry (routes.ts:152) but that entry is DEAD (no reference). Two INTERNAL callers use the same provider endpoint string and would break if the mapping moves: routes/agents-avatar.ts:146 and routes/canvas/execute.ts:263.",
+      "removalGate": "Declared in the app route registry (routes.ts:152) but that entry is DEAD (no reference). An INTERNAL caller uses the same provider endpoint string and would break if the mapping moves: routes/agents-avatar.ts:146.",
       "evidence": "packages/api/src/routes/v1/images.ts:20; packages/api/src/routes/v1/images.ts:2"
     },
     {
@@ -438,18 +438,6 @@
       "dependsOn": ["v1-chat-completions-post", "v1-models-list", "v1-voice-transcribe"],
       "removalGate": "Server-to-server and deployed independently, so it can lag the API. Two call sites means a one-site fix leaves the other broken.",
       "evidence": "packages/integrations/src/shared/api-client.ts:198,260,159,241,207,269"
-    },
-    {
-      "id": "canvas-models-consumer",
-      "kind": "consumer",
-      "name": "Canvas - model list",
-      "currentPath": "packages/alia-canvas/src/lib/models.ts",
-      "summary": "fetch(`${API_URL}/v1/models`) with a hardcoded fallback list whose first entry is route:instant. Workflow nodes default to model 'route:instant'.",
-      "proposedOwner": "alia",
-      "targetPath": "keep-alia-product",
-      "dependsOn": ["v1-models-list", "model-id-route:instant"],
-      "removalGate": "Saved workflows persist the model id in node data, so retiring route:instant invalidates stored user workflows, not just UI defaults.",
-      "evidence": "packages/alia-canvas/src/lib/models.ts:26,9; packages/alia-canvas/src/components/workflow/workflow-editor.tsx:43,72,79"
     },
     {
       "id": "app-model-selector-consumer",
@@ -768,12 +756,12 @@
       "kind": "model-id-usage",
       "name": "route:instant as a hardcoded default (5 packages)",
       "currentPath": "packages/integrations/src/shared/api-client.ts",
-      "summary": "Default for every messaging channel (telegram adapter:212, discord adapter:248 + commands:122,156, chat-handler:108, api-client:207,269), for all Canvas workflow nodes, and in the app's entitlement fallback list.",
+      "summary": "Default for every messaging channel (telegram adapter:212, discord adapter:248 + commands:122,156, chat-handler:108, api-client:207,269) and in the app's entitlement fallback list.",
       "proposedOwner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": ["alia-models-registry"],
-      "removalGate": "Retiring route:instant silently breaks every bot channel AND invalidates the model field of saved Canvas workflows. Highest fan-out of any single id.",
-      "evidence": "packages/integrations/src/shared/api-client.ts:207,269; packages/alia-canvas/src/components/workflow/workflow-editor.tsx:43,72,79"
+      "removalGate": "Retiring route:instant silently breaks every bot channel. Highest fan-out of any single id.",
+      "evidence": "packages/integrations/src/shared/api-client.ts:207,269"
     },
     {
       "id": "model-id-route:voice",

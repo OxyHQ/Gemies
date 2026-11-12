@@ -94,8 +94,8 @@ provider retires disappears from Alia on the next refresh without a deploy.
   chosen.
 
 No model id appears in code, in environment variables or in a curated list. A persisted
-choice (an agent's or thread's `model_id`, a bot's preferred model, a canvas node's model)
-is a real `<publisher>/<model>`, and `NULL` means "use the default".
+choice (an agent's or thread's `model_id`, a bot's preferred model) is a real
+`<publisher>/<model>`, and `NULL` means "use the default".
 
 ### 4. Reasoning effort is a request parameter, validated against the model
 

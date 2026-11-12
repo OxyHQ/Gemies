@@ -173,12 +173,6 @@ in its own repository, [OxyHQ/Codea](https://github.com/OxyHQ/Codea), and calls 
 </td>
 <td valign="top" width="50%">
 
-**Web**
-
-| Path | Package | Stack |
-|---|---|---|
-| [`packages/alia-canvas`](packages/alia-canvas/) | `alia-canvas` | Vite, React |
-
 **Shared**
 
 | Path | Package | Stack |
@@ -208,7 +202,7 @@ More usefully, run only what you are working on:
 
 ```bash
 bun run dev:api          bun run dev:app
-bun run dev:canvas       bun run dev:integrations
+bun run dev:integrations
 ```
 
 The app has platform shortcuts at the root:
@@ -227,8 +221,8 @@ bun run web    # or ios, or android
 | Group | Scripts |
 |---|---|
 | Build all | `bun run build` |
-| Build one | `build:app`, `build:api`, `build:canvas`, `build:integrations` |
-| Start one | `start:app`, `start:api`, `start:canvas`, `start:integrations` |
+| Build one | `build:app`, `build:api`, `build:integrations` |
+| Start one | `start:app`, `start:api`, `start:integrations` |
 | Lint / format (Biome) | `bun run lint` (check), `bun run lint:fix`, `bun run format` |
 
 </details>

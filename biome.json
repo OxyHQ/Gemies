@@ -137,7 +137,7 @@
   },
   "overrides": [
     {
-      "includes": ["packages/app/**", "packages/alia-canvas/**"],
+      "includes": ["packages/app/**"],
       "linter": {
         "rules": {
           "style": {
@@ -182,11 +182,7 @@
       ]
     },
     {
-      "includes": [
-        "packages/api/src/**",
-        "packages/alia-computer-host/src/**",
-        "packages/alia-canvas/**"
-      ],
+      "includes": ["packages/api/src/**", "packages/alia-computer-host/src/**"],
       "linter": {
         "rules": {
           "correctness": {

@@ -77,15 +77,15 @@ accept it.
 
 ### 5. What stays exact
 
-Internal calls keep computed exact models (utility, speech — ADR 0012 §3). An agent,
-bot or canvas node whose stored model is an exact `<publisher>/<model>` keeps running
+Internal calls keep computed exact models (utility, speech — ADR 0012 §3). An agent
+or bot whose stored model is an exact `<publisher>/<model>` keeps running
 on it; one with nothing stored runs `auto`. The product agents Sindi and Clarity store
 no model and therefore run `auto`.
 
 ## Consequences
 
 - `GET /catalogue` also returns `powerLevels` and `defaultPowerLevel` (`auto`).
-  `defaultModelId` remains for clients that still render a model picker (the SDK, the canvas) as the model to preselect; a request that
+  `defaultModelId` remains for clients that still render a model picker (the SDK) as the model to preselect; a request that
   names nothing no longer runs on it.
 - The app's model picker, pins, effort control, catalogue client and publisher logos
   are deleted.

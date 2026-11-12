@@ -133,9 +133,6 @@ const ALLOWED: Readonly<Record<string, string>> = {
   'packages/api/src/lib/tools/integrations/microsoft-365.ts':
     'SOURCE: one provider (Microsoft Graph); each builder is one connected service.',
   'packages/api/src/lib/tools/oxy-services.ts': 'SOURCE: one origin (the oxy_services manifests).',
-  'packages/api/src/lib/canvas/nilo-memory.ts':
-    "CONSUMER of one source (oxy-services): asks for the person's tools and runs three of the " +
-    "memory app's. It assembles no turn and hands nothing to a model.",
   'packages/api/src/lib/skills/runtime.ts':
     "SOURCE: one origin (the skills this account installed). Its three tools read that one candidate set — which is also the turn's authorization, resolved before any tool exists — and it merges nothing from anywhere else.",
   'packages/api/src/lib/tools/consult-agent.ts':

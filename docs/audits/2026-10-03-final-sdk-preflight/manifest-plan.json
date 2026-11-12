@@ -48,27 +48,6 @@
       "after": "4.9.0"
     },
     {
-      "path": "packages/alia-canvas/package.json",
-      "section": "dependencies",
-      "name": "@oxy.so/bloom",
-      "before": "^6.3.0",
-      "after": "6.2.1"
-    },
-    {
-      "path": "packages/alia-canvas/package.json",
-      "section": "dependencies",
-      "name": "@oxy.so/core",
-      "before": "^4.0.0",
-      "after": "4.2.0"
-    },
-    {
-      "path": "packages/alia-canvas/package.json",
-      "section": "dependencies",
-      "name": "@oxy.so/services",
-      "before": "^11.0.0",
-      "after": "11.1.0"
-    },
-    {
       "path": "packages/alia-computer-host/package.json",
       "section": "devDependencies",
       "name": "@oxy.so/core",
@@ -133,10 +112,6 @@
     {
       "path": "package.json",
       "sha256": "1834b5250f35ccb1b43de162eb3d496eae3fda485c23f10735230019bc73cb8b"
-    },
-    {
-      "path": "packages/alia-canvas/package.json",
-      "sha256": "b27e80722b874028a3e8d07fe3dff5941aee4d579bb61ae300168e6008d59dea"
     },
     {
       "path": "packages/alia-computer-host/package.json",

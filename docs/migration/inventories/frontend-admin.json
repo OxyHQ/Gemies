@@ -9,7 +9,7 @@
       "packages/app: screens enumerated from the expo-router file tree under packages/app/app/ (52 .tsx route files); model-bearing screens then narrowed by grep."
     ],
     "controls": [
-      "POSITIVE CONTROL (alia-* alias census): the same regex run against the known-present definition file packages/api/src/internal/providers/lib/alia-models.ts returned 27 hits and the repo-wide census independently surfaced all 12 alias definitions in that file (route:instant, route:auto, route:code, -cowork, -browser, -vision, -audio, -multimodal, -pro, -thinking, -pro-max, -voice, -voice-pro). A blind census would have returned 0 there. Non-zero floor: 72 sites found inside the frontend/admin/SDK/CLI scope.",
+      "POSITIVE CONTROL (alia-* alias census): the same regex run against the known-present definition file packages/api/src/internal/providers/lib/alia-models.ts returned 27 hits and the repo-wide census independently surfaced all 12 alias definitions in that file (route:instant, route:auto, route:code, -cowork, -browser, -vision, -audio, -multimodal, -pro, -thinking, -pro-max, -voice, -voice-pro). A blind census would have returned 0 there. Non-zero floor: 51 sites found inside the frontend/admin/SDK scope.",
       "POSITIVE CONTROL (provider-name leak scan): the identical case-insensitive provider-name regex run against packages/api/src/internal/providers (a tree that MUST contain provider names) returned 322 hits, proving the pattern and the file-type filters can see provider names. The same scan over packages/app returned 5 hits and all 5 are the string 'OpenAI' inside code comments describing the OpenAI-COMPATIBLE wire format, never a provider identity in rendered output.",
       "VACUITY CONTROL (app screens that returned zero model hits): packages/app/app/(app)/settings/usage.tsx, .../agents/create.tsx and .../(biglayout)/subscribe.tsx each returned 0 'model' hits. Verified NOT a broken measurement: each file exists (ls confirms 742/6094/9052 bytes), each returns non-zero hits for 'import' (5/13/14), and the same grep returns 75 on the known-positive packages/app/components/model-selector.tsx. Those three screens genuinely delegate all model rendering to child components."
     ],
@@ -419,19 +419,6 @@
       "evidence": "packages/alia-chat/src/hooks/useAliaChat.ts:11,46; packages/alia-chat/src/components/AliaChatScreen.tsx:31; packages/alia-chat/src/components/AliaChatSheet.tsx:48; packages/alia-chat/src/hooks/useTTS.ts:205; packages/alia-chat/src/hooks/useVoiceRoom.ts:332"
     },
     {
-      "id": "canvas-model-list",
-      "kind": "component",
-      "name": "Canvas model list and workflow node defaults",
-      "currentPath": "packages/alia-canvas/src/lib/models.ts",
-      "summary": "fetchModels() reads GET /v1/models with a one-entry 'route:instant' fallback; the workflow editor and node edit panel seed every AI node with 'route:instant'. Also exports a deprecated static MODELS alias of the fallback.",
-      "exposesProviderSecret": false,
-      "proposedOwner": "alia",
-      "targetPath": "keep-as-alia-product-setting",
-      "dependsOn": [],
-      "removalGate": "Keep. Included because canvas was not named in the brief but carries six alias sites and its own /v1/models client — an alias-retirement sweep that skips it leaves saved workflow nodes pinned to a dead id. The `MODELS` export at models.ts:42 is a back-compat alias with a comment saying it will be replaced; it should be deleted rather than carried forward.",
-      "evidence": "packages/alia-canvas/src/lib/models.ts:8-10,26,41-42; packages/alia-canvas/src/components/workflow/workflow-editor.tsx:43,72,79; packages/alia-canvas/src/components/workflow/node-edit-panel.tsx:59,119"
-    },
-    {
       "id": "shared-types-alia-tier",
       "kind": "model-alias",
       "name": "shared-types AliaTier union",
@@ -447,12 +434,12 @@
   ],
   "counts": {
     "consoleScreens": 18,
-    "hardcodedModelAliasSites": 72,
+    "hardcodedModelAliasSites": 51,
     "screensExposingSecrets": 0
   },
   "countNotes": {
     "consoleScreens": "18 LEAF screens from routeTree.gen.ts. Excludes 2 shells (__root.tsx, _layout.tsx) and counts the 7-line / redirect (routes/index.tsx) as the 19th route file but not as a screen — 18 screens + 1 redirect + 2 shells = 21 route files, matching the file listing.",
-    "hardcodedModelAliasSites": "1 README line), alia-canvas 6, alia-chat 6. Excludes packages/api and packages/integrations (other workstreams) and excludes comment-only mentions in packages/shared-types. Positive control and non-zero floor stated in method.controls.",
+    "hardcodedModelAliasSites": "51 file:line sites matching a literal alia-{lite,v1,...} inside the frontend/admin/SDK scope of this workstream: app 19, alia-console 26, alia-chat 6. Excludes packages/api and packages/integrations (other workstreams) and excludes comment-only mentions in packages/shared-types. Positive control and non-zero floor stated in method.controls.",
     "screensExposingSecrets": "0. Zero in alia-console: the keyPrefix shown on 2 console screens is a FIRST-PARTY Alia developer key, not an upstream provider credential."
   }
 }

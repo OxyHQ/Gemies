@@ -86,9 +86,8 @@ const EXPECTED_JOBS = {
   // additionally the ONLY interlock on the migrator, which takes no lock of its
   // own and reads the ledger's high-water mark outside its transaction.
   'deploy-integrations.yml#deploy': 'serialised',
-  // One Worker upload at a time per frontend.
+  // One Worker upload at a time.
   'deploy-frontends.yml#deploy-app': 'serialised',
-  'deploy-frontends.yml#deploy-canvas': 'serialised',
 };
 
 /** The top-level `concurrency:` block of a workflow, or `null`. */

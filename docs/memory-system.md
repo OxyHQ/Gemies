@@ -48,8 +48,7 @@ What was retired from Alia: `saveUserMemory`, `updateUserMemory`, `forgetUserMem
 `updateUserPreferences`, `updateUserContext`, the `memory-recall` before-chat hook, the
 facts, preferences and context blocks of the system prompt, the embeddings and vector
 search, the `/memory/*` routes to add, edit, search, import and export memories, and the
-Settings → Memory list (it now explains where memories live and opens Nilo). The canvas
-`memory` node reads and writes a Nilo memory by key (`lib/canvas/nilo-memory.ts`).
+Settings → Memory list (it now explains where memories live and opens Nilo).
 
 What Alia keeps (`user_memories`, `GET /memory`, `PUT /memory/preferences|settings`): the
 answer preferences the person chose (language, tone, response length), the

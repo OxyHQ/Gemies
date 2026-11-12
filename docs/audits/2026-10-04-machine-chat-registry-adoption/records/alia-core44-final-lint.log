@@ -400,15 +400,6 @@
 @alia/api lint:   386:57  warning  Forbidden non-null assertion  @typescript-eslint/no-non-null-assertion
 @alia/api lint:   423:18  warning  Forbidden non-null assertion  @typescript-eslint/no-non-null-assertion
 @alia/api lint: 
-@alia/api lint: /home/nate/Oxy/Alia/.worktrees/1571-console-machine-key-alia-20261004/packages/api/src/routes/canvas/execute.ts
-@alia/api lint:    37:24  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
-@alia/api lint:   121:23  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
-@alia/api lint:   122:18  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
-@alia/api lint:   123:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
-@alia/api lint:   149:20  warning  Forbidden non-null assertion              @typescript-eslint/no-non-null-assertion
-@alia/api lint:   169:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
-@alia/api lint:   230:88  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
-@alia/api lint: 
 @alia/api lint: /home/nate/Oxy/Alia/.worktrees/1571-console-machine-key-alia-20261004/packages/api/src/routes/credits.ts
 @alia/api lint:   16:31  warning  Forbidden non-null assertion  @typescript-eslint/no-non-null-assertion
 @alia/api lint:   17:27  warning  Forbidden non-null assertion  @typescript-eslint/no-non-null-assertion

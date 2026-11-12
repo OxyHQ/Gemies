@@ -172,7 +172,6 @@ export const log = {
   speech: createLogger('speech'),
   files: createLogger('files'),
   voice: createLogger('voice'),
-  canvas: createLogger('canvas'),
   agents: createLogger('agents'),
   triggers: createLogger('triggers'),
   /** One record per turn: the Alia and Kaana ids for it. Nothing else. */

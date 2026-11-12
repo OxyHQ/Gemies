@@ -362,7 +362,6 @@
     {
       "specifier": "@oxy.so/bloom/connection-status",
       "files": [
-        "packages/alia-canvas/src/App.tsx",
         "packages/app/app/_layout.tsx"
       ],
       "exportKey": "./connection-status",
@@ -2439,7 +2438,6 @@
     {
       "specifier": "@oxy.so/bloom/theme",
       "files": [
-        "packages/alia-canvas/src/App.tsx",
         "packages/app/app/(app)/[username].tsx",
         "packages/app/app/(app)/notifications.tsx",
         "packages/app/app/(app)/shows.tsx",

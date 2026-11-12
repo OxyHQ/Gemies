@@ -28,7 +28,6 @@ vi.mock('../../db/agents/agentSessionRepository.js', () => ({
   accountHasSessionWithAgent: vi.fn(),
   agentSessionIsOwnedBy: vi.fn(),
 }));
-vi.mock('../../db/automation/workflowRepository.js', () => ({ findExecutionOwner: vi.fn() }));
 
 const { initSocket } = await import('../../socket.js');
 const { routeWebSocketUpgrades } = await import('../websocket-upgrades.js');

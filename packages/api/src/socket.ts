@@ -13,7 +13,6 @@ import {
   accountHasSessionWithAgent,
   agentSessionIsOwnedBy,
 } from './db/agents/agentSessionRepository.js';
-import { findExecutionOwner } from './db/automation/workflowRepository.js';
 import {
   deliverUserRuntimeMessage,
   userRuntimeRoom,
@@ -114,9 +113,9 @@ export function initSocket(server: http.Server) {
    *
    * So with `desiredCount: 2` every task ran its own in-memory adapter, and a
    * room only ever reached the clients that happened to land on the same task.
-   * The failure mode is why it survived: a notification, a canvas update or a
-   * workflow-progress event that reaches half its subscribers looks like a
-   * flaky client, never like a broken fan-out. `GET /local-runtimes` is the
+   * The failure mode is why it survived: a notification or an activity event
+   * that reaches half its subscribers looks like a flaky client, never like a
+   * broken fan-out. `GET /local-runtimes` is the
    * first read that fails LOUDLY on it, because `fetchSockets()` returns an
    * empty list rather than a late event.
    *
@@ -142,20 +141,6 @@ export function initSocket(server: http.Server) {
 
   io.on('connection', (socket) => {
     const userId = socketUserId(socket);
-
-    socket.on('subscribe-workflow', async (executionId: string) => {
-      if (typeof executionId !== 'string' || executionId.length === 0 || executionId.length > 256)
-        return;
-      if (!userId) return;
-      // `oxy_user_id` is `text`, so the source's `.toString()` on a stored
-      // ObjectId has no counterpart — but the comparison it guarded does, and it
-      // is the whole access check for this room.
-      const owner = await findExecutionOwner(getDb(), executionId);
-      if (owner !== userId) return;
-      Promise.resolve(socket.join(`workflow:${executionId}`)).catch((err) =>
-        log.general.warn({ err }, 'socket.join workflow failed'),
-      );
-    });
 
     socket.on('subscribe-agent', async (agentId: string) => {
       if (typeof agentId !== 'string' || agentId.length === 0 || agentId.length > 256) return;
@@ -315,12 +300,6 @@ export function getIO(): Server | null {
 export function emitTelegramLinked(userId: string, data: any) {
   if (io) {
     io.to(`user:${userId}`).emit('telegram-linked', data);
-  }
-}
-
-export function emitWorkflowProgress(executionId: string, data: any) {
-  if (io) {
-    io.to(`workflow:${executionId}`).emit('workflow-progress', { executionId, ...data });
   }
 }
 

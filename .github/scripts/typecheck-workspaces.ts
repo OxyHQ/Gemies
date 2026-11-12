@@ -22,10 +22,10 @@
  *    be failing: an exclusion that has quietly started passing is an exclusion
  *    that should be deleted, and this is what makes that a build failure rather
  *    than a thing nobody notices.
- *  - {@link NO_TYPECHECK} — no `typecheck` script, with the reason. Two of them
- *    are `tsc -b` solution-style projects whose `tsconfig.json` has `"files": []`
- *    and only `references`, so `tsc --noEmit` there compiles NOTHING and exits 0
- *    — a script that would have reported a clean pass while measuring nothing.
+ *  - {@link NO_TYPECHECK} — no `typecheck` script, with the reason. Empty today;
+ *    it is for a `tsc -b` solution-style project whose `tsconfig.json` has
+ *    `"files": []` and only `references`, where `tsc --noEmit` compiles NOTHING and
+ *    exits 0 — a script that would report a clean pass while measuring nothing.
  *  - everything else — checked here, discovered rather than listed, so a package
  *    that gains a `typecheck` script is covered by this job the same day.
  *
@@ -91,10 +91,7 @@ const CHECKED_ELSEWHERE: Readonly<Record<string, string>> = {
 const EXCLUDED: Readonly<Record<string, { readonly errors: number; readonly why: string }>> = {};
 
 /** Has no `typecheck` script, and why that is the right answer for it. */
-const NO_TYPECHECK: Readonly<Record<string, string>> = {
-  'alia-canvas':
-    'solution-style tsconfig ("files": [], references only) — `tsc --noEmit` compiles nothing; checked by the "Typecheck the solution-style frontend" step of Frontend Typecheck, which runs `tsc -b` on it',
-};
+const NO_TYPECHECK: Readonly<Record<string, string>> = {};
 
 function assertPartition(workspaces: readonly Workspace[]): string[] {
   const names = workspaces.map((w) => w.name);
@@ -157,10 +154,10 @@ function main(): void {
   // Exact counts. Each list may only change in a diff that also changes the
   // number beside it, which is the review this gate exists to force.
   const counts: readonly [string, number, number][] = [
-    ['workspaces', workspaces.length, 7],
+    ['workspaces', workspaces.length, 6],
     ['CHECKED_ELSEWHERE', Object.keys(CHECKED_ELSEWHERE).length, 4],
     ['EXCLUDED', Object.keys(EXCLUDED).length, 0],
-    ['NO_TYPECHECK', Object.keys(NO_TYPECHECK).length, 1],
+    ['NO_TYPECHECK', Object.keys(NO_TYPECHECK).length, 0],
   ];
   const countProblems = counts
     .filter(([, actual, expected]) => actual !== expected)

@@ -69,7 +69,6 @@ COPY packages/alia-chat/package.json ./packages/alia-chat/
 # a member whose package.json is missing from the build context fails the
 # install outright ("Workspace not found"), whatever `--filter` says.
 COPY packages/alia-server/package.json ./packages/alia-server/
-COPY packages/alia-canvas/package.json ./packages/alia-canvas/
 COPY packages/integrations/package.json ./packages/integrations/
 COPY packages/alia-computer-host/package.json ./packages/alia-computer-host/
 
