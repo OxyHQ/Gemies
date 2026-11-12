@@ -23,7 +23,8 @@
     "processing": "Procesando...",
     "user": "Usuario",
     "done": "Listo",
-    "tryAgain": "Reintentar"
+    "tryAgain": "Reintentar",
+    "create": "Crear"
   },
   "errors": {
     "emailRequired": "Por favor ingresa tu dirección de correo electrónico",
@@ -1439,7 +1440,8 @@
         "forgetFailed": "No se pudo olvidar. Inténtalo de nuevo.",
         "changedMeanwhile": "El gemie cambió esta nota mientras la editabas. Se muestra su última versión."
       }
-    }
+    },
+    "threads": "Hilos"
   },
   "authorize": {
     "linkingAccount": "Vinculando cuenta...",
@@ -2363,5 +2365,13 @@
     "metaDescription": "Crea tus Gemies y haz que trabajen juntos. Los Gemies son compañeros de IA a tu medida, y Alia es uno de ellos.",
     "aliaTagline": "La asistente de Oxy, uno de tus Gemies",
     "chatWith": "Hablar con {{name}}"
+  },
+  "models": {
+    "localInvite": {
+      "title": "Modelos en tu propio ordenador",
+      "body": "Si tienes Ollama, LM Studio o similar, tus gemies pueden responder con ellos. No se toca tu máquina hasta que digas que sí.",
+      "accept": "Buscarlos",
+      "decline": "Ahora no"
+    }
   }
 }

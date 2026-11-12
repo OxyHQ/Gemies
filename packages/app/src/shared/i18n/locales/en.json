@@ -23,7 +23,8 @@
     "processing": "Processing...",
     "user": "User",
     "done": "Done",
-    "tryAgain": "Try Again"
+    "tryAgain": "Try Again",
+    "create": "Create"
   },
   "errors": {
     "emailRequired": "Please enter your email address",
@@ -1439,7 +1440,8 @@
         "forgetFailed": "Could not forget it. Try again.",
         "changedMeanwhile": "The gemie changed this note while you were editing. Its latest version is shown."
       }
-    }
+    },
+    "threads": "Threads"
   },
   "authorize": {
     "linkingAccount": "Linking account...",
@@ -2363,5 +2365,13 @@
     "metaDescription": "Create your Gemies. Let them work together. Gemies are AI teammates you shape, and Alia is one of them.",
     "aliaTagline": "Oxy's assistant, one of your Gemies",
     "chatWith": "Chat with {{name}}"
+  },
+  "models": {
+    "localInvite": {
+      "title": "Models on your own computer",
+      "body": "If you run Ollama, LM Studio or similar, your gemies can answer with it. Nothing is sent to your machine until you say yes.",
+      "accept": "Look for them",
+      "decline": "Not now"
+    }
   }
 }
