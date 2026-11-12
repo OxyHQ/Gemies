@@ -56,6 +56,49 @@ async function appShell(request, env) {
 const CANONICAL_ORIGIN = 'https://gemies.ai';
 const REDIRECT_HOSTS = new Set(['www.gemies.ai']);
 
+/**
+ * What a crawler reads about Gemies: the title, the description, the share card (Open Graph and
+ * X/Twitter) and the icons, written into the app shell's `<head>` on the way out.
+ *
+ * The web export is a single page (`web.output: "single"`), so Expo serves its own default
+ * `index.html` and never renders an `app/+html.tsx`; the `<Head>` a screen sets only lands once
+ * the bundle runs, which a link preview never waits for. This is the one place the shell's
+ * metadata can be said for every route.
+ */
+const DESCRIPTION =
+  'Create your Gemies. Let them work together. Gemies are AI teammates you shape, and Alia is one of them.';
+const SHARE_IMAGE = `${CANONICAL_ORIGIN}/og-image.jpg`;
+const SHELL_HEAD = [
+  `<meta name="description" content="${DESCRIPTION}" />`,
+  '<meta name="theme-color" content="#004403" />',
+  '<link rel="manifest" href="/manifest.json" />',
+  '<link rel="icon" href="/favicon.ico" sizes="any" />',
+  '<link rel="apple-touch-icon" href="/apple-touch-icon.png" />',
+  '<meta name="apple-mobile-web-app-title" content="Gemies" />',
+  '<meta property="og:type" content="website" />',
+  '<meta property="og:site_name" content="Gemies" />',
+  '<meta property="og:title" content="Gemies" />',
+  `<meta property="og:description" content="${DESCRIPTION}" />`,
+  `<meta property="og:image" content="${SHARE_IMAGE}" />`,
+  '<meta property="og:image:width" content="1200" />',
+  '<meta property="og:image:height" content="630" />',
+  '<meta property="og:image:alt" content="The Gemies: a pink clover, a green frog, a paperclip, a yellow triangle and a purple cloud on a stone by a pond" />',
+  '<meta name="twitter:card" content="summary_large_image" />',
+  '<meta name="twitter:title" content="Gemies" />',
+  `<meta name="twitter:description" content="${DESCRIPTION}" />`,
+  `<meta name="twitter:image" content="${SHARE_IMAGE}" />`,
+].join('');
+
+/** The shell with its metadata, and the page's own URL as the share card's. */
+async function withShellHead(response, url) {
+  const html = await response.text();
+  const canonical = `${CANONICAL_ORIGIN}${url.pathname}`;
+  const head = `${SHELL_HEAD}<meta property="og:url" content="${canonical}" />`;
+  const page = new Response(html.replace('</head>', `${head}</head>`), response);
+  page.headers.delete('content-length');
+  return page;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -71,12 +114,18 @@ export default {
     const shared = SHARED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
     const hashed = HASHED.some((pattern) => pattern.test(pathname));
     const unindexed = UNINDEXED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+    const isShell =
+      isDocumentRequest &&
+      response.status === 200 &&
+      (response.headers.get('content-type') ?? '').startsWith('text/html') &&
+      !hashed;
+    const document = isShell ? await withShellHead(response, url) : response;
     if (unindexed) {
-      const page = new Response(response.body, response);
+      const page = new Response(document.body, document);
       page.headers.set('X-Robots-Tag', 'noindex, nofollow');
       return page;
     }
-    if (!shared && !hashed) return response;
+    if (!shared && !hashed) return document;
     // `not_found_handling` answers every miss with the app shell. Under a hashed name that is a
     // file this deploy does not have (an old tab asking for last release's chunk): say so, and let
     // nothing keep it, rather than hand back HTML that a year-long cache would pin to the name.
