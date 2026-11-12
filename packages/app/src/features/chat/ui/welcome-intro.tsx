@@ -5,7 +5,7 @@ import { Button } from '@oxy.so/bloom/button';
 import { Text } from '@oxy.so/bloom/typography';
 import { useAuth } from '@oxy.so/services/ui/client';
 import { useScreenOnShow } from '@/shared/platform/use-screen-on-show';
-import { GemiesMark } from '@/shared/ui/gemies-mark';
+import { GemiesWelcomeArt } from '@/shared/ui/gemies-mark';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, View, type LayoutChangeEvent, type PointerEvent } from 'react-native';
 import Animated, {
@@ -278,7 +278,11 @@ export function WelcomeIntro({
       <View className="w-full max-w-[640px] items-center gap-3">
         <Animated.View className="max-w-[560px] items-center gap-4">
           <Animated.View style={markStyle}>
-            {brand === 'gemies' ? <GemiesMark size={56} /> : <AliaAvatar size={40} interactive />}
+            {brand === 'gemies' ? (
+              <GemiesWelcomeArt size={stage.width >= 768 ? 240 : 180} />
+            ) : (
+              <AliaAvatar size={40} interactive />
+            )}
           </Animated.View>
           <Animated.View
             className="flex-row items-center justify-center"
@@ -298,7 +302,13 @@ export function WelcomeIntro({
         <Animated.View className="w-full overflow-hidden" style={revealStyle}>
           <View className="w-full items-center gap-6" onLayout={handleBodyLayout}>
             <Animated.View style={subtitleStyle}>
-              <Text className="max-w-[520px] text-center text-muted-foreground">
+              <Text
+                className={
+                  brand === 'gemies'
+                    ? 'max-w-[560px] text-center text-lg text-muted-foreground md:text-xl'
+                    : 'max-w-[520px] text-center text-muted-foreground'
+                }
+              >
                 {t(`${copy}.subtitle`)}
               </Text>
             </Animated.View>
