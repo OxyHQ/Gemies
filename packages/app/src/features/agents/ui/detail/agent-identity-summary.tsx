@@ -3,7 +3,7 @@ import { agentHandle } from '@/shared/routing/agent-address';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { formatCompactNumber } from '@oxy.so/bloom/locale';
 import type { Agent } from '@/shared/contracts/agents';
-import { readAgentCharacter } from '@alia.onl/sdk';
+import { readAgentCharacter } from '@gemies/sdk';
 import { AgentAvatar } from '@oxy.so/bloom/agent-avatar';
 import { Badge } from '@oxy.so/bloom/badge';
 import { Rating } from '@oxy.so/bloom/rating';

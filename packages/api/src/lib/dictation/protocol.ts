@@ -2,7 +2,7 @@
  * Alia's streaming dictation protocol, `GET /v1/audio/transcriptions/stream`
  * (ADR 0024).
  *
- * The SDK's copy is `packages/alia-chat/src/lib/dictation-protocol.ts`; the SDK
+ * The SDK's copy is `packages/sdk/src/lib/dictation-protocol.ts`; the SDK
  * does not depend on the API package, so the shapes are restated there and
  * `DICTATION_PROTOCOL_VERSION` turns a mismatch into a refusal instead of a
  * misunderstanding.

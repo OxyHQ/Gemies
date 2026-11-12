@@ -1,11 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query';
-import type { Message } from '@alia.onl/sdk/model';
+import type { Message } from '@gemies/sdk/model';
 import type {
-  AliaRuntimeHost,
-  AliaUsageFrame,
+  GemieRuntimeHost,
+  GemieUsageFrame,
   RoomEvent,
   MessageReactionUpdate,
-} from '@alia.onl/sdk/runtime';
+} from '@gemies/sdk/runtime';
 import { resolveFaviconUrl } from '@clarity.surf/sdk';
 import { useHaptics } from '@oxy.so/bloom/hooks';
 import { usePathname, useRouter } from 'expo-router';
@@ -41,7 +41,7 @@ const AGENT_WRITING_TOOLS = new Set(['createAgent', 'updateAgent']);
  * bottom sheet runs. This is only what belongs to the app around it: its routes, its credits and
  * memory, its right panel and its sidebar's agent rows.
  */
-export function useAliaHost(): AliaRuntimeHost {
+export function useAliaHost(): GemieRuntimeHost {
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
@@ -53,7 +53,7 @@ export function useAliaHost(): AliaRuntimeHost {
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
 
-  return useMemo<AliaRuntimeHost>(
+  return useMemo<GemieRuntimeHost>(
     () => ({
       deviceInfo: collectDeviceInfo,
       turnRequest: () => ({
@@ -61,7 +61,7 @@ export function useAliaHost(): AliaRuntimeHost {
       }),
       onTurnStart: () => useStore.getState().setBottomChatHeightHandler(true),
       onOutput: () => haptic(),
-      onUsage: (usage: AliaUsageFrame) => {
+      onUsage: (usage: GemieUsageFrame) => {
         queryClient.setQueryData<CreditsInfo>(queryKeys.credits.info, (old) =>
           old ? { ...old, credits: usage.credits_remaining ?? old.credits } : old,
         );

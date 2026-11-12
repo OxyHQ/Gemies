@@ -409,14 +409,14 @@
       "id": "sdk-alia-chat-model-defaults",
       "kind": "model-alias",
       "name": "@alia.onl/sdk model defaults",
-      "currentPath": "packages/alia-chat/src/hooks/useAliaChat.ts",
+      "currentPath": "packages/sdk/src/hooks/useAliaChat.ts",
       "summary": "The published SDK's model surface: a `model` prop defaulting to 'route:auto' (documented on AliaChatScreen and AliaChatSheet) plus two voice paths pinned to 'route:voice'. No model PICKER ships in the SDK — the consumer passes an id.",
       "exposesProviderSecret": false,
       "proposedOwner": "alia",
       "targetPath": "keep-as-alia-product-setting",
       "dependsOn": [],
-      "removalGate": "Keep, and treat these three literals as the highest-inertia alias references in the repo: they are compiled into external consumers' apps (the package ships as RAW SOURCE), so retiring route:auto or route:voice breaks installed SDK versions that no Alia deploy can fix. Any alias retirement plan must keep both ids resolvable indefinitely or ship a major SDK version first. Verified there is no model picker component in the SDK: all 49 files under packages/alia-chat/src were enumerated.",
-      "evidence": "packages/alia-chat/src/hooks/useAliaChat.ts:11,46; packages/alia-chat/src/components/AliaChatScreen.tsx:31; packages/alia-chat/src/components/AliaChatSheet.tsx:48; packages/alia-chat/src/hooks/useTTS.ts:205; packages/alia-chat/src/hooks/useVoiceRoom.ts:332"
+      "removalGate": "Keep, and treat these three literals as the highest-inertia alias references in the repo: they are compiled into external consumers' apps (the package ships as RAW SOURCE), so retiring route:auto or route:voice breaks installed SDK versions that no Alia deploy can fix. Any alias retirement plan must keep both ids resolvable indefinitely or ship a major SDK version first. Verified there is no model picker component in the SDK: all 49 files under packages/sdk/src were enumerated.",
+      "evidence": "packages/sdk/src/hooks/useAliaChat.ts:11,46; packages/sdk/src/components/GemieChatScreen.tsx:31; packages/sdk/src/components/GemieChatSheet.tsx:48; packages/sdk/src/hooks/useTTS.ts:205; packages/sdk/src/hooks/useVoiceRoom.ts:332"
     },
     {
       "id": "shared-types-alia-tier",

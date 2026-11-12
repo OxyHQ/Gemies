@@ -66,7 +66,7 @@
     "ws": "^8.21.0",
     "yaml": "^2.9.0",
     "zod": "^4.6.7",
-    "@alia.onl/server": "workspace:*",
+    "@gemies/server": "workspace:*",
     "@aws-sdk/credential-provider-node": "3.972.84"
   },
   "devDependencies": {

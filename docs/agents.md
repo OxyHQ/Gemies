@@ -261,9 +261,9 @@ person's reach, her tools, standing authority, no `AgentTurnCoordinator` session
 (`memory_store = 'gemie'`); Alia recalls the person through Nilo, and the person searches her
 thread through the route above.
 
-The SDK (`@alia.onl/sdk`): `useGemieThread(gemieId)` opens it, and `<AliaChatContent
+The SDK (`@gemies/sdk`): `useGemieThread(gemieId)` opens it, and `<GemieChatContent
 conversationId={thread.conversationId} gemieThread={{ gemieId, threadId: thread.threadId }} />`
-pages and searches it and continues it by its row (`AliaThreadAddress` is `{ handle }` or
+pages and searches it and continues it by its row (`GemieThreadAddress` is `{ handle }` or
 `{ gemieId }` for the thread hooks).
 
 ## Spaces (ADR 0028)

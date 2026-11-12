@@ -1,4 +1,4 @@
-import { usePrefetchConversation } from '@alia.onl/sdk/runtime';
+import { usePrefetchConversation } from '@gemies/sdk/runtime';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import apiClient from '@/shared/api/client';

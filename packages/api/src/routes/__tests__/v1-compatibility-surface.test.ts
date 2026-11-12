@@ -245,7 +245,7 @@ const aliaChat = surface(aliaChatRouter, '/alia/chat');
  * #477 cut Alia over to Oxy: the first minted a LiveKit room whose realtime
  * model called providers directly, the second posted audio to a provider's
  * transcription API, and Oxy serves neither. Their only consumers were
- * `@alia.onl/sdk`'s `useVoiceRoom` and `useSpeechToText`, which recognize speech
+ * `@gemies/sdk`'s `useVoiceRoom` and `useSpeechToText`, which recognize speech
  * on the device from 8.0.0 and send each spoken turn through
  * `/v1/chat/completions` — so, as with `/v1/shows`, the consumer moved in the
  * same change. They are gone (404) rather than `410`: a stub that refused every
@@ -264,7 +264,7 @@ const aliaChat = surface(aliaChatRouter, '/alia/chat');
  *
  * ## 15 became 22: the person's conversations (the SDK's door)
  *
- * `@alia.onl/sdk` is embedded by every Oxy app on its own web origin, so it can only call a
+ * `@gemies/sdk` is embedded by every Oxy app on its own web origin, so it can only call a
  * surface that answers a browser from any origin with a bearer. `/conversations` answers Alia's
  * own origins alone (cookie-era allowlist), so the SAME router is mounted here too, behind a
  * person's session (`authenticateToken`) and no other credential — see `routes/v1.ts`. This is

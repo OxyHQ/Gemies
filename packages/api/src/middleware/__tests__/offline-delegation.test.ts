@@ -2,7 +2,7 @@ import { generateKeyPairSync, sign as signBytes, type KeyObject } from 'node:cry
 import type http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
-import { ALIA_SERVICE_AUDIENCE } from '@alia.onl/server';
+import { GEMIES_SERVICE_AUDIENCE } from '@gemies/server';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -90,7 +90,7 @@ function credentialedVerifier(
   // As `lib/oxy.ts` builds it: Alia's own audience, its workload identity.
   const oxy = new OxyServer({
     baseURL: OXY_BASE_URL,
-    expectedAudience: ALIA_SERVICE_AUDIENCE,
+    expectedAudience: GEMIES_SERVICE_AUDIENCE,
     workloadCredentials: async () => ({
       AccessKeyId: 'ASIA_TEST',
       SecretAccessKey: 'fixture',
@@ -261,7 +261,7 @@ describe('a delegated service request is verified by a credentialed client', () 
     // calling service is live, let alone whether it holds a grant.
     serviceClient.current = new OxyServer({
       baseURL: OXY_BASE_URL,
-      expectedAudience: ALIA_SERVICE_AUDIENCE,
+      expectedAudience: GEMIES_SERVICE_AUDIENCE,
       workloadCredentials: async () => {
         throw new Error('no task role on this machine');
       },
@@ -307,7 +307,7 @@ describe('/internal, which documents the same delegation header', () => {
     const verifier = credentialedVerifier({ authorized: false });
     serviceClient.current = verifier.oxy;
     const result = await send('/internal/trigger', {
-      authorization: `Bearer ${serviceToken({ authority: 'first_party', tier: 'internal', aud: ALIA_SERVICE_AUDIENCE, scopes: undefined, credentialId: 'wl_homiio' })}`,
+      authorization: `Bearer ${serviceToken({ authority: 'first_party', tier: 'internal', aud: GEMIES_SERVICE_AUDIENCE, scopes: undefined, credentialId: 'wl_homiio' })}`,
     });
     expect(result).toEqual({ status: 200, body: { userId: null, actingAs: null } });
     expect(verifier.getServiceToken).toHaveBeenCalledOnce();
@@ -328,7 +328,7 @@ describe('/internal, which documents the same delegation header', () => {
     const verifier = credentialedVerifier({ authorized: true }, false);
     serviceClient.current = verifier.oxy;
     const result = await send('/internal/trigger', {
-      authorization: `Bearer ${serviceToken({ authority: 'first_party', tier: 'internal', aud: ALIA_SERVICE_AUDIENCE, scopes: undefined, credentialId: 'wl_homiio' })}`,
+      authorization: `Bearer ${serviceToken({ authority: 'first_party', tier: 'internal', aud: GEMIES_SERVICE_AUDIENCE, scopes: undefined, credentialId: 'wl_homiio' })}`,
     });
     expect(result.status).toBe(401);
     expect(verifier.makeRequest).toHaveBeenCalledWith(

@@ -1,4 +1,4 @@
-import { useCreateConversation } from '@alia.onl/sdk/runtime';
+import { useCreateConversation } from '@gemies/sdk/runtime';
 import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
 

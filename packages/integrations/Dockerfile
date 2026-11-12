@@ -43,8 +43,8 @@ WORKDIR /build
 COPY package.json bun.lock ./
 COPY packages/api/package.json ./packages/api/
 COPY packages/app/package.json ./packages/app/
-COPY packages/alia-chat/package.json ./packages/alia-chat/
-COPY packages/alia-server/package.json ./packages/alia-server/
+COPY packages/sdk/package.json ./packages/sdk/
+COPY packages/server/package.json ./packages/server/
 COPY packages/integrations/package.json ./packages/integrations/
 COPY packages/alia-computer-host/package.json ./packages/alia-computer-host/
 
@@ -53,8 +53,8 @@ COPY packages/alia-computer-host/package.json ./packages/alia-computer-host/
 RUN bun install --frozen-lockfile --filter @alia/integrations
 
 # Copy source
-COPY packages/alia-server/ ./packages/alia-server/
-RUN cd packages/alia-server && bun run build
+COPY packages/server/ ./packages/server/
+RUN cd packages/server && bun run build
 COPY packages/integrations/ ./packages/integrations/
 
 # Build TypeScript
@@ -73,8 +73,8 @@ WORKDIR /app
 COPY package.json bun.lock ./
 COPY packages/api/package.json ./packages/api/
 COPY packages/app/package.json ./packages/app/
-COPY packages/alia-chat/package.json ./packages/alia-chat/
-COPY packages/alia-server/package.json ./packages/alia-server/
+COPY packages/sdk/package.json ./packages/sdk/
+COPY packages/server/package.json ./packages/server/
 COPY packages/integrations/package.json ./packages/integrations/
 COPY packages/alia-computer-host/package.json ./packages/alia-computer-host/
 
@@ -189,7 +189,7 @@ COPY --from=production-deps --chown=node:node /app/ ./
 
 # Copy built output from builder
 COPY --from=builder --chown=node:node /build/packages/integrations/dist ./packages/integrations/dist
-COPY --from=builder --chown=node:node /build/packages/alia-server/dist ./packages/alia-server/dist
+COPY --from=builder --chown=node:node /build/packages/server/dist ./packages/server/dist
 
 # The migrations, which are DATA and are therefore not in `dist`.
 #

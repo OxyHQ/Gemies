@@ -9,7 +9,7 @@ import {
 } from '@/shared/contracts/spaces';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { useKeyboardOnOpen } from '@/shared/platform/use-keyboard-on-open';
-import { readAgentCharacter } from '@alia.onl/sdk';
+import { readAgentCharacter } from '@gemies/sdk';
 import { AgentAvatar } from '@oxy.so/bloom/agent-avatar';
 import { Button } from '@oxy.so/bloom/button';
 import { Dialog } from '@oxy.so/bloom/dialog';

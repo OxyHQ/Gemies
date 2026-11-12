@@ -106,7 +106,7 @@ run 0 integrations=false FAKE_MARKER=$prefix$older "FAKE_COMPARE=$(printf 'ahead
 # target: releases
 run 0 api=true FAKE_MARKER=$prefix$older "FAKE_COMPARE=$(printf 'ahead\n2\nREADME.md\npackages/api/src/x.ts')" \
   -- target api exclude "$docs" $prefix
-run 0 integrations=true FAKE_MARKER=$prefix$older "FAKE_COMPARE=$(printf 'ahead\n2\npackages/app/x.ts\npackages/alia-chat/package.json')" \
+run 0 integrations=true FAKE_MARKER=$prefix$older "FAKE_COMPARE=$(printf 'ahead\n2\npackages/app/x.ts\npackages/sdk/package.json')" \
   -- target integrations include "$integrations" $prefix
 # A rename out of scope still counts the path it left.
 run 0 integrations=true FAKE_MARKER=$prefix$older "FAKE_COMPARE=$(printf 'ahead\n1\nlegacy/x.ts\npackages/integrations/x.ts')" \

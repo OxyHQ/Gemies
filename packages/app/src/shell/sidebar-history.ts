@@ -1,4 +1,4 @@
-import type { Conversation } from '@alia.onl/sdk/model';
+import type { Conversation } from '@gemies/sdk/model';
 
 /**
  * What the sidebar's History lists: everything not already shown somewhere else.

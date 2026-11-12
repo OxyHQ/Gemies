@@ -9,8 +9,8 @@ const { get, oxy } = vi.hoisted(() => ({
   get: vi.fn(),
   oxy: { isPrivateApiPending: false },
 }));
-vi.mock('@alia.onl/sdk/runtime', () => ({
-  aliaQueryKeys: { agents: { profile: () => ['profile'] } },
+vi.mock('@gemies/sdk/runtime', () => ({
+  gemieQueryKeys: { agents: { profile: () => ['profile'] } },
 }));
 vi.mock('@/shared/api/client', () => ({ default: { get } }));
 vi.mock('@oxy.so/services/ui/client', () => ({ useOxy: () => oxy }));

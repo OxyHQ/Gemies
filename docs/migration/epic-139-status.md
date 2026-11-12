@@ -428,7 +428,7 @@ gate-2 assertion that every file permitted to name a provider hostname is filed 
 ### (c) "the product runs on `/v1/chat/completions`, not `/alia/chat`" — **TRUE**
 
 Every shipped client posts to `/v1/chat/completions`: `packages/app/src/features/chat/runtime/use-chat-conversation.ts:44`,
-`packages/alia-chat/src/hooks/useAliaChat.ts:217`, `packages/integrations/src/shared/api-client.ts:198`/`:260`.
+`packages/sdk/src/hooks/useAliaChat.ts:217`, `packages/integrations/src/shared/api-client.ts:198`/`:260`.
 `/alia/chat` has **zero in-repo callers**. Measured: 23 occurrences in `.ts`/`.tsx` across
 `packages/`, of which 9 are outside `__tests__` and only **5 are not comments** —
 `src/index.ts:233` and `:253` (its own two mounts), `src/index.ts:299` (the root route's endpoint

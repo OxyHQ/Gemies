@@ -317,8 +317,8 @@ describe('an Oxy account is hydrated as Alia, not as nobody', () => {
 
     const source = readFileSync(new URL('../oxy.ts', import.meta.url), 'utf8');
     expect(source).toContain("serviceIdentity: 'when-anonymous'");
-    expect(source).toContain('applicationId: ALIA_APPLICATION_ID');
-    expect(source).toContain('expectedAudience: ALIA_SERVICE_AUDIENCE');
+    expect(source).toContain('applicationId: GEMIES_APPLICATION_ID');
+    expect(source).toContain('expectedAudience: GEMIES_SERVICE_AUDIENCE');
     expect(source).not.toMatch(/serviceAuth\s*:/);
     for (const file of sources) {
       const text = readFileSync(new URL(file, root), 'utf8');

@@ -6,7 +6,7 @@ uses `http://integrations.alia.internal.oxy.so:3005`.
 
 ## Internal authentication
 
-Both directions use `@alia.onl/server`'s canonical Oxy transport and temporary
+Both directions use `@gemies/server`'s canonical Oxy transport and temporary
 workload identity. Receivers verify the live first-party authority, Alia app,
 recipient audience and exact opposite process. Another Oxy application or Alia
 workload cannot substitute for the registered API or integrations role. Internal
@@ -50,8 +50,8 @@ and temporary IAM SSO credentials. Set `AWS_PROFILE` to a registered development
 role profile. The registry owns the role's application and environment binding.
 
 Production receiver pins default to the exact roles exported by
-`@alia.onl/server/internal`. For distinct registered development roles, configure
-`ALIA_API_WORKLOAD_ID` and `ALIA_INTEGRATIONS_WORKLOAD_ID` on the servers. These
+`@gemies/server/internal`. For distinct registered development roles, configure
+`GEMIES_API_WORKLOAD_ID` and `GEMIES_INTEGRATIONS_WORKLOAD_ID` on the servers. These
 are deployment pins, never values accepted from a request. No API key fallback
 is used. Traffic reporting uses the same workload provider.
 

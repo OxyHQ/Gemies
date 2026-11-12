@@ -64,7 +64,7 @@ PORT=3001
 NODE_ENV=production
 WEB_URL=https://alia.onl
 API_BASE_URL=https://api.alia.onl
-ALIA_API_URL=https://api.alia.onl
+GEMIES_API_URL=https://api.alia.onl
 OXY_API_URL=https://api.oxy.so
 DATABASE_URL=<postgres-connection-string>
 ```
@@ -92,7 +92,7 @@ PostgreSQL/KMS custody.
 Terraform declares both public-origin names, while `deploy-aws.yml` re-asserts
 them through `TASK_ENV_OVERRIDES_JSON` on every runnable revision. The split is
 required because the existing ECS service ignores Terraform task-definition
-changes. `API_BASE_URL` advertises callbacks and webhooks; `ALIA_API_URL` also
+changes. `API_BASE_URL` advertises callbacks and webhooks; `GEMIES_API_URL` also
 builds user-facing links and service-to-self `/v1` requests, so neither may fall
 back to loopback in production.
 
@@ -257,7 +257,7 @@ definition, per the order above.
 
 `/oxy/alia/TOKEN_ENCRYPTION_KEY` is shared by the API and integrations, so
 rotation must re-encrypt stored rows and roll both processes. Authentication
-between those processes uses the shared `@alia.onl/server/internal` workload
+between those processes uses the shared `@gemies/server/internal` workload
 transport with the exact receiving process identity. `SERVICE_SECRET`,
 `INTEGRATIONS_SECRET` and the retired Oxy key pair are explicitly removed through
 `TASK_SECRET_REMOVALS_JSON`; merely deleting an input would leave a live inherited
@@ -384,7 +384,7 @@ through AWS:
   `android-v<version>` yet, it prebuilds, builds the AAB and APK signed with the
   Oxy ecosystem key and publishes them as that release; otherwise it ends.
 - **OTA update** — `.github/workflows/publish-update.yml` publishes every push to
-  main that touches the app or `alia-chat` to Oxy Updates (oxy-api), channel
+  main that touches the app or `sdk` to Oxy Updates (oxy-api), channel
   `production`, with `oxy-ship` over GitHub trusted publishing (OIDC, no secret;
   the trusted publisher pins this repository, `refs/heads/main` and that file path).
 

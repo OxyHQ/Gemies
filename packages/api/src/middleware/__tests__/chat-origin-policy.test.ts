@@ -12,7 +12,7 @@ import { codeOfFile, snippet } from '../../__tests__/support/source-code.js';
 /**
  * The browser-origin policy of the two chat mounts, pinned — issue #244.
  *
- * `@alia.onl/sdk` is a PRODUCT client (it parses `alia.*` events). Until 17.0.0 it
+ * `@gemies/sdk` is a PRODUCT client (it parses `alia.*` events). Until 17.0.0 it
  * defaulted to `POST /v1/chat/completions` because of a CORS difference between
  * two mounts of the same handler: `/alia/chat` answers preflights only for
  * Alia's own origins, while `/v1` answers `*`. Since 17.0.0 it speaks to the
@@ -212,7 +212,7 @@ describe('the browser-origin policy at the two chat mounts (#244)', () => {
   });
 
   it('answers * to an Oxy app’s origin on the turn route and the conversations the SDK calls', async () => {
-    // `@alia.onl/sdk` runs on the web origin of every Oxy app. These two are everything it calls,
+    // `@gemies/sdk` runs on the web origin of every Oxy app. These two are everything it calls,
     // with the headers and methods it sends; a foreign origin must read the answer.
     const homiio = 'https://homiio.com';
     for (const mount of [MOUNTS.v1, MOUNTS.conversations, `${MOUNTS.conversations}/c1`]) {

@@ -1,5 +1,5 @@
 import { useTranslation } from '@/shared/i18n/use-translation';
-import { useStartConversation } from '@alia.onl/sdk/runtime';
+import { useStartConversation } from '@gemies/sdk/runtime';
 import { useAuth } from '@oxy.so/services/ui/client';
 import { useCallback } from 'react';
 

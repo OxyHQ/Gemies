@@ -52,7 +52,7 @@ const ROOT = resolve(import.meta.dirname, '..');
 export const TREES = [
   'packages/app/app',
   'packages/app/src',
-  'packages/alia-chat/src',
+  'packages/sdk/src',
   'packages/integrations/src',
 ];
 
@@ -68,7 +68,7 @@ export const TREES = [
 export const NOT_A_CLIENT = {
   'packages/api':
     'the server. Its `alia-*` literals ARE the routing table — `internal/providers/lib/routing-profile-catalogue.ts` is the frozen set every other package resolves against.',
-  'packages/alia-server':
+  'packages/server':
     'a transport. It streams whatever turn a backend hands it and never chooses, defaults or names a routing profile — `model` is an optional pass-through field on its request type.',
   'packages/alia-computer-host':
     "the agents' sandbox host. It runs containers and files for an actor and never calls inference, so it has no model to choose, default or name.",

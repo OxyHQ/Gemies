@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  ALIA_APPLICATION_ID,
-  ALIA_API_WORKLOAD_ID,
-  ALIA_SERVICE_AUDIENCE,
-} from '@alia.onl/server/internal';
+  GEMIES_APPLICATION_ID,
+  GEMIES_API_WORKLOAD_ID,
+  GEMIES_SERVICE_AUDIENCE,
+} from '@gemies/server/internal';
 const state = vi.hoisted(() => ({ principal: undefined as any, introspect: vi.fn() }));
 vi.mock('../oxy', () => ({
   oxy: {
@@ -29,8 +29,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.principal = {
     authority: 'first_party',
-    appId: ALIA_APPLICATION_ID,
-    credentialId: ALIA_API_WORKLOAD_ID,
+    appId: GEMIES_APPLICATION_ID,
+    credentialId: GEMIES_API_WORKLOAD_ID,
   };
 });
 describe('internal product authority', () => {
@@ -42,9 +42,9 @@ describe('internal product authority', () => {
     expect(req.user).toBeUndefined();
   });
   it.each([
-    { authority: 'external', appId: ALIA_APPLICATION_ID, credentialId: ALIA_API_WORKLOAD_ID },
-    { authority: 'first_party', appId: 'another-app', credentialId: ALIA_API_WORKLOAD_ID },
-    { authority: 'first_party', appId: ALIA_APPLICATION_ID, credentialId: 'another-workload' },
+    { authority: 'external', appId: GEMIES_APPLICATION_ID, credentialId: GEMIES_API_WORKLOAD_ID },
+    { authority: 'first_party', appId: 'another-app', credentialId: GEMIES_API_WORKLOAD_ID },
+    { authority: 'first_party', appId: GEMIES_APPLICATION_ID, credentialId: 'another-workload' },
     undefined,
   ])('refuses wrong authority or workload', async (principal) => {
     state.principal = principal;
@@ -64,10 +64,10 @@ describe('internal product authority', () => {
   it('verifies live workload identity before opening an account-bound socket', async () => {
     state.introspect.mockResolvedValue({
       active: true,
-      audience: ALIA_SERVICE_AUDIENCE,
+      audience: GEMIES_SERVICE_AUDIENCE,
       authority: 'first_party',
-      applicationId: ALIA_APPLICATION_ID,
-      credentialId: ALIA_API_WORKLOAD_ID,
+      applicationId: GEMIES_APPLICATION_ID,
+      credentialId: GEMIES_API_WORKLOAD_ID,
     });
     const headers = { authorization: 'Bearer proof', 'x-alia-account-context': ACCOUNT };
     expect(await authorizeInternalUpgrade(headers)).toBe(ACCOUNT);

@@ -37,7 +37,7 @@
  * socket cannot set a header, so it travels here, and decides whether an agent
  * Oxy confines to an app opens on this call (ADR 0021).
  *
- * `@alia.onl/sdk` keeps its own copy of these shapes (`src/lib/voice-protocol.ts`):
+ * `@gemies/sdk` keeps its own copy of these shapes (`src/lib/voice-protocol.ts`):
  * the SDK does not depend on the API package. `VOICE_PROTOCOL_VERSION` is what
  * makes a mismatch a refusal instead of a silent misunderstanding.
  */

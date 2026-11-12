@@ -1,7 +1,7 @@
 import { groupMembersOf } from '@/features/agents/model/group-members';
 import { useMyAgents } from '@/features/agents/runtime/use-my-agents';
 import { ConversationScreen } from '@/features/chat/ui/conversation-screen';
-import { useConversation } from '@alia.onl/sdk/runtime';
+import { useConversation } from '@gemies/sdk/runtime';
 import { useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 

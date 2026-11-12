@@ -19,7 +19,7 @@ the same authentication and verified `X-Oxy-App-Assertion` as admission. Use the
 conversation id known when constructing the original request, including its
 absence for a new conversation. The prepared server SDK exposes typed `turnId` and `cancelTurn()` using its existing
 transport. The prepared UI SDK runtime exports `createChatTurnControl`
-and `AliaChatTurnControl` for hosts with their own Stop control; the shared chat
+and `GemieChatTurnControl` for hosts with their own Stop control; the shared chat
 UI uses this same implementation. `stop()` acknowledges remote cancellation;
 `finish()` releases the linked transport. Aborting the stream alone is detach.
 

@@ -17,7 +17,7 @@ import { useStore } from '@/features/chat/runtime/global-store';
 import type { Agent } from '@/shared/contracts/agents';
 import type { Space } from '@/shared/contracts/spaces';
 import { useTranslation } from '@/shared/i18n/use-translation';
-import type { Conversation } from '@alia.onl/sdk/model';
+import type { Conversation } from '@gemies/sdk/model';
 import type { SidebarTree, SidebarTreeItem } from '@oxy.so/bloom/sidebar';
 import { confirm } from '@oxy.so/bloom/surfaces';
 import { toast } from '@oxy.so/bloom/toast';

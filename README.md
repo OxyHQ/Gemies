@@ -7,12 +7,13 @@
 
 > [!NOTE]
 > **Gemies was split out of [Alia](https://github.com/OxyHQ/Alia) on 2026-11-12, keeping its full
-> history.** The phases are in [ADR 0034](docs/adr/0034-gemies-and-alia.md). Until the migration
-> finishes, the packages, the code and the hostnames below still carry Alia's names
-> (`@alia.onl/sdk`, `api.alia.onl`). They become `@gemies/sdk`, `@gemies/server` and `api.gemies.ai`.
+> history.** The phases are in [ADR 0034](docs/adr/0034-gemies-and-alia.md). The SDK and the server
+> client are already `@gemies/sdk` and `@gemies/server`, defaulting to `https://api.gemies.ai`; the
+> backend and the app still carry Alia's names inside (`@alia/api`, `@alia/app`), and
+> `api.alia.onl` answers until its consumers have moved.
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@alia.onl/sdk"><img alt="@alia.onl/sdk" src="https://img.shields.io/npm/v/@alia.onl/sdk?style=flat-square&label=%40alia.onl%2Fsdk&labelColor=440151&color=D26AE7"></a>
+  <a href="https://www.npmjs.com/package/@gemies/sdk"><img alt="@gemies/sdk" src="https://img.shields.io/npm/v/@gemies/sdk?style=flat-square&label=%40gemies%2Fsdk&labelColor=440151&color=D26AE7"></a>
   <img alt="Bun" src="https://img.shields.io/badge/bun-1.4.3-440151?style=flat-square&logo=bun&logoColor=white">
   <img alt="Expo" src="https://img.shields.io/badge/Expo-57-440151?style=flat-square&logo=expo&logoColor=white">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-440151?style=flat-square&logo=typescript&logoColor=white">
@@ -83,7 +84,7 @@ Three roles, none a subset of another
   plus `/conversations`, `/shows`, `/skills`, `/agents` and `/catalogue`. Three groups
   call it, all authorized by Oxy: Alia's own surfaces (the app — extension and CLI —
   on `/alia/chat` with the user's Oxy session), other applications in the Oxy
-  ecosystem, and third parties through `@alia.onl/sdk`. It accepts an OpenAI-compatible
+  ecosystem, and third parties through `@gemies/sdk`. It accepts an OpenAI-compatible
   request shape and streams `alia.*` product events. It does not sunset.
 
 For raw model access use Kaana through Oxy (`api.oxy.so/v1`); for the assistant use
@@ -177,7 +178,8 @@ in its own repository, [OxyHQ/Codea](https://github.com/OxyHQ/Codea), and calls 
 
 | Path | Package | Stack |
 |---|---|---|
-| [`packages/alia-chat`](packages/alia-chat/) | `@alia.onl/sdk` | React chat UI, voice, streaming |
+| [`packages/sdk`](packages/sdk/) | `@gemies/sdk` | React chat UI, voice, streaming |
+| [`packages/server`](packages/server/) | `@gemies/server` | Server-side streaming client |
 
 Identity comes from the Oxy platform rather than from a login system here:
 [`@oxy.so/services`](https://github.com/OxyHQ/oxy) and `@oxy.so/core`, with `@oxy.so/bloom`

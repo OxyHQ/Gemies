@@ -28,7 +28,7 @@
  *  - a workspace in the root `workspaces` array that NO `COPY` names fails at
  *    `error: Workspace not found`, because `bun install` reads every member
  *    manifest before it resolves anything — `--filter` narrows what is BUILT,
- *    never what is READ. `packages/alia-server` was added as a workspace member
+ *    never what is READ. `packages/server` was added as a workspace member
  *    and neither image copied it; both deploys died on the next push while the
  *    whole test suite stayed green.
  *

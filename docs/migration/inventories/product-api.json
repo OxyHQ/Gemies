@@ -160,7 +160,7 @@
       "proposedOwner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": [],
-      "removalGate": "Consumed by the published SDK (packages/alia-chat/src/hooks/useVoiceRoom.ts:325, which sends model:'route:voice'). Any change is a breaking SDK major.",
+      "removalGate": "Consumed by the published SDK (packages/sdk/src/hooks/useVoiceRoom.ts:325, which sends model:'route:voice'). Any change is a breaking SDK major.",
       "evidence": "packages/api/src/routes/v1/voice.ts:31"
     },
     {
@@ -371,49 +371,49 @@
       "id": "sdk-chat-consumer",
       "kind": "consumer",
       "name": "@alia.onl/sdk v6.0.0 - useAliaChat",
-      "currentPath": "packages/alia-chat/src/hooks/useAliaChat.ts",
+      "currentPath": "packages/sdk/src/hooks/useAliaChat.ts",
       "summary": "PUBLISHED npm package, shipped as RAW SOURCE. Calls /v1/chat/completions, defaults model:'route:auto', and handles only 4 of the 8 named SSE events plus 2 LEGACY in-data type-based events.",
       "proposedOwner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": ["v1-chat-completions-post", "sse-legacy-tool-call-in-data"],
       "removalGate": "HIGHEST external blast radius: this is on npm, so its consumers are outside the repo entirely. Any wire change is a semver-major of @alia.onl/sdk and strands every unmigrated installer.",
-      "evidence": "packages/alia-chat/src/hooks/useAliaChat.ts:217,46,282-352"
+      "evidence": "packages/sdk/src/hooks/useAliaChat.ts:217,46,282-352"
     },
     {
       "id": "sdk-tts-consumer",
       "kind": "consumer",
       "name": "@alia.onl/sdk - useTTS",
-      "currentPath": "packages/alia-chat/src/hooks/useTTS.ts",
+      "currentPath": "packages/sdk/src/hooks/useTTS.ts",
       "summary": "POSTs /v1/audio/speech with a hardcoded model:'route:voice'.",
       "proposedOwner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": ["v1-audio-speech", "model-id-route:voice"],
       "removalGate": "Retiring or renaming route:voice breaks a published package. Keep the id resolvable.",
-      "evidence": "packages/alia-chat/src/hooks/useTTS.ts:198,205"
+      "evidence": "packages/sdk/src/hooks/useTTS.ts:198,205"
     },
     {
       "id": "sdk-voice-room-consumer",
       "kind": "consumer",
       "name": "@alia.onl/sdk - useVoiceRoom",
-      "currentPath": "packages/alia-chat/src/hooks/useVoiceRoom.ts",
+      "currentPath": "packages/sdk/src/hooks/useVoiceRoom.ts",
       "summary": "POSTs /v1/voice/token with model:'route:voice' to join a LiveKit room.",
       "proposedOwner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": ["v1-voice-token", "model-id-route:voice"],
       "removalGate": "Published package. Same gate as sdk-tts-consumer.",
-      "evidence": "packages/alia-chat/src/hooks/useVoiceRoom.ts:325,332"
+      "evidence": "packages/sdk/src/hooks/useVoiceRoom.ts:325,332"
     },
     {
       "id": "sdk-stt-consumer",
       "kind": "consumer",
       "name": "@alia.onl/sdk - useSpeechToText",
-      "currentPath": "packages/alia-chat/src/hooks/useSpeechToText.ts",
+      "currentPath": "packages/sdk/src/hooks/useSpeechToText.ts",
       "summary": "POSTs /v1/voice/transcribe.",
       "proposedOwner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": ["v1-voice-transcribe"],
       "removalGate": "Published package.",
-      "evidence": "packages/alia-chat/src/hooks/useSpeechToText.ts:164"
+      "evidence": "packages/sdk/src/hooks/useSpeechToText.ts:164"
     },
     {
       "id": "console-playground-consumer",
@@ -635,13 +635,13 @@
       "id": "sse-legacy-tool-call-in-data",
       "kind": "stream-event",
       "name": "LEGACY in-data events: parsed.type === 'alia.tool_call' / 'alia.tool_result'",
-      "currentPath": "packages/alia-chat/src/hooks/useAliaChat.ts",
+      "currentPath": "packages/sdk/src/hooks/useAliaChat.ts",
       "summary": "The published SDK still parses a pre-named-event format where the event kind lives in a `type` field INSIDE an unnamed data: frame. No API code emits this shape today (grep for 'alia.tool_call' in packages/api/src finds only unrelated metric names alia_tool_calls_total).",
       "proposedOwner": "delete",
       "targetPath": "delete",
       "dependsOn": ["sdk-chat-consumer"],
       "removalGate": "Client-side dead code, safe to delete in the next SDK major. Its existence is EVIDENCE that the stream format has already broken once - treat it as the precedent for how a format change strands published consumers.",
-      "evidence": "packages/alia-chat/src/hooks/useAliaChat.ts:337-338,350"
+      "evidence": "packages/sdk/src/hooks/useAliaChat.ts:337-338,350"
     },
     {
       "id": "socket-alia-approval-request",
@@ -767,13 +767,13 @@
       "id": "model-id-route:voice",
       "kind": "model-id-usage",
       "name": "route:voice hardcoded in the PUBLISHED SDK",
-      "currentPath": "packages/alia-chat/src/hooks/useTTS.ts",
+      "currentPath": "packages/sdk/src/hooks/useTTS.ts",
       "summary": "Sent as model on both /v1/audio/speech (useTTS.ts:205) and /v1/voice/token (useVoiceRoom.ts:332). Not configurable by the SDK consumer.",
       "proposedOwner": "alia",
       "targetPath": "keep-alia-product",
       "dependsOn": ["alia-models-registry", "sdk-chat-consumer"],
       "removalGate": "Baked into an npm package, so every already-installed copy sends it forever. This id can never be un-resolvable.",
-      "evidence": "packages/alia-chat/src/hooks/useTTS.ts:205; packages/alia-chat/src/hooks/useVoiceRoom.ts:332"
+      "evidence": "packages/sdk/src/hooks/useTTS.ts:205; packages/sdk/src/hooks/useVoiceRoom.ts:332"
     },
     {
       "id": "response-ext-alia-usage",

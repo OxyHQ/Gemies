@@ -1,6 +1,6 @@
 import { act, create } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
-import type { AliaRuntimeHost } from '@alia.onl/sdk/runtime';
+import type { GemieRuntimeHost } from '@gemies/sdk/runtime';
 
 /**
  * What the app does when a server tool finishes: the tools that change what other screens show
@@ -47,8 +47,8 @@ import { queryKeys } from '@/shared/api/query-keys';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-function host(): AliaRuntimeHost {
-  let value!: AliaRuntimeHost;
+function host(): GemieRuntimeHost {
+  let value!: GemieRuntimeHost;
   const Probe = () => {
     value = useAliaHost();
     return null;

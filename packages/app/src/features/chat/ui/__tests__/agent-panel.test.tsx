@@ -19,7 +19,7 @@ vi.mock('react-native', async () => {
     Platform: { OS: 'web', select: (o: Record<string, unknown>) => o.web ?? o.default },
   };
 });
-vi.mock('@alia.onl/sdk/runtime', () => ({
+vi.mock('@gemies/sdk/runtime', () => ({
   useAgentActivity: () => state.activity,
 }));
 vi.mock('@/features/chat/runtime/ui-store', () => ({
@@ -105,7 +105,7 @@ vi.mock('@oxy.so/bloom/icons/RiSearchLine', async () =>
 );
 
 import { AgentPanel, agentStepLabel } from '@/features/chat/ui/workspace/agent-panel';
-import type { AgentActivityEvent } from '@alia.onl/sdk/runtime';
+import type { AgentActivityEvent } from '@gemies/sdk/runtime';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 

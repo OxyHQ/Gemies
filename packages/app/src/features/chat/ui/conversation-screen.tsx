@@ -1,12 +1,12 @@
 import {
-  type AliaChatChrome,
-  type AliaChatState,
-  AliaChatContent,
-  AliaParticipants,
-  type AliaParticipant,
-  type AliaSuggestion,
-} from '@alia.onl/sdk';
-import { useConversation } from '@alia.onl/sdk/runtime';
+  type GemieChatChrome,
+  type GemieChatState,
+  GemieChatContent,
+  GemieParticipants,
+  type GemieParticipant,
+  type GemieSuggestion,
+} from '@gemies/sdk';
+import { useConversation } from '@gemies/sdk/runtime';
 import { ComposerPanelStatusTab } from '@oxy.so/bloom/composer-panel';
 import { useAuth } from '@oxy.so/services/ui/client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -60,13 +60,13 @@ interface ConversationScreenProps {
    */
   loading?: boolean;
   /** The conversation's members when it is a group (two or more); the route reads them. */
-  group?: readonly AliaParticipant[];
+  group?: readonly GemieParticipant[];
 }
 
 /** The SDK keys a suggestion by `id` and calls a fill-in-the-blanks one a `template`. */
 const asSuggestions = (
   suggestions: readonly Suggestion[] | undefined,
-): AliaSuggestion[] | undefined =>
+): GemieSuggestion[] | undefined =>
   suggestions?.map((suggestion) => ({
     id: suggestion.suggestionId,
     text: suggestion.text,
@@ -81,7 +81,7 @@ const asSuggestions = (
  * behind different doors, so it lives here rather than in any route: a chat that gains voice or
  * loses a dialog has to gain or lose it in all of them.
  *
- * The conversation is the SDK's (`AliaChatContent`, the same one the bottom sheet mounts). What
+ * The conversation is the SDK's (`GemieChatContent`, the same one the bottom sheet mounts). What
  * is here is the app around it: which power level and which of the person's own devices, the add
  * menu with its skills and connected apps, the plan and credits behind a call, the breadcrumb and
  * its actions, the project the chat is filed under, and the dialogs and toasts that belong to the
@@ -144,7 +144,7 @@ export const ConversationScreen = ({
   const suggestionMatches = useMemo(() => asSuggestions(matches), [matches]);
   const { mutate: recordSuggestionUsage } = useRecordSuggestionUsage();
   const handleSuggestionPicked = useCallback(
-    (suggestion: AliaSuggestion) => recordSuggestionUsage(suggestion.id),
+    (suggestion: GemieSuggestion) => recordSuggestionUsage(suggestion.id),
     [recordSuggestionUsage],
   );
 
@@ -171,7 +171,7 @@ export const ConversationScreen = ({
     [agentId, openAgentEditor],
   );
   const chrome = useCallback(
-    (chat: AliaChatState): AliaChatChrome => {
+    (chat: GemieChatState): GemieChatChrome => {
       // The menu is there from the first screen: starting a group, editing an agent and the panel
       // need no stored conversation; what needs one (search, share, export, clear, delete) is
       // left out of it until there is one.
@@ -202,7 +202,7 @@ export const ConversationScreen = ({
                 loading ? (
                   agentName
                 ) : (
-                  <AliaParticipants participants={chat.participants} onPress={openAgent} />
+                  <GemieParticipants participants={chat.participants} onPress={openAgent} />
                 )
               }
               actions={
@@ -231,7 +231,7 @@ export const ConversationScreen = ({
 
   return (
     <KeyboardFrame>
-      <AliaChatContent
+      <GemieChatContent
         conversationId={conversationId}
         agent={agent}
         // An agent's thread is drawn as chat bubbles; Alia's own chat keeps its plain replies.

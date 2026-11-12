@@ -16,7 +16,7 @@ const hashOf = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex
 describe('served voice worklets', () => {
   it("serves the SDK's current worklets under their revision", () => {
     // The SDK's own test holds `VOICE_WORKLETS_REVISION` to this same hash of the same file.
-    const sdkRoot = dirname(createRequire(__filename).resolve('@alia.onl/sdk/package.json'));
+    const sdkRoot = dirname(createRequire(__filename).resolve('@gemies/sdk/package.json'));
     const source = readFileSync(join(sdkRoot, 'worklets', 'voice-processors.js'));
     // Missing? `bun run --filter @alia/app stamp:voice-worklets`.
     expect(readdirSync(SERVED)).toContain(`${hashOf(source)}.js`);

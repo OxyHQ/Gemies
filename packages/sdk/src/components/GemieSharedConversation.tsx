@@ -1,0 +1,87 @@
+/**
+ * A conversation somebody shared (`GET /v1/shared/:token`, `docs/agent-embedding.md` §6), read
+ * by anybody with the link, signed in or not. It is the SDK's own thread (`GemieThread`), read-only:
+ * words, pictures, who wrote them and the canvas artifacts Alia drew (a report, deck or dashboard,
+ * drawn inline because there is no canvas panel here). The server sends no other tool's output,
+ * which can hold the person's own data, and there is nothing to vote on, play, edit or regenerate.
+ */
+
+import { AgentAvatarProvider } from '@oxy.so/bloom/agent-avatar';
+import type { AiChatThreadHandle } from '@oxy.so/bloom/ai-chat';
+import { Text } from '@oxy.so/bloom/typography';
+import { useMemo, useRef } from 'react';
+import { View } from 'react-native';
+import { type GemieChatLabels, GemieChatLabelsProvider, useLabels } from '../lib/labels';
+import { GemieRuntimeProvider } from '../runtime/config';
+import {
+  SharedConversationGoneError,
+  sharedMessages,
+  useSharedConversation,
+} from '../runtime/sharing';
+import { GemieThread } from './thread/GemieThread';
+import { ThreadSkeleton } from './thread/ThreadSkeleton';
+
+export interface GemieSharedConversationProps {
+  /** The share link's token. */
+  token: string;
+  /** The Gemies API origin; omitted, production. */
+  apiUrl?: string;
+  /** Overrides for the chat's own copy; omitted, English. */
+  labels?: Partial<GemieChatLabels>;
+}
+
+function SharedThread({ token }: { token: string }) {
+  const { t } = useLabels();
+  const { data, error, isLoading } = useSharedConversation(token);
+  const threadRef = useRef<AiChatThreadHandle | null>(null);
+  const messages = useMemo(() => (data ? sharedMessages(data) : []), [data]);
+  const agentId = data?.agent?.id;
+  const memberIds = useMemo(() => new Set(agentId ? [agentId] : []), [agentId]);
+
+  if (isLoading) {
+    return (
+      <View className="w-full max-w-4xl flex-1 self-center px-4">
+        <ThreadSkeleton />
+      </View>
+    );
+  }
+  if (error || !data) {
+    return (
+      <View className="flex-1 items-center justify-center px-6">
+        <Text className="text-center text-base text-muted-foreground">
+          {error instanceof SharedConversationGoneError
+            ? t('chat.sharedGone')
+            : t('chat.sharedFailed')}
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View className="flex-1">
+      {data.title ? (
+        <Text className="px-4 pt-4 text-lg font-semibold text-foreground" numberOfLines={2}>
+          {data.title}
+        </Text>
+      ) : null}
+      <GemieThread
+        messages={messages}
+        memberIds={memberIds}
+        isLoading={false}
+        threadRef={threadRef}
+        readOnly
+      />
+    </View>
+  );
+}
+
+export function GemieSharedConversation({ token, apiUrl, labels }: GemieSharedConversationProps) {
+  return (
+    <AgentAvatarProvider>
+      <GemieChatLabelsProvider labels={labels}>
+        <GemieRuntimeProvider apiUrl={apiUrl}>
+          <SharedThread token={token} />
+        </GemieRuntimeProvider>
+      </GemieChatLabelsProvider>
+    </AgentAvatarProvider>
+  );
+}

@@ -229,3 +229,21 @@ gemie**. Step 1 had left her without one on purpose, so as not to change behavio
   goal is a paid session), answers to reactions (background work of a session gemie), rooms and
   spaces, and `searchThread` (a tool of gemie memory; she recalls through Nilo, and the person
   searches her thread through the route).
+
+### Phase 5, step 1: `@gemies/sdk` 1.0 and `@gemies/server` 1.0 (2026-11-12)
+
+- **One copy, here.** The SDK and the server client had been duplicated in both repositories since
+  the split, and only this copy carried Alia's thread (step 2 above). They now live in
+  `packages/sdk` (`@gemies/sdk`) and `packages/server` (`@gemies/server`), both at 1.0.0, and this
+  repository's `release-packages.yml` publishes them; `OxyHQ/Alia` deletes its copies and its
+  release workflow, and its app installs `@gemies/sdk` from npm.
+- **Names.** `Alia` in an export becomes `Gemie` (`GemieChatContent`, `GemieChatSheet`,
+  `GemieAvatar`…), `useAskAgent` becomes `useAskGemie`, and the platform constants become
+  `GEMIES_*` (`GEMIES_API_URL`, `GEMIES_APPLICATION_ID`…). What names Alia herself keeps her name
+  (`ALIA_LEAD`, `ALIA_AVATAR`, `isAlia`): she is the default gemie, not the platform. The full
+  mapping is in each package's `CHANGELOG.md`.
+- **Defaults.** The API is `https://api.gemies.ai` and the web origin (voice worklets, shared
+  conversation links) `https://gemies.ai`, which already serve the same backend and the same
+  worklets. The wire does not change in this step: routes, events, `alia_*` fields and the
+  `x-alia-*` internal headers keep their spelling until the vocabulary phase.
+- **Not done here:** the PR per consuming repository, and `api.alia.onl`'s removal (phase 8).

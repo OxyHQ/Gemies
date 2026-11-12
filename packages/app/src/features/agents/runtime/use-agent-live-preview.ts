@@ -1,4 +1,4 @@
-import { type AliaAgentProfile, aliaQueryKeys } from '@alia.onl/sdk/runtime';
+import { type GemieAgentProfile, gemieQueryKeys } from '@gemies/sdk/runtime';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AvatarCharacter } from '@oxy.so/bloom/agent-avatar';
 import { useMemo } from 'react';
@@ -48,8 +48,8 @@ export function useAgentLivePreview(agentId: string) {
           agent ? merge(agent, look, ['name', 'tagline', 'character']) : agent,
         );
         // The profile has no tagline: its name and look are what the chat's header draws.
-        queryClient.setQueryData<AliaAgentProfile>(
-          aliaQueryKeys.agents.profile(agentId),
+        queryClient.setQueryData<GemieAgentProfile>(
+          gemieQueryKeys.agents.profile(agentId),
           (profile) => (profile ? merge(profile, look, ['name', 'character']) : profile),
         );
       },
@@ -57,7 +57,7 @@ export function useAgentLivePreview(agentId: string) {
       revert() {
         void queryClient.invalidateQueries({ queryKey: queryKeys.agents.mine });
         void queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
-        void queryClient.invalidateQueries({ queryKey: aliaQueryKeys.agents.profile(agentId) });
+        void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.agents.profile(agentId) });
       },
     };
   }, [queryClient, agentId]);

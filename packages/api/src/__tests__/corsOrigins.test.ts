@@ -162,7 +162,7 @@ describe('the internal-routes CORS middleware', () => {
   });
 
   it("admits the SDK's app assertion header through preflight", async () => {
-    // @alia.onl/sdk sends X-Oxy-App-Assertion beside the session (ADR 0045);
+    // @gemies/sdk sends X-Oxy-App-Assertion beside the session (ADR 0045);
     // a preflight that did not list it refused every such request before it
     // was made (clarity.surf on /v1, 2026-10-20; the same list is here).
     const response = await fetch(`${base}${MOUNTS.shipped}/catalogue`, {

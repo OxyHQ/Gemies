@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ALIA_APPLICATION_ID, ALIA_INTEGRATIONS_WORKLOAD_ID } from '@alia.onl/server/internal';
+import { GEMIES_APPLICATION_ID, GEMIES_INTEGRATIONS_WORKLOAD_ID } from '@gemies/server/internal';
 const fixture = vi.hoisted(() => ({
   principal: undefined as any,
   bot: vi.fn(),
@@ -48,8 +48,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   fixture.principal = {
     authority: 'first_party',
-    appId: ALIA_APPLICATION_ID,
-    credentialId: ALIA_INTEGRATIONS_WORKLOAD_ID,
+    appId: GEMIES_APPLICATION_ID,
+    credentialId: GEMIES_INTEGRATIONS_WORKLOAD_ID,
   };
   fixture.bot.mockResolvedValue({ id: 'bot', status: 'active' });
   fixture.link.mockResolvedValue({

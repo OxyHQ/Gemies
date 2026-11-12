@@ -3,7 +3,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ALIA_SERVICE_AUDIENCE } from '@alia.onl/server/internal';
+import { GEMIES_SERVICE_AUDIENCE } from '@gemies/server/internal';
 
 vi.mock('@oxy.so/core/server', async () => {
   const { createRequire } = await import('node:module');
@@ -64,7 +64,7 @@ function token(appId: string, lane: 'v1' | 'v2' | 'external', aud?: string) {
     iss: 'oxy-auth',
     iat: now,
     exp: now + 300,
-    aud: aud ?? (lane === 'v2' ? ALIA_SERVICE_AUDIENCE : 'oxy-api'),
+    aud: aud ?? (lane === 'v2' ? GEMIES_SERVICE_AUDIENCE : 'oxy-api'),
     ...(lane === 'v2' ? { authority: 'first_party' } : { scopes: ['capability-events:publish'] }),
   };
   const data = [{ alg: 'EdDSA', typ: 'JWT', kid: 'events' }, payload]
@@ -145,7 +145,7 @@ beforeAll(async () => {
   });
   issuer = await listen(authority);
   // As `lib/oxy.ts` builds it: Alia's own audience on the server.
-  state.oxy = new OxyServer({ baseURL: origin(issuer), expectedAudience: ALIA_SERVICE_AUDIENCE });
+  state.oxy = new OxyServer({ baseURL: origin(issuer), expectedAudience: GEMIES_SERVICE_AUDIENCE });
   vi.spyOn(state.oxy, 'introspectServiceToken').mockImplementation(async (bearer) => {
     const response = await fetch(`${origin(issuer)}/auth/resources/introspect`, {
       method: 'POST',

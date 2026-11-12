@@ -63,12 +63,12 @@ COPY package.json bun.lock bunfig.toml ./
 # Directory structure is preserved.
 COPY packages/api/package.json ./packages/api/
 COPY packages/app/package.json ./packages/app/
-COPY packages/alia-chat/package.json ./packages/alia-chat/
+COPY packages/sdk/package.json ./packages/sdk/
 # Not built here, and still required: `bun install` reads EVERY workspace
 # manifest named in the root `workspaces` array before it resolves anything, so
 # a member whose package.json is missing from the build context fails the
 # install outright ("Workspace not found"), whatever `--filter` says.
-COPY packages/alia-server/package.json ./packages/alia-server/
+COPY packages/server/package.json ./packages/server/
 COPY packages/integrations/package.json ./packages/integrations/
 COPY packages/alia-computer-host/package.json ./packages/alia-computer-host/
 
@@ -93,8 +93,8 @@ ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
 RUN bun install --frozen-lockfile --filter "@alia/api"
 
 # Copy API source and build the bundle.
-COPY packages/alia-server/ ./packages/alia-server/
-RUN cd packages/alia-server && bun run build
+COPY packages/server/ ./packages/server/
+RUN cd packages/server && bun run build
 COPY packages/api/ ./packages/api/
 # Build from the workspace directory rather than `bun run --filter`. With the
 # hoisted linker + a filtered install, bun does not materialize
@@ -131,8 +131,8 @@ COPY --from=builder --chown=bun:bun /build/node_modules ./node_modules
 COPY --from=builder --chown=bun:bun /build/package.json /build/bun.lock ./
 COPY --from=builder --chown=bun:bun /build/packages/api/package.json ./packages/api/package.json
 # Workspace SDK remains external in the API bundle; preserve its symlink target.
-COPY --from=builder --chown=bun:bun /build/packages/alia-server/package.json ./packages/alia-server/package.json
-COPY --from=builder --chown=bun:bun /build/packages/alia-server/dist ./packages/alia-server/dist
+COPY --from=builder --chown=bun:bun /build/packages/server/package.json ./packages/server/package.json
+COPY --from=builder --chown=bun:bun /build/packages/server/dist ./packages/server/dist
 
 # Built application bundle.
 COPY --from=builder --chown=bun:bun /build/packages/api/dist ./packages/api/dist

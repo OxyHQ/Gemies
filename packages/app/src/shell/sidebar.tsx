@@ -28,15 +28,15 @@ import { agentHandle, agentChatRoute } from '@/shared/routing/agent-address';
 import type { Agent } from '@/shared/contracts/agents';
 import { formatRelativeTime } from '@/shared/format/relative-time';
 import { queryKeys } from '@/shared/api/query-keys';
-import { AliaAvatar, readAgentCharacter } from '@alia.onl/sdk';
-import type { Conversation } from '@alia.onl/sdk/model';
+import { GemieAvatar, readAgentCharacter } from '@gemies/sdk';
+import type { Conversation } from '@gemies/sdk/model';
 import {
   useConversationStore,
   useConversations,
   useDeleteConversation,
   usePrefetchConversation,
   useRenameConversation,
-} from '@alia.onl/sdk/runtime';
+} from '@gemies/sdk/runtime';
 import { useMyAgents } from '@/features/agents/runtime/use-my-agents';
 import { usePrefetchAgentThread } from '@/features/agents/runtime/use-agent-thread';
 import { useTranslation } from '@/shared/i18n/use-translation';
@@ -565,7 +565,7 @@ function useSidebarProps() {
             {
               key: ALIA_KEY,
               label: 'Alia',
-              leading: <AliaAvatar size={AGENT_ROW_AVATAR} portrait />,
+              leading: <GemieAvatar size={AGENT_ROW_AVATAR} portrait />,
               description: t('gemies.aliaTagline'),
             },
           ]
@@ -845,7 +845,7 @@ function useSidebarProps() {
         key: 'chat',
         label: t('sidebar.create.chat'),
         description: t('sidebar.create.chatHint'),
-        leading: <AliaAvatar size={32} portrait />,
+        leading: <GemieAvatar size={32} portrait />,
         onPress: () => {
           closeNav?.();
           // A chat is always with a gemie (ADR 0034); this one is with Alia.

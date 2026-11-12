@@ -2,7 +2,7 @@
  * Host tools: UI effects the embedding app performs on the person's screen
  * (Alia ADR 0020 §6, `docs/agent-embedding.md` §2).
  *
- * An app that embeds a conversation through `@alia.onl/sdk` declares, per
+ * An app that embeds a conversation through `@gemies/sdk` declares, per
  * request, what its own client can do — open a listing, apply a search, switch
  * a view. The model sees each as `host_<app>__<name>`. Calling one does nothing
  * here: Alia records the call, emits `alia.host_action` to the client that

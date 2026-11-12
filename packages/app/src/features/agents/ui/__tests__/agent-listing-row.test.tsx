@@ -36,7 +36,7 @@ vi.mock('@oxy.so/bloom/item', async () => ({
 vi.mock('@oxy.so/bloom/button', async () => hosts('Button'));
 vi.mock('@oxy.so/bloom/agent-avatar', async () => hosts('AgentAvatar'));
 vi.mock('@oxy.so/bloom/typography', async () => hosts('Text'));
-vi.mock('@alia.onl/sdk', () => ({ readAgentCharacter: (value: unknown) => value }));
+vi.mock('@gemies/sdk', () => ({ readAgentCharacter: (value: unknown) => value }));
 vi.mock('@/shared/i18n/use-translation', () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, string>) =>

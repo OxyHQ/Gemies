@@ -1391,7 +1391,7 @@ describe('fixture: what a failure surfaces to the user', () => {
    * byte of output. It used to answer with an ordinary assistant message — "all
    * models are currently busy" — and a stop chunk, flagged only by
    * `alia_meta.synthetic`; every client that did not know the flag (an OpenAI
-   * SDK, `@alia.onl/sdk`'s text accumulator) showed Alia's apology as the
+   * SDK, `@gemies/sdk`'s text accumulator) showed Alia's apology as the
    * model's answer. It is a typed, retryable error now, in the same frame a
    * mid-stream failure ends with.
    */
@@ -2039,7 +2039,7 @@ describe('fixture: editor client flow — Oxy session, streaming, client-supplie
  * the provider loop (`routes/v1/chat-completions.ts:82`), so none of the
  * fixtures above cover it. Its product surface is the phase sequence carried by
  * `alia.research_progress`, consumed by the app AND by the published SDK
- * (`packages/alia-chat/src/hooks/useAliaChat.ts:300`), which makes it external.
+ * (`packages/sdk/src/hooks/useAliaChat.ts:300`), which makes it external.
  */
 describe('fixture: deep research flow — phase events, report deltas, sources', () => {
   beforeEach(() => {

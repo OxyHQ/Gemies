@@ -75,7 +75,7 @@ vi.mock('@/features/chat/ui/workspace/agent-terminal', async () => {
 });
 vi.mock('@/features/chat/ui/workspace/agent-panel', () => ({ AgentPanel: () => null }));
 vi.mock('@/features/agents/ui/agent-editor-panel', () => ({ AgentEditorPanel: () => null }));
-vi.mock('@alia.onl/sdk', () => ({ CanvasComponent: () => null, ThoughtPanel: () => null }));
+vi.mock('@gemies/sdk', () => ({ CanvasComponent: () => null, ThoughtPanel: () => null }));
 vi.mock('@/features/chat/ui/workspace/credits-limits', () => ({ CreditsLimits: () => null }));
 vi.mock('@/features/library/runtime/library-store', () => ({
   useLibraryStore: (select: (s: Record<string, unknown>) => unknown) =>

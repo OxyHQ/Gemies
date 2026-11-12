@@ -80,8 +80,8 @@ vi.mock('@oxy.so/services/ui/client', () => ({
 // The header's mark is an image (expo-image), which this renderer does not load.
 vi.mock('@/shared/ui/gemies-mark', () => ({ GemiesMark: () => null }));
 
-vi.mock('@alia.onl/sdk', () => ({
-  AliaAvatar: () => null,
+vi.mock('@gemies/sdk', () => ({
+  GemieAvatar: () => null,
   ALIA_AVATAR: { preset: 'blue_beret' },
   readAgentCharacter: (value: unknown) => ({ preset: 'blue_beret', value }),
 }));
@@ -102,8 +102,8 @@ vi.mock('@/shared/i18n/use-translation', () => ({
 }));
 // The conversation store is the SDK's own (the sidebar reads which row streams from it); the
 // hooks that talk to the API are stubbed.
-vi.mock('@alia.onl/sdk/runtime', async () => ({
-  ...(await import('../../../../alia-chat/src/runtime/conversation-store')),
+vi.mock('@gemies/sdk/runtime', async () => ({
+  ...(await import('../../../../sdk/src/runtime/conversation-store')),
   useConversations: () => ({
     data: state.isLoading ? undefined : { pages: [{ conversations: state.conversations }] },
     fetchNextPage: vi.fn(),
@@ -270,7 +270,7 @@ vi.mock('@oxy.so/bloom/typography', async () => {
 import { Sidebar } from '../sidebar';
 import { useFavoritesStore } from '@/features/projects/runtime/favorites-store';
 import { useFoldersStore } from '@/features/projects/runtime/folders-store';
-import { useConversationStore } from '@alia.onl/sdk/runtime';
+import { useConversationStore } from '@gemies/sdk/runtime';
 import { useStore } from '@/features/chat/runtime/global-store';
 import { usePinnedStore } from '@/features/projects/runtime/pinned-store';
 import { useProjectsStore } from '@/features/projects/runtime/projects-store';

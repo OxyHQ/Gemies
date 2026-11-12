@@ -23,7 +23,7 @@ vi.mock('@/shared/i18n/use-translation', () => ({
   }),
 }));
 vi.mock('@/shared/platform/use-keyboard-on-open', () => ({ useKeyboardOnOpen: () => undefined }));
-vi.mock('@alia.onl/sdk', () => ({ readAgentCharacter: (value: unknown) => value }));
+vi.mock('@gemies/sdk', () => ({ readAgentCharacter: (value: unknown) => value }));
 vi.mock('@oxy.so/bloom/agent-avatar', () => ({ AgentAvatar: () => null }));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast: world.toast }));
 vi.mock('@/features/spaces/runtime/use-spaces', () => ({

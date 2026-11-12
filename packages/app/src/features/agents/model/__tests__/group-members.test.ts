@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@alia.onl/sdk', () => ({ readAgentCharacter: (character: unknown) => character }));
+vi.mock('@gemies/sdk', () => ({ readAgentCharacter: (character: unknown) => character }));
 
 const { groupMembersOf } = await import('../group-members');
 

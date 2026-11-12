@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const get = vi.hoisted(() => vi.fn());
 const prefetchConversation = vi.hoisted(() => vi.fn());
 vi.mock('@/shared/api/client', () => ({ default: { get } }));
-vi.mock('@alia.onl/sdk/runtime', () => ({
+vi.mock('@gemies/sdk/runtime', () => ({
   usePrefetchConversation: () => prefetchConversation,
 }));
 
