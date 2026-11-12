@@ -19,7 +19,7 @@ bun run --filter @alia/api typecheck && bun run --filter @alia/api test
 bun run --filter @alia/app typecheck && bun run --filter @alia/app test
 bun run --filter @alia.onl/sdk typecheck && bun run --filter @alia.onl/sdk test
 bun run --filter @alia/api test:pg                    # Postgres real; necesita TEST_DATABASE_URL
-bun run dev:api                                       # también dev:app, dev:codea
+bun run dev:api                                       # también dev:app, dev:canvas, dev:integrations
 ```
 
 ## Mapa
