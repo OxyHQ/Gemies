@@ -6,7 +6,7 @@ import { startPlatformActivity } from './lib/platform-activity.js';
 import http from 'http';
 import type { WebSocket } from 'ws';
 import cors from 'cors';
-import { closePostgres } from './db/index.js';
+import { closePostgres, getDb } from './db/index.js';
 import { runBootGuards } from './lib/boot-guards.js';
 import { createInternalCors } from './lib/cors-origins.js';
 import { startExpirySweeper, stopExpirySweeper } from './db/expirySweeper.js';
@@ -15,6 +15,13 @@ import {
   stopCreditReconciliation,
 } from './lib/credit-reconciliation.js';
 import { isTriggerLeader } from './lib/trigger-engine.js';
+import { operationalMetrics, stopOperationalMetrics } from './lib/observability/metrics.js';
+import {
+  startOperationalGauges,
+  stopOperationalGauges,
+} from './lib/observability/operational-metrics.js';
+import { aliaTaskQueueCounts } from './lib/alia-task-queue.js';
+import { agentSessionQueueCounts } from './lib/task-queue.js';
 import { startSpeechClipSweeper, stopSpeechClipSweeper } from './lib/speech-clips.js';
 import { startOxyFileSync, stopOxyFileSync } from './lib/files/oxy-file-sync.js';
 import oxyFilesWebhookRouter from './routes/oxy-files-webhook.js';
@@ -472,6 +479,22 @@ server.listen(PORT, '0.0.0.0', () => {
   startSpeechClipSweeper(isTriggerLeader);
 
   /**
+   * Backlogs and stuck work as CloudWatch gauges (`lib/observability/operational-metrics.ts`),
+   * published by the leader only: they are facts about the system, not about this task.
+   */
+  startOperationalGauges(
+    operationalMetrics,
+    {
+      db: getDb(),
+      queues: [
+        { queue: 'agent-sessions', counts: agentSessionQueueCounts },
+        { queue: 'alia-tasks', counts: aliaTaskQueueCounts },
+      ],
+    },
+    isTriggerLeader,
+  );
+
+  /**
    * Oxy Files bookkeeping (`lib/files/oxy-file-sync.ts`): the reference outbox
    * drains on every task under leases; the nightly reconciliation and the
    * legacy-bucket garbage collector run on the leader, like the sweeps above.
@@ -565,6 +588,8 @@ const shutdown = async (signal: string) => {
     await stopCreditReconciliation();
     stopSpeechClipSweeper();
     stopOxyFileSync();
+    stopOperationalGauges();
+    stopOperationalMetrics();
 
     // Close the Postgres pool last: it is the store every ported route reads, so
     // it stays open until everything that could still be using it has stopped.

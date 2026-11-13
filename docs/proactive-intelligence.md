@@ -142,13 +142,13 @@ and finished from the store:
 
 ## Seeing that it flows
 
-`GET /internal/metrics` (authenticated as an Oxy service, like `/internal/trigger`) answers Prometheus
-text: what the process counted plus gauges read from the stores
-(`lib/observability/operational-metrics.ts`) — `alia_automation_events_stalled` and
-`alia_channel_inbound_stalled` (anything above zero for more than a minute means a sweep is not taking
-them), `alia_channel_inbound_failed_total`, `alia_agent_inbox_pending`
-and `alia_queue_jobs{queue,state}` for the agent-session and Alia-task
-queues. A queue that cannot be counted is left out so the rest still answers. Nothing scrapes it yet.
+The leader publishes CloudWatch metrics in the `Gemies/Api` namespace (EMF through
+`@oxy.so/telemetry/metrics`, one stdout line a minute, no scraper; `lib/observability/operational-metrics.ts`),
+read from the stores: `AutomationEventsStalled` and `ChannelInboundStalled` (anything above zero for more
+than a minute means a sweep is not taking them), `ChannelInboundFailed`, `AgentInboxPending` and
+`QueueJobs{Queue,State}` for the agent-session and Alia-task queues. They are gauges, so read them with
+Maximum or Average, not Sum. A queue that cannot be counted is left out so the rest still publishes. Off
+ECS nothing is published.
 
 ## An agent that notices things (ADR 0026)
 
