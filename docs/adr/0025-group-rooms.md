@@ -49,8 +49,14 @@ claim that Alia reproduces Grok Bot's internal implementation.
 3. **Selection precedes activity.** A structured `RoomDecision` chooses a speaker, requests one
    clarification, ends the chain deliberately, or reports an unavailable addressee. It sees only
    participant identities, descriptions and attributed conversation data. It has no tools, private
-   memory or authority to act. Validate its output against the roster. Run inference through Oxy's
-   utility resolver, with bounded time/output and the existing reservation, settlement and refund
+   memory or authority to act. General selection separates the original `personRequest`, earlier
+   `context` and `memberContributions`, and returns one `{ choice }` from server-enumerated legal
+   choices anchored to that request or the current speaker's latest substantive contribution.
+   Map this source-bound choice to the existing decision and validate it against the roster.
+   A follow-up question to the person does not invent a new request; preserve original outstanding
+   recipients and genuine peer handoffs. General planning uses Kaana's capability-aware `auto`;
+   binary reaction observation uses the utility level. Both retain bounded time/output and the
+   existing reservation, settlement and refund
    lifecycle; record consumption and decision metadata without transcript text. A returned generation
    settles its measured usage before semantic roster validation, so rejecting its actor ID does not
    refund inference that completed. An inference call that throws releases its reservation.
@@ -133,6 +139,23 @@ history carries `reactionRevision`. This is an event on the existing connection,
 WebSocket route. [The runtime contract](../chat-runtime.mdx#reactions-are-conversation-feedback)
 defines the fields and recovery behavior.
 
+### Agent-authored feedback
+
+A normally admitted hosted actor may use the scoped `react_to_message` tool for the person's
+message or an identifiable peer's historical message. Bind the sender at the server; validate
+its current membership and the exact stored target under the thread lock. Never let the client
+choose an author. Independent author sets share a revision while the legacy emoji array remains
+the person's own selection. Store agent mutations without wake eligibility, so they cannot create
+autonomous reaction loops. Removing or replacing the target clears both author sets.
+
+Persist a reaction-only turn completion separately from its mutation receipts, only after a clean
+model finish. Queued room retries replay that completion and current snapshots for its touched
+targets before continuing selection; direct retries retain existing turn admission semantics.
+The versioned `alia.turn_state` event reports durable admission/completion without inventing an
+agent session or empty assistant message. See the [runtime contract](../chat-runtime.mdx#gemies-can-author-reactions-during-a-turn)
+for wire fields and the clean-terminal requirement. These completions count against the room's
+existing contribution rate limit. Reaction observation turns retain their no-tools restriction.
+
 ### Bounds
 
 | Bound | Value | Reason |
@@ -141,11 +164,11 @@ defines the fields and recovery behavior.
 | Operations per person message | 24 | Both a selection phase and an actor execution increment the turn counter; failed attempts also consume work. |
 | Handoffs per chain | 3 | Bound agent-to-agent exchanges. |
 | Consecutive substantive replies | Different member | Prevent an actor from answering itself; a one-off clarification may use the last interlocutor. |
-| Selector generation deadline | 10 seconds | Bound the inference call including its retry; credential/credit setup is separate. |
+| Selector generation deadline | General 30 seconds; binary feedback 10 seconds | Bounded planning and observation; parent cancellation can end earlier. Credential/credit setup is separate. |
 | Selector retries | 1 | One bounded recovery, never a fallback to all members. |
-| Selector output | `utilityOutputTokens(512)` | Reserve enough for the decision and Oxy-selected model reasoning. |
+| Selector output | General 8192; binary feedback `utilityOutputTokens(512)` | Allow planning and structured output within Kaana's reviewed policy. |
 | Supersede | Newest person message | An old chain cannot start another actor's work. |
-| Rate | 60 replies per room per 10 minutes | Bound repeated requests across chains. |
+| Rate | 60 contributions per room per 10 minutes | Count stored replies plus durable reaction-only completions. |
 | Credits | Per inference operation | Selection and actor execution both account for their actual usage. |
 
 ## Consequences
