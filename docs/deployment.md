@@ -375,24 +375,42 @@ and its digest remain intact; requester and bot accounts stay separate.
 
 ## Native app releases and OTA updates
 
-The Expo app (`packages/app`, `onl.alia.app`) ships natively in two ways, neither
-through AWS:
+The Expo app (`packages/app`, Android package and iOS bundle `ai.gemies.app`, Expo
+slug `gemies`; `ai.gemies.app.dev` for the development variant) ships natively the
+way every Oxy app does, neither through AWS
+([oxy build-and-deploy](https://github.com/OxyHQ/oxy/blob/main/docs/engineering/build-and-deploy.md#native-android-releases)):
 
-- **Android binary** — `.github/workflows/android-release.yml` calls oxy's reusable
+- **Android binary**: `.github/workflows/android-release.yml` calls oxy's reusable
   `android-release.yml`, which runs only on Oxy's build machine (`seldon`). When
   the app `version` (`packages/app/app.json`) has no GitHub release
-  `android-v<version>` yet, it prebuilds, builds the AAB and APK signed with the
-  Oxy ecosystem key and publishes them as that release; otherwise it ends.
-- **OTA update** — `.github/workflows/publish-update.yml` publishes every push to
+  `android-v<version>` yet, it prebuilds, builds the AAB and one APK per ABI signed
+  with the Oxy ecosystem key, uploads the AAB to Google Play's internal testing
+  track, and publishes the APKs as that release; otherwise it ends. Until Play
+  knows `ai.gemies.app`, the run warns with the AAB's path on seldon: upload that
+  AAB once in Play Console (Internal testing), and later versions upload themselves.
+- **OTA update**: `.github/workflows/publish-update.yml` publishes every push to
   main that touches the app or `sdk` to Oxy Updates (oxy-api), channel
-  `production`, with `oxy-ship` over GitHub trusted publishing (OIDC, no secret;
-  the trusted publisher pins this repository, `refs/heads/main` and that file path).
+  `production`, with `oxy-ship` over GitHub trusted publishing (OIDC, no secret).
+  It publishes to the Gemies Oxy application, the client id in `eas.json`, whose
+  trusted publisher (oxy `seedOxyApplicationsSpecs.ts`) pins this repository,
+  `refs/heads/main` and that file path.
 
 `version` is both the OTA runtime (`withOxyUpdates`, appVersion policy) and the
 store build number (`@oxy.so/app-preset` derives `versionCode` 1.0.0 -> 1000000):
 bump it for a native change, which releases a new binary, and never for a
-JS-only one. Both builds take their environment from the `production` profile's
-`env` in `packages/app/eas.json` (public `EXPO_PUBLIC_*` values only).
+JS-only one. The first Gemies binary is 1.0.0. Both builds take their environment
+from the `production` profile's `env` in `packages/app/eas.json` (public
+`EXPO_PUBLIC_*` values only).
+
+Push notifications on a native build need two things the repository does not
+hold yet: Gemies' own Expo project (`extra.eas.projectId` in `app.json`, written
+by `eas init`; without it the app registers no push token) and a Firebase Android
+app for `ai.gemies.app` (`google-services.json`, which `app.config.ts` uses when
+the file is present), whose FCM V1 key is uploaded to that Expo project.
+
+The Oxy packages stay current through `oxy-autobump.yml` (daily, one
+`autobump/oxy-packages` PR that auto-merges when CI is green) and
+`automerge-first-party.yml` (auto-merge for Dependabot's `oxy-platform` group).
 
 ## Avatares: nada que publicar
 

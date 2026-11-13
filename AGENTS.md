@@ -7,7 +7,8 @@ La plataforma de gemies de Oxy («Create your Gemies. Let them work together.»)
 Este repo nació el 2026-11-12 de `OxyHQ/Alia`, con todo su historial y sin ser un fork. El plan y sus fases están en [`docs/adr/0034-gemies-and-alia.md`](./docs/adr/0034-gemies-and-alia.md). Mientras la migración no termine, el backend y la app siguen llamándose Alia por dentro (`@alia/api`, `@alia/app`); las apps ya llaman a `api.gemies.ai`; el SDK y el cliente de servidor ya son `@gemies/sdk` y `@gemies/server`.
 
 - **Gemies despliega el backend en producción desde el 2026-11-12** (servicio ECS `alia`, `alia-integrations`, computer host; runbook 65 de oxy-infra). Push a `main` despliega tras CI verde. La API responde en `api.gemies.ai` y en `api.alia.onl`.
-- **Los cambios de backend se hacen aquí, nunca en `OxyHQ/Alia`.** Alia conserva su app (`onl.alia.app`, `alia.onl`), el OTA y Android; por eso esos workflows siguen desactivados aquí (`publish-update`, `android-release`).
+- **Los cambios de backend se hacen aquí, nunca en `OxyHQ/Alia`.** Alia conserva su app (`onl.alia.app`, `alia.onl`), su OTA y su Android.
+- **La app Gemies nativa es `ai.gemies.app`** (slug `gemies`) y se publica desde aquí como cualquier app de Oxy ([`docs/deployment.md`](./docs/deployment.md#native-app-releases-and-ota-updates)): `android-release.yml` compila en seldon con el workflow reutilizable de oxy cuando `version` de `packages/app/app.json` no tiene release `android-v<version>`, y `publish-update.yml` publica el OTA en Oxy Updates con el client id de `eas.json`. Una versión nueva es un cambio nativo; un cambio solo de JS va por OTA.
 - **La web de Gemies (`gemies.ai`) se despliega desde aquí** con `deploy-frontends.yml`: Worker `gemies-app` en `gemies.ai` (`www` redirige al apex). Nunca `alia-app` ni `alia.onl`, que despliega `OxyHQ/Alia`; lo vigila `.github/scripts/check-frontend-worker-targets.mjs`. La app usa la aplicación de Oxy **Gemies** (`oxy_dk_f694…12de`) y `api.gemies.ai`.
 - **El SDK (`packages/sdk`, `@gemies/sdk`) y el cliente de servidor (`packages/server`, `@gemies/server`) viven y se publican aquí** (`release-packages.yml`, OIDC). Sustituyen sin paquete puente a `@alia.onl/sdk` y `@alia.onl/server`: componentes `Gemie*` (`GemieChatContent`, `GemieChatSheet`, `GemieAvatar`, `useAskGemie`…) y base URL `https://api.gemies.ai`. La app Alia los consume desde npm.
 - Vocabulario nuevo: un agente es un **gemie**. Alia es un gemie oficial global y Codea otro. Alia es la fila `agents` `ALIA_GEMIE_ID` (`domain/alia-gemie.ts`) y lo que la distingue es su configuración (`memory_store`, `reach`, `mailbox`, `task_authority`, sus grants): decide por esos atributos, nunca por su id ni por un `agentId` nulo.
@@ -70,4 +71,4 @@ Pregunta antes de: cambiar un contrato entre productos Oxy, añadir una ruta Web
 
 Vienen del entorno (`.env`, secretos de ECS), nunca se imprimen ni se commitean; `TEST_DATABASE_URL` solo apunta a una base de pruebas.
 
-Owner: OxyHQ. Last reviewed: 2026-11-11.
+Owner: OxyHQ. Last reviewed: 2026-11-13.
