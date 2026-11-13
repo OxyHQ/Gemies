@@ -15,12 +15,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { closePostgres, connectPostgres, type IntegrationsDatabase } from '../../db';
-import { whatsappChats, whatsappSessions } from '../../db/schema';
+import { whatsappChats } from '../../db/schema';
 import {
   createWhatsAppSession,
   deleteWhatsAppChat,
   deleteWhatsAppMessage,
   deleteWhatsAppMessagesForChat,
+  deleteWhatsAppSession,
   findLatestWhatsAppMessageText,
   findRestorableWhatsAppSessions,
   findWhatsAppSession,
@@ -29,8 +30,6 @@ import {
   insertWhatsAppMessages,
   listWhatsAppChats,
   listWhatsAppMessages,
-  listWhatsAppSessions,
-  listWhatsAppSessionsForUser,
   markWhatsAppConnected,
   markWhatsAppDisconnected,
   markWhatsAppLoggedOut,
@@ -492,32 +491,7 @@ describe('restore picks up exactly the sessions a restart should reconnect', () 
     expect(restorable.map((s) => s.sessionId)).toEqual(['wa-r1', 'wa-r2']);
 
     // The positive control: the skipped session is present, just not restorable.
-    const all = await listWhatsAppSessionsForUser(db, owner);
-    expect(all.map((s) => s.sessionId)).toEqual(['wa-r1', 'wa-r2', 'wa-r3']);
-    expect(all.map((s) => s.status)).toEqual(['connected', 'disconnected', 'qr-pending']);
-  });
-
-  it('lists every session in creation order, and the summary omits credentials', async () => {
-    const sessions = await listWhatsAppSessions(db);
-    const created = sessions.map((s) => s.createdAt.getTime());
-    expect(sessions.length).toBeGreaterThan(1);
-    expect([...created].sort((a, b) => a - b)).toEqual(created);
-    expect(Object.keys(sessions[0] ?? {}).sort()).toEqual([
-      'createdAt',
-      'displayName',
-      'lastConnected',
-      'lastDisconnected',
-      'oxyUserId',
-      'phoneNumber',
-      'sessionId',
-      'status',
-    ]);
-  });
-
-  it('scopes a user list to that user', async () => {
-    const mine = await listWhatsAppSessionsForUser(db, 'wa-restore-owner');
-    expect(mine.every((s) => s.oxyUserId === 'wa-restore-owner')).toBe(true);
-    expect(await listWhatsAppSessionsForUser(db, 'wa-nobody')).toHaveLength(0);
+    expect(await findWhatsAppSession(db, 'wa-r3')).toMatchObject({ status: 'qr-pending' });
   });
 });
 
@@ -532,7 +506,8 @@ describe('a chat cannot outlive the session it belongs to', () => {
     });
     await insertWhatsAppMessages(db, [message({ sessionId, messageId: 'cm1' })]);
 
-    await db.delete(whatsappSessions).where(eq(whatsappSessions.sessionId, sessionId));
+    await deleteWhatsAppSession(db, sessionId);
+    expect(await findWhatsAppSession(db, sessionId)).toBeNull();
 
     expect(await listWhatsAppChats(db, sessionId, 50)).toHaveLength(0);
     expect(await listWhatsAppMessages(db, sessionId, '1@s.whatsapp.net', 50)).toHaveLength(0);

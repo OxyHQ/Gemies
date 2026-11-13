@@ -5,18 +5,15 @@ import { StringSession } from 'telegram/sessions';
 import { NewMessage, Raw } from 'telegram/events';
 import { UpdateConnectionState } from 'telegram/network';
 import { Api } from 'telegram/tl';
+import type { TelegramChatType } from '../../db/schema';
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../../db';
 import {
   createTelegramSession,
+  deleteTelegramSession,
   findRestorableTelegramSessions,
-  findTelegramSession,
   findTelegramSessionCredential,
-  findTelegramSessionOwner,
-  findTelegramSessionQr,
   insertTelegramMessages,
-  listTelegramSessions,
-  listTelegramSessionsForUser,
   markTelegramConnected,
   markTelegramDisconnected,
   markTelegramLoggedOut,
@@ -308,23 +305,23 @@ class SessionManager {
         logger.error(`Error persisting message:`, err);
       }
 
+      // Determine chat type
+      let chatType: TelegramChatType = 'user';
+      try {
+        const chat = await message.getChat();
+        if (chat) {
+          if (chat.className === 'Channel') {
+            chatType = 'megagroup' in chat && chat.megagroup ? 'group' : 'channel';
+          } else if (chat.className === 'Chat') {
+            chatType = 'group';
+          }
+        }
+      } catch {
+        // Best-effort chat type resolution
+      }
+
       // Update chat record
       try {
-        // Determine chat type
-        let chatType: 'user' | 'group' | 'channel' = 'user';
-        try {
-          const chat = await message.getChat();
-          if (chat) {
-            if (chat.className === 'Channel') {
-              chatType = 'megagroup' in chat && chat.megagroup ? 'group' : 'channel';
-            } else if (chat.className === 'Chat') {
-              chatType = 'group';
-            }
-          }
-        } catch {
-          // Best-effort chat type resolution
-        }
-
         const chatName = senderName || chatId;
         await upsertTelegramChat(getDb(), {
           sessionId,
@@ -339,20 +336,17 @@ class SessionManager {
 
       // Forward to shared AI handler
       try {
-        const oxyUserId = await findTelegramSessionOwner(getDb(), sessionId);
-        if (!oxyUserId) {
-          logger.error(`No session or oxyUserId found for ${sessionId}`);
-          return;
-        }
-
         await handleIncomingMessage(
           {
             platform: 'telegram-gateway',
             sessionId,
-            oxyUserId,
-            chatId: String(chatId),
+            inbound: {
+              chatId,
+              chatKind: chatType === 'user' ? 'direct' : 'group',
+              // GramJS: the message mentions this account or replies to one of its messages.
+              mentionsAccount: chatType !== 'user' && message.mentioned === true,
+            },
             messageText: text,
-            senderName,
             sendResponse: (text) => client.sendMessage(chatId, { message: text }).then(() => {}),
             setTyping: async (typing) => {
               try {
@@ -509,15 +503,22 @@ class SessionManager {
   }
 
   /**
-   * Disconnect and log out a session (removes session string).
+   * Log a session out of Telegram (it leaves the person's Devices) and forget it: its session
+   * string, chats and messages go with its row.
    */
-  async disconnectSession(sessionId: string): Promise<void> {
+  async removeSession(sessionId: string): Promise<void> {
     // Out of `sessions` before the disconnect, so its `disconnected` is not
     // taken for a dropped connection.
     const client = this.sessions.get(sessionId);
     this.sessions.delete(sessionId);
     this.clearConnectionLoss(sessionId);
+    this.pendingQrs.discard(sessionId);
     if (client) {
+      try {
+        await client.invoke(new Api.auth.LogOut());
+      } catch (err) {
+        logger.error(`Logout error for ${sessionId}:`, err);
+      }
       try {
         await client.destroy();
       } catch (err) {
@@ -533,28 +534,7 @@ class SessionManager {
     }
     this.reconnectAttempts.delete(sessionId);
 
-    await markTelegramLoggedOut(getDb(), sessionId);
-  }
-
-  /**
-   * Session status by sessionId, without the GramJS session string.
-   */
-  async getStatus(sessionId: string) {
-    return findTelegramSession(getDb(), sessionId);
-  }
-
-  /**
-   * The login QR for a session that is awaiting a scan.
-   */
-  async getQr(sessionId: string) {
-    return findTelegramSessionQr(getDb(), sessionId);
-  }
-
-  /**
-   * Get all sessions for a given oxyUserId.
-   */
-  async getUserSessions(oxyUserId: string) {
-    return listTelegramSessionsForUser(getDb(), oxyUserId);
+    await deleteTelegramSession(getDb(), sessionId);
   }
 
   /**
@@ -562,13 +542,6 @@ class SessionManager {
    */
   getSocket(sessionId: string): TelegramClient | undefined {
     return this.sessions.get(sessionId);
-  }
-
-  /**
-   * List all sessions.
-   */
-  async listSessions() {
-    return listTelegramSessions(getDb());
   }
 
   /**

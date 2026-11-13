@@ -118,7 +118,7 @@ const ALL_TOOLS = {
   oxy_inbox__searchEmails: {},
   oxy_nilo_memories__recallMemories: {},
   sendTelegramMessage: {},
-  sendWhatsAppMessage: {},
+  sendAccountMessage: {},
   memory: {},
   createAutomation: {},
   mcp_row_a__act: {},
@@ -174,7 +174,7 @@ describe('aliaConsultTools', () => {
     const kept = Object.keys(aliaConsultTools(ALL_TOOLS as never));
     for (const name of [
       'sendTelegramMessage',
-      'sendWhatsAppMessage',
+      'sendAccountMessage',
       'memory',
       'createAutomation',
       'mcp_row_a__act',

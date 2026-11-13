@@ -2,10 +2,12 @@ import {
   GEMIES_CHANNEL_HEADER,
   GEMIES_PLATFORM_USER_HEADER,
   GEMIES_CHANNEL_SESSION_HEADER,
+  type GemieAccountInbound,
+  type GemieAccountInboundDecision,
   type GemieChannelIdentity,
 } from '@gemies/server/internal';
 import { aliaApiFetch } from './oxy';
-import { errorCode, errorStatus } from './utils';
+import { errorStatus } from './utils';
 import { parseCatalogue, resolveRequestModel, type Catalogue } from './catalogue';
 
 /** OpenAI-compatible message content — plain string or multi-part array */
@@ -147,6 +149,17 @@ export class APIClient {
       { conversationId },
       { headers: this.authHeaders },
     );
+  }
+
+  /** Whether the account's gemie answers a message that arrived on it (`POST /channel-accounts/inbound`). */
+  async decideInbound(
+    identity: GemieChannelIdentity,
+    inbound: GemieAccountInbound,
+  ): Promise<GemieAccountInboundDecision> {
+    const response = await this.client.post('/channel-accounts/inbound', inbound, {
+      headers: this.accountHeaders(identity),
+    });
+    return response.data as GemieAccountInboundDecision;
   }
 
   async getConversation(

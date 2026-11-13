@@ -140,9 +140,11 @@ vi.mock('../logger.js', () => {
   };
 });
 vi.mock('../../db/index.js', () => ({ getDb: () => ({}) }));
-// The messaging family's WhatsApp tools need the gemie's own connected WhatsApp (ADR 0035).
+// The messaging family's account tools need the gemie's own connected account (ADR 0035).
 vi.mock('../../db/integrations/connectedAccountRepository.js', () => ({
-  findConnectedGemieAccount: vi.fn(async () => ({ id: 'wa-1', sessionId: 'wa-session' })),
+  listConnectedGemieAccounts: vi.fn(async () => [
+    { id: 'wa-1', platform: 'whatsapp', sessionId: 'wa-session' },
+  ]),
 }));
 /** The peers of a space member: set per test, since the rows are in a database this test lacks. */
 const space = vi.hoisted(() => ({ peers: [] as string[] }));
@@ -251,8 +253,8 @@ const INSTANCE_TOOLS: Readonly<Record<string, string>> = {
 };
 
 beforeEach(() => {
-  // The messaging family includes the WhatsApp tools, which exist only where a
-  // gateway is configured and the gemie has a WhatsApp (`whatsAppReachable`):
+  // The messaging family includes the connected-account tools, which exist only where a
+  // gateway is configured and the gemie has an account (`buildAccountTools`):
   // this suite is about the vocabulary, so it runs where both exist.
   vi.stubEnv('INTEGRATIONS_URL', 'https://integrations.example.test');
   asked.mcp = [];

@@ -5,7 +5,7 @@ import { oxyTrustProxy } from '@oxy.so/core/server';
 import { Server as WebSocketServer } from 'ws';
 import http from 'http';
 import { closePostgres, connectPostgres } from './db';
-import type { AccountAdapter } from './accounts/types';
+import type { AccountGateway } from './accounts/gateway';
 import type { BotAdapter } from './bots/types';
 import { setWss, type SessionWebSocket } from './realtime/wss-global';
 import { maySubscribe } from './realtime/subscription-auth';
@@ -33,27 +33,40 @@ const POSTGRES_URL: string = DATABASE_URL;
 
 let activityReady = false;
 const activity = startPlatformActivity(() => activityReady);
-const accountAdapters: AccountAdapter[] = [];
+const accountGateways: AccountGateway[] = [];
 const botAdapters: BotAdapter[] = [];
 
+/** Everything that starts after the server listens and stops on shutdown, by name. */
+function lifecycles(): Array<{
+  name: string;
+  initialize(): Promise<void>;
+  shutdown(): Promise<void>;
+}> {
+  return [
+    ...accountGateways.map((gateway) => ({
+      name: gateway.platform,
+      initialize: () => gateway.initialize(),
+      shutdown: () => gateway.shutdown(),
+    })),
+    ...botAdapters,
+  ];
+}
+
 async function loadAdapters(): Promise<void> {
-  // Account Adapters — personal user accounts (passive monitoring + response)
-
-  // WhatsApp
+  // Account gateways: the WhatsApp and Telegram accounts people link to their gemies (ADR 0035).
+  // A platform that cannot run here is not mounted, so the API never offers it.
   if (process.env.WHATSAPP_ENABLED !== 'false') {
-    const { WhatsAppAdapter } = await import('./accounts/whatsapp/adapter');
-    accountAdapters.push(new WhatsAppAdapter());
+    const { whatsAppGateway } = await import('./accounts/whatsapp/gateway');
+    accountGateways.push(whatsAppGateway);
   }
-
-  // Telegram Gateway
   if (process.env.TELEGRAM_GATEWAY_ENABLED !== 'false') {
     const telegramApiId = Number(process.env.TELEGRAM_API_ID);
     const telegramApiHash = process.env.TELEGRAM_API_HASH;
-    if (!telegramApiId || isNaN(telegramApiId) || !telegramApiHash) {
-      logger.warn('Telegram Gateway disabled: valid TELEGRAM_API_ID / TELEGRAM_API_HASH not set');
+    if (!telegramApiId || Number.isNaN(telegramApiId) || !telegramApiHash) {
+      logger.warn('Telegram accounts disabled: valid TELEGRAM_API_ID / TELEGRAM_API_HASH not set');
     } else {
-      const { TelegramGatewayAdapter } = await import('./accounts/telegram-gateway/adapter');
-      accountAdapters.push(new TelegramGatewayAdapter());
+      const { telegramGateway } = await import('./accounts/telegram-gateway/gateway');
+      accountGateways.push(telegramGateway);
     }
   }
 
@@ -122,7 +135,7 @@ async function main() {
       status: 'ok',
       service: APP_NAME,
       uptime: process.uptime(),
-      accounts: accountAdapters.map((a) => a.name),
+      accounts: accountGateways.map((gateway) => gateway.platform),
       bots: botAdapters.map((a) => a.name),
       mcpServers: mcpSessions.length,
     });
@@ -149,15 +162,21 @@ async function main() {
     next();
   };
 
-  // Mount account adapter routes under /accounts/<platform>
-  for (const adapter of accountAdapters) {
+  // The platforms this deployment can link, which the API offers (and nothing else).
+  app.get('/accounts/platforms', requireAliaApi, requireAccountContext, (_req, res) => {
+    res.json({ platforms: accountGateways.map((gateway) => gateway.platform) });
+  });
+
+  // One router for every platform, under /accounts/<platform>.
+  const { gatewayRouter } = await import('./accounts/gateway-router');
+  for (const gateway of accountGateways) {
     app.use(
-      `/accounts/${adapter.name}`,
+      `/accounts/${gateway.platform}`,
       requireAliaApi,
       requireAccountContext,
-      adapter.getRouter(),
+      gatewayRouter(gateway),
     );
-    logger.info(`Mounted account routes: /accounts/${adapter.name}`);
+    logger.info(`Mounted account routes: /accounts/${gateway.platform}`);
   }
 
   // Bot adapters don't expose REST routes (they use polling/websockets)
@@ -260,7 +279,7 @@ async function main() {
   }
 
   // Initialize all adapters AFTER the server is listening (with timeouts)
-  const allAdapters = [...accountAdapters, ...botAdapters];
+  const allAdapters = lifecycles();
   for (const adapter of allAdapters) {
     try {
       await initAdapterWithTimeout(adapter);
@@ -275,7 +294,7 @@ async function main() {
 async function shutdown(signal: string) {
   activityReady = false;
   logger.info(`Received ${signal}, shutting down...`);
-  const allAdapters = [...accountAdapters, ...botAdapters];
+  const allAdapters = lifecycles();
   const failed = await runShutdownSteps(
     [
       {

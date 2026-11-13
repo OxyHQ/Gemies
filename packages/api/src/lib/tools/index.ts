@@ -24,11 +24,7 @@ export { webSearchTool } from './web-search.js';
 export { createSearchThreadTool } from './thread-search.js';
 export { createSuggestNewConversationTool } from './suggest-new-conversation.js';
 export { createSendTelegramTool } from './telegram.js';
-export {
-  createGetWhatsAppChatsTool,
-  createGetWhatsAppMessagesTool,
-  createSendWhatsAppMessageTool,
-} from './whatsapp.js';
+export { buildAccountTools } from './accounts.js';
 export { webScraperTool } from './web-scraper.js';
 export { generateFileTool } from './file-generator.js';
 export { createSearchAgentsTool } from './agent-search.js';

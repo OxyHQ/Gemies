@@ -21,21 +21,22 @@
 import { boolean, check, index, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { createdAt, generatedId, timestamptz, updatedAt } from '@oxy.so/db';
+import {
+  GEMIE_ACCOUNT_PLATFORMS,
+  GEMIE_ACCOUNT_STATUSES,
+  type GemieAccountPlatform,
+  type GemieAccountStatus,
+} from '@gemies/server/internal';
 import { agents } from './agents';
 import { checkOneOf, encryptedText } from './columns';
 
-export const CONNECTED_ACCOUNT_STATUSES = [
-  'connecting',
-  'connected',
-  'disconnected',
-  'error',
-  'expired',
-] as const;
-export type ConnectedAccountStatus = (typeof CONNECTED_ACCOUNT_STATUSES)[number];
+/** Who a gemie answers on an account: everybody who writes, only the chosen chats, or nobody. */
+export const CONNECTED_ACCOUNT_REPLIES = ['everyone', 'chosen', 'nobody'] as const;
+export type ConnectedAccountReplies = (typeof CONNECTED_ACCOUNT_REPLIES)[number];
 
-/** The messaging platforms a gemie can be linked to (ADR 0035). */
-export const CONNECTED_ACCOUNT_PLATFORMS = ['whatsapp', 'telegram'] as const;
-export type ConnectedAccountPlatform = (typeof CONNECTED_ACCOUNT_PLATFORMS)[number];
+/** Whether it answers in a group: never, or when the message mentions or replies to the account. */
+export const CONNECTED_ACCOUNT_GROUP_REPLIES = ['never', 'mentions'] as const;
+export type ConnectedAccountGroupReplies = (typeof CONNECTED_ACCOUNT_GROUP_REPLIES)[number];
 
 export const INTEGRATION_STATUSES = ['active', 'expired', 'revoked', 'error'] as const;
 export type IntegrationStatus = (typeof INTEGRATION_STATUSES)[number];
@@ -137,26 +138,36 @@ export const connectedAccounts = pgTable(
     agentId: text()
       .notNull()
       .references(() => agents.id, { onDelete: 'cascade' }),
-    platform: text({ enum: CONNECTED_ACCOUNT_PLATFORMS as unknown as [string, ...string[]] })
-      .$type<ConnectedAccountPlatform>()
+    platform: text({ enum: GEMIE_ACCOUNT_PLATFORMS as unknown as [string, ...string[]] })
+      .$type<GemieAccountPlatform>()
       .notNull(),
-    accountId: text().notNull(),
     displayName: text(),
     phoneNumber: text(),
-    avatarUrl: text(),
-    status: text({ enum: CONNECTED_ACCOUNT_STATUSES as unknown as [string, ...string[]] })
-      .$type<ConnectedAccountStatus>()
+    /** Where its provider session is, in the gateway's own vocabulary (`@gemies/server/internal`). */
+    status: text({ enum: GEMIE_ACCOUNT_STATUSES as unknown as [string, ...string[]] })
+      .$type<GemieAccountStatus>()
       .notNull()
-      .default('connecting'),
-    statusMessage: text(),
+      .default('qr-pending'),
+    /** Who its gemie answers (ADR 0035): see {@link CONNECTED_ACCOUNT_REPLIES}. */
+    replies: text({ enum: CONNECTED_ACCOUNT_REPLIES as unknown as [string, ...string[]] })
+      .$type<ConnectedAccountReplies>()
+      .notNull()
+      .default('everyone'),
+    /** The chats it answers when `replies = 'chosen'`, by the platform's chat id. */
+    replyChatIds: text().array().notNull().default(sql`'{}'::text[]`),
+    groupReplies: text({
+      enum: CONNECTED_ACCOUNT_GROUP_REPLIES as unknown as [string, ...string[]],
+    })
+      .$type<ConnectedAccountGroupReplies>()
+      .notNull()
+      .default('mentions'),
     /** Durable authority from the verified person who linked this channel. */
     oxyTaskId: text(),
     oxyTaskState: text({ enum: ['active', 'reauth_required'] })
       .notNull()
       .default('reauth_required'),
     sessionId: text(),
-    capabilities: text().array().notNull().default(sql`'{}'::text[]`),
-    metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    /** When a message last arrived on it. */
     lastActiveAt: timestamptz(),
     connectedAt: timestamptz(),
     createdAt: createdAt(),
@@ -166,8 +177,14 @@ export const connectedAccounts = pgTable(
     index('connected_accounts_oxy_user_id_idx').on(t.oxyUserId),
     index('connected_accounts_session_id_idx').on(t.sessionId),
     index('connected_accounts_agent_user_idx').on(t.agentId, t.oxyUserId),
-    checkOneOf('connected_accounts_status_check', t.status, CONNECTED_ACCOUNT_STATUSES),
-    checkOneOf('connected_accounts_platform_check', t.platform, CONNECTED_ACCOUNT_PLATFORMS),
+    checkOneOf('connected_accounts_status_check', t.status, GEMIE_ACCOUNT_STATUSES),
+    checkOneOf('connected_accounts_platform_check', t.platform, GEMIE_ACCOUNT_PLATFORMS),
+    checkOneOf('connected_accounts_replies_check', t.replies, CONNECTED_ACCOUNT_REPLIES),
+    checkOneOf(
+      'connected_accounts_group_replies_check',
+      t.groupReplies,
+      CONNECTED_ACCOUNT_GROUP_REPLIES,
+    ),
   ],
 );
 

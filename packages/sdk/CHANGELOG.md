@@ -1,5 +1,21 @@
 # @gemies/sdk
 
+## 1.1.0
+
+- **New entry `@gemies/sdk/accounts`** (Gemies ADR 0035): `GemieAccounts`, the panel that links a
+  person's WhatsApp or Telegram account to a gemie (QR code, live status, last message, who the
+  gemie answers and in groups, the chats it answers, removal), and its hooks
+  (`useGemieAccounts`, `useGemieAccountQr`, `useGemieAccountChats`, `useGemieAccountMutations`)
+  with their types. It draws no frame of its own: the host puts it in its card or settings page and
+  hands its translator (`t`, keys `gemie.accounts.*`; English and Spanish in the SDK). It needs
+  `react-native-qrcode-svg` (a new peer dependency, which `@oxy.so/services` already requires).
+- **`ALIA_GEMIE_ID`** (root and `/accounts`): the fixed id of Alia's gemie, for a client that
+  addresses her by id (her thread, her connected accounts).
+- **The connected-account tools are one set for every platform:** `listAccountChats`,
+  `readAccountMessages` and `sendAccountMessage` replace `getWhatsAppChats`,
+  `getWhatsAppMessages` and `sendWhatsAppMessage` in the tool labels, icons and the thought panel
+  (`thought.tool.*`, en/es). The unused `tasks.tool.pill.sendSignal` copy is gone (Signal is retired).
+
 ## 1.0.0
 
 **`@alia.onl/sdk` becomes `@gemies/sdk`** (Gemies ADR 0034 §6), with no bridge package. The code is

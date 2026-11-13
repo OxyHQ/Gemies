@@ -17,6 +17,7 @@ export type {
 } from './components/GemieParticipants';
 export { GemieParticipantsHeader } from './components/GemieParticipantsHeader';
 export type { GemieParticipantsHeaderProps } from './components/GemieParticipantsHeader';
+export { ALIA_GEMIE_ID } from './lib/alia-gemie';
 export { ALIA_LEAD, leadOf } from './lib/participants';
 export type { GemieChatParticipants, GemieLead, GemieParticipant } from './lib/participants';
 export { ANCHORS, leadToProfile } from './lib/flights';

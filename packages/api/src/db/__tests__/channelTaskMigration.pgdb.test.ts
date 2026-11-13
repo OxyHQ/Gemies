@@ -60,7 +60,6 @@ describe('controlled channel-task conversion', () => {
       oxyUserId: 'linked-person',
       agentId: ALIA_GEMIE_ID,
       platform: 'whatsapp',
-      capabilities: [],
     });
     await db
       .update(connectedAccounts)
@@ -83,7 +82,6 @@ describe('controlled channel-task conversion', () => {
       oxyUserId: 'rotation-person',
       agentId: ALIA_GEMIE_ID,
       platform: 'telegram',
-      capabilities: [],
     });
     const rotation = { agentId: ALIA_GEMIE_ID, oxyUserId: 'rotation-person' };
     const updates = await Promise.all([

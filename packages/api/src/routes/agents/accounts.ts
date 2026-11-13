@@ -1,6 +1,7 @@
 /**
  * A gemie's connected accounts (ADR 0035): the WhatsApp and Telegram accounts a person links to ONE
- * gemie, which answers what arrives on them and is the only gemie whose turns can use them.
+ * gemie, which answers what arrives on them (as their replies say) and is the only gemie whose
+ * turns can use them.
  *
  * Managed under the gemie, by whoever may act as it (`loadAgentForAccounts`: the same check as
  * `PATCH /agents/:id`, and for Alia, the person's own assistant, every person). Every read is scoped
@@ -10,6 +11,7 @@
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import { z } from 'zod';
+import { GEMIE_ACCOUNT_PLATFORMS } from '@gemies/server/internal';
 import type { AgentRecord } from '../../db/agents/agentRepository.js';
 import { getDb } from '../../db/index.js';
 import {
@@ -17,39 +19,31 @@ import {
   deleteConnectedAccount,
   findGemieAccount,
   listGemieAccounts,
+  setConnectedAccountReplies,
   setConnectedAccountSession,
-  setConnectedAccountStatus,
   type ConnectedAccountRow,
   type GemieAccountScope,
 } from '../../db/integrations/connectedAccountRepository.js';
 import {
-  CONNECTED_ACCOUNT_PLATFORMS,
-  CONNECTED_ACCOUNT_STATUSES,
+  CONNECTED_ACCOUNT_GROUP_REPLIES,
+  CONNECTED_ACCOUNT_REPLIES,
 } from '../../db/schema/integrations.js';
 import { loadAgentForAccounts, refusalMessage, refusalStatus } from '../../lib/agent-account.js';
 import {
+  availablePlatforms,
   bindAccountTask,
-  connectPath,
   endAccountSession,
+  GatewayError,
+  listAccountChats,
+  openAccountSession,
+  readAccountQr,
   revokeAccountTask,
-  sessionPath,
+  syncAccountSession,
 } from '../../lib/gemie-accounts.js';
-import { integrationsFetch } from '../../lib/integrations-client.js';
 import { log } from '../../lib/logger.js';
 import { authenticateToken } from '../../middleware/auth.js';
 
 const router = Router();
-
-/** What the integrations service answers for a session, as far as this router reads it. */
-interface IntegrationSessionReply {
-  sessionId?: string;
-  status?: string;
-  qr?: string | null;
-  phoneNumber?: string;
-  displayName?: string;
-  accountId?: string;
-  [key: string]: unknown;
-}
 
 interface Caller {
   readonly gemie: AgentRecord;
@@ -97,70 +91,66 @@ async function accountOf(
   return { caller, account };
 }
 
-function integrationsConfigured(res: Response): boolean {
-  if (process.env.INTEGRATIONS_URL) return true;
-  res.status(503).json({ error: 'Integrations service not configured' });
-  return false;
+/** A gateway failure says what the gateway said; anything else is ours. */
+function answerFailure(res: Response, err: unknown, what: string): void {
+  if (res.headersSent) return;
+  if (err instanceof GatewayError) {
+    res.status(502).json({ error: err.message });
+    return;
+  }
+  log.channels.error({ err }, `${what} failed`);
+  res.status(500).json({ error: 'Internal server error' });
 }
 
-// GET /agents/:id/accounts — the caller's accounts on this gemie.
+/**
+ * GET /agents/:id/accounts — the caller's accounts on this gemie, each as its session is now, and
+ * the platforms this deployment can link (only those are offered).
+ */
 router.get('/:id/accounts', authenticateToken, async (req: Request, res: Response) => {
   try {
     const caller = await callerOf(req, res);
     if (!caller) return;
-    res.json({ accounts: await listGemieAccounts(getDb(), caller.scope) });
+    const [stored, platforms] = await Promise.all([
+      listGemieAccounts(getDb(), caller.scope),
+      availablePlatforms(caller.scope.oxyUserId),
+    ]);
+    const accounts = await Promise.all(
+      stored.map((account) => syncAccountSession(account, caller.scope.oxyUserId)),
+    );
+    res.json({ accounts, platforms });
   } catch (err: unknown) {
-    log.channels.error({ err }, 'List gemie accounts failed');
-    res.status(500).json({ error: 'Internal server error' });
+    answerFailure(res, err, 'Listing gemie accounts');
   }
 });
 
-const connectSchema = z.object({ platform: z.enum(CONNECTED_ACCOUNT_PLATFORMS) }).strict();
+const linkSchema = z.object({ platform: z.enum(GEMIE_ACCOUNT_PLATFORMS) }).strict();
 
 // POST /agents/:id/accounts { platform } — link a new account; answers its first QR code.
 router.post('/:id/accounts', authenticateToken, async (req: Request, res: Response) => {
-  const parsed = connectSchema.safeParse(req.body);
+  const parsed = linkSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Unsupported platform' });
   const { platform } = parsed.data;
-  if (!integrationsConfigured(res)) return;
 
   const db = getDb();
   let account: ConnectedAccountRow | null = null;
   try {
     const caller = await callerOf(req, res);
     if (!caller) return;
+    if (!(await availablePlatforms(caller.scope.oxyUserId)).includes(platform)) {
+      return res.status(409).json({ error: `${platform} cannot be linked here` });
+    }
 
-    account = await createPendingConnectedAccount(db, {
-      ...caller.scope,
-      platform,
-      capabilities: ['read_messages', 'send_messages'],
-    });
+    account = await createPendingConnectedAccount(db, { ...caller.scope, platform });
     await bindAccountTask({
       account,
       gemie: caller.gemie,
       personAccountId: caller.scope.oxyUserId,
       accessToken: caller.accessToken,
     });
-
-    const response = await integrationsFetch(caller.scope.oxyUserId, connectPath(platform), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ oxyUserId: caller.scope.oxyUserId, accountId: account.id }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    const data = (response.headers.get('content-type') ?? '').includes('application/json')
-      ? ((await response.json()) as IntegrationSessionReply)
-      : null;
-
-    if (!response.ok || !data?.sessionId) {
-      await revokeAccountTask(account);
-      await deleteConnectedAccount(db, account.id);
-      return res.status(502).json({ error: `Could not connect ${platform}` });
-    }
-    await setConnectedAccountSession(db, account.id, data.sessionId);
-    res.status(201).json({ accountId: account.id, status: data.status, qr: data.qr ?? null });
+    const link = await openAccountSession(platform, caller.scope.oxyUserId);
+    await setConnectedAccountSession(db, account.id, link.sessionId);
+    res.status(201).json({ accountId: account.id, qr: link.qr });
   } catch (err: unknown) {
-    log.channels.error({ err, platform }, 'Connect gemie account failed');
     if (account) {
       const orphan = account;
       await revokeAccountTask(orphan)
@@ -172,81 +162,65 @@ router.post('/:id/accounts', authenticateToken, async (req: Request, res: Respon
           ),
         );
     }
-    if (!res.headersSent) res.status(502).json({ error: `Could not connect ${platform}` });
+    answerFailure(res, err, `Linking ${platform}`);
   }
 });
 
-/**
- * GET /agents/:id/accounts/:accountId/status — the stored account, synced with its live session.
- * A reply that omits a field never erases the stored one, and only a status the column can hold is
- * stored: the reply is another service's JSON.
- */
-router.get(
-  '/:id/accounts/:accountId/status',
-  authenticateToken,
-  async (req: Request, res: Response) => {
-    try {
-      const found = await accountOf(req, res);
-      if (!found) return;
-      const { caller, account } = found;
-      if (!account.sessionId || !process.env.INTEGRATIONS_URL) return res.json({ account });
+const repliesSchema = z
+  .object({
+    replies: z.enum(CONNECTED_ACCOUNT_REPLIES).optional(),
+    replyChatIds: z.array(z.string().min(1).max(200)).max(200).optional(),
+    groupReplies: z.enum(CONNECTED_ACCOUNT_GROUP_REPLIES).optional(),
+  })
+  .strict();
 
-      let live: IntegrationSessionReply | null = null;
-      try {
-        const response = await integrationsFetch(
-          caller.scope.oxyUserId,
-          `${sessionPath(account.platform, account.sessionId)}/status`,
-          { signal: AbortSignal.timeout(5_000) },
-        );
-        if (response.ok) live = (await response.json()) as IntegrationSessionReply;
-      } catch {
-        // The stored status answers.
-      }
-      if (!live) return res.json({ account });
+// PATCH /agents/:id/accounts/:accountId — who the gemie answers on the account.
+router.patch('/:id/accounts/:accountId', authenticateToken, async (req: Request, res: Response) => {
+  const parsed = repliesSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid replies' });
+  try {
+    const found = await accountOf(req, res);
+    if (!found) return;
+    const account = await setConnectedAccountReplies(
+      getDb(),
+      found.account.id,
+      found.caller.scope,
+      parsed.data,
+    );
+    res.json({ account });
+  } catch (err: unknown) {
+    answerFailure(res, err, 'Updating account replies');
+  }
+});
 
-      const liveStatus = CONNECTED_ACCOUNT_STATUSES.find((known) => known === live.status);
-      if (!liveStatus || liveStatus === account.status) return res.json({ account });
-      const becameConnected = liveStatus === 'connected' && !account.connectedAt;
-      const synced = await setConnectedAccountStatus(getDb(), account.id, {
-        status: liveStatus,
-        phoneNumber: live.phoneNumber || undefined,
-        displayName: live.displayName || undefined,
-        ...(becameConnected
-          ? {
-              connectedAt: new Date(),
-              accountId: live.phoneNumber || live.accountId || account.accountId,
-            }
-          : {}),
-      });
-      res.json({ account: synced ?? account });
-    } catch (err: unknown) {
-      log.channels.error({ err }, 'Gemie account status failed');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  },
-);
-
-// GET /agents/:id/accounts/:accountId/qr — the session's current QR code, while it awaits a scan.
+// GET /agents/:id/accounts/:accountId/qr — the session's current code, while it awaits a scan.
 router.get(
   '/:id/accounts/:accountId/qr',
   authenticateToken,
   async (req: Request, res: Response) => {
     try {
-      if (!integrationsConfigured(res)) return;
       const found = await accountOf(req, res);
       if (!found) return;
-      const { caller, account } = found;
-      if (!account.sessionId) return res.status(404).json({ error: 'No active session' });
-      const response = await integrationsFetch(
-        caller.scope.oxyUserId,
-        `${sessionPath(account.platform, account.sessionId)}/qr`,
-        { signal: AbortSignal.timeout(15_000) },
-      );
-      const data = (await response.json()) as IntegrationSessionReply;
-      res.status(response.status).json({ status: data.status, qr: data.qr ?? null });
+      if (!found.account.sessionId) return res.status(404).json({ error: 'No active session' });
+      res.json(await readAccountQr(found.account, found.caller.scope.oxyUserId));
     } catch (err: unknown) {
-      log.channels.warn({ err }, 'Gemie account QR failed');
-      res.status(502).json({ error: 'Could not read the QR code' });
+      answerFailure(res, err, 'Reading an account QR');
+    }
+  },
+);
+
+// GET /agents/:id/accounts/:accountId/chats — its recent chats, to choose which ones it answers.
+router.get(
+  '/:id/accounts/:accountId/chats',
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    try {
+      const found = await accountOf(req, res);
+      if (!found) return;
+      if (found.account.status !== 'connected') return res.json({ chats: [] });
+      res.json({ chats: await listAccountChats(found.account, found.caller.scope.oxyUserId) });
+    } catch (err: unknown) {
+      answerFailure(res, err, 'Listing account chats');
     }
   },
 );
@@ -289,8 +263,7 @@ router.delete(
       await deleteConnectedAccount(getDb(), account.id);
       res.json({ success: true });
     } catch (err: unknown) {
-      log.channels.error({ err }, 'Delete gemie account failed');
-      res.status(500).json({ error: 'Internal server error' });
+      answerFailure(res, err, 'Removing a gemie account');
     }
   },
 );

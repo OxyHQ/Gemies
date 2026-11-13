@@ -57,3 +57,35 @@ sessions and 0 `signal` conversations when they were written.
   apps used it but the Astro browser's Gmail tile, which could never connect.
 - A private gemie shared by membership cannot answer an account (no bearer to ask Oxy with), the same
   as for automations.
+
+## Amendment (2026-11-13): it has to work, and the person says who it answers
+
+The owner asked for it to work end to end and to be improved where it clearly helps, looking at
+Manus (QR onboarding into its own agent, one disconnect) and at assistants that answer on a
+person's own WhatsApp (pairing or allowlists for direct chats, groups answered only when
+mentioned). What production showed:
+
+- the old Settings screen never drew the QR code the gateway returned, so a WhatsApp link could
+  never be scanned (the two attempts in the logs were removed seconds later);
+- the API stored only the statuses it shared with the gateway, so an account unlinked from the
+  phone stayed `connected`;
+- every message on an account was answered, in groups too;
+- Telegram is not configured in production (`TELEGRAM_API_ID`/`TELEGRAM_API_HASH`), yet it was
+  offered.
+
+Decided:
+
+1. **One API ↔ gateway contract** (`@gemies/server/internal`), one gateway router for every
+   platform, and the session status vocabulary stored as the gateway reports it (0145/0146).
+2. **Who it answers** is the account's: `replies` = everyone (default) | chosen chats | nobody, and
+   `group_replies` = mentions (default) | never. Enforced in the API (`shouldAnswer`), asked by the
+   gateway before a turn; a message not to answer gets no reply.
+3. **Only what can be linked is offered** (`GET /accounts/platforms`).
+4. **Live status and last activity** on each account; removing one logs the provider session out
+   and deletes what the gateway synced.
+5. **One set of tools** for every platform (`listAccountChats`, `readAccountMessages`,
+   `sendAccountMessage`), replacing the WhatsApp-only ones.
+
+Not adopted now: an approval step before the gemie sends (the tool is already `R2` and is used
+only when the person asks; an approval inbox is its own feature), and pairing codes instead of a
+QR (both platforms' QR flows are what their apps offer for a linked device).

@@ -23,7 +23,7 @@ describe('prompt text that names a tool', () => {
     });
     for (const name of [
       'sendTelegramMessage',
-      'getWhatsAppChats',
+      'listAccountChats',
       'searchAgents',
       'getCurrentDate',
     ]) {

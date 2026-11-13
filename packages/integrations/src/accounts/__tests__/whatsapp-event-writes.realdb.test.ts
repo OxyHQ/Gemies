@@ -40,16 +40,14 @@ vi.mock('../whatsapp/repository', async (importOriginal) => {
     ...actual,
     markWhatsAppQrPending: vi.fn(actual.markWhatsAppQrPending),
     markWhatsAppDisconnected: vi.fn(actual.markWhatsAppDisconnected),
-    findWhatsAppSessionOwner: vi.fn(actual.findWhatsAppSessionOwner),
   };
 });
 
+vi.mock('../../shared/chat-handler', () => ({ handleIncomingMessage: vi.fn(async () => {}) }));
+
 // Imported after the mocks are registered (vi.mock is hoisted above these).
-import {
-  findWhatsAppSessionOwner,
-  markWhatsAppDisconnected,
-  markWhatsAppQrPending,
-} from '../whatsapp/repository';
+import { handleIncomingMessage } from '../../shared/chat-handler';
+import { markWhatsAppDisconnected, markWhatsAppQrPending } from '../whatsapp/repository';
 import { sessionManager as whatsapp } from '../whatsapp/session-manager';
 
 const unhandled: unknown[] = [];
@@ -148,9 +146,11 @@ describe('WhatsApp socket events with a failing write', () => {
     expect(unhandled).toEqual([]);
   });
 
-  it('survives an incoming message whose owner lookup fails', async () => {
+  it('hands a message to the chat handler with where it arrived, a group mention included', async () => {
     const { ev } = await connectedSocket();
-    vi.mocked(findWhatsAppSessionOwner).mockRejectedValueOnce(postgresDown());
+    const sock = fakes.waSockets.at(-1) as { user?: { id: string } };
+    sock.user = { id: '15550001:7@s.whatsapp.net' };
+    vi.mocked(handleIncomingMessage).mockClear();
 
     ev.emit('messages.upsert', {
       type: 'notify',
@@ -160,14 +160,33 @@ describe('WhatsApp socket events with a failing write', () => {
           message: { conversation: 'hello' },
           messageTimestamp: 1_700_000_000,
         },
+        {
+          key: { id: 'msg-2', remoteJid: '1203@g.us', fromMe: false },
+          message: {
+            extendedTextMessage: {
+              text: '@15550001 what do you think?',
+              contextInfo: { mentionedJid: ['15550001@s.whatsapp.net'] },
+            },
+          },
+          messageTimestamp: 1_700_000_001,
+        },
+        {
+          key: { id: 'msg-3', remoteJid: '1203@g.us', fromMe: false },
+          message: { conversation: 'just chatting' },
+          messageTimestamp: 1_700_000_002,
+        },
       ],
     });
     await waitFor(
-      () => vi.mocked(findWhatsAppSessionOwner).mock.calls.length > 0,
-      'the owner lookup',
+      () => vi.mocked(handleIncomingMessage).mock.calls.length === 3,
+      'three messages to reach the chat handler',
     );
-    await settle();
 
+    expect(vi.mocked(handleIncomingMessage).mock.calls.map(([params]) => params.inbound)).toEqual([
+      { chatId: '15550003@s.whatsapp.net', chatKind: 'direct', mentionsAccount: false },
+      { chatId: '1203@g.us', chatKind: 'group', mentionsAccount: true },
+      { chatId: '1203@g.us', chatKind: 'group', mentionsAccount: false },
+    ]);
     expect(unhandled).toEqual([]);
   });
 });

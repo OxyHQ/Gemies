@@ -268,16 +268,33 @@ Inbound messages arrive at the API as either:
 ### Connected accounts
 
 A person links their own WhatsApp or Telegram account to one gemie, from that gemie's editor
-(ADR 0035). The account is the gemie's: what arrives on it is answered by that gemie
-(`middleware/channel-auth.ts` names it in the channel context, and `resolveTurnGemie` loads it
-under the unattended rule), and only that gemie's turns for that person see its WhatsApp tools
-(`whatsAppReachable`). Routes, all under the gemie and for whoever may act as it (every person,
-for Alia): `GET|POST /agents/:id/accounts`, `GET /agents/:id/accounts/:accountId/status|qr`,
-`POST /agents/:id/accounts/:accountId/reauthorize`, `DELETE /agents/:id/accounts/:accountId`.
-Deleting a gemie ends its accounts' sessions and revokes their tasks first
-(`lib/gemie-accounts.ts`). Gmail and Signal are not platforms any more.
+(ADR 0035). The account is the gemie's: what arrives on it is answered by that gemie, and only that
+gemie's turns for that person can use it.
 
-Outbound tools (e.g. `sendTelegramMessage`, `sendWhatsAppMessage`) are `R2`: they run, flagged. Structured automation actions remain bound by their exact Oxy authority and Alia risk policy.
+- **One contract** between the API and the gateway, for every platform
+  (`@gemies/server/internal` `accounts.ts`): platforms, the session status vocabulary, chats,
+  messages and inbound metadata. The integrations service serves it through ONE router
+  (`accounts/gateway-router.ts`) over an `AccountGateway` per platform (`whatsapp/gateway.ts`,
+  `telegram-gateway/gateway.ts`), mounted at `/accounts/<platform>`, and `GET /accounts/platforms`
+  says which ones run (Telegram needs `TELEGRAM_API_ID`/`TELEGRAM_API_HASH`). The API offers only
+  those.
+- **Who it answers.** Each account has `replies` (everyone, the chosen chats, or nobody) and
+  `group_replies` (never, or when the message mentions or replies to the account). The gateway asks
+  `POST /channel-accounts/inbound` before a message reaches a turn (`shouldAnswer`); a message it is
+  not to answer gets no reply at all. The same call records the account's last activity.
+- **Live status.** Listing the accounts asks the gateway for each session and stores what moved,
+  so an account unlinked from the phone shows `logged-out`, not `connected`.
+- **Tools.** `listAccountChats`, `readAccountMessages` and `sendAccountMessage`
+  (`lib/tools/accounts.ts`), offered only when the turn's gemie has a connected account of the
+  person, with the platform limited to those it has.
+- **Routes**, all under the gemie and for whoever may act as it (every person, for Alia):
+  `GET|POST /agents/:id/accounts`, `PATCH /agents/:id/accounts/:accountId` (who it answers),
+  `GET /agents/:id/accounts/:accountId/qr|chats`, `POST /agents/:id/accounts/:accountId/reauthorize`,
+  `DELETE /agents/:id/accounts/:accountId` (the gateway logs the session out and deletes what it
+  synced). Deleting a gemie ends its accounts' sessions and revokes their tasks first
+  (`lib/gemie-accounts.ts`).
+
+Outbound tools (e.g. `sendTelegramMessage`, `sendAccountMessage`) are `R2`: they run, flagged. Structured automation actions remain bound by their exact Oxy authority and Alia risk policy.
 
 ## Structured Automations
 

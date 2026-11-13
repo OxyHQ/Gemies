@@ -21,6 +21,17 @@ export const gemieQueryKeys = {
     filtered: (filter: ConversationsFilter) =>
       ['conversations', { agentId: filter.agentId, app: filter.app }] as const,
   },
+  /**
+   * A gemie's connected accounts (ADR 0035): the caller's accounts on it, the code of one being
+   * linked and an account's chats. Their own roots, never persisted: phone numbers and a live code
+   * stay in memory.
+   */
+  accounts: {
+    all: (gemieId: string) => ['gemie-accounts', gemieId] as const,
+    qr: (gemieId: string, accountId: string) => ['gemie-account-qr', gemieId, accountId] as const,
+    chats: (gemieId: string, accountId: string) =>
+      ['gemie-account-chats', gemieId, accountId] as const,
+  },
   /** An agent the chat is opened on: its profile and the state of its feature gates. */
   agents: {
     profile: (id: string) => ['alia-agent-profile', id] as const,

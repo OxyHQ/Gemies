@@ -7,12 +7,13 @@
  * another gemie's account of the same person.
  */
 
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import type { GemieAccountPlatform, GemieAccountStatus } from '@gemies/server/internal';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { ApiDatabase } from '../index';
 import {
   connectedAccounts,
-  type ConnectedAccountPlatform,
-  type ConnectedAccountStatus,
+  type ConnectedAccountGroupReplies,
+  type ConnectedAccountReplies,
 } from '../schema/integrations';
 
 /** A connected account as every response serves it. */
@@ -21,18 +22,16 @@ export interface ConnectedAccountRow {
   id: string;
   /** The gemie it belongs to. */
   agentId: string;
-  platform: ConnectedAccountPlatform;
-  accountId: string;
+  platform: GemieAccountPlatform;
   displayName: string | null;
   phoneNumber: string | null;
-  avatarUrl: string | null;
-  status: ConnectedAccountStatus;
-  statusMessage: string | null;
+  status: GemieAccountStatus;
   sessionId: string | null;
   oxyTaskId: string | null;
   oxyTaskState: 'active' | 'reauth_required';
-  capabilities: string[];
-  metadata: Record<string, unknown>;
+  replies: ConnectedAccountReplies;
+  replyChatIds: string[];
+  groupReplies: ConnectedAccountGroupReplies;
   lastActiveAt: Date | null;
   connectedAt: Date | null;
   createdAt: Date;
@@ -43,17 +42,15 @@ const COLUMNS = {
   id: connectedAccounts.id,
   agentId: connectedAccounts.agentId,
   platform: connectedAccounts.platform,
-  accountId: connectedAccounts.accountId,
   displayName: connectedAccounts.displayName,
   phoneNumber: connectedAccounts.phoneNumber,
-  avatarUrl: connectedAccounts.avatarUrl,
   status: connectedAccounts.status,
-  statusMessage: connectedAccounts.statusMessage,
   sessionId: connectedAccounts.sessionId,
   oxyTaskId: connectedAccounts.oxyTaskId,
   oxyTaskState: connectedAccounts.oxyTaskState,
-  capabilities: connectedAccounts.capabilities,
-  metadata: connectedAccounts.metadata,
+  replies: connectedAccounts.replies,
+  replyChatIds: connectedAccounts.replyChatIds,
+  groupReplies: connectedAccounts.groupReplies,
   lastActiveAt: connectedAccounts.lastActiveAt,
   connectedAt: connectedAccounts.connectedAt,
   createdAt: connectedAccounts.createdAt,
@@ -104,6 +101,19 @@ export async function findGemieAccount(
   return row ? withLegacyId(row) : null;
 }
 
+/** An account by id, for a caller that already proved it is that account's (a verified channel). */
+export async function findConnectedAccount(
+  db: ApiDatabase,
+  id: string,
+): Promise<ConnectedAccountRow | null> {
+  const [row] = await db
+    .select(COLUMNS)
+    .from(connectedAccounts)
+    .where(eq(connectedAccounts.id, id))
+    .limit(1);
+  return row ? withLegacyId(row) : null;
+}
+
 /**
  * Every account of a gemie, whoever linked it, with the person — for deleting the gemie, which
  * stops each session and revokes each task before the rows cascade away.
@@ -120,12 +130,12 @@ export async function listAccountsOfGemie(
 }
 
 /**
- * Create the `connecting` placeholder every connect flow starts from. Awaited, so a storage failure
- * is a 500 rather than an id the client would poll forever.
+ * Create the placeholder every link starts from, waiting for its scan. Awaited, so a storage
+ * failure is a 500 rather than an id the client would poll forever.
  */
 export async function createPendingConnectedAccount(
   db: ApiDatabase,
-  input: GemieAccountScope & { platform: ConnectedAccountPlatform; capabilities: string[] },
+  input: GemieAccountScope & { platform: GemieAccountPlatform },
 ): Promise<ConnectedAccountRow> {
   const [row] = await db
     .insert(connectedAccounts)
@@ -133,9 +143,7 @@ export async function createPendingConnectedAccount(
       oxyUserId: input.oxyUserId,
       agentId: input.agentId,
       platform: input.platform,
-      accountId: 'pending',
-      status: 'connecting',
-      capabilities: input.capabilities,
+      status: 'qr-pending',
     })
     .returning(COLUMNS);
 
@@ -152,37 +160,69 @@ export async function setConnectedAccountSession(
   await db.update(connectedAccounts).set({ sessionId }).where(eq(connectedAccounts.id, id));
 }
 
-/** Record a status the integrations service reported, or a local disconnect. */
-export interface ConnectedAccountStatusPatch {
-  readonly status: ConnectedAccountStatus;
-  readonly phoneNumber?: string | undefined;
-  readonly displayName?: string | undefined;
-  readonly accountId?: string | undefined;
-  readonly connectedAt?: Date | undefined;
+/** What the gateway reported of a session; a field it did not report is left as stored. */
+export interface ConnectedAccountSessionPatch {
+  readonly status: GemieAccountStatus;
+  readonly phoneNumber?: string | null | undefined;
+  readonly displayName?: string | null | undefined;
 }
 
 /**
- * Apply a status sync. Every optional field is spread rather than defaulted to `null`: a status poll
- * that omits a display name must not erase the one already stored.
+ * Store what the gateway reported. A reply that omits a field (or reports it empty) never erases
+ * the stored one, and the first time the session is `connected` stamps `connected_at`.
  */
-export async function setConnectedAccountStatus(
+export async function setConnectedAccountSessionState(
   db: ApiDatabase,
   id: string,
-  patch: ConnectedAccountStatusPatch,
+  patch: ConnectedAccountSessionPatch,
 ): Promise<ConnectedAccountRow | null> {
   const [row] = await db
     .update(connectedAccounts)
     .set({
       status: patch.status,
-      ...(patch.phoneNumber === undefined ? {} : { phoneNumber: patch.phoneNumber }),
-      ...(patch.displayName === undefined ? {} : { displayName: patch.displayName }),
-      ...(patch.accountId === undefined ? {} : { accountId: patch.accountId }),
-      ...(patch.connectedAt === undefined ? {} : { connectedAt: patch.connectedAt }),
+      ...(patch.phoneNumber ? { phoneNumber: patch.phoneNumber } : {}),
+      ...(patch.displayName ? { displayName: patch.displayName } : {}),
+      ...(patch.status === 'connected'
+        ? { connectedAt: sql`coalesce(${connectedAccounts.connectedAt}, now())` }
+        : {}),
     })
     .where(eq(connectedAccounts.id, id))
     .returning(COLUMNS);
 
   return row ? withLegacyId(row) : null;
+}
+
+/** Who the gemie answers on the account. Only the fields given change. */
+export interface ConnectedAccountRepliesPatch {
+  readonly replies?: ConnectedAccountReplies | undefined;
+  readonly replyChatIds?: string[] | undefined;
+  readonly groupReplies?: ConnectedAccountGroupReplies | undefined;
+}
+
+export async function setConnectedAccountReplies(
+  db: ApiDatabase,
+  id: string,
+  scope: GemieAccountScope,
+  patch: ConnectedAccountRepliesPatch,
+): Promise<ConnectedAccountRow | null> {
+  const [row] = await db
+    .update(connectedAccounts)
+    .set({
+      ...(patch.replies === undefined ? {} : { replies: patch.replies }),
+      ...(patch.replyChatIds === undefined ? {} : { replyChatIds: patch.replyChatIds }),
+      ...(patch.groupReplies === undefined ? {} : { groupReplies: patch.groupReplies }),
+    })
+    .where(and(eq(connectedAccounts.id, id), inScope(scope)))
+    .returning(COLUMNS);
+  return row ? withLegacyId(row) : null;
+}
+
+/** A message arrived on the account. */
+export async function touchConnectedAccount(db: ApiDatabase, id: string): Promise<void> {
+  await db
+    .update(connectedAccounts)
+    .set({ lastActiveAt: new Date() })
+    .where(eq(connectedAccounts.id, id));
 }
 
 /** Remove an account by id. The caller already proved it may (its scope, or the gemie's delete). */
@@ -191,31 +231,22 @@ export async function deleteConnectedAccount(db: ApiDatabase, id: string): Promi
 }
 
 /**
- * This person's CONNECTED account on one platform of this gemie, for a tool of its turn.
+ * This person's CONNECTED accounts on this gemie, newest first: what a tool of its turn may use.
  *
- * `status: 'connected'` is in the filter rather than checked afterwards: an account still
- * `connecting`, or `expired`, has no live session to send through, and a caller that read the row
+ * `status: 'connected'` is in the filter rather than checked afterwards: an account still waiting
+ * for its scan, or logged out, has no live session to send through, and a caller that read the row
  * and forgot to look would send into nothing and report success.
  */
-export async function findConnectedGemieAccount(
+export async function listConnectedGemieAccounts(
   db: ApiDatabase,
   scope: GemieAccountScope,
-  platform: ConnectedAccountPlatform,
-): Promise<ConnectedAccountRow | null> {
-  const [row] = await db
+): Promise<ConnectedAccountRow[]> {
+  const rows = await db
     .select(COLUMNS)
     .from(connectedAccounts)
-    .where(
-      and(
-        inScope(scope),
-        eq(connectedAccounts.platform, platform),
-        eq(connectedAccounts.status, 'connected'),
-      ),
-    )
-    .orderBy(desc(connectedAccounts.createdAt))
-    .limit(1);
-
-  return row ? withLegacyId(row) : null;
+    .where(and(inScope(scope), eq(connectedAccounts.status, 'connected')))
+    .orderBy(desc(connectedAccounts.createdAt));
+  return rows.map(withLegacyId);
 }
 
 /**
@@ -224,7 +255,7 @@ export async function findConnectedGemieAccount(
  */
 export async function findConnectedAccountBySession(
   db: ApiDatabase,
-  platform: ConnectedAccountPlatform,
+  platform: GemieAccountPlatform,
   sessionId: string,
 ): Promise<(ConnectedAccountRow & { oxyUserId: string }) | null> {
   const rows = await db

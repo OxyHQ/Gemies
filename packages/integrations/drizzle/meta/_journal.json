@@ -15,6 +15,13 @@
       "when": 1794543962165,
       "tag": "0001_signal_is_retired",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794546978297,
+      "tag": "0002_logged_out_sessions_forgotten",
+      "breakpoints": true
     }
   ]
 }

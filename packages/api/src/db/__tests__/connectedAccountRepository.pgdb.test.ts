@@ -7,13 +7,16 @@ import { connectedAccounts } from '../schema/integrations';
 import {
   createPendingConnectedAccount,
   deleteConnectedAccount,
+  findConnectedAccount,
   findConnectedAccountBySession,
-  findConnectedGemieAccount,
   findGemieAccount,
   listAccountsOfGemie,
+  listConnectedGemieAccounts,
   listGemieAccounts,
+  setConnectedAccountReplies,
   setConnectedAccountSession,
-  setConnectedAccountStatus,
+  setConnectedAccountSessionState,
+  touchConnectedAccount,
 } from '../integrations/connectedAccountRepository';
 import { TEST_CHARACTER } from './support/agent-character';
 
@@ -58,7 +61,6 @@ async function pending(
     agentId,
     oxyUserId,
     platform,
-    capabilities: ['read_messages', 'send_messages'],
   });
 }
 
@@ -85,21 +87,57 @@ describe('an account belongs to one gemie and one person', () => {
     expect(await findGemieAccount(db, 'not-an-id', scope)).toBeNull();
   });
 
-  it('gives a turn only the gemie’s CONNECTED account of its person', async () => {
+  it('gives a turn only the gemie’s CONNECTED accounts of its person', async () => {
     const a = await gemie('cau-g-turn');
     const b = await gemie('cau-g-turn-other');
     const scope = { agentId: a, oxyUserId: 'cau-turn' };
     const account = await pending(a, 'cau-turn');
     const elsewhere = await pending(b, 'cau-turn');
-    await setConnectedAccountStatus(db, elsewhere.id, { status: 'connected' });
+    await setConnectedAccountSessionState(db, elsewhere.id, { status: 'connected' });
 
-    // `connecting` has no live session; another gemie's connected WhatsApp is never this turn's.
-    expect(await findConnectedGemieAccount(db, scope, 'whatsapp')).toBeNull();
-    await setConnectedAccountStatus(db, account.id, { status: 'connected' });
-    expect((await findConnectedGemieAccount(db, scope, 'whatsapp'))?.id).toBe(account.id);
-    expect(await findConnectedGemieAccount(db, scope, 'telegram')).toBeNull();
-    await setConnectedAccountStatus(db, account.id, { status: 'disconnected' });
-    expect(await findConnectedGemieAccount(db, scope, 'whatsapp')).toBeNull();
+    // Waiting for its scan has no live session; another gemie's connected WhatsApp is never this turn's.
+    expect(await listConnectedGemieAccounts(db, scope)).toEqual([]);
+    await setConnectedAccountSessionState(db, account.id, { status: 'connected' });
+    expect((await listConnectedGemieAccounts(db, scope)).map((row) => row.id)).toEqual([
+      account.id,
+    ]);
+    await setConnectedAccountSessionState(db, account.id, { status: 'logged-out' });
+    expect(await listConnectedGemieAccounts(db, scope)).toEqual([]);
+  });
+
+  it('keeps who it answers, scoped to its person, and when a message last arrived', async () => {
+    const a = await gemie('cau-g-replies');
+    const account = await pending(a, 'cau-replies');
+    expect(account).toMatchObject({
+      status: 'qr-pending',
+      replies: 'everyone',
+      replyChatIds: [],
+      groupReplies: 'mentions',
+      lastActiveAt: null,
+    });
+    expect(
+      await setConnectedAccountReplies(
+        db,
+        account.id,
+        { agentId: a, oxyUserId: 'cau-intruder' },
+        {
+          replies: 'nobody',
+        },
+      ),
+    ).toBeNull();
+    const chosen = await setConnectedAccountReplies(
+      db,
+      account.id,
+      { agentId: a, oxyUserId: 'cau-replies' },
+      { replies: 'chosen', replyChatIds: ['c1@s.whatsapp.net'] },
+    );
+    expect(chosen).toMatchObject({
+      replies: 'chosen',
+      replyChatIds: ['c1@s.whatsapp.net'],
+      groupReplies: 'mentions',
+    });
+    await touchConnectedAccount(db, account.id);
+    expect((await findConnectedAccount(db, account.id))?.lastActiveAt).toBeInstanceOf(Date);
   });
 
   it('goes with its gemie, and the gemie lists all of them first, whoever linked them', async () => {
@@ -119,8 +157,8 @@ describe('an account belongs to one gemie and one person', () => {
       let caught: unknown;
       try {
         await db.execute(
-          sql`insert into ${connectedAccounts} (id, oxy_user_id, agent_id, platform, account_id)
-              values (${`cau-${platform}`}, 'cau-platform', ${a}, ${platform}, 'pending')`,
+          sql`insert into ${connectedAccounts} (id, oxy_user_id, agent_id, platform)
+              values (${`cau-${platform}`}, 'cau-platform', ${a}, ${platform})`,
         );
       } catch (err) {
         caught = err;
@@ -130,8 +168,8 @@ describe('an account belongs to one gemie and one person', () => {
     }
     await expect(
       db.execute(
-        sql`insert into ${connectedAccounts} (id, oxy_user_id, platform, account_id)
-            values ('cau-no-gemie', 'cau-platform', 'whatsapp', 'pending')`,
+        sql`insert into ${connectedAccounts} (id, oxy_user_id, platform)
+            values ('cau-no-gemie', 'cau-platform', 'whatsapp')`,
       ),
     ).rejects.toSatisfy((error: unknown) => {
       // 23502: not_null_violation, on `agent_id`.
@@ -143,20 +181,24 @@ describe('an account belongs to one gemie and one person', () => {
   });
 });
 
-describe('a status sync does not erase what the poll omitted', () => {
-  it('keeps a stored display name when the reply carries none', async () => {
+describe('a session sync does not erase what the gateway omitted', () => {
+  it('keeps a stored display name when the reply carries none, and stamps the first connection', async () => {
     const account = await pending(await gemie('cau-g-sync'), 'cau-sync');
-    await setConnectedAccountStatus(db, account.id, {
+    const connected = await setConnectedAccountSessionState(db, account.id, {
       status: 'connected',
       displayName: 'Known Name',
       phoneNumber: '+100',
     });
+    const firstConnected = connected?.connectedAt;
+    expect(firstConnected).toBeInstanceOf(Date);
 
-    const later = await setConnectedAccountStatus(db, account.id, { status: 'expired' });
+    const later = await setConnectedAccountSessionState(db, account.id, { status: 'disconnected' });
+    const again = await setConnectedAccountSessionState(db, account.id, { status: 'connected' });
 
-    expect(later?.status).toBe('expired');
+    expect(later?.status).toBe('disconnected');
     expect(later?.displayName).toBe('Known Name');
     expect(later?.phoneNumber).toBe('+100');
+    expect(again?.connectedAt).toEqual(firstConnected);
     expect(later?._id).toBe(later?.id);
   });
 });
@@ -169,7 +211,7 @@ describe('workload channel account resolution', () => {
     expect(
       await findConnectedAccountBySession(db, 'whatsapp', 'channel-reader-session'),
     ).toBeNull();
-    await setConnectedAccountStatus(db, account.id, { status: 'connected' });
+    await setConnectedAccountSessionState(db, account.id, { status: 'connected' });
     expect(
       await findConnectedAccountBySession(db, 'telegram', 'channel-reader-session'),
     ).toBeNull();
@@ -177,7 +219,7 @@ describe('workload channel account resolution', () => {
     expect(found).toMatchObject({ id: account.id, oxyUserId: 'cau-channel-owner', agentId: a });
     const ambiguous = await pending(a, 'cau-other-channel-owner');
     await setConnectedAccountSession(db, ambiguous.id, 'channel-reader-session');
-    await setConnectedAccountStatus(db, ambiguous.id, { status: 'connected' });
+    await setConnectedAccountSessionState(db, ambiguous.id, { status: 'connected' });
     expect(
       await findConnectedAccountBySession(db, 'whatsapp', 'channel-reader-session'),
     ).toBeNull();
@@ -185,7 +227,7 @@ describe('workload channel account resolution', () => {
     expect(
       await findConnectedAccountBySession(db, 'whatsapp', 'channel-reader-session'),
     ).not.toBeNull();
-    await setConnectedAccountStatus(db, account.id, { status: 'disconnected' });
+    await setConnectedAccountSessionState(db, account.id, { status: 'disconnected' });
     expect(
       await findConnectedAccountBySession(db, 'whatsapp', 'channel-reader-session'),
     ).toBeNull();

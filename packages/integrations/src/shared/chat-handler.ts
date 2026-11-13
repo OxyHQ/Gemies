@@ -9,6 +9,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import type { GemieAccountInbound } from '@gemies/server/internal';
 import type { APIClient } from './api-client';
 import { chunkText } from './utils';
 import { createLogger } from './logger';
@@ -16,10 +17,9 @@ import { createLogger } from './logger';
 export interface IncomingMessageParams {
   platform: string;
   sessionId: string;
-  oxyUserId: string;
-  chatId: string;
+  /** Where it arrived, for the API to decide whether the account's gemie answers it. */
+  inbound: GemieAccountInbound;
   messageText: string;
-  senderName?: string;
   /** Send a response message back on this platform */
   sendResponse: (text: string) => Promise<void>;
   /** Show/hide typing indicator (best-effort) */
@@ -45,8 +45,18 @@ export async function handleIncomingMessage(
 
   const logger = createLogger(`${platform}/Chat`);
 
+  const identity = { kind: 'account' as const, sessionId: params.sessionId };
+  // Who the gemie answers is the account's to say (ADR 0035): a chat it was not told to answer is
+  // left alone — no reply, and no apology to a contact who never asked it anything.
+  let answer = false;
   try {
-    const identity = { kind: 'account' as const, sessionId: params.sessionId };
+    answer = (await apiClient.decideInbound(identity, params.inbound)).answer;
+  } catch (error) {
+    logger.warn('Could not ask whether to answer; leaving the message alone:', error);
+  }
+  if (!answer) return;
+
+  try {
     // Show typing
     if (setTyping) {
       try {
@@ -59,7 +69,7 @@ export async function handleIncomingMessage(
 
     // Stable within this connected channel conversation; the API separately binds its owner.
     const conversationId = createHash('sha256')
-      .update(JSON.stringify([platform, params.sessionId, params.chatId]))
+      .update(JSON.stringify([platform, params.sessionId, params.inbound.chatId]))
       .digest('hex');
 
     // Load conversation history (last 20 messages, user/assistant only)

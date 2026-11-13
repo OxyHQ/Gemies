@@ -13,9 +13,9 @@ const TOOL_REGISTRY: Record<string, ToolDefinition> = {
   browse: { label: 'Browsing the web', category: 'search' },
 
   // Communication
-  sendWhatsAppMessage: { label: 'Sending WhatsApp message', category: 'communication' },
-  getWhatsAppChats: { label: 'Loading WhatsApp chats', category: 'communication' },
-  getWhatsAppMessages: { label: 'Reading WhatsApp messages', category: 'communication' },
+  sendAccountMessage: { label: 'Sending a message', category: 'communication' },
+  listAccountChats: { label: 'Loading chats', category: 'communication' },
+  readAccountMessages: { label: 'Reading messages', category: 'communication' },
   sendTelegramMessage: { label: 'Sending Telegram message', category: 'communication' },
 
   // Utility
