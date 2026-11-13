@@ -22,7 +22,7 @@ import {
   loadAgentForActor,
   refusalMessage,
   refusalStatus,
-  actorVerdictFor,
+  callerMayEditAgent,
   setAgentAccountCharacter,
   verifyAgentAccount,
   type AgentAccountRefusal,
@@ -332,17 +332,10 @@ async function respondWithAgent(
   res: Response,
   found: NonNullable<Awaited<ReturnType<typeof findAgentById>>>,
 ): Promise<void> {
-  const mayEdit =
-    req.user?.id === undefined || req.accessToken === undefined
-      ? false
-      : (
-          await actorVerdictFor(found, {
-            oxyUserId: req.user.id,
-            accessToken: req.accessToken,
-            // A READ. The write paths pass `false`; see `lib/agent-account.ts`.
-            cache: true,
-          })
-        ).ok;
+  const mayEdit = await callerMayEditAgent(found, {
+    oxyUserId: req.user?.id,
+    accessToken: req.accessToken,
+  });
 
   /**
    * Who may grant it their own connected accounts (ADR 0035 as amended): its editors, and on every
