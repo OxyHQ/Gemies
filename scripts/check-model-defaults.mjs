@@ -70,14 +70,16 @@ export const NOT_A_CLIENT = {
     'the server. Its `alia-*` literals ARE the routing table — `internal/providers/lib/routing-profile-catalogue.ts` is the frozen set every other package resolves against.',
   'packages/server':
     'a transport. It streams whatever turn a backend hands it and never chooses, defaults or names a routing profile — `model` is an optional pass-through field on its request type.',
-  'packages/alia-computer-host':
+  'packages/gemies-os':
     "the agents' sandbox host. It runs containers and files for an actor and never calls inference, so it has no model to choose, default or name.",
+  'packages/gemies-os-protocol':
+    "GemiesOS's wire contract: request schemas and response types for the computer and the browser. It carries no inference field.",
 };
 
 /**
  * A retired routing identifier: the product modes (`mode:*`) and routing
  * profiles (`route:*`, `profile:*`) Alia invented before it served real models.
- * Anchored, so a package name such as `alia-computer-host` is not mistaken for one.
+ * Anchored, so a package name such as `gemies-os` is not mistaken for one.
  */
 const IDENTIFIER = /^(?:(?:mode|profile|route):[a-z0-9][a-z0-9-]*)$/;
 
@@ -189,9 +191,9 @@ function main() {
   // Exact counts. Each list may only change in a diff that also changes the
   // number beside it, which is the review this gate exists to force.
   const counts = [
-    ['workspaces', workspaces.length, 6],
+    ['workspaces', workspaces.length, 7],
     ['TREES', TREES.length, 4],
-    ['NOT_A_CLIENT', Object.keys(NOT_A_CLIENT).length, 3],
+    ['NOT_A_CLIENT', Object.keys(NOT_A_CLIENT).length, 4],
   ];
   const partition = [
     ...counts

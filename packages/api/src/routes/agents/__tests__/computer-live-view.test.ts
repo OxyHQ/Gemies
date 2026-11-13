@@ -4,13 +4,14 @@
  * computer that is not theirs, whatever they put in the request.
  *
  * A real express app with the router mounted; Oxy auth, the agent lookup, the
- * reach rule and the computer host replaced by doubles.
+ * reach rule and GemiesOS replaced by doubles.
  */
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ComputerHostError, type ComputerClient } from '../../../lib/computer/computer-client.js';
+import type { ComputerClient } from '../../../lib/computer/computer-client.js';
+import { GemiesOsError } from '../../../lib/computer/computer-errors.js';
 import { clientDouble } from '../../../lib/computer/__tests__/client-double.js';
 
 const state = vi.hoisted(() => ({
@@ -149,7 +150,7 @@ describe('whose computer', () => {
     expect((await fetch(`${base}/agent-1/computer`)).status).toBe(401);
   });
 
-  it('is absent on a deployment without a computer host', async () => {
+  it('is absent on a deployment without GemiesOS', async () => {
     state.client = null;
     const response = await fetch(`${base}/agent-1/computer`);
     expect(response.status).toBe(404);
@@ -207,14 +208,10 @@ describe('the live browser', () => {
   it("passes the host's refusals through, but never its 5xx wording", async () => {
     state.client = clientDouble({
       browserScreenshot: vi.fn(async () => {
-        throw new ComputerHostError('The browser is not open', 409, 'browser_closed');
+        throw new GemiesOsError('The browser is not open', 409, 'browser_closed');
       }),
       browserInput: vi.fn(async () => {
-        throw new ComputerHostError(
-          'docker said /var/lib/docker/... failed',
-          502,
-          'browser_failed',
-        );
+        throw new GemiesOsError('docker said /var/lib/docker/... failed', 502, 'browser_failed');
       }),
     });
     const closed = await fetch(`${base}/agent-1/computer/browser/screenshot`);

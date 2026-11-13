@@ -1,8 +1,8 @@
 /**
- * Waking the computer host when it is asleep.
+ * Waking GemiesOS when it is asleep.
  *
  * The host is a Spot instance that STOPS ITSELF after thirty idle minutes
- * (oxy-infra `alia-computer-host.tf`), so most of the day nothing is billed but
+ * (oxy-infra `gemies-os.tf`), so most of the day nothing is billed but
  * its disks. The first call after that finds it unreachable, and this is what
  * turns that into a short wait instead of an error: start the instance, wait
  * for the control API's `/health`, carry on.
@@ -29,7 +29,7 @@
  * stop, terminate or modify anything; the instance stops itself.
  */
 import { DescribeInstancesCommand, EC2Client, StartInstancesCommand } from '@aws-sdk/client-ec2';
-import { ComputerHostError } from './computer-errors.js';
+import { GemiesOsError } from './computer-errors.js';
 
 export type InstanceState =
   | 'pending'
@@ -126,11 +126,7 @@ export class HostWaker {
     while (this.now() < deadline) {
       const state = await this.options.control.state();
       if (state === 'terminated' || state === 'shutting-down' || state === 'unknown') {
-        throw new ComputerHostError(
-          'The computer host does not exist any more',
-          503,
-          'host_unavailable',
-        );
+        throw new GemiesOsError('GemiesOS does not exist any more', 503, 'host_unavailable');
       }
       if (state === 'running' && (await this.options.healthy())) return;
       // `stopping` cannot be started yet: wait for `stopped`. A start that
@@ -143,23 +139,19 @@ export class HostWaker {
         } catch (error) {
           const name = (error as { name?: string } | null)?.name ?? '';
           if (CAPACITY_ERRORS.has(name)) {
-            throw new ComputerHostError(
+            throw new GemiesOsError(
               'There is no machine capacity to start the computer right now',
               503,
               'host_capacity_unavailable',
             );
           }
           if (name !== 'IncorrectInstanceState') {
-            throw new ComputerHostError(
-              'The computer host could not be started',
-              503,
-              'host_unavailable',
-            );
+            throw new GemiesOsError('GemiesOS could not be started', 503, 'host_unavailable');
           }
         }
       }
       await this.sleep(this.pollMs);
     }
-    throw new ComputerHostError('The computer is still starting', 503, 'host_waking');
+    throw new GemiesOsError('The computer is still starting', 503, 'host_waking');
   }
 }

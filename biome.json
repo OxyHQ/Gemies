@@ -182,7 +182,11 @@
       ]
     },
     {
-      "includes": ["packages/api/src/**", "packages/alia-computer-host/src/**"],
+      "includes": [
+        "packages/api/src/**",
+        "packages/gemies-os/src/**",
+        "packages/gemies-os-protocol/src/**"
+      ],
       "linter": {
         "rules": {
           "correctness": {
@@ -201,7 +205,11 @@
       }
     },
     {
-      "includes": ["packages/api/src/**", "packages/alia-computer-host/src/**"],
+      "includes": [
+        "packages/api/src/**",
+        "packages/gemies-os/src/**",
+        "packages/gemies-os-protocol/src/**"
+      ],
       "linter": {
         "rules": {
           "nursery": {
@@ -221,7 +229,7 @@
       }
     },
     {
-      "includes": ["packages/alia-computer-host/src/**"],
+      "includes": ["packages/gemies-os/src/**", "packages/gemies-os-protocol/src/**"],
       "linter": {
         "rules": {
           "suspicious": {

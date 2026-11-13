@@ -290,26 +290,27 @@ jobs:
           # No SSM parameter is deleted by this change. This is the reference to
           # them going away, which is the half a deploy owns.
 
-          # The agents' computer (OxyHQ/oxy-infra runbook 47). Its instance is
-          # found by its Role tag, not pinned here: replacing the instance (a
-          # user_data change, the on-demand fallback) changes its id, and a
-          # pinned id would leave Alia waking an instance that no longer exists.
-          computer_instance_id="$(aws ec2 describe-instances \
-            --filters "Name=tag:Role,Values=alia-computer-host" \
+          # GemiesOS, the gemies' computers (OxyHQ/oxy-infra runbook 47). Its
+          # instance is found by its Role tag, not pinned here: replacing the
+          # instance (a user_data change, the on-demand fallback) changes its id,
+          # and a pinned id would leave the API waking an instance that no longer
+          # exists.
+          gemies_os_instance_id="$(aws ec2 describe-instances \
+            --filters "Name=tag:Role,Values=gemies-os" \
               "Name=instance-state-name,Values=pending,running,stopping,stopped" \
             --query 'Reservations[].Instances[].InstanceId' --output text)"
-          if [ "$(wc -w <<<"$computer_instance_id")" -ne 1 ]; then
-            echo "::error::expected exactly one alia-computer-host instance, found: '$computer_instance_id'"
+          if [ "$(wc -w <<<"$gemies_os_instance_id")" -ne 1 ]; then
+            echo "::error::expected exactly one gemies-os instance, found: '$gemies_os_instance_id'"
             exit 1
           fi
 
           voice_peer_vpc_cidr="$(python3 .github/scripts/voice-peer-vpc.py --cluster "$CLUSTER" --service "$APP")"
-          required_env="$(jq -cn --arg computer_instance_id "$computer_instance_id" --arg voice_peer_vpc_cidr "$voice_peer_vpc_cidr" '{
+          required_env="$(jq -cn --arg gemies_os_instance_id "$gemies_os_instance_id" --arg voice_peer_vpc_cidr "$voice_peer_vpc_cidr" '{
             API_BASE_URL: "https://api.alia.onl",
             ALIA_API_URL: "https://api.alia.onl",
             OXY_API_URL: "https://api.oxy.so",
-            ALIA_COMPUTER_HOST_URL: "http://computer.alia.internal.oxy.so:8080",
-            ALIA_COMPUTER_HOST_INSTANCE_ID: $computer_instance_id,
+            GEMIES_OS_URL: "http://computer.alia.internal.oxy.so:8080",
+            GEMIES_OS_INSTANCE_ID: $gemies_os_instance_id,
             VOICE_PEER_VPC_CIDR: $voice_peer_vpc_cidr
           }')"
 
@@ -384,7 +385,7 @@ jobs:
           # the live task definition. Keeping a removal here is harmless after
           # the first clean revision and prevents a rollback descendant from
           # silently reintroducing the obsolete contract.
-          TASK_CONFIGURATION_REMOVALS_JSON: '["RELAY_BASE_URL","ALIA_RELAY_APPLICATION_ID","ALIA_RELAY_ACCOUNT_ID","ALIA_RELAY_CREDENTIAL_ID","ALIA_RELAY_ENVIRONMENT","ALIA_RELAY_INFERENCE_SCOPES","KAANA_EDGE_KEY_ID","ALIA_KAANA_CLIENT_ENABLED","ALIA_KAANA_APPLICATION_ID","ALIA_KAANA_ACCOUNT_ID","ALIA_KAANA_CREDENTIAL_ID","ALIA_KAANA_ENVIRONMENT","ALIA_KAANA_INFERENCE_SCOPES","KAANA_BASE_URL","ALIA_INTERNAL_MCP_PILOT"]'
+          TASK_CONFIGURATION_REMOVALS_JSON: '["RELAY_BASE_URL","ALIA_RELAY_APPLICATION_ID","ALIA_RELAY_ACCOUNT_ID","ALIA_RELAY_CREDENTIAL_ID","ALIA_RELAY_ENVIRONMENT","ALIA_RELAY_INFERENCE_SCOPES","KAANA_EDGE_KEY_ID","ALIA_KAANA_CLIENT_ENABLED","ALIA_KAANA_APPLICATION_ID","ALIA_KAANA_ACCOUNT_ID","ALIA_KAANA_CREDENTIAL_ID","ALIA_KAANA_ENVIRONMENT","ALIA_KAANA_INFERENCE_SCOPES","KAANA_BASE_URL","ALIA_INTERNAL_MCP_PILOT","ALIA_COMPUTER_HOST_URL","ALIA_COMPUTER_HOST_INSTANCE_ID"]'
           TASK_ENV_OVERRIDES_JSON: ${{ steps.kaana.outputs.env_overrides }}
         run: |
           STATUS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$APP" --query 'services[0].status' --output text 2>/dev/null || echo NONE)

@@ -1,11 +1,11 @@
-/** A refusal from the computer host, or from waking it, with a stable code. */
-export class ComputerHostError extends Error {
+/** A refusal from GemiesOS, or from waking it, with a stable code. */
+export class GemiesOsError extends Error {
   constructor(
     message: string,
     readonly status: number,
     readonly code: string,
   ) {
     super(message);
-    this.name = 'ComputerHostError';
+    this.name = 'GemiesOsError';
   }
 }

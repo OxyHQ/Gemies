@@ -31,7 +31,7 @@
  * They acted through a sandbox container that production never had, so every
  * call answered "no sandbox" — see `RETIRED_CAPABILITY_FAMILIES`. The
  * `computer` family is their successor and is not a revival: it is a new
- * family, built only when a computer host is CONFIGURED
+ * family, built only when GemiesOS is CONFIGURED
  * (`lib/computer/computer-client.ts`), so it cannot be a switch that does
  * nothing.
  *
@@ -104,8 +104,8 @@ export interface AgentRuntimeContext {
   browserSession: BrowserSession;
   eventStream?: EventStream;
   /**
-   * The computer host client. Omitted in production, where it comes from
-   * `ALIA_COMPUTER_HOST_URL`; `null` says "no host" explicitly. A test hands a
+   * The GemiesOS client. Omitted in production, where it comes from
+   * `GEMIES_OS_URL`; `null` says "no host" explicitly. A test hands a
    * double here.
    */
   computer?: ComputerClient | null;
@@ -264,7 +264,7 @@ export function buildRuntimeTools(
 
   // ── computer — the agent's own sandboxed machine, per person ──
   //
-  // A grant AND a configured host: without `ALIA_COMPUTER_HOST_URL` the family
+  // A grant AND a configured host: without `GEMIES_OS_URL` the family
   // is absent rather than present-and-failing.
 
   const computer = ctx.computer === undefined ? getComputerClient() : ctx.computer;

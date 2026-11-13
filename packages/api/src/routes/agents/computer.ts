@@ -34,6 +34,7 @@
  * through and never logged or stored (the host's receipts record only that
  * something was typed, and how much).
  */
+import { browserInputSchema, WORKSPACE } from '@gemies/os-protocol';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { getDb } from '../../db/index.js';
@@ -41,13 +42,9 @@ import { findAgentById } from '../../db/agents/agentRepository.js';
 import { canReachAgent } from '../../lib/agent-account.js';
 import { appSurfaceOf } from '../../lib/app-surface.js';
 import { readCapabilityGrants } from '../../domain/capability-grants.js';
-import {
-  ComputerHostError,
-  getComputerClient,
-  type ComputerClient,
-} from '../../lib/computer/computer-client.js';
+import { getComputerClient, type ComputerClient } from '../../lib/computer/computer-client.js';
+import { GemiesOsError } from '../../lib/computer/computer-errors.js';
 import { resolveComputerActor } from '../../lib/computer/computer-actor.js';
-import { BROWSER_KEYS } from '../../lib/computer/browser-tools.js';
 import { authenticateToken } from '../../middleware/auth.js';
 
 const router = Router();
@@ -58,24 +55,12 @@ const route =
     void handler(req, res).catch(next);
   };
 
-const pathSchema = z.string().min(1).max(2048).startsWith('/workspace');
+const pathSchema = z.string().min(1).max(2048).startsWith(WORKSPACE);
 // The host decides what is reachable; this only refuses what is not a web address.
 const urlSchema = z
   .string()
   .max(8192)
   .regex(/^https?:\/\/[^\s]+$/i, 'Use an http(s) address');
-const inputSchema = z.discriminatedUnion('type', [
-  z
-    .object({
-      type: z.literal('click'),
-      x: z.number().int().min(0).max(1279),
-      y: z.number().int().min(0).max(799),
-    })
-    .strict(),
-  z.object({ type: z.literal('type'), text: z.string().min(1).max(2000) }).strict(),
-  z.object({ type: z.literal('key'), key: z.enum(BROWSER_KEYS) }).strict(),
-  z.object({ type: z.literal('scroll'), deltaY: z.number().int().min(-5000).max(5000) }).strict(),
-]);
 
 interface Owned {
   client: ComputerClient;
@@ -128,7 +113,7 @@ async function ownComputer(req: Request, res: Response): Promise<Owned | null> {
 }
 
 function hostFailure(res: Response, error: unknown) {
-  if (error instanceof ComputerHostError) {
+  if (error instanceof GemiesOsError) {
     // A host-side 5xx is "unavailable" to the app; never the host's wording.
     const status = error.status >= 500 || error.status < 400 ? 503 : error.status;
     res.status(status).json({
@@ -260,7 +245,7 @@ router.post(
   '/:id/computer/browser/input',
   authenticateToken,
   withComputer(async ({ client, actorId }, req) => {
-    const { input } = z.object({ input: inputSchema }).strict().parse(req.body);
+    const { input } = z.object({ input: browserInputSchema }).strict().parse(req.body);
     return client.browserInput(actorId, input, 'owner');
   }),
 );

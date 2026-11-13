@@ -2,15 +2,12 @@
  * The `computer` family as the model sees it, and the client as the host sees
  * it — with the host replaced by a double, so this suite needs no network.
  */
+import { WORKSPACE, type ComputerStatus } from '@gemies/os-protocol';
 import { describe, expect, it, vi } from 'vitest';
 import type { ToolExecutionOptions } from 'ai';
 import { classifyActionRisk } from '../../agent/governance.js';
-import {
-  ComputerHostError,
-  HttpComputerClient,
-  agentActorId,
-  getComputerClient,
-} from '../computer-client.js';
+import { HttpComputerClient, agentActorId, getComputerClient } from '../computer-client.js';
+import { GemiesOsError } from '../computer-errors.js';
 import {
   COMPUTER_TOOL_NAMES,
   UNTRUSTED_HEADER,
@@ -100,15 +97,15 @@ describe('the computer tools', () => {
     let started = false;
     const client = clientDouble({
       run: vi.fn(async () => {
-        if (!started) throw new ComputerHostError('not running', 409, 'not_running');
+        if (!started) throw new GemiesOsError('not running', 409, 'not_running');
         return receipt();
       }),
-      start: vi.fn(async () => {
+      start: vi.fn(async (): Promise<ComputerStatus> => {
         started = true;
         return {
-          state: 'running' as const,
-          workspace: '/workspace',
-          network: 'disabled' as const,
+          state: 'running',
+          workspace: WORKSPACE,
+          network: 'disabled',
           usageBytes: 0,
           quotaBytes: 1,
           idleStopMinutes: 10,
@@ -135,7 +132,7 @@ describe('the computer tools', () => {
   it('tell the model the computer is starting, rather than failing, while the host wakes', async () => {
     const client = clientDouble({
       run: vi.fn(async () => {
-        throw new ComputerHostError('still starting', 503, 'host_waking');
+        throw new GemiesOsError('still starting', 503, 'host_waking');
       }),
     });
     const tools = buildComputerTools({ client, actorId: ACTOR, scope: 's' });
@@ -147,7 +144,7 @@ describe('the computer tools', () => {
   it('say plainly when no capacity is available to start it', async () => {
     const client = clientDouble({
       read: vi.fn(async () => {
-        throw new ComputerHostError('x', 503, 'host_capacity_unavailable');
+        throw new GemiesOsError('x', 503, 'host_capacity_unavailable');
       }),
     });
     const tools = buildComputerTools({ client, actorId: ACTOR, scope: 's' });
@@ -159,7 +156,7 @@ describe('the computer tools', () => {
   it('answer the model with a readable error instead of throwing', async () => {
     const client = clientDouble({
       start: vi.fn(async () => {
-        throw new ComputerHostError('full', 503, 'capacity');
+        throw new GemiesOsError('full', 503, 'capacity');
       }),
     });
     const tools = buildComputerTools({ client, actorId: ACTOR, scope: 's' });
@@ -199,12 +196,12 @@ describe('the risk of each computer call', () => {
 });
 
 describe('the client', () => {
-  it('is absent without ALIA_COMPUTER_HOST_URL, and refuses a value that is not a bare origin', () => {
+  it('is absent without GEMIES_OS_URL, and refuses a value that is not a bare origin', () => {
     expect(getComputerClient({})).toBeNull();
-    expect(getComputerClient({ ALIA_COMPUTER_HOST_URL: '' })).toBeNull();
-    expect(getComputerClient({ ALIA_COMPUTER_HOST_URL: 'http://host:8080/v1?x' })).toBeNull();
+    expect(getComputerClient({ GEMIES_OS_URL: '' })).toBeNull();
+    expect(getComputerClient({ GEMIES_OS_URL: 'http://host:8080/v1?x' })).toBeNull();
     expect(
-      getComputerClient({ ALIA_COMPUTER_HOST_URL: 'http://computer.alia.internal.oxy.so:8080' }),
+      getComputerClient({ GEMIES_OS_URL: 'http://computer.alia.internal.oxy.so:8080' }),
     ).not.toBeNull();
   });
 

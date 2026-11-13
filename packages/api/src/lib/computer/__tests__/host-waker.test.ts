@@ -1,5 +1,5 @@
 /**
- * Waking a sleeping computer host: one wake for many callers, a bounded wait,
+ * Waking a sleeping GemiesOS: one wake for many callers, a bounded wait,
  * and errors that say why — with EC2 and the clock replaced by doubles.
  */
 import { describe, expect, it, vi } from 'vitest';
@@ -169,8 +169,8 @@ describe('the client and a sleeping host', () => {
       mintToken,
       waker: {
         wake: async () => {
-          const { ComputerHostError } = await import('../computer-errors.js');
-          throw new ComputerHostError('no capacity', 503, 'host_capacity_unavailable');
+          const { GemiesOsError } = await import('../computer-errors.js');
+          throw new GemiesOsError('no capacity', 503, 'host_capacity_unavailable');
         },
       } as unknown as HostWaker,
     });

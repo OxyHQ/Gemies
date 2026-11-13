@@ -79,7 +79,7 @@ No level asks for approval (ADR 0020 §3): an agent's configuration is its permi
 | `lib/chat/stream-runner.ts` | Chunk handling, tool results, the named SSE writes | SSE event work |
 | `lib/agent/runner.ts` | Orchestrates autonomous agent sessions | Modifying agent execution flow |
 | `lib/alia-task-run.ts`, `lib/alia-task-queue.ts` | Alia's own unattended task runs | Background work Alia is responsible for |
-| `lib/computer/` | Client for the agents' computer (`packages/alia-computer-host`) | Computer and browser tools |
+| `lib/computer/` | Client for GemiesOS, the gemies' computers (`packages/gemies-os`, wire contract `@gemies/os-protocol`) | Computer and browser tools |
 | `lib/autonomy/runtime.ts` | Before/after chat hooks for the autonomy loop | Changing classify/recall/learn steps |
 | `lib/tools/index.ts` | Tool barrel file -- exports all tool constructors | Adding a new AI tool |
 | `lib/tool-pipeline.ts` | Assembles the per-request tool set | Adding a new AI tool |

@@ -26,7 +26,7 @@ boots the built arm64 image against Postgres (`.github/scripts/smoke-api-image.s
 `src/__tests__/dockerfileRuntime.test.ts` holds the Dockerfile and those commands
 together. To return to Node, revert the change that made the switch: it moved the
 Dockerfile and every one of those commands at once, and they must stay together. The
-computer host's control API (`packages/alia-computer-host/Dockerfile`) runs on Bun the
+GemiesOS's control API (`packages/gemies-os/Dockerfile`) runs on Bun the
 same way; its workspace image (actors' computers and the browser worker) stays on Node.
 ## Preconditions
 
@@ -106,18 +106,19 @@ Recommended, each disabling a feature when absent rather than blocking boot:
 REDIS_URL=rediss://...                 # BullMQ, rate limiting, Socket.IO adapter
 TOKEN_ENCRYPTION_KEY=<32-byte hex>     # see below — NOT optional for shows
 INTEGRATIONS_URL=https://...           # MCP tools and channel proxy
-ALIA_COMPUTER_HOST_URL=http://computer.alia.internal.oxy.so:8080  # agents' computer (no secret: workload identity)
-ALIA_COMPUTER_HOST_INSTANCE_ID=i-...     # lets the API wake the host when it has stopped itself
+GEMIES_OS_URL=http://computer.alia.internal.oxy.so:8080  # agents' computer (no secret: workload identity)
+GEMIES_OS_INSTANCE_ID=i-...     # lets the API wake the host when it has stopped itself
 SYRA_API_URL=https://api.syra.fm       # where a show series is published
 ```
 
-The agents' computer host (`packages/alia-computer-host`) is not part of the API's
+GemiesOS (`packages/gemies-os`) is not part of the API's
 ECS service: it is one EC2 Spot instance (Fargate cannot run Docker or gVisor),
-provisioned by `OxyHQ/oxy-infra` (`terraform-uswest2/alia-computer-host.tf`, runbook
-`docs/runbooks/47-alia-computer-host.md`). Its two images (the control API and the
-workspace/browser image) are released by `.github/workflows/deploy-computer-host.yml`,
+provisioned by `OxyHQ/oxy-infra` (`terraform-uswest2/gemies-os.tf`, runbook
+`docs/runbooks/47-gemies-os.md`). Its two images (the control API and the
+workspace/browser image, the `host` and `workspace` targets of
+`packages/gemies-os/Dockerfile`) are released by `.github/workflows/deploy-gemies-os.yml`,
 `workflow_dispatch` only: it pushes them, records their digests in SSM and restarts the
-host's unit over SSM Run Command. Without `ALIA_COMPUTER_HOST_URL` the API simply builds
+host's unit over SSM Run Command. Without `GEMIES_OS_URL` the API simply builds
 no `computer` tools ([actors](./actors.mdx#the-agents-computer)).
 
 `SYRA_API_URL` carries no secret and needs none: Syra authenticates the caller's

@@ -94,8 +94,8 @@ the vocabulary behind it.
 ```
 
 Beside these, the API reaches the person's Oxy apps through Oxy's capability tickets
-([integrations](./integrations.mdx#oxy-apps)), and the agents' computer host
-(`packages/alia-computer-host`, its own EC2 Spot instance) over the internal network
+([integrations](./integrations.mdx#oxy-apps)), and GemiesOS
+(`packages/gemies-os`, its own EC2 Spot instance) over the internal network
 ([actors](./actors.mdx#the-agents-computer)).
 
 Organization identity and membership belong to Oxy; [Alia workspaces](./central-organizations.md) retain product settings, sharing and historical references.
@@ -109,7 +109,8 @@ PostgreSQL is Alia's only product store: conversations, messages, agents, organi
 | `packages/integrations` | Express + TypeScript | Telegram / WhatsApp / Discord / browser bridges, and the MCP client |
 | `packages/sdk` | React | Published as `@gemies/sdk` — the CLIENT SDK (components, hooks, voice) |
 | `packages/server` | TypeScript | Published as `@gemies/server` — the SERVER client a consumer backend calls Alia with |
-| `packages/alia-computer-host` | Node + Docker (gVisor) | The agents' computer: sandboxed machines and browser, on its own Spot host ([actors](./actors.mdx#the-agents-computer)) |
+| `packages/gemies-os` | Bun + Docker (gVisor) | GemiesOS, the gemies' computers: sandboxed machines and browser, on its own Spot host ([actors](./actors.mdx#the-agents-computer)) |
+| `packages/gemies-os-protocol` | TypeScript + zod | GemiesOS's wire contract: the request schemas and response types the API and GemiesOS share |
 
 ## Install
 
@@ -200,7 +201,7 @@ One canonical page per topic; other pages link to it rather than repeat it.
 - [Upstream provider credential exposure](./runbooks/provider-credential-exposure.md)
 - [Integrations service rollout](./runbooks/integrations-service-rollout.md)
 - [Kaana cutover](./runbooks/kaana-cutover.md)
-- The agents' computer host: `OxyHQ/oxy-infra` `docs/runbooks/47-alia-computer-host.md`
+- GemiesOS: `OxyHQ/oxy-infra` `docs/runbooks/47-gemies-os.md`
 - Incident records: [provider unavailability 2026-09-12](./runbooks/provider-unavailable-2026-09-12.md), [Clarity search 2026-09-13](./runbooks/clarity-search-2026-09-13.md), [long-context refusal 2026-09-13](./runbooks/groq-token-capacity-2026-09-13.md), [speech recovery 2026-09-13](./runbooks/speech-recovery-2026-09-13.md)
 
 ### Decisions and history

@@ -61,7 +61,7 @@ comprobable; aquí está el texto completo. Antes de tocar un área lee su doc
 - **Un fallo de inferencia es un error tipado** (`failTurn`), antes o después de
   emitir texto; jamás un mensaje de relleno con `finish_reason: "stop"` —
   `chat-runtime.mdx`.
-- **Runtime: Bun** para la API y el control del computer host (imagen
+- **Runtime: Bun** para la API y el control de GemiesOS (imagen
   `oven/bun`, CMD `bun ...`); `packages/integrations` y la imagen workspace
   siguen en Node. Todo one-shot que arranca la imagen de la API nombra `bun`
   (`MIGRATION_RUNTIME`, comando post-rollout, canary): un `bun`

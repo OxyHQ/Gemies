@@ -7,7 +7,8 @@ import type { ToolExecutionOptions } from 'ai';
 import { classifyActionRisk } from '../../agent/governance.js';
 import { FIXED_FAMILY_TOOLS } from '../../../domain/capability-grants.js';
 import { BROWSER_TOOL_NAMES, WEB_UNTRUSTED_HEADER, buildBrowserTools } from '../browser-tools.js';
-import { ComputerHostError, HttpComputerClient, agentActorId } from '../computer-client.js';
+import { HttpComputerClient, agentActorId } from '../computer-client.js';
+import { GemiesOsError } from '../computer-errors.js';
 import { COMPUTER_TOOL_NAMES, buildComputerTools } from '../computer-tools.js';
 import { HostWaker } from '../host-waker.js';
 import { browserResult, clientDouble } from './client-double.js';
@@ -103,7 +104,7 @@ describe('the browser tools', () => {
   it('tell the model to wait when the person holds the browser', async () => {
     const client = clientDouble({
       browserInput: vi.fn(async () => {
-        throw new ComputerHostError('taken', 409, 'owner_in_control');
+        throw new GemiesOsError('taken', 409, 'owner_in_control');
       }),
     });
     const tools = buildBrowserTools({ client, actorId: ACTOR });

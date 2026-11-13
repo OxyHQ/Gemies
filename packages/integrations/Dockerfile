@@ -46,7 +46,8 @@ COPY packages/app/package.json ./packages/app/
 COPY packages/sdk/package.json ./packages/sdk/
 COPY packages/server/package.json ./packages/server/
 COPY packages/integrations/package.json ./packages/integrations/
-COPY packages/alia-computer-host/package.json ./packages/alia-computer-host/
+COPY packages/gemies-os/package.json ./packages/gemies-os/
+COPY packages/gemies-os-protocol/package.json ./packages/gemies-os-protocol/
 
 # Install all dependencies (including devDependencies for build), exactly as
 # bun.lock records them. Matches packages/api/Dockerfile.
@@ -76,7 +77,8 @@ COPY packages/app/package.json ./packages/app/
 COPY packages/sdk/package.json ./packages/sdk/
 COPY packages/server/package.json ./packages/server/
 COPY packages/integrations/package.json ./packages/integrations/
-COPY packages/alia-computer-host/package.json ./packages/alia-computer-host/
+COPY packages/gemies-os/package.json ./packages/gemies-os/
+COPY packages/gemies-os-protocol/package.json ./packages/gemies-os-protocol/
 
 # Install production dependencies only.
 RUN bun install --production --frozen-lockfile --filter @alia/integrations

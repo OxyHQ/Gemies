@@ -18,24 +18,6 @@
         "typescript": "^5.9.3",
       },
     },
-    "packages/alia-computer-host": {
-      "name": "@alia/computer-host",
-      "version": "0.1.0",
-      "dependencies": {
-        "express": "^4.22.2",
-        "pino": "^10.3.1",
-        "playwright-core": "1.64.0",
-        "postgres": "3.4.9",
-        "zod": "^4.6.7",
-      },
-      "devDependencies": {
-        "@oxy.so/core": "7.48.0",
-        "@types/express": "^5.0.6",
-        "@types/node": "^25.9.5",
-        "typescript": "^5.9.3",
-        "vitest": "^4.1.10",
-      },
-    },
     "packages/api": {
       "name": "@alia/api",
       "version": "1.0.0",
@@ -48,6 +30,7 @@
         "@clarity.surf/sdk": "0.12.0",
         "@crowdsource.you/contracts": "1.1.1",
         "@crowdsource.you/core": "3.1.0",
+        "@gemies/os-protocol": "workspace:*",
         "@gemies/server": "workspace:*",
         "@kaana.ai/contracts": "8.2.0",
         "@kaana.ai/sdk": "3.5.0",
@@ -193,6 +176,35 @@
         "lightningcss-linux-x64-gnu": "1.30.1",
       },
     },
+    "packages/gemies-os": {
+      "name": "@gemies/os",
+      "version": "0.1.0",
+      "dependencies": {
+        "@gemies/os-protocol": "workspace:*",
+        "express": "^4.22.2",
+        "pino": "^10.3.1",
+        "playwright-core": "1.64.0",
+        "postgres": "3.4.9",
+        "zod": "^4.6.7",
+      },
+      "devDependencies": {
+        "@oxy.so/core": "7.48.0",
+        "@types/express": "^5.0.6",
+        "@types/node": "^25.9.5",
+        "typescript": "^5.9.3",
+        "vitest": "^4.1.10",
+      },
+    },
+    "packages/gemies-os-protocol": {
+      "name": "@gemies/os-protocol",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.6.7",
+      },
+      "devDependencies": {
+        "typescript": "^5.9.3",
+      },
+    },
     "packages/integrations": {
       "name": "@alia/integrations",
       "version": "1.0.0",
@@ -333,8 +345,6 @@
     "@alia/api": ["@alia/api@workspace:packages/api"],
 
     "@alia/app": ["@alia/app@workspace:packages/app"],
-
-    "@alia/computer-host": ["@alia/computer-host@workspace:packages/alia-computer-host"],
 
     "@alia/integrations": ["@alia/integrations@workspace:packages/integrations"],
 
@@ -715,6 +725,10 @@
     "@expo/ws-tunnel": ["@expo/ws-tunnel@2.0.1", "", { "peerDependencies": { "ws": "^8.0.0" } }, "sha512-mljsRffbOHzmSimYQbQu9h9NR3alwCCwEEouRGFL4QRTt8dNvsNtKEPa/5jHmtDLDtsh4xXsWKwzjN9BTpeXHQ=="],
 
     "@expo/xcpretty": ["@expo/xcpretty@4.4.7", "", { "dependencies": { "@babel/code-frame": "^7.20.0", "chalk": "^4.1.0", "js-yaml": "^4.1.0" }, "bin": { "excpretty": "build/cli.js" } }, "sha512-EbxYllZ7/ozONVZd425cm4XnolfW+AmSFT5aP7Jdno6oc3WrYQcHz2CO20z/2rwWwYgztmV2PXvYH+BQ8YFjqg=="],
+
+    "@gemies/os": ["@gemies/os@workspace:packages/gemies-os"],
+
+    "@gemies/os-protocol": ["@gemies/os-protocol@workspace:packages/gemies-os-protocol"],
 
     "@gemies/sdk": ["@gemies/sdk@workspace:packages/sdk"],
 

@@ -458,6 +458,9 @@ describe('the deploy removes retired credentials and runtime configuration', () 
       throw new Error('the workflow declares no plain configuration removals');
     }
     expect((JSON.parse(removalJson) as string[]).sort()).toEqual([
+      // Retired with GemiesOS's rename: the API reads GEMIES_OS_URL / _INSTANCE_ID.
+      'ALIA_COMPUTER_HOST_INSTANCE_ID',
+      'ALIA_COMPUTER_HOST_URL',
       // Spelled in pieces: scripts/check-retired-vocabulary.mjs (ADR 0020 §8).
       `ALIA_INTERNAL_${'MCP_PILOT'}`,
       'ALIA_KAANA_ACCOUNT_ID',
@@ -534,24 +537,24 @@ describe('runtime secrets live in SSM only; no workflow writes one', () => {
     for (const name of [
       'deploy-aws.yml',
       'deploy-integrations.yml',
-      'deploy-computer-host.yml',
+      'deploy-gemies-os.yml',
       'deploy-frontends.yml',
     ]) {
       expect(names).toContain(name);
     }
   });
 
-  it('writes no secret to SSM; only the computer host records its image digests', () => {
+  it('writes no secret to SSM; only GemiesOS records its image digests', () => {
     for (const { name, code } of workflows) {
       const writes = code.split('\n').filter((line) => /\bssm\s+put-parameter\b/.test(line));
-      if (name !== 'deploy-computer-host.yml') {
+      if (name !== 'deploy-gemies-os.yml') {
         expect(writes, `${name} writes SSM`).toEqual([]);
         continue;
       }
       // The one legitimate writer: the linux/arm64 digests this run just built,
       // as plain `String` parameters the instance's unit pulls. Release
       // configuration derived in CI, not a secret, and never from `secrets.*`.
-      expect(code).toContain('SSM_PREFIX: /oxy/alia-computer-host');
+      expect(code).toContain('SSM_PREFIX: /oxy/gemies-os');
       expect(writes).toHaveLength(2);
       for (const line of writes) {
         expect(line).toContain('--type String');

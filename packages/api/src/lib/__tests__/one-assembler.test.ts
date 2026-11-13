@@ -144,9 +144,9 @@ const ALLOWED: Readonly<Record<string, string>> = {
   'packages/api/src/lib/agent/actions.ts':
     'SOURCE plus POLICY: the five session primitives, and the pass that wraps whatever the assembler built.',
   'packages/api/src/lib/computer/browser-tools.ts':
-    "SOURCE: one origin (the actor's own browser on the computer host). Merges nothing; `buildRuntimeTools` adds it beside the computer tools under the same `computer` grant.",
+    "SOURCE: one origin (the actor's own browser on GemiesOS). Merges nothing; `buildRuntimeTools` adds it beside the computer tools under the same `computer` grant.",
   'packages/api/src/lib/computer/computer-tools.ts':
-    "SOURCE: one origin (the actor's own sandboxed computer on the computer host). Merges nothing; `buildRuntimeTools` adds it under the `computer` grant.",
+    "SOURCE: one origin (the actor's own sandboxed computer on GemiesOS). Merges nothing; `buildRuntimeTools` adds it under the `computer` grant.",
   'packages/api/src/lib/tools/result-truncation.ts':
     'POLICY: ToolSet -> ToolSet, wrapping results. Gathers nothing.',
   'packages/api/src/lib/tool-budget.ts':
