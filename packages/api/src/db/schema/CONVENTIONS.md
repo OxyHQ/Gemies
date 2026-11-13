@@ -581,7 +581,7 @@ structurally, not remembered at each call site.
 
 Two in this schema, with opposite answers:
 
-- **`integrations` / `connected_accounts` OAuth tokens** are encrypted on every
+- **`integrations` OAuth tokens** are encrypted on every
   write. Plain `text` would demote "encrypted on every write" to
   "encrypted wherever somebody remembers", and the failure is SILENT — the app
   keeps working and third-party tokens sit in plaintext until a dump leaks. They

@@ -33,6 +33,7 @@ An ADR records a decision that is **in force now**, the context that forced it, 
 | [0031](./0031-external-agents-edit-by-default-and-span-instances.md) | External agents edit their working directory by default and are reachable from any instance | Accepted | 2026-11-10 |
 | [0032](./0032-external-agents-resume-sessions-and-leave-with-their-link.md) | External agents continue the CLI's own session and are deleted with their link | Accepted | 2026-11-10 |
 | [0034](./0034-gemies-and-alia.md) | Gemies and Alia: agents become Gemies, and Alia is one of them | Accepted (in progress) | 2026-11-12 |
+| [0035](./0035-connected-accounts-belong-to-a-gemie.md) | A connected account belongs to one gemie; Gmail and Signal are retired | Accepted | 2026-11-13 |
 
 Companion document: [the compatibility window and sunset criteria](../migration/compatibility-window.md), which binds ADR 0002, ADR 0003 and ADR 0004 to measurable removal gates — for paths (a) and (c); path (b) left the window under ADR 0010.
 
@@ -85,5 +86,6 @@ ADR 0019 applies Oxy ADR 0043 to Alia: who owns each kind of stored bytes, how e
 - [0031 — External agents edit their working directory by default and are reachable from any instance](./0031-external-agents-edit-by-default-and-span-instances.md).
 - [0032 — External agents continue the CLI's own session and are deleted with their link](./0032-external-agents-resume-sessions-and-leave-with-their-link.md).
 - [0034 — Gemies and Alia: agents become Gemies, and Alia is one of them](./0034-gemies-and-alia.md).
+- [0035 — A connected account belongs to one gemie; Gmail and Signal are retired](./0035-connected-accounts-belong-to-a-gemie.md).
 
 - [0033 — Durable autonomous work](./0033-durable-autonomous-work.md).

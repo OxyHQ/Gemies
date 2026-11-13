@@ -3,11 +3,11 @@
  *
  * `ON CONFLICT DO UPDATE` raises `21000` ("cannot affect row a second time")
  * when a single statement would touch one row twice. Every batch helper in the
- * three gateway repositories therefore collapses its input on the SAME key the
+ * two gateway repositories therefore collapses its input on the SAME key the
  * unique index is built on, and this is that key.
  *
  * `JSON.stringify` rather than a joined string because both halves are
- * protocol-supplied — a JID, a Telegram chat id, a Signal group id — and no
+ * protocol-supplied — a JID, a Telegram chat id — and no
  * separator character can be assumed absent from either. Two distinct pairs
  * must never produce one key: that would silently drop a row from the batch.
  */

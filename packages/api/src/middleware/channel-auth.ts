@@ -110,7 +110,7 @@ async function resolveChannelAccount(
         };
       }
     } else if (
-      ['whatsapp', 'signal', 'telegram-gateway'].includes(platform) &&
+      (platform === 'whatsapp' || platform === 'telegram-gateway') &&
       typeof sessionId === 'string' &&
       sessionId.length > 0
     ) {
@@ -123,6 +123,8 @@ async function resolveChannelAccount(
         context = {
           kind: 'account',
           accountId: connection.oxyUserId,
+          // The account's own gemie answers on it (ADR 0035), never one the request names.
+          gemieId: connection.agentId,
           platform,
           identityId: connection.id,
           ...(connection.oxyTaskState === 'active' && connection.oxyTaskId

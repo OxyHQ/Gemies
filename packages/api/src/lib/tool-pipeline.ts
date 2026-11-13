@@ -79,7 +79,7 @@ import {
   ASK_USER_QUESTION_TOOL,
   createSuggestNewConversationTool,
 } from './tools/index.js';
-import { whatsAppGatewayConfigured } from './tools/whatsapp.js';
+import { whatsAppReachable } from './tools/whatsapp.js';
 import { getWeatherTool } from './tools/weather.js';
 import { getMarketQuoteTool } from './tools/market.js';
 import { getFairCoinTool } from './tools/faircoin.js';
@@ -624,13 +624,15 @@ export class ToolPipeline {
            */
           sendTelegramMessage: createSendTelegramTool(userId, runId),
         });
-        // Only where a gateway exists: without one every call fails, and a tool
-        // the model is shown is a tool it keeps trying.
-        if (whatsAppGatewayConfigured())
+        // Only the WhatsApp this gemie was linked to by this person (ADR 0035), and only where a
+        // gateway exists: without one every call fails, and a tool the model is shown is a tool
+        // it keeps trying.
+        const whatsApp = { agentId: agent._id, oxyUserId: userId };
+        if (await whatsAppReachable(whatsApp))
           Object.assign(aliaTools, {
-            getWhatsAppChats: createGetWhatsAppChatsTool(userId),
-            getWhatsAppMessages: createGetWhatsAppMessagesTool(userId),
-            sendWhatsAppMessage: createSendWhatsAppMessageTool(userId),
+            getWhatsAppChats: createGetWhatsAppChatsTool(whatsApp),
+            getWhatsAppMessages: createGetWhatsAppMessagesTool(whatsApp),
+            sendWhatsAppMessage: createSendWhatsAppMessageTool(whatsApp),
           });
       }
       if (grants.allows('automation') && !nested) {

@@ -121,7 +121,6 @@ export async function channelTaskAuthorityInventory(db: ApiDatabase): Promise<{
       .from(connectedAccounts)
       .where(
         and(
-          inArray(connectedAccounts.platform, ['telegram', 'whatsapp', 'signal']),
           eq(connectedAccounts.status, 'connected'),
           isNotNull(connectedAccounts.sessionId),
           or(

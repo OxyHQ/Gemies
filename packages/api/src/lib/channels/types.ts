@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 
-export type ChannelId = 'telegram' | 'discord' | 'whatsapp' | 'slack' | 'signal';
+export type ChannelId = 'telegram' | 'discord' | 'whatsapp' | 'slack';
 
 interface ChannelMeta {
   id: ChannelId;

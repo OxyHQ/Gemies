@@ -3,7 +3,6 @@ import { useDialogControl } from '@oxy.so/bloom/dialog';
 import { SettingsModal, type SettingsModalPage } from '@oxy.so/bloom/settings-modal';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AccountsSection } from './accounts-section';
 import { BillingSection } from './billing-section';
 import { ConnectorDetailSection } from './connector-detail-section';
 import { ConnectorsSection } from './connectors-section';
@@ -25,7 +24,6 @@ const CONTENT: Record<string, ReactNode> = {
   general: <GeneralSection />,
   storage: <StorageSection />,
   personalization: <PersonalizationSection />,
-  accounts: <AccountsSection />,
   'external-agents': <ExternalAgentsSection />,
   connectors: <ConnectorsSection />,
   'local-models': <LocalModelsSection />,

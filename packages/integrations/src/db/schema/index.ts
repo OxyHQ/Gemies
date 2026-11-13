@@ -5,5 +5,4 @@
 
 export * from './whatsapp';
 export * from './telegram';
-export * from './signal';
 export * from './mcpAuth';

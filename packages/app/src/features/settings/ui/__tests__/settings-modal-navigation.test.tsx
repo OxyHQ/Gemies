@@ -19,7 +19,7 @@ vi.mock('@/features/settings/ui/sections', () => ({
       titleKey: 'settings',
       sections: [
         { id: 'general', labelKey: 'General', icon: () => null },
-        { id: 'accounts', labelKey: 'Accounts', icon: () => null },
+        { id: 'external-agents', labelKey: 'External agents', icon: () => null },
       ],
     },
   ],
@@ -55,9 +55,6 @@ vi.mock('@/features/settings/ui/storage-section', () => ({
 }));
 vi.mock('@/features/settings/ui/personalization-section', () => ({
   PersonalizationSection: () => null,
-}));
-vi.mock('@/features/settings/ui/accounts-section', () => ({
-  AccountsSection: () => null,
 }));
 vi.mock('@/features/settings/ui/external-agents-section', () => ({
   ExternalAgentsSection: () => null,
@@ -128,18 +125,18 @@ it('commits compact page mode before first deep link and every reopen', () => {
     page: 'general',
     initialView: 'navigation',
   });
-  act(() => actions.open('accounts'));
-  expect(state.opens.at(-1)).toEqual({ page: 'accounts', initialView: 'page' });
+  act(() => actions.open('external-agents'));
+  expect(state.opens.at(-1)).toEqual({ page: 'external-agents', initialView: 'page' });
   act(() => actions.close());
   act(() => actions.open());
-  act(() => actions.open('accounts'));
-  expect(state.opens.at(-1)).toEqual({ page: 'accounts', initialView: 'page' });
+  act(() => actions.open('external-agents'));
+  expect(state.opens.at(-1)).toEqual({ page: 'external-agents', initialView: 'page' });
 });
 it('does not expose private sections or deep links to a signed-out account', () => {
   state.authenticated = false;
   mount();
-  act(() => actions.open('accounts'));
-  expect(state.props.pages.accounts).toBeUndefined();
+  act(() => actions.open('external-agents'));
+  expect(state.props.pages['external-agents']).toBeUndefined();
   expect(state.props.pages['connector-detail']).toBeUndefined();
   expect(state.opens.at(-1).page).toBe('general');
 });

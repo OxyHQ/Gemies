@@ -1,4 +1,5 @@
 import { establishAgentWork, stopAgentWork } from '../../lib/agent/work.js';
+import { releaseGemieAccounts } from '../../lib/gemie-accounts.js';
 import { listExternalLinks } from '../../db/agents/externalAgentRepository.js';
 import { externalAgentPresence } from '../../lib/external-agents/presence.js';
 import { avatarCharacterFor, parseAvatarCharacter, type AvatarCharacter } from '@oxy.so/contracts';
@@ -762,6 +763,9 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
      * and a credit balance of its own. The owner archives it from Oxy.
      */
     await stopAgentWork(id);
+    // Its connected accounts go with it (ADR 0035): their sessions end and their tasks are revoked
+    // first, and the rows cascade with the gemie's.
+    await releaseGemieAccounts(id);
     const deleted = await deleteAgent(getDb(), id);
     if (deleted === 0) {
       return res.status(404).json({ error: 'Agent not found' });

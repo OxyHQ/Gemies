@@ -4,10 +4,9 @@
  *
  * ## This file holds every encrypted column in the schema
  *
- * `integrations.oauth_access_token` / `oauth_refresh_token` and the same pair on
- * `connected_accounts` are `encryptedText` — see `columns.ts` for what that is
- * and why encryption is structural rather than remembered: `encryptedText`
- * encrypts on every write drizzle builds.
+ * `integrations.oauth_access_token` / `oauth_refresh_token` are `encryptedText` —
+ * see `columns.ts` for what that is and why encryption is structural rather than
+ * remembered: `encryptedText` encrypts on every write drizzle builds.
  *
  * Two columns here are NOT encrypted and hold secrets anyway:
  * `mcp_servers.config_headers` and `config_env` are arbitrary maps a user
@@ -22,6 +21,7 @@
 import { boolean, check, index, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { createdAt, generatedId, timestamptz, updatedAt } from '@oxy.so/db';
+import { agents } from './agents';
 import { checkOneOf, encryptedText } from './columns';
 
 export const CONNECTED_ACCOUNT_STATUSES = [
@@ -32,6 +32,10 @@ export const CONNECTED_ACCOUNT_STATUSES = [
   'expired',
 ] as const;
 export type ConnectedAccountStatus = (typeof CONNECTED_ACCOUNT_STATUSES)[number];
+
+/** The messaging platforms a gemie can be linked to (ADR 0035). */
+export const CONNECTED_ACCOUNT_PLATFORMS = ['whatsapp', 'telegram'] as const;
+export type ConnectedAccountPlatform = (typeof CONNECTED_ACCOUNT_PLATFORMS)[number];
 
 export const INTEGRATION_STATUSES = ['active', 'expired', 'revoked', 'error'] as const;
 export type IntegrationStatus = (typeof INTEGRATION_STATUSES)[number];
@@ -71,9 +75,7 @@ export interface McpServerResource {
  * One user's OAuth connection to a third-party service.
  *
  * The `oauthTokens` sub-document was `required`, and `accessToken`, `scope` and
- * `tokenType` were required within it, so all three are `notNull` here. That is
- * the opposite of `connected_accounts`, where the whole group is optional — the
- * two are not the same shape and must not be unified.
+ * `tokenType` were required within it, so all three are `notNull` here.
  *
  * `service` has no CHECK: its values come from `lib/integration-registry.ts`,
  * which is a runtime list this schema does not own and which grows without a
@@ -117,27 +119,30 @@ export const integrations = pgTable(
 );
 
 /**
- * A messaging account (WhatsApp, Telegram, …) connected to Alia.
+ * A messaging account (WhatsApp, Telegram) a person linked to ONE gemie (ADR 0035).
  *
- * Unlike `integrations`, the OAuth group is OPTIONAL as a whole — most connected
- * accounts are session-based and carry none. `connected_accounts_oauth_pair_check`
- * is what stops a half-written group: a token without its scope, or a scope
- * without its token, is not a state any writer means to produce.
- *
- * `allowed_skill_ids` is a `text[]` of `skills` rows with no foreign key —
- * Postgres cannot constrain array MEMBERS, and that table is batch 8 regardless.
+ * The gemie answers what arrives on it, and only that gemie's turns for that
+ * person can see or use it. A session-based link: the integrations service holds
+ * the provider session (`session_id`), and the account carries no credential of
+ * its own here. Deleting the gemie deletes its accounts (the delete route stops
+ * their sessions first: `lib/gemie-accounts.ts`).
  */
 export const connectedAccounts = pgTable(
   'connected_accounts',
   {
     id: generatedId(),
-    /** An Oxy account. No foreign key. */
+    /** The person who linked it, and for whom its gemie answers. An Oxy account. No foreign key. */
     oxyUserId: text().notNull(),
-    platform: text().notNull(),
+    /** The gemie it belongs to. */
+    agentId: text()
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    platform: text({ enum: CONNECTED_ACCOUNT_PLATFORMS as unknown as [string, ...string[]] })
+      .$type<ConnectedAccountPlatform>()
+      .notNull(),
     accountId: text().notNull(),
     displayName: text(),
     phoneNumber: text(),
-    email: text(),
     avatarUrl: text(),
     status: text({ enum: CONNECTED_ACCOUNT_STATUSES as unknown as [string, ...string[]] })
       .$type<ConnectedAccountStatus>()
@@ -151,19 +156,6 @@ export const connectedAccounts = pgTable(
       .default('reauth_required'),
     sessionId: text(),
     capabilities: text().array().notNull().default(sql`'{}'::text[]`),
-    autoReply: boolean().notNull().default(false),
-    /** An `agents` row. No foreign key — that table is batch 9. */
-    autoReplyAgentId: text(),
-    customContext: text(),
-    allowedTools: text().array(),
-    blockedTools: text().array(),
-    allowedSkillIds: text().array(),
-    /** Encrypted at rest. Never select into a response. */
-    oauthAccessToken: encryptedText(),
-    /** Encrypted at rest. Never select into a response. */
-    oauthRefreshToken: encryptedText(),
-    oauthExpiresAt: timestamptz(),
-    oauthScope: text(),
     metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
     lastActiveAt: timestamptz(),
     connectedAt: timestamptz(),
@@ -171,18 +163,11 @@ export const connectedAccounts = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
-    index('connected_accounts_oxy_user_platform_idx').on(t.oxyUserId, t.platform),
     index('connected_accounts_oxy_user_id_idx').on(t.oxyUserId),
     index('connected_accounts_session_id_idx').on(t.sessionId),
+    index('connected_accounts_agent_user_idx').on(t.agentId, t.oxyUserId),
     checkOneOf('connected_accounts_status_check', t.status, CONNECTED_ACCOUNT_STATUSES),
-    // The OAuth group is present as a whole or absent as a whole. A refresh
-    // token or an expiry without an access token is not a state a writer means.
-    check(
-      'connected_accounts_oauth_pair_check',
-      sql`(${t.oauthAccessToken} is null and ${t.oauthScope} is null
-            and ${t.oauthRefreshToken} is null and ${t.oauthExpiresAt} is null)
-        or (${t.oauthAccessToken} is not null and ${t.oauthScope} is not null)`,
-    ),
+    checkOneOf('connected_accounts_platform_check', t.platform, CONNECTED_ACCOUNT_PLATFORMS),
   ],
 );
 

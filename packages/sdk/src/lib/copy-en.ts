@@ -207,7 +207,6 @@ export const COPY_EN: Readonly<Record<string, CopyEntry>> = {
   'tasks.tool.pill.generateFile': 'Generating file',
   'tasks.tool.pill.sendDiscord': 'Discord',
   'tasks.tool.pill.sendEmail': 'Email',
-  'tasks.tool.pill.sendSignal': 'Signal',
   'tasks.tool.pill.sendSlack': 'Slack',
   'tasks.tool.pill.sendTelegramMessage': 'Telegram',
   'tasks.tool.pill.shellExec': 'Running command',

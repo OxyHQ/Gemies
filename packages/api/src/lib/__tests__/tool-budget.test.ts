@@ -37,6 +37,15 @@ const sources = vi.hoisted(() => ({
   oxy: {} as Record<string, unknown>,
   mcp: {} as Record<string, unknown>,
   mcpAsked: [] as (readonly string[] | undefined)[],
+  /** Whether the turn's gemie has a connected WhatsApp of the turn's person (ADR 0035). */
+  whatsAppLinked: true,
+  whatsAppAsked: [] as unknown[],
+}));
+vi.mock('../../db/integrations/connectedAccountRepository.js', () => ({
+  findConnectedGemieAccount: vi.fn(async (_db: unknown, scope: unknown) => {
+    sources.whatsAppAsked.push(scope);
+    return sources.whatsAppLinked ? { id: 'wa-1', sessionId: 'wa-session' } : null;
+  }),
 }));
 
 vi.mock('../tools/oxy-services.js', () => ({
@@ -780,11 +789,25 @@ describe('ToolPipeline.forUser applies the budget on every path it serves', () =
       expect(result.tools.sendTelegramMessage).toBeDefined();
     });
 
-    it('offers all three where the gateway exists — the control', async () => {
+    it('offers all three where the gateway exists and the gemie has a WhatsApp — the control', async () => {
       sources.oxy = family('oxy_noted', 'Noted', 3);
+      sources.whatsAppLinked = true;
+      sources.whatsAppAsked = [];
       vi.stubEnv('INTEGRATIONS_URL', 'https://wa.example.test');
       const result = await forUser();
       for (const name of WHATSAPP) expect(result.tools[name]).toBeDefined();
+      // Asked of the turn's own gemie and person, never of the person alone (ADR 0035).
+      expect(sources.whatsAppAsked).toEqual([{ agentId: aliaGemie()._id, oxyUserId: 'user-1' }]);
+    });
+
+    it('does not offer them when the turn’s gemie has no WhatsApp of this person', async () => {
+      sources.oxy = family('oxy_noted', 'Noted', 3);
+      sources.whatsAppLinked = false;
+      vi.stubEnv('INTEGRATIONS_URL', 'https://wa.example.test');
+      const result = await forUser();
+      for (const name of WHATSAPP) expect(result.tools[name]).toBeUndefined();
+      expect(result.tools.sendTelegramMessage).toBeDefined();
+      sources.whatsAppLinked = true;
     });
   });
 

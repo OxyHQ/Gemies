@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { constraintNameOf, isCheckViolation } from '@oxy.so/db';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
-import { connectedAccounts, integrations, oauthStates } from '../schema/integrations';
+import { integrations, oauthStates } from '../schema/integrations';
 import { createOAuthState, findLiveOAuthState } from '../integrations/oauthStateRepository';
 
 /**
@@ -113,52 +113,6 @@ describe('an OAuth token is encrypted at rest, by construction', () => {
     );
     expect(raw).toHaveLength(2);
     expect(raw[0]?.token).not.toBe(raw[1]?.token);
-  });
-});
-
-describe('a connected account carries its OAuth group whole or not at all', () => {
-  function connectedAccountValues(overrides: Partial<typeof connectedAccounts.$inferInsert> = {}) {
-    return { oxyUserId: 'oxy-user-1', platform: 'whatsapp', accountId: 'acct-1', ...overrides };
-  }
-
-  it('accepts an account with no OAuth at all, which is the common case', async () => {
-    await db.insert(connectedAccounts).values(connectedAccountValues({ id: 'ca-none' }));
-
-    const [row] = await db
-      .select({ token: connectedAccounts.oauthAccessToken, status: connectedAccounts.status })
-      .from(connectedAccounts)
-      .where(eq(connectedAccounts.id, 'ca-none'));
-    expect(row?.token).toBeNull();
-    expect(row?.status).toBe('connecting');
-  });
-
-  it('accepts a complete OAuth group', async () => {
-    await db.insert(connectedAccounts).values(
-      connectedAccountValues({
-        id: 'ca-full',
-        oauthAccessToken: 'ca-plaintext',
-        oauthScope: 'messages:read',
-      }),
-    );
-
-    const raw = await db.execute<{ token: string }>(
-      sql`select oauth_access_token as token from ${connectedAccounts} where id = 'ca-full'`,
-    );
-    expect(raw[0]?.token).not.toBe('ca-plaintext');
-  });
-
-  it('refuses a refresh token with no access token', async () => {
-    // A half-written group is not a state any writer means to produce.
-    const insert = db.execute(sql`
-      insert into ${connectedAccounts} (id, oxy_user_id, platform, account_id, oauth_refresh_token)
-      values ('ca-half', 'oxy-user-1', 'whatsapp', 'acct-2', 'ciphertext-here')
-    `);
-
-    await expect(insert).rejects.toSatisfy((error: unknown) => {
-      expect(isCheckViolation(error)).toBe(true);
-      expect(constraintNameOf(error)).toBe('connected_accounts_oauth_pair_check');
-      return true;
-    });
   });
 });
 

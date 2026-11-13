@@ -84,6 +84,10 @@ export const API_ROUTES = {
     threads: (id: string) => `/agents/${id}/threads`,
     threadById: (threadId: string) => `/agents/threads/${threadId}`,
     memory: (id: string) => `/agents/${id}/memory`,
+    /** The caller's WhatsApp and Telegram accounts linked to this gemie (ADR 0035). */
+    accounts: (id: string) => `/agents/${id}/accounts`,
+    account: (id: string, accountId: string) =>
+      `/agents/${id}/accounts/${encodeURIComponent(accountId)}`,
     /** What the agent subscribes to, and what is waiting in its inbox (ADR 0026). */
     subscriptions: (id: string) => `/agents/${id}/subscriptions`,
     subscription: (id: string, subscriptionId: string) =>

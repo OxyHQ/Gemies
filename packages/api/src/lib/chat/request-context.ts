@@ -479,6 +479,11 @@ export async function buildChatRequestContext(
    * boundary does not disclose whether the id exists.
    */
   let requestedAgentId: string | undefined;
+  /**
+   * A connected account's turn is its gemie's (ADR 0035): the binding names it, a request cannot
+   * name another, and it is authorised as unattended work, with no bearer (`resolveTurnGemie`).
+   */
+  const channelGemieId = req.channelContext?.gemieId;
   if (body.agentId !== undefined) {
     if (
       typeof body.agentId !== 'string' ||
@@ -497,7 +502,8 @@ export async function buildChatRequestContext(
     }
     if (
       (!isDirectUserSession && !isDelegatedServiceSession && !req.channelContext) ||
-      !localAccountId
+      !localAccountId ||
+      (channelGemieId !== undefined && body.agentId !== channelGemieId)
     ) {
       res.status(404).json({
         error: {
@@ -855,6 +861,7 @@ export async function buildChatRequestContext(
     accessToken: req.accessToken,
     isDirectUserSession,
     requestedAgentId,
+    channelGemieId,
     surfaceApplicationId,
     loadUserMemory: personalization,
   };

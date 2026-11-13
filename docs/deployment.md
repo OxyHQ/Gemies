@@ -154,7 +154,7 @@ feature, it **throws**.
 `encryptedText` (`db/schema/columns.ts`) applies `encrypt` to every write drizzle
 builds, and `crypto-utils.ts` throws when the key is absent or is not 64 hex
 characters. The columns that use it are the OAuth access and refresh tokens on
-`integrations` and on `connected_accounts`, `bots.bot_token`, and
+`integrations`, `bots.bot_token`, and
 `show_episodes.ingest_ticket` — enumerated rather than counted, so the list
 cannot drift from a number beside it.
 
