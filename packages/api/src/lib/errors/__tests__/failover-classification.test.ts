@@ -184,3 +184,33 @@ describe('the edge detail an operator needs to diagnose a failure', () => {
     expect(error.code).toBe(AliaErrorCode.CONTEXT_TOO_LONG);
   });
 });
+
+describe('direct Kaana failures retain product error semantics', () => {
+  it.each([
+    ['insufficient_balance', 402, 'billing'],
+    ['context_length_exceeded', 400, 'context_length'],
+    ['provider_timeout', 504, 'timeout'],
+    ['permission_denied', 403, 'auth'],
+    ['permission_denied', null, 'model_not_found'],
+  ] as const)(
+    '%s with status %s remains %s through a wrapped SDK error',
+    async (code, status, reason) => {
+      const { KaanaError } = await import('@kaana.ai/sdk');
+      const error = new Error('Stream stopped', {
+        cause: new KaanaError({
+          code,
+          status,
+          message: 'Synthetic refusal',
+          requestId: 'req-direct',
+          retryable: false,
+        }),
+      });
+      expect(classifyError(error)).toBe(reason);
+      expect(toAliaError(error).oxy).toEqual({
+        code,
+        requestId: 'req-direct',
+        ...(status === null ? {} : { status }),
+      });
+    },
+  );
+});
