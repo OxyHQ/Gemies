@@ -146,9 +146,12 @@ the editor drew:
   run reaper's sweep takes over what an instance left behind. Durable and coalesced.
 - **The photo is drawn on the server**, with one shared renderer, Bloom's
   `@oxy.so/bloom/agent-avatar/svg` (`renderAgentAvatarPicture`): the character in its colour,
-  centred for Telegram's circular crop, on a much lighter tint of that colour that always keeps it
-  visible. It is uploaded only when the look or the colour changed (`profile_photo_key`), and a part
-  already as wanted is not set again, because Telegram rate-limits profile updates.
+  centred for Telegram's circular crop, on a much, much lighter tint of that colour (light colours
+  too; only a body nearly as light gets a darker tint, so it is always visible). It is uploaded only
+  when the look or the colour changed (`profile_photo_key`), and a part already as wanted is not set
+  again, because Telegram rate-limits profile updates. A change of the drawing itself is rolled out
+  by a post migration that clears the keys and marks the bots behind (`0166`, for Bloom 21.3.1's
+  lighter tint).
 - **Only a failure is shown**, with a retry (`PATCH … { retryProfileSync: true }`), the one manual
   control left; failures are retried by themselves with a backoff, or after Telegram's
   `retry_after`.
