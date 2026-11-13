@@ -1,0 +1,365 @@
+{
+  "data": [
+    {
+      "availableRevisions": ["observed-2026-08-23"],
+      "capabilities": {
+        "inputModalities": ["image", "text"],
+        "jsonMode": false,
+        "maxContextTokens": 1000000,
+        "maxOutputTokens": 128000,
+        "outputModalities": ["text"],
+        "parallelToolCalls": false,
+        "promptCaching": false,
+        "reasoning": true,
+        "reasoningEfforts": ["low", "medium", "high"],
+        "streaming": true,
+        "structuredOutput": false,
+        "tools": true
+      },
+      "currentRevision": "observed-2026-08-23",
+      "dataPolicy": {
+        "retainsPayloads": true,
+        "retentionDays": 30,
+        "trainsOnCustomerData": false,
+        "zeroDataRetentionAvailable": true,
+        "subprocessors": [],
+        "policyUrl": "https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data"
+      },
+      "deprecation": {
+        "status": "active"
+      },
+      "displayName": "Claude Fable 5",
+      "evaluations": [],
+      "license": {
+        "licenseId": "LicenseRef-Kaana-Serving-Provider-Terms",
+        "displayName": "Serving provider's terms (not individually reviewed)",
+        "commercialUseAllowed": false,
+        "requiresAttribution": true
+      },
+      "modelId": "anthropic/claude-fable-5",
+      "powerClass": "ultra",
+      "pricing": {
+        "priceVersionId": "01a1ce39-1a62-7431-8034-38c921eadaf7",
+        "currency": "USD",
+        "unitPrices": [
+          {
+            "unit": "cache_write_input_tokens",
+            "amount": "12.500000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "cached_input_tokens",
+            "amount": "1.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "input_tokens",
+            "amount": "10.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "output_tokens",
+            "amount": "50.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "reasoning_tokens",
+            "amount": "50.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "requests",
+            "amount": "0.000000000000",
+            "per": 1,
+            "currency": "USD"
+          }
+        ]
+      },
+      "provenance": {
+        "releaseKind": "third_party_hosted"
+      },
+      "publisher": {
+        "slug": "anthropic",
+        "displayName": "anthropic"
+      },
+      "regions": [],
+      "releasedAt": "2026-06-07T00:00:00.000Z",
+      "schemaVersion": 1
+    },
+    {
+      "availableRevisions": ["observed-2026-08-23"],
+      "capabilities": {
+        "inputModalities": ["image", "text"],
+        "jsonMode": false,
+        "maxContextTokens": 200000,
+        "maxOutputTokens": 32000,
+        "outputModalities": ["text"],
+        "parallelToolCalls": false,
+        "promptCaching": false,
+        "reasoning": true,
+        "reasoningEfforts": ["low", "medium", "high"],
+        "streaming": true,
+        "structuredOutput": false,
+        "tools": true
+      },
+      "currentRevision": "observed-2026-08-23",
+      "dataPolicy": {
+        "retainsPayloads": false,
+        "retentionDays": 0,
+        "trainsOnCustomerData": false,
+        "zeroDataRetentionAvailable": true,
+        "subprocessors": [],
+        "policyUrl": "https://openrouter.ai/docs/guides/privacy/provider-logging"
+      },
+      "deprecation": {
+        "status": "active"
+      },
+      "displayName": "Anthropic: Claude Opus 4.1",
+      "evaluations": [],
+      "license": {
+        "licenseId": "LicenseRef-Kaana-Serving-Provider-Terms",
+        "displayName": "Serving provider's terms (not individually reviewed)",
+        "commercialUseAllowed": false,
+        "requiresAttribution": true
+      },
+      "modelId": "anthropic/claude-opus-4.1",
+      "pricing": {
+        "priceVersionId": "01a1ce77-8bcc-7969-805c-18ebbc08ca9a",
+        "currency": "USD",
+        "unitPrices": [
+          {
+            "unit": "cache_write_input_tokens",
+            "amount": "18.750000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "cached_input_tokens",
+            "amount": "1.500000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "input_tokens",
+            "amount": "15.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "output_tokens",
+            "amount": "75.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "reasoning_tokens",
+            "amount": "75.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "requests",
+            "amount": "0.000000000000",
+            "per": 1,
+            "currency": "USD"
+          }
+        ]
+      },
+      "provenance": {
+        "releaseKind": "third_party_hosted"
+      },
+      "publisher": {
+        "slug": "anthropic",
+        "displayName": "anthropic"
+      },
+      "regions": [],
+      "releasedAt": "2025-08-05T16:33:11.000Z",
+      "schemaVersion": 1
+    },
+    {
+      "availableRevisions": ["observed-2026-08-23"],
+      "capabilities": {
+        "inputModalities": ["image", "text"],
+        "jsonMode": false,
+        "maxContextTokens": 200000,
+        "maxOutputTokens": 64000,
+        "outputModalities": ["text"],
+        "parallelToolCalls": false,
+        "promptCaching": false,
+        "reasoning": true,
+        "reasoningEfforts": ["low", "medium", "high"],
+        "streaming": true,
+        "structuredOutput": false,
+        "tools": true
+      },
+      "currentRevision": "observed-2026-08-23",
+      "dataPolicy": {
+        "retainsPayloads": false,
+        "retentionDays": 0,
+        "trainsOnCustomerData": false,
+        "zeroDataRetentionAvailable": true,
+        "subprocessors": [],
+        "policyUrl": "https://openrouter.ai/docs/guides/privacy/provider-logging"
+      },
+      "deprecation": {
+        "status": "active"
+      },
+      "displayName": "Anthropic: Claude Sonnet 4",
+      "evaluations": [],
+      "license": {
+        "licenseId": "LicenseRef-Kaana-Serving-Provider-Terms",
+        "displayName": "Serving provider's terms (not individually reviewed)",
+        "commercialUseAllowed": false,
+        "requiresAttribution": true
+      },
+      "modelId": "anthropic/claude-sonnet-4",
+      "pricing": {
+        "priceVersionId": "01a1ce77-8bcc-7440-8715-7a00d6b593ae",
+        "currency": "USD",
+        "unitPrices": [
+          {
+            "unit": "cache_write_input_tokens",
+            "amount": "3.750000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "cached_input_tokens",
+            "amount": "0.300000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "input_tokens",
+            "amount": "3.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "output_tokens",
+            "amount": "15.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "reasoning_tokens",
+            "amount": "15.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "requests",
+            "amount": "0.000000000000",
+            "per": 1,
+            "currency": "USD"
+          }
+        ]
+      },
+      "provenance": {
+        "releaseKind": "third_party_hosted"
+      },
+      "publisher": {
+        "slug": "anthropic",
+        "displayName": "anthropic"
+      },
+      "regions": [],
+      "releasedAt": "2025-05-22T16:12:51.000Z",
+      "schemaVersion": 1
+    },
+    {
+      "availableRevisions": ["observed-2026-08-23"],
+      "capabilities": {
+        "inputModalities": ["image", "text"],
+        "jsonMode": false,
+        "maxContextTokens": 1000000,
+        "maxOutputTokens": 64000,
+        "outputModalities": ["text"],
+        "parallelToolCalls": false,
+        "promptCaching": false,
+        "reasoning": true,
+        "reasoningEfforts": ["low", "medium", "high"],
+        "streaming": true,
+        "structuredOutput": false,
+        "tools": true
+      },
+      "currentRevision": "observed-2026-08-23",
+      "dataPolicy": {
+        "retainsPayloads": false,
+        "retentionDays": 0,
+        "trainsOnCustomerData": false,
+        "zeroDataRetentionAvailable": true,
+        "subprocessors": [],
+        "policyUrl": "https://openrouter.ai/docs/guides/privacy/provider-logging"
+      },
+      "deprecation": {
+        "status": "active"
+      },
+      "displayName": "Anthropic: Claude Sonnet 4.5",
+      "evaluations": [],
+      "license": {
+        "licenseId": "LicenseRef-Kaana-Serving-Provider-Terms",
+        "displayName": "Serving provider's terms (not individually reviewed)",
+        "commercialUseAllowed": false,
+        "requiresAttribution": true
+      },
+      "modelId": "anthropic/claude-sonnet-4.5",
+      "pricing": {
+        "priceVersionId": "01a1ce77-8bcd-7805-bd9b-bbad29a05121",
+        "currency": "USD",
+        "unitPrices": [
+          {
+            "unit": "cache_write_input_tokens",
+            "amount": "3.750000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "cached_input_tokens",
+            "amount": "0.300000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "input_tokens",
+            "amount": "3.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "output_tokens",
+            "amount": "15.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "reasoning_tokens",
+            "amount": "15.000000000000",
+            "per": 1000000,
+            "currency": "USD"
+          },
+          {
+            "unit": "requests",
+            "amount": "0.000000000000",
+            "per": 1,
+            "currency": "USD"
+          }
+        ]
+      },
+      "provenance": {
+        "releaseKind": "third_party_hosted"
+      },
+      "publisher": {
+        "slug": "anthropic",
+        "displayName": "anthropic"
+      },
+      "regions": [],
+      "releasedAt": "2025-09-29T16:01:16.000Z",
+      "schemaVersion": 1
+    }
+  ]
+}

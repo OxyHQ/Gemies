@@ -274,6 +274,7 @@ describe('interrupted credit reconciliation', () => {
       { unit: 'input_tokens', quantity: 0 },
       { unit: 'output_tokens', quantity: 0 },
       { unit: 'cached_input_tokens', quantity: 3000 },
+      { unit: 'cache_write_input_tokens', quantity: 125 },
       { unit: 'reasoning_tokens', quantity: 60 },
       { unit: 'requests', quantity: 1 },
     ];
@@ -281,11 +282,14 @@ describe('interrupted credit reconciliation', () => {
     await reconcileChatCreditOperation(held.operationId, client, AbortSignal.timeout(2000));
     expect(await operation(held)).toMatchObject({
       status: 'settled',
-      promptTokens: 3000,
+      promptTokens: 3125,
       completionTokens: 60,
       reasoningTokens: 60,
-      totalTokens: 3060,
+      totalTokens: 3185,
     });
+    const settled = await operation(held);
+    await reconcileChatCreditOperation(held.operationId, client, AbortSignal.timeout(2000));
+    expect(await operation(held)).toEqual(settled);
     const unknown = await admission(),
       unknownKey = randomUUID();
     await recordChatInferenceAttempt(unknown, unknownKey, 'prepared', 0);
