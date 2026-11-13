@@ -193,6 +193,7 @@ describe('durable message reaction events', () => {
       {
         messageId: 'answer',
         senderId: f.userId,
+        reactionEntries: [],
         reactions: [],
         revision: 2,
         targetActorId: actor.id,
@@ -238,6 +239,7 @@ describe('durable message reaction events', () => {
     expect(await listReactionContext(db, f.userId, f.conversationId, 1)).toEqual([
       {
         messageId: 'newer-answer',
+        reactionEntries: [{ emoji: '❓', author: { kind: 'user', id: f.userId } }],
         senderId: f.userId,
         targetActorId: actor.id,
         reactions: ['❓'],
