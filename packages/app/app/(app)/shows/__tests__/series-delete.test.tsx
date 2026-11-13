@@ -267,7 +267,7 @@ function byLabel(rendered: ReactTestRenderer, type: string, label: string): Reac
 }
 
 function pressRemoveShow(rendered: ReactTestRenderer): Promise<void> {
-  // "Delete … everywhere", not "Remove … from Alia": the press deletes the
+  // "Delete … everywhere", not "Remove … from Gemies": the press deletes the
   // podcast from Syra as well, which is what the confirm already said.
   const control = byLabel(rendered, 'Button', 'Delete this show everywhere');
   return act(async () => {
@@ -314,7 +314,7 @@ describe('removing a show', () => {
     expect(toastError).not.toHaveBeenCalled();
     // The message names both places, because both is what happened. It used to
     // promise the podcast survived on Syra, which stopped being true.
-    expect(toastSuccess).toHaveBeenCalledWith('Show deleted from Alia and Syra');
+    expect(toastSuccess).toHaveBeenCalledWith('Show deleted from Gemies and Syra');
     expect(routerBack).toHaveBeenCalled();
   });
 

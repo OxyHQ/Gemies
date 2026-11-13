@@ -62,7 +62,7 @@ const AgentThreadPage = () => {
   // A person's account wins over a thread that does not exist: an agent has a thread or nothing.
   if (data === undefined && person !== undefined) {
     return (
-      <ChatWorkspace header={<AiChatMobileHeader title="Alia" />}>
+      <ChatWorkspace header={<AiChatMobileHeader title="Gemies" />}>
         <UserProfile user={person} />
       </ChatWorkspace>
     );

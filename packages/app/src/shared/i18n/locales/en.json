@@ -168,7 +168,7 @@
       "blocked": "Blocked",
       "warning": "Warning",
       "noThreats": "All clear — no threats detected yet",
-      "exportShareTitle": "Alia audit export ({{format}})"
+      "exportShareTitle": "Gemies audit export ({{format}})"
     },
     "sections": {
       "skills": "Skills",
@@ -190,9 +190,9 @@
     },
     "localModels": {
       "title": "Local models",
-      "description": "Run a model on this device and use it from Alia. Everything else works the same — tools, memory, and your chats are still saved.",
+      "description": "Run a model on this device and use it from Gemies. Everything else works the same — tools, memory, and your chats are still saved.",
       "enable": "Offer this device's models",
-      "enableHint": "While Alia is open here, your other devices can use these models too.",
+      "enableHint": "While Gemies is open here, your other devices can use these models too.",
       "endpoint": "Endpoint",
       "endpointHint": "Any local server that speaks the standard chat API — Ollama, LM Studio and vLLM all do.",
       "deviceName": "Device name",
@@ -203,7 +203,7 @@
       "notConnected": "Not connected",
       "modelsTitle": "Models on this device",
       "free": "Free",
-      "freeNote": "Local models cost no credits. Deep research and agent mode are unavailable for them — those run on Alia's own models.",
+      "freeNote": "Local models cost no credits. Deep research and agent mode are unavailable for them — those run on Gemies' own models.",
       "unreachable": "Nothing is answering at {{endpoint}}.",
       "unreachableHint": "Start your model server, or check the address and port.",
       "refused": "{{endpoint}} is running, but it refused this page.",
@@ -229,7 +229,7 @@
       "perYear": "yr",
       "creditsPerMonth": "{{count}} credits a month",
       "logout": "Log out",
-      "logoutConfirm": "You will be signed out of Alia on this device. Your other devices stay signed in."
+      "logoutConfirm": "You will be signed out of Gemies on this device. Your other devices stay signed in."
     },
     "connections": {
       "externalAgents": {
@@ -527,7 +527,7 @@
   },
   "library": {
     "title": "Library",
-    "subtitle": "Upload and manage your files, documents, and resources for use with Alia",
+    "subtitle": "Upload and manage your files, documents, and resources for use with your Gemies",
     "empty": "No items yet",
     "searchPlaceholder": "Search files...",
     "addFiles": "Add files",
@@ -878,14 +878,14 @@
     "upgrade": "Upgrade",
     "getStarted": "Get started",
     "freeTrial": "Free trial",
-    "freeUsage": "Get started with Alia",
+    "freeUsage": "Get started with Gemies",
     "goUsage": "Essential AI for everyday tasks",
     "proUsage": "Full-featured AI assistant",
     "maxUsage": "Extended capacity for power users",
     "ultraUsage": "Maximum power for heavy workloads",
-    "sharedCredits": "Credits shared with your Alia plan",
+    "sharedCredits": "Credits shared with your Gemies plan",
     "teamTitle": "Team",
-    "teamDescription": "Scale your team's productivity with Alia",
+    "teamDescription": "Scale your team's productivity with Gemies",
     "getTeam": "Get Team",
     "securityTitle": "Security and Compliance",
     "securityDescription": "Enterprise-grade security and industry-standard certifications.",
@@ -914,10 +914,10 @@
     "free": "Free",
     "loadError": "The plans couldn't be loaded. Try again in a moment.",
     "download": {
-      "pageTitle": "Download Alia",
-      "metaDescription": "Download the Alia app for Android and iOS.",
-      "title": "Get Alia on your phone",
-      "back": "Back to Alia",
+      "pageTitle": "Download Gemies",
+      "metaDescription": "Download the Gemies app for Android and iOS.",
+      "title": "Get Gemies on your phone",
+      "back": "Back to Gemies",
       "platform": "Platform",
       "scanTitle": "Scan to download",
       "scanDescription": "Scan the QR code with your phone to get the app.",
@@ -930,7 +930,7 @@
   },
   "usageLimit": {
     "outOfCreditsTitle": "Out of credits",
-    "outOfCreditsDescription": "Add more credits or upgrade your plan to continue chatting with Alia.",
+    "outOfCreditsDescription": "Add more credits or upgrade your plan to continue chatting with your Gemies.",
     "limitReachedTitle": "Limit reached",
     "limitReachedDescription": "You've reached the limit for your plan. Upgrade for more.",
     "slowDownTitle": "Slow down",
@@ -1068,7 +1068,6 @@
     "activity": "Activity",
     "hireStarted": "Gemie is working on your task",
     "chat": "Chat",
-    "native": "By Alia",
     "rating": "rating",
     "removeSkill": "Remove skill",
     "removeKnowledge": "Remove knowledge",
@@ -1244,7 +1243,7 @@
       "unavailable": "The terminal is not available on this device."
     },
     "modelPinned": "Pinned model (%{model})",
-    "modelPinnedDescription": "Runs on this exact model. Pick a level to let Alia choose.",
+    "modelPinnedDescription": "Runs on this exact model. Pick a level to let Gemies choose.",
     "computer": {
       "open": "Computer",
       "title": "{{name}}'s computer",
@@ -1368,7 +1367,7 @@
           "waiting": "Waiting for news"
         },
         "reason": {
-          "needs_session": "Open Alia with your account to resume work.",
+          "needs_session": "Open Gemies with your account to resume work.",
           "insufficient_credits": "There are not enough credits to continue.",
           "work_limit_reached": "Stopped at the task limit. Review its progress.",
           "temporarily_unavailable": "A service is unavailable. It will retry later.",
@@ -1510,7 +1509,7 @@
     "connectionFailed": "Voice connection failed",
     "errors": {
       "not-authenticated": "Sign in to use voice",
-      "credential-not-supported": "Voice is only available when you are signed in to Alia",
+      "credential-not-supported": "Voice is only available when you are signed in to Gemies",
       "plan-required": "Voice mode needs a paid plan",
       "credits-exhausted": "You've run out of credits for this call",
       "agent-unavailable": "This Gemie is not available for a call",
@@ -1548,7 +1547,7 @@
       "max-duration": "The call reached its 30-minute limit",
       "idle-timeout": "The call ended after two minutes of silence",
       "credits-exhausted": "The call ended: you ran out of credits",
-      "server-shutdown": "The call ended while Alia was updating — start a new one"
+      "server-shutdown": "The call ended while Gemies was updating — start a new one"
     },
     "endingSoon": "One minute left in this call",
     "dictationRemaining": "%{seconds}s of dictation left"
@@ -1624,26 +1623,6 @@
       "updateUserPreferences": "Updating preferences",
       "updateUserContext": "Updating context"
     }
-  },
-  "landing": {
-    "tagline": "Your intelligent AI assistant",
-    "capabilitiesTitle": "What Alia can do",
-    "cap1Title": "AI Chat with Memory",
-    "cap1Desc": "Conversations that remember your preferences and context across sessions.",
-    "cap2Title": "Vision, Voice & Multimodal",
-    "cap2Desc": "Analyze images, talk naturally, and work with multiple formats.",
-    "cap3Title": "AI Gemies & Automations",
-    "cap3Desc": "Build autonomous Gemies and automate repetitive tasks.",
-    "cap4Title": "Code Generation & Thinking",
-    "cap4Desc": "Write, debug, and reason through complex problems step by step.",
-    "ctaTitle": "Ready to get started?",
-    "ctaSubtitle": "Free to use. No credit card required.",
-    "demo1": "Write a poem about the northern lights...",
-    "demo2": "Explain quantum computing in simple terms...",
-    "demo3": "Help me plan a trip to Tokyo...",
-    "demo4": "Debug this Python function...",
-    "demo5": "Create a workout plan for beginners...",
-    "metaDescription": "Meet Alia, your intelligent AI assistant. Chat naturally, remember everything, and switch between the best AI models seamlessly."
   },
   "keyboardShortcuts": {
     "title": "Keyboard Shortcuts",
@@ -1772,7 +1751,7 @@
     "dismissFailed": "Discard %{name}",
     "fileTooLarge": "%{name} is larger than %{limit} and was not attached",
     "fileEmpty": "%{name} is empty — folders can't be attached",
-    "attachmentNotSent": "%{name} wasn't sent — Alia can only read images in a message for now",
+    "attachmentNotSent": "%{name} wasn't sent — Gemies can only read images in a message for now",
     "attachmentUnreadable": "%{name} couldn't be read and wasn't sent",
     "addGroup": "Add",
     "capabilitiesGroup": "Capabilities",
@@ -1866,7 +1845,7 @@
       },
       "markAllRead": "Mark all read",
       "emptyTitle": "No notifications yet",
-      "emptyDescription": "Set up triggers and routines to get proactive updates from Alia.",
+      "emptyDescription": "Set up triggers and routines to get proactive updates from your Gemies.",
       "dismiss": "Dismiss notification"
     },
     "agents": {
@@ -1968,11 +1947,11 @@
       "message": "Something broke while showing it. Try again; if it keeps happening, we have already been told."
     },
     "notFound": {
-      "pageTitle": "404 - Page Not Found | Alia",
-      "metaDescription": "The page you're looking for doesn't exist. Return to Alia to continue your conversations.",
+      "pageTitle": "404 - Page Not Found | Gemies",
+      "metaDescription": "The page you're looking for doesn't exist. Return to Gemies to continue your conversations.",
       "title": "This page doesn't exist",
       "description": "The link may be broken, or the page may have moved.",
-      "home": "Go to Alia"
+      "home": "Go to Gemies"
     },
     "invite": {
       "title": "Invite to get credits",
@@ -1985,7 +1964,7 @@
       "copied": "Copied!",
       "shareOn": "Share on",
       "share": "Share invite link",
-      "shareText": "Check out Alia — sign up with my link and we both get 500 credits!",
+      "shareText": "Check out Gemies — sign up with my link and we both get 500 credits!",
       "creditsEarned": "Credits earned",
       "referrals": "Referrals",
       "codeLabel": "Invite code",
@@ -1997,21 +1976,21 @@
   },
   "invitePage": {
     "redeemFailed": "Could not redeem the invite code",
-    "acceptTitle": "Accept invite - Alia",
-    "acceptMeta": "Accept your invitation and get {{count}} free credits on Alia.",
+    "acceptTitle": "Accept invite - Gemies",
+    "acceptMeta": "Accept your invitation and get {{count}} free credits on Gemies.",
     "redeemedTitle": "You got {{count}} credits!",
     "redeemedDescription": "Your invite has been redeemed. You and your friend each earned {{count}} credits.",
     "startChatting": "Start chatting",
     "redeemErrorTitle": "Couldn't redeem the invite",
-    "goToAlia": "Go to Alia",
     "redeeming": "Redeeming invite…",
     "redeemingDescription": "Please wait while we apply your credits.",
-    "invitedTitle": "You're invited to Alia",
-    "invitedMeta": "Join Alia and get {{count}} free credits with this invitation link.",
-    "invitedHeading": "You've been invited to Alia",
-    "invitedDescription": "Sign up now and you'll both get {{count}} credits to use with Alia.",
+    "invitedTitle": "You're invited to Gemies",
+    "invitedMeta": "Join Gemies and get {{count}} free credits with this invitation link.",
+    "invitedHeading": "You've been invited to Gemies",
+    "invitedDescription": "Sign up now and you'll both get {{count}} credits to use with Gemies.",
     "signUp": "Sign up & claim credits",
-    "signIn": "Already have an account? Sign in"
+    "signIn": "Already have an account? Sign in",
+    "goToGemies": "Go to Gemies"
   },
   "orgInvite": {
     "unavailableTitle": "This invitation is no longer available",
@@ -2023,12 +2002,12 @@
       "member": "member"
     },
     "acceptFailed": "Could not accept the invitation",
-    "invalidTitle": "Invalid invite - Alia",
+    "invalidTitle": "Invalid invite - Gemies",
     "notFound": "Invite not found",
     "notFoundDescription": "This invitation link is invalid, expired, or has already been used.",
-    "pageTitle": "Join {{org}} - Alia",
-    "metaJoin": "Join {{org}} on Alia as {{role}}.",
-    "metaSignIn": "Sign in to join {{org}} on Alia.",
+    "pageTitle": "Join {{org}} - Gemies",
+    "metaJoin": "Join {{org}} on Gemies as {{role}}.",
+    "metaSignIn": "Sign in to join {{org}} on Gemies.",
     "joined": "You've joined {{org}}!",
     "joinedDescription": "You're now {{role}} of {{org}}.",
     "joinFailed": "Couldn't join",
@@ -2110,14 +2089,14 @@
       "title": "Delete this episode everywhere?",
       "description": "The recording is deleted from Syra too, along with its audio and every listener's saved place in it. This cannot be undone.",
       "failed": "Could not remove the episode",
-      "done": "Episode deleted from Alia and Syra",
+      "done": "Episode deleted from Gemies and Syra",
       "label": "Delete {{name}} everywhere"
     },
     "deleteShow": {
       "title": "Delete this show everywhere?",
       "description": "The podcast is deleted from Syra too, with every episode, all of their audio, and everyone subscribed to it. This cannot be undone.",
       "failed": "Could not remove the show",
-      "done": "Show deleted from Alia and Syra",
+      "done": "Show deleted from Gemies and Syra",
       "button": "Delete this show everywhere"
     },
     "starting": "Starting…",
@@ -2237,9 +2216,9 @@
     "onDevice": "On %{device}"
   },
   "sharedConversation": {
-    "pageTitle": "Shared conversation | Alia",
+    "pageTitle": "Shared conversation | Gemies",
     "title": "Shared conversation",
-    "open": "Open Alia",
+    "open": "Open Gemies",
     "footer": "A read-only copy, shared by the person who had this conversation."
   },
   "profile": {

@@ -89,7 +89,7 @@ export default function InviteScreen() {
               title={t('invitePage.redeemErrorTitle')}
               description={error}
               action={{
-                label: t('invitePage.goToAlia'),
+                label: t('invitePage.goToGemies'),
                 icon: RiArrowRightLine,
                 onPress: () => router.replace('/(app)'),
               }}
