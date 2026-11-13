@@ -44,7 +44,7 @@ export type Probe = (url: string, transport: McpServerTransport) => Promise<Prob
 
 const PROBE_REQUEST_TIMEOUT_MS = 40_000;
 /** How many servers are checked at once: integrations' outbound connections stay few. */
-const CONCURRENCY = 8;
+const CONCURRENCY = 16;
 const MAX_TOOLS = 500;
 const MAX_TOOL_DESCRIPTION = 8_000;
 
@@ -148,7 +148,7 @@ export async function checkCatalogueHealth(
   db: ApiDatabase,
   {
     probe = probeThroughIntegrations,
-    limit = 600,
+    limit = 3_000,
     concurrency = CONCURRENCY,
     now = () => new Date(),
   }: { probe?: Probe; limit?: number; concurrency?: number; now?: () => Date } = {},

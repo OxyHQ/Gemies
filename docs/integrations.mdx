@@ -209,7 +209,7 @@ Both are read into one shape (`ListedServer`) and judged by the same policy, gat
    (`mcp_catalogue_sync_state.retry_after`, per source). A pass that fails changes nothing; a complete one inserts new servers (`pending`), updates changed ones (a new
    endpoint is `pending` again), marks those no longer listed `removed_at` and brings back those
    listed again. `mcp_catalogue_sync_state.last_report` keeps its counts, refusals by reason included.
-2. **Health check** (`health.ts`, up to 600 a round, 8 at a time, never-checked and best-proven first):
+2. **Health check** (`health.ts`, up to 3,000 a round, 16 at a time (a first sync of 28,000 servers is checked within a day), never-checked and best-proven first):
    integrations' `POST /mcp-catalogue/probe` (`packages/integrations/src/mcp/probe.ts`, through
    `connectorFetch`, for no account, 15 s) `initialize`s the server without a token. One that answers
    lists its tools (`tools/list`): offered with sign-in `none` unless its tools hide characters, carry
