@@ -192,9 +192,11 @@ async function main() {
   logger.info('Mounted routes: /telegram');
 
   // MCP server management routes
-  const { mcpRouter } = await import('./mcp/routes');
+  const { mcpRouter, mcpCatalogueRouter } = await import('./mcp/routes');
   app.use('/mcp', requireAliaApi, requireAccountContext, mcpRouter);
-  logger.info('Mounted routes: /mcp');
+  // The connectors store's health check acts for no account.
+  app.use('/mcp-catalogue', requireAliaApi, mcpCatalogueRouter);
+  logger.info('Mounted routes: /mcp, /mcp-catalogue');
 
   // Browser routes (lazy-loaded)
   try {

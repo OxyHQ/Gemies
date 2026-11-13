@@ -4,26 +4,42 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@oxy.so/bloom/accordion';
+import { Badge } from '@oxy.so/bloom/badge';
 import { Button } from '@oxy.so/bloom/button';
 import { Chip, ChipRow } from '@oxy.so/bloom/chip';
 import { Dialog } from '@oxy.so/bloom/dialog';
 import { RiAddLine } from '@oxy.so/bloom/icons/RiAddLine';
+import { RiLockUnlockLine } from '@oxy.so/bloom/icons/RiLockUnlockLine';
+import { RiShieldCheckFill } from '@oxy.so/bloom/icons/RiShieldCheckFill';
+import { RiShieldCheckLine } from '@oxy.so/bloom/icons/RiShieldCheckLine';
+import { RiUserCommunityLine } from '@oxy.so/bloom/icons/RiUserCommunityLine';
 import { Search } from '@oxy.so/bloom/search';
+import {
+  Select,
+  SelectContent,
+  SelectIcon,
+  SelectItem,
+  SelectItemText,
+  SelectTrigger,
+  SelectValue,
+} from '@oxy.so/bloom/select';
 import * as Skeleton from '@oxy.so/bloom/skeleton';
 import { TextFieldInput, TextFieldLabel } from '@oxy.so/bloom/text-field';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
 import * as WebBrowser from 'expo-web-browser';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { englishCopy, type Translate } from '../../lib/copy';
 import {
-  CONNECTOR_CATEGORIES,
+  CONNECTOR_SORTS,
   type ConnectorCategory,
   type ConnectorEntry,
+  type ConnectorSort,
+  type ConnectorTrust,
   useConnections,
   useConnectorActions,
-  useConnectorCatalogue,
+  useConnectorStore,
   connectorReturnTo,
   signInErrorKey,
   useWebSignInReturn,
@@ -32,6 +48,9 @@ import { ConnectorLogo } from './ConnectorLogo';
 
 /** This component's own strings. */
 const K = 'gemie.connectors';
+
+/** How long typing settles before the store is searched. */
+const SEARCH_DEBOUNCE_MS = 250;
 
 export interface GemieConnectorsStoreProps {
   /**
@@ -45,18 +64,56 @@ export interface GemieConnectorsStoreProps {
   onConnected?: () => void;
 }
 
+const TRUST_ICON = {
+  official: RiShieldCheckFill,
+  verified: RiShieldCheckLine,
+  community: RiUserCommunityLine,
+} as const;
+const TRUST_COLOR = { official: 'primary', verified: 'info', community: 'default' } as const;
+
+/** The filters a person can turn on, each a chip. */
+const FILTERS = ['official', 'verified', 'noSignIn'] as const;
+type StoreFilter = (typeof FILTERS)[number];
+
+/** The value of `text` once it stopped changing for `ms`. */
+function useSettled(text: string, ms: number): string {
+  const [settled, setSettled] = useState(text);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(text), ms);
+    return () => clearTimeout(timer);
+  }, [text, ms]);
+  return settled;
+}
+
 /**
- * The connectors store: every connector this deployment can connect, with its real logo, what it
- * does, its category and a Connect button, and a way to add one's own MCP server by URL. Connecting
- * again adds another account of the same connector. What the person connected is managed in
- * Settings (`GemieConnectedConnectors`), not here.
+ * The connectors store: every remote MCP server this deployment can connect — the providers'
+ * servers Gemies curates and the hundreds synced from the official MCP Registry — searched,
+ * filtered by category, badge and sign-in, sorted and paged by the API. Each shows its real logo,
+ * its badge (official, verified, community), what it does and a Connect button; connecting again
+ * adds another account. A person can also add their own MCP server by URL. What the person
+ * connected is managed in Settings (`GemieConnectedConnectors`), not here.
  */
 export function GemieConnectorsStore({
   nativeScheme,
   t = englishCopy,
   onConnected,
 }: GemieConnectorsStoreProps) {
-  const catalogue = useConnectorCatalogue();
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<ConnectorCategory | null>(null);
+  const [filters, setFilters] = useState<ReadonlySet<StoreFilter>>(new Set());
+  const [sort, setSort] = useState<ConnectorSort>('featured');
+  const [pending, setPending] = useState<string | null>(null);
+  const [customOpen, setCustomOpen] = useState(false);
+  const q = useSettled(query.trim(), SEARCH_DEBOUNCE_MS);
+
+  const trust = (['official', 'verified'] as const).filter((badge) => filters.has(badge));
+  const store = useConnectorStore({
+    q,
+    category: category ?? undefined,
+    trust: trust as ConnectorTrust[],
+    noSignIn: filters.has('noSignIn'),
+    sort,
+  });
   const connections = useConnections();
   const actions = useConnectorActions({ returnTo: connectorReturnTo(nativeScheme) });
   useWebSignInReturn((outcome) => {
@@ -66,10 +123,6 @@ export function GemieConnectorsStore({
       toast.error(t(signInErrorKey(outcome.error)));
     }
   });
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState<ConnectorCategory | null>(null);
-  const [pending, setPending] = useState<string | null>(null);
-  const [customOpen, setCustomOpen] = useState(false);
 
   const accountsOf = useMemo(() => {
     const counts = new Map<string, number>();
@@ -81,23 +134,21 @@ export function GemieConnectorsStore({
     return counts;
   }, [connections.data]);
 
-  const visible = useMemo(() => {
-    const words = query.trim().toLowerCase();
-    return (catalogue.data ?? []).filter(
-      (entry) =>
-        (category === null || entry.category === category) &&
-        (!words ||
-          entry.name.toLowerCase().includes(words) ||
-          entry.description.toLowerCase().includes(words)),
-    );
-  }, [catalogue.data, query, category]);
+  const pages = store.data?.pages ?? [];
+  const entries = pages.flatMap((page) => page.servers);
+  const total = pages[0]?.total ?? 0;
+  const categories = pages[0]?.categories ?? [];
+  const browsing = !q && category === null && filters.size === 0 && sort === 'featured';
+  const featured = browsing ? entries.filter((entry) => entry.featured) : [];
+  const rest = browsing ? entries.filter((entry) => !entry.featured) : entries;
 
-  const browsing = !query.trim() && category === null;
-  const featured = browsing ? visible.filter((entry) => entry.featured) : [];
-  const rest = browsing ? visible.filter((entry) => !entry.featured) : visible;
-  const categories = CONNECTOR_CATEGORIES.filter((slug) =>
-    (catalogue.data ?? []).some((entry) => entry.category === slug),
-  );
+  const toggle = (filter: StoreFilter) =>
+    setFilters((current) => {
+      const next = new Set(current);
+      if (next.has(filter)) next.delete(filter);
+      else next.add(filter);
+      return next;
+    });
 
   const connect = async (entry: ConnectorEntry) => {
     setPending(entry.id);
@@ -114,6 +165,17 @@ export function GemieConnectorsStore({
     }
   };
 
+  const card = (entry: ConnectorEntry) => (
+    <StoreCard
+      key={entry.id}
+      entry={entry}
+      accounts={accountsOf.get(entry.id) ?? 0}
+      pending={pending === entry.id}
+      onConnect={connect}
+      t={t}
+    />
+  );
+
   return (
     <View className="gap-4">
       <Search
@@ -122,7 +184,7 @@ export function GemieConnectorsStore({
         onChangeText={setQuery}
         onClearText={() => setQuery('')}
       />
-      {categories.length > 1 ? (
+      {categories.length > 1 || category !== null ? (
         <ChipRow role="radiogroup" accessibilityLabel={t(`${K}.store.categories`)}>
           <Chip
             size="sm"
@@ -132,67 +194,80 @@ export function GemieConnectorsStore({
           >
             {t(`${K}.store.all`)}
           </Chip>
-          {categories.map((slug) => (
+          {categories.map(({ id, count }) => (
             <Chip
-              key={slug}
+              key={id}
               size="sm"
               role="radio"
-              selected={category === slug}
-              onPress={() => setCategory(category === slug ? null : slug)}
+              selected={category === id}
+              onPress={() => setCategory(category === id ? null : id)}
             >
-              {t(`${K}.category.${slug}`)}
+              {`${t(`${K}.category.${id}`)} ${count}`}
             </Chip>
           ))}
         </ChipRow>
       ) : null}
+      <View className="flex-row flex-wrap items-center justify-between gap-3">
+        <ChipRow role="group" accessibilityLabel={t(`${K}.store.filters`)}>
+          {FILTERS.map((filter) => (
+            <Chip
+              key={filter}
+              size="sm"
+              role="checkbox"
+              selected={filters.has(filter)}
+              onPress={() => toggle(filter)}
+            >
+              {t(`${K}.store.filter.${filter}`)}
+            </Chip>
+          ))}
+        </ChipRow>
+        <SortSelect value={sort} onChange={setSort} t={t} />
+      </View>
 
-      {catalogue.isPending ? (
+      {store.isPending ? (
         <StoreSkeleton />
-      ) : catalogue.isError ? (
+      ) : store.isError && entries.length === 0 ? (
         <View className="items-start gap-2 py-4">
           <Text variant="body-2-regular" className="text-text-secondary">
             {t(`${K}.store.loadFailed`)}
           </Text>
-          <Button size="sm" appearance="outline" tone="neutral" onPress={() => catalogue.refetch()}>
+          <Button size="sm" appearance="outline" tone="neutral" onPress={() => store.refetch()}>
             {t(`${K}.store.retry`)}
           </Button>
         </View>
       ) : (
         <>
           {featured.length > 0 ? (
-            <StoreGroup title={t(`${K}.store.featured`)}>
-              {featured.map((entry) => (
-                <StoreCard
-                  key={entry.id}
-                  entry={entry}
-                  accounts={accountsOf.get(entry.id) ?? 0}
-                  pending={pending === entry.id}
-                  onConnect={connect}
-                  t={t}
-                />
-              ))}
-            </StoreGroup>
+            <StoreGroup title={t(`${K}.store.featured`)}>{featured.map(card)}</StoreGroup>
           ) : null}
           {rest.length > 0 ? (
-            <StoreGroup title={browsing && featured.length > 0 ? t(`${K}.store.all`) : undefined}>
-              {rest.map((entry) => (
-                <StoreCard
-                  key={entry.id}
-                  entry={entry}
-                  accounts={accountsOf.get(entry.id) ?? 0}
-                  pending={pending === entry.id}
-                  onConnect={connect}
-                  t={t}
-                />
-              ))}
+            <StoreGroup
+              title={
+                browsing
+                  ? t(`${K}.store.allCount`, { count: total })
+                  : t(`${K}.store.results`, { count: total })
+              }
+            >
+              {rest.map(card)}
             </StoreGroup>
           ) : null}
-          {visible.length === 0 ? (
+          {entries.length === 0 ? (
             <Text variant="body-2-regular" className="py-4 text-text-secondary">
-              {query.trim()
-                ? t(`${K}.store.noResults`, { query: query.trim() })
-                : t(`${K}.store.empty`)}
+              {q ? t(`${K}.store.noResults`, { query: q }) : t(`${K}.store.empty`)}
             </Text>
+          ) : null}
+          {store.hasNextPage ? (
+            <View className="items-center">
+              <Button
+                size="sm"
+                appearance="outline"
+                tone="neutral"
+                loading={store.isFetchingNextPage}
+                onPress={() => void store.fetchNextPage()}
+              >
+                {t(`${K}.store.more`, { count: total - entries.length })}
+              </Button>
+            </View>
           ) : null}
         </>
       )}
@@ -227,6 +302,41 @@ export function GemieConnectorsStore({
   );
 }
 
+function SortSelect({
+  value,
+  onChange,
+  t,
+}: {
+  value: ConnectorSort;
+  onChange: (sort: ConnectorSort) => void;
+  t: Translate;
+}) {
+  const label = t(`${K}.store.sort`);
+  const items = CONNECTOR_SORTS.map((sort) => ({
+    id: sort,
+    label: t(`${K}.store.sortBy.${sort}`),
+  }));
+  return (
+    <Select size="sm" value={value} onValueChange={(next) => onChange(next as ConnectorSort)}>
+      <SelectTrigger label={label}>
+        <SelectValue placeholder={label} />
+        <SelectIcon />
+      </SelectTrigger>
+      <SelectContent
+        label={label}
+        items={items}
+        width={220}
+        valueExtractor={(item) => item.id}
+        renderItem={(item) => (
+          <SelectItem value={item.id} label={item.label}>
+            <SelectItemText>{item.label}</SelectItemText>
+          </SelectItem>
+        )}
+      />
+    </Select>
+  );
+}
+
 function StoreGroup({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
     <View className="gap-2">
@@ -253,15 +363,33 @@ function StoreCard({
     <View className="min-w-[260px] flex-1 basis-[260px] gap-3 rounded-2xl border border-border p-4">
       <View className="flex-row items-center gap-3">
         <ConnectorLogo name={entry.name} logoUrl={entry.logoUrl} size={40} />
-        <View className="flex-1">
+        <View className="flex-1 gap-1">
           <Text variant="body-2-semibold" numberOfLines={1}>
             {entry.name}
           </Text>
-          <Text variant="body-2-regular" className="text-text-secondary" numberOfLines={1}>
-            {accounts > 0
-              ? t(`${K}.store.connectedCount`, { count: accounts })
-              : t(`${K}.category.${entry.category}`)}
-          </Text>
+          <View className="flex-row flex-wrap items-center gap-1.5">
+            <Badge
+              size="label-small"
+              variant="subtle"
+              color={TRUST_COLOR[entry.trust]}
+              icon={TRUST_ICON[entry.trust]}
+              content={t(`${K}.trust.${entry.trust}`)}
+            />
+            {entry.signIn === 'none' ? (
+              <Badge
+                size="label-small"
+                variant="subtle"
+                color="success"
+                icon={RiLockUnlockLine}
+                content={t(`${K}.store.filter.noSignIn`)}
+              />
+            ) : null}
+            <Text variant="body-2-regular" className="text-text-secondary" numberOfLines={1}>
+              {accounts > 0
+                ? t(`${K}.store.connectedCount`, { count: accounts })
+                : t(`${K}.category.${entry.category}`)}
+            </Text>
+          </View>
         </View>
       </View>
       <Text variant="body-2-regular" className="text-text-secondary" numberOfLines={2}>
@@ -277,14 +405,16 @@ function StoreCard({
         >
           {accounts > 0 ? t(`${K}.store.connectAnother`) : t(`${K}.store.connect`)}
         </Button>
-        <Button
-          size="sm"
-          appearance="plain"
-          tone="neutral"
-          onPress={() => void WebBrowser.openBrowserAsync(entry.docsUrl)}
-        >
-          {t(`${K}.store.docs`)}
-        </Button>
+        {entry.docsUrl ? (
+          <Button
+            size="sm"
+            appearance="plain"
+            tone="neutral"
+            onPress={() => void WebBrowser.openBrowserAsync(entry.docsUrl as string)}
+          >
+            {t(`${K}.store.docs`)}
+          </Button>
+        ) : null}
       </View>
     </View>
   );

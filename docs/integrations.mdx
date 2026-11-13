@@ -12,8 +12,9 @@ Alia's reach comes from four layers:
    pipeline (`ToolPipeline.forUser`, `lib/tool-pipeline.ts`).
 2. **Oxy apps** — every app of the Oxy ecosystem, first party, built from Oxy's
    signed capability catalogs.
-3. **Connectors** — providers' own remote MCP servers a person connects, and their own MCP servers
-   by URL. No connector runs code of ours against a provider's API.
+3. **Connectors** — remote MCP servers a person connects: the providers' own, curated, the hundreds
+   synced from the official MCP Registry, and their own by URL. No connector runs code of ours
+   against a provider's API, and none runs on our hosts.
 4. **Channel integrations** — long-running connectors in `packages/integrations/`
    for Telegram, WhatsApp and Discord. A person's own WhatsApp or Telegram account is
    theirs, connected once in Settings and granted to the gemies that may use it, at most one of
@@ -73,22 +74,26 @@ Risk is classified per call by `classifyActionRisk` (`lib/agent/governance.ts`):
 
 ## Connectors
 
-A connector is a **provider's own hosted MCP server** (Notion, Linear, Slack…), reached over
-streamable HTTP and authorized by the person through OAuth, or a remote MCP server the person adds by
-URL. Nothing runs on our servers against a provider's API, and nothing is started as a process: the
-catalogue (`lib/mcp-registry.ts`) lists only providers' official remote servers, and a provider
-without one is not in it. Integrations (`packages/integrations/src/mcp/`) is the MCP client: it
-connects, keeps the OAuth tokens and calls the tools.
+A connector is a **remote MCP server** reached over streamable HTTP (or SSE) at an `https` URL: a
+provider's own server from the curated catalogue (Notion, Linear, Slack…, `lib/mcp-registry.ts`), a
+server synced from the official MCP Registry into the store ([the synced store](#the-synced-store)),
+or a server the person adds by URL. Nothing runs on our servers against a provider's API, and nothing
+is started as a process: a server that is only a package (`npx`, a container, stdio) is never offered.
+Integrations (`packages/integrations/src/mcp/`) is the MCP client: it connects, keeps the OAuth tokens
+and calls the tools.
 
 - **Where it is reached.** Every request a connector makes — the transport, OAuth discovery, token
   exchange and refresh, revocation — goes through `mcp/connector-fetch.ts`, the SDK's `safeFetch`:
   each hop's address is resolved and refused when it is private, loopback, link-local or the cloud
   metadata service, and the connection is pinned to the address that was judged. Only `https`.
-- **A catalogue connector is the catalogue's.** It is reached at the catalogue's address with the
+- **A curated connector is the catalogue's.** It is reached at the catalogue's address with the
   catalogue's OAuth settings whatever its row says (`lib/mcp-connector-config.ts`), so an edited URL
-  never receives a client Gemies holds for a provider. A custom connector is the person's: its URL
-  and, optionally, a header (an API key); `mcp_servers_transport_check` admits only `sse` and
-  `streamable-http`.
+  never receives a client Gemies holds for a provider. A synced connector is reached at the address it
+  was connected at, with its own sign-in (none, or OAuth with Dynamic Client Registration); Gemies
+  holds nothing for it, and it stays the person's when the store stops offering it. A custom
+  connector is the person's: its URL and, optionally, a header (an API key);
+  `mcp_servers_transport_check` admits only `sse` and `streamable-http`. Only a custom connector's
+  address can be edited.
 - **Several accounts of one connector.** Each Connect is a new account and its own row, written when
   its OAuth completes (`mcp_oauth_states.registry_id` carries the entry until then), so the connected
   list never holds a half-made one. Each account has its own slug (`notion`, `notion_2`), its own
@@ -98,21 +103,27 @@ connects, keeps the OAuth tokens and calls the tools.
   is named by the provider's OpenID Connect claims when its token response carries them
   (`account-label.ts`), otherwise "Account 2" and on, and the person can rename it.
 - **Logos.** `lib/connector-logos.ts` reads each logo from, in order: the server's own
-  `serverInfo.icons` (MCP `initialize`, spec 2025-11-25; providers answer it only with a token, so it
-  is read on connect), the entry's record in the official MCP Registry (`mcpRegistryName`), and the
-  provider website's brand mark (`apple-touch-icon`, an SVG or PNG icon, `/favicon.ico`). Each image
+  `serverInfo.icons` (MCP `initialize`, spec 2025-11-25; a provider answers it only with a token, so
+  it is read on connect, and a store server that needs no sign-in publishes it to its health check),
+  the entry's MCP Registry icons (a curated entry's `mcpRegistryName`, a synced entry's own listing),
+  and the website's brand mark (`apple-touch-icon`, an SVG or PNG icon, `/favicon.ico`). Each image
   is fetched through `safeFetch`, recognized by its bytes (PNG, JPEG, WebP, GIF, ICO, SVG), capped at
   256 KiB and stored in `connector_logos` under its SHA-256; the app loads it only from
   `GET /mcp/logos/:id` on the API's origin (immutable, `nosniff`, a sandboxing CSP), never from a
-  provider. A leader-gated job reads the catalogue's logos daily (`connector-logo-refresh.ts`);
-  `mcp_registry_logos.source` and `source_url` say where each came from. No logo is a monogram.
+  provider. The store's job keeps every offered entry's logo, a bounded round an hour, each read
+  again after a week; `mcp_registry_logos.source` and `source_url` say where each came from. No logo
+  is a monogram.
+- **Tool descriptions are somebody else's text.** Before a connector's tools reach the model, each
+  description is made plain text and cut to 1,024 characters (`lib/untrusted-text.ts`: no zero-width,
+  bidirectional or Unicode-tag characters, no `<IMPORTANT>`-like tags), and the base prompt says a
+  connector's descriptions and results are data, never instructions (`prompts/base.md`).
 
 ### Routes
 
 | Route | What |
 | --- | --- |
-| `GET /mcp/registry` | The store: the entries this deployment can connect, with their logos. An entry whose issued client or approval is missing is not listed. |
-| `POST /mcp/connect { registryId, returnTo }` | A new account: `{ authorizationUrl }`. |
+| `GET /mcp/registry?q&category&trust&signIn&sort&offset&limit` | A page of the store (curated and synced): `{ servers, total, nextOffset, categories }`. Each entry has its `trust` badge (`official`, `verified`, `community`), `source` (`curated`, `mcp_registry`) and `signIn` (`oauth`, `none`). `trust` is a comma list; `signIn=none` keeps what connects without a sign-in; `sort` is `featured` (default), `name` or `recent`; at most 100 a page. A curated entry whose issued client or approval is missing is not listed. |
+| `POST /mcp/connect { registryId, returnTo }` | A new account: `{ authorizationUrl }`, or `201 { server }` for a server that needs no sign-in (connected at once; `502 connect_failed` and no row when it does not answer). |
 | `POST /mcp/custom { name, url, headers?, returnTo }` | A custom server: connected at once, or `{ authorizationUrl }` when it answers 401 (`authorization_required`). |
 | `GET /mcp/installed` | What the person connected: each account, its status, logo and `usedBy` (Alia, and the gemies granted it). |
 | `POST /mcp/:id/reconnect` | Authorize an account again. |
@@ -124,14 +135,16 @@ connects, keeps the OAuth tokens and calls the tools.
 ### The apps
 
 The UI is the SDK's (`@gemies/sdk/connectors`), drawn by the Gemies and the Alia apps alike:
-`GemieConnectorsStore` is the **Connectors** store (search, categories, logos, Connect or Add account,
-Add a custom MCP server), a page of its own at `/connectors`; `GemieConnectedConnectors` is
-**Settings › Connected**, only what the person connected, with each account's state, who uses it,
+`GemieConnectorsStore` is the **Connectors** store, a page of its own at `/connectors`: a search,
+the categories with their counts, the Official, Verified and No sign-in filters, the order (Featured,
+Name, Recently updated), pages of 30 (Show more), each entry's logo and badge, Connect or Add account,
+and Add a custom MCP server; the API searches, filters and sorts (`lib/connector-catalogue/catalogue.ts`).
+`GemieConnectedConnectors` is **Settings › Connected**, only what the person connected, with each account's state, who uses it,
 Reconnect, Rename and Disconnect; `ConnectorLogo` is the one logo every screen draws (the store,
 Settings, a gemie's editor, the composer's pick and a tool step in the chat). A web sign-in returns
 to `/connectors`, which finishes it; a native one finishes in the auth session.
 
-### The catalogue
+### The curated catalogue
 
 | Connector | Registry id | Reached at | Client | Offered in production |
 | --- | --- | --- | --- | --- |
@@ -174,6 +187,66 @@ call; one whose authorization is gone shows "Needs reconnecting".
 registry documents) gets the refresh and the access token, and the stored row is deleted whatever the
 provider answered. The connector row goes only after that answered; if integrations cannot be reached
 the API answers `502 revoke_failed` and the person retries.
+
+### The synced store
+
+Beside the curated catalogue, the store offers the remote MCP servers of the **official MCP Registry**
+(`registry.modelcontextprotocol.io`), copied into `mcp_catalogue_entries` by one leader-gated job
+(`lib/connector-catalogue/`, lease `connector-catalogue`, every hour):
+
+1. **Sync** (`sync.ts`, when the last complete pass is older than 12 hours): every server's latest
+   version, a page of 100 at a time with a pause between, a failed page asked again twice, and a 429
+   honoured until its `Retry-After` (`mcp_catalogue_sync_state.retry_after`). A pass that fails
+   changes nothing; a complete one inserts new servers (`pending`), updates changed ones (a new
+   endpoint is `pending` again), marks those no longer listed `removed_at` and brings back those
+   listed again. `mcp_catalogue_sync_state.last_report` keeps its counts, refusals by reason included.
+2. **Health check** (`health.ts`, up to 600 a round, 8 at a time, never-checked and best-proven first):
+   integrations' `POST /mcp-catalogue/probe` (`packages/integrations/src/mcp/probe.ts`, through
+   `connectorFetch`, for no account, 15 s) `initialize`s the server without a token. One that answers
+   lists its tools (`tools/list`): offered with sign-in `none` unless its tools hide characters, carry
+   instructions to the model ("ignore previous instructions", `<IMPORTANT>`…), or list none. One that
+   answers 401 has its OAuth metadata read (RFC 9728, RFC 8414): offered with `oauth` when it takes
+   Dynamic Client Registration, otherwise `needs_provider_app` and not offered. One failure is checked
+   again within the hour; the second in a row makes it `failing`. Healthy servers are checked again
+   every 3 days, failing ones every 7. If integrations cannot be asked the round stops and changes
+   nothing. An OAuth server's tools are known only once a person connects it.
+3. **Logos** of every offered entry ([logos](#connectors), above).
+
+**What is taken** (`policy.ts`): an `active` server with a streamable HTTP (preferred) or SSE remote
+at an `https` URL, with no `{template}` and no header the registry marks required; never a package
+(stdio, `npx`, a container). Left out: a publisher with more than 25 such servers (a listing farm;
+the registry holds publishers with thousands), a server the curated catalogue already has (same
+endpoint or same registry name: a synced server never overrides a curated one), and every listing of
+one endpoint but the best-proven, most recent one. Names and descriptions are the registry's,
+made plain text and cut (`lib/untrusted-text.ts`); a category is read from their words.
+
+**Badges.** The registry has no "verified" flag: a server's name is the proof of who published it
+(a reverse-DNS namespace through DNS or HTTP, `io.github.<login>` through GitHub), and the registry
+does not check that a remote is on the proven domain. So the store says `official` when a proven
+domain's server is reached on that domain (`com.notion/mcp` at `mcp.notion.com`; every curated entry
+is official), `verified` when it is reached elsewhere, and `community` for a GitHub namespace.
+
+**The operator's say** is `CATALOGUE_OVERRIDES` in `policy.ts`, reviewed like code, keyed by a
+server's registry name, `host:<host>` (and every host under it) or `publisher:<namespace>`: `hide`
+(the denylist: Smithery's shut-down proxies `server.smithery.ai` and `run.tools` are in it),
+`allowBulk`, `category`, `trust` and `featured`. A hidden server leaves the store on the next deploy;
+connections people already made to it are theirs and keep working until they disconnect them.
+
+**Sources considered** (2026-11-13). Only the official registry is synced: its terms dedicate the
+registry data to the public domain (CC0 1.0, §10) and let subregistries copy, enrich and process it
+(§11) without implying a partnership (§6); its API needs no key and documents no rate limit, and it
+asks aggregators to poll regularly but infrequently, never per user request
+([registry aggregators](https://modelcontextprotocol.io/registry/registry-aggregators.md),
+[terms](https://modelcontextprotocol.io/registry/terms-of-service.md)). Not synced:
+[Glama](https://glama.ai/policies/terms-of-service) (needs a key; its licence requires a credit on
+every page and forbids a competing directory), [PulseMCP](https://www.pulsemcp.com/api/docs/v0.1)
+(partners only, no public terms), [Smithery](https://smithery.ai/future) (its API and proxies shut
+down on 2026-10-31; its URLs are its own proxies, not providers'), [mcp.so](https://mcp.so/terms-of-service)
+(no API, claims its content), GitHub's MCP registry (a curated mirror of the official one, under
+GitHub's terms only) and the awesome-mcp-servers lists (repositories, not remote endpoints).
+[Docker's MCP registry](https://github.com/docker/mcp-registry) (MIT, 77 reviewed remote servers)
+is a possible second source; adding one is a new `MCP_CATALOGUE_SOURCES` value and a reader beside
+`official-registry.ts`, deduplicated by endpoint like the rest.
 
 ### What the owner registers
 

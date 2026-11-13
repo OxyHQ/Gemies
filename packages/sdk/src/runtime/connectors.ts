@@ -1,5 +1,11 @@
 import { useOxy } from '@oxy.so/services/ui/client';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
@@ -13,9 +19,11 @@ import { useGemieRuntime } from './config';
  * (`mcp_notion__…`, `mcp_notion_2__…`) and its own grants to gemies, so which account a tool acts
  * on is always explicit.
  *
- * The store (`GemieConnectorsStore`) is where a person finds and connects one; Settings
- * (`GemieConnectedConnectors`) lists only what they connected. Both, and every logo
- * (`ConnectorLogo`), are the same in the Gemies and the Alia apps.
+ * The store (`GemieConnectorsStore`) is where a person finds and connects one: the providers'
+ * servers Gemies curates, and the remote servers synced from the official MCP Registry, each with
+ * its badge (`official`, `verified`, `community`). Settings (`GemieConnectedConnectors`) lists only
+ * what they connected. Both, and every logo (`ConnectorLogo`), are the same in the Gemies and the
+ * Alia apps.
  */
 
 /** The routes, on the Gemies API (credentialed, the Gemies and Alia origins). */
@@ -31,6 +39,7 @@ export const CONNECTOR_ROUTES = {
 
 export const connectorQueryKeys = {
   catalogue: ['gemie-connectors', 'catalogue'] as const,
+  store: (query: ConnectorStoreQuery) => ['gemie-connectors', 'catalogue', query] as const,
   connected: ['gemie-connectors', 'connected'] as const,
 };
 
@@ -39,19 +48,61 @@ export const CONNECTOR_CATEGORIES = [
   'development',
   'communication',
   'data',
+  'design',
+  'finance',
+  'marketing',
+  'commerce',
+  'search',
+  'other',
 ] as const;
 export type ConnectorCategory = (typeof CONNECTOR_CATEGORIES)[number];
 
-/** A connector of the catalogue: a provider's hosted MCP server this deployment can connect. */
+/**
+ * Who stands behind a connector: `official` is the provider's own server (curated by Gemies, or
+ * published by a domain its publisher proved and reached on it), `verified` a proven domain's server
+ * reached elsewhere, `community` a server published by a GitHub account.
+ */
+export const CONNECTOR_TRUST = ['official', 'verified', 'community'] as const;
+export type ConnectorTrust = (typeof CONNECTOR_TRUST)[number];
+
+export const CONNECTOR_SORTS = ['featured', 'name', 'recent'] as const;
+export type ConnectorSort = (typeof CONNECTOR_SORTS)[number];
+
+/** A connector of the store: a remote MCP server this deployment can connect. */
 export interface ConnectorEntry {
   id: string;
   name: string;
   description: string;
   category: ConnectorCategory;
   featured: boolean;
-  docsUrl: string;
+  trust: ConnectorTrust;
+  /** `curated` by Gemies, or synced from the official MCP Registry. */
+  source: 'curated' | 'mcp_registry';
+  /** `oauth` opens the provider's sign-in; `none` connects at once. */
+  signIn: 'oauth' | 'none';
+  /** How many tools it offers, when known before connecting. */
+  toolCount: number | null;
+  /** Where to read about it; `null` when its publisher gave no page. */
+  docsUrl: string | null;
   /** On the API's origin; `null` draws a monogram. */
   logoUrl: string | null;
+}
+
+/** What the store shows: a search, a category, badges, only what needs no sign-in, an order. */
+export interface ConnectorStoreQuery {
+  q?: string;
+  category?: ConnectorCategory;
+  trust?: readonly ConnectorTrust[];
+  noSignIn?: boolean;
+  sort?: ConnectorSort;
+}
+
+/** One page of the store, and each category's count under the same search and filters. */
+export interface ConnectorStorePage {
+  servers: ConnectorEntry[];
+  total: number;
+  nextOffset: number | null;
+  categories: { id: ConnectorCategory; count: number }[];
 }
 
 export type ConnectionStatus = 'installed' | 'running' | 'error';
@@ -77,16 +128,46 @@ export interface Connection {
   usedBy: { id: string; name: string }[];
 }
 
-/** The catalogue, as this deployment can connect it. */
-export function useConnectorCatalogue() {
+/** How many entries one page of the store asks for. */
+export const CONNECTOR_STORE_PAGE_SIZE = 30;
+
+/** The query string the store route reads (`GET /mcp/registry`). */
+export function connectorStoreParams(
+  query: ConnectorStoreQuery,
+  offset: number,
+  limit = CONNECTOR_STORE_PAGE_SIZE,
+): Record<string, string | number> {
+  return {
+    ...(query.q?.trim() ? { q: query.q.trim() } : {}),
+    ...(query.category ? { category: query.category } : {}),
+    ...(query.trust?.length ? { trust: query.trust.join(',') } : {}),
+    ...(query.noSignIn ? { signIn: 'none' } : {}),
+    ...(query.sort ? { sort: query.sort } : {}),
+    offset,
+    limit,
+  };
+}
+
+/**
+ * The store, a page at a time: hundreds of connectors are searched, filtered and sorted by the API,
+ * and a new search keeps the previous results on screen until the next arrive.
+ */
+export function useConnectorStore(query: ConnectorStoreQuery) {
   const api = useGemieApi();
   const { isAuthenticated } = useOxy();
-  return useQuery({
-    queryKey: connectorQueryKeys.catalogue,
-    queryFn: async () =>
-      (await api.get<{ servers: ConnectorEntry[] }>(CONNECTOR_ROUTES.catalogue)).data.servers,
+  return useInfiniteQuery({
+    queryKey: connectorQueryKeys.store(query),
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) =>
+      (
+        await api.get<ConnectorStorePage>(CONNECTOR_ROUTES.catalogue, {
+          params: connectorStoreParams(query, pageParam),
+        })
+      ).data,
+    getNextPageParam: (last) => last.nextOffset ?? undefined,
     enabled: isAuthenticated,
     staleTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -179,13 +260,16 @@ export function useConnectorActions({ returnTo }: ConnectorActionsOptions) {
     return complete.mutateAsync(result);
   };
 
+  /** A new account: through the provider's sign-in, or at once for a server that needs none. */
   const connect = useMutation({
     mutationFn: async (registryId: string) => {
-      const { data } = await api.post<{ authorizationUrl: string }>(CONNECTOR_ROUTES.connect, {
-        registryId,
-        returnTo,
-      });
-      return signIn(data.authorizationUrl);
+      const { data } = await api.post<{ authorizationUrl?: string; server?: Connection }>(
+        CONNECTOR_ROUTES.connect,
+        { registryId, returnTo },
+      );
+      if (data.authorizationUrl) return signIn(data.authorizationUrl);
+      await refresh();
+      return data.server ?? null;
     },
   });
 

@@ -12,6 +12,7 @@ import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamable
 import { errorMessage } from '../shared/utils';
 import { createLogger } from '../shared/logger';
 import * as manager from './manager';
+import { probeConnector } from './probe';
 import { HOSTED_TRANSPORTS, isHostedTransport } from './types';
 
 const logger = createLogger('MCP');
@@ -295,4 +296,24 @@ router.get('/sessions', (req, res) => {
   });
 });
 
-export { router as mcpRouter };
+/**
+ * The connectors store's health check (`probe.ts`), asked by the API's catalogue job for no
+ * account: whether a public server answers and how a person signs in to it. Holds nothing.
+ */
+const catalogueRouter: RouterType = Router();
+
+/** POST /mcp-catalogue/probe { url, transport } */
+catalogueRouter.post('/probe', async (req, res) => {
+  const { url, transport } = req.body ?? {};
+  if (typeof url !== 'string' || !URL.canParse(url) || new URL(url).protocol !== 'https:') {
+    return res.status(400).json({ error: 'url must be an https URL' });
+  }
+  if (!isHostedTransport(transport)) {
+    return res
+      .status(400)
+      .json({ error: `transport must be one of: ${HOSTED_TRANSPORTS.join(', ')}` });
+  }
+  res.json(await probeConnector(url, transport));
+});
+
+export { router as mcpRouter, catalogueRouter as mcpCatalogueRouter };

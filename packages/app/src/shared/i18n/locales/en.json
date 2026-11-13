@@ -2329,7 +2329,13 @@
         "communication": "Communication",
         "data": "Data",
         "development": "Development",
-        "productivity": "Productivity"
+        "productivity": "Productivity",
+        "design": "Design",
+        "finance": "Finance",
+        "marketing": "Marketing",
+        "commerce": "Commerce",
+        "search": "Search and research",
+        "other": "Other"
       },
       "connected": {
         "browse": "Browse connectors",
@@ -2384,7 +2390,7 @@
         "categories": "Categories",
         "connect": "Connect",
         "connectAnother": "Add account",
-        "description": "Connect the apps you work with. Each is the provider’s own MCP server: you sign in with them, and Gemies never sees your password.",
+        "description": "Connect the apps you work with: the providers’ own MCP servers, and hundreds more from the official MCP Registry. Official means the provider publishes it; Community means a developer does. When one asks you to sign in, you sign in with them, and Gemies never sees your password.",
         "docs": "About",
         "empty": "No connector is available right now.",
         "featured": "Featured",
@@ -2396,6 +2402,31 @@
         "connectedCount": {
           "one": "Connected",
           "other": "{{count}} accounts connected"
+        },
+        "allCount": {
+          "one": "All connectors · 1",
+          "other": "All connectors · {{count}}"
+        },
+        "results": {
+          "zero": "No results",
+          "one": "1 result",
+          "other": "{{count}} results"
+        },
+        "more": {
+          "one": "Show 1 more",
+          "other": "Show more ({{count}} left)"
+        },
+        "filters": "Filters",
+        "filter": {
+          "official": "Official",
+          "verified": "Verified",
+          "noSignIn": "No sign-in"
+        },
+        "sort": "Sort by",
+        "sortBy": {
+          "featured": "Featured",
+          "name": "Name",
+          "recent": "Recently updated"
         }
       },
       "usedBy": "Used by {{names}}",
@@ -2403,6 +2434,11 @@
         "zero": "No tools",
         "one": "1 tool",
         "other": "{{count}} tools"
+      },
+      "trust": {
+        "official": "Official",
+        "verified": "Verified",
+        "community": "Community"
       }
     }
   }

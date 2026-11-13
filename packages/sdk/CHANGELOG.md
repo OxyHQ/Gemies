@@ -1,5 +1,24 @@
 # @gemies/sdk
 
+## 5.0.0
+
+- **The connectors store grows to hundreds of servers.** Beside the providers' servers Gemies curates,
+  the store lists the remote MCP servers synced from the official MCP Registry once their health check
+  passed (Gemies API, `lib/connector-catalogue/`). `GemieConnectorsStore` searches, filters and sorts
+  on the API and pages through the results (Show more): categories with their counts, the Official,
+  Verified and No sign-in filters, and Featured, Name or Recently updated. Each card carries its badge
+  (`official`, `verified`, `community`) and says when it connects without a sign-in.
+- **Breaking:** `useConnectorCatalogue` is replaced by `useConnectorStore(query)`, an infinite query of
+  `GET /mcp/registry` pages (`ConnectorStorePage`: `servers`, `total`, `nextOffset`, `categories`).
+  `ConnectorEntry` gains `trust`, `source`, `signIn` and `toolCount`, and its `docsUrl` may be `null`.
+  `CONNECTOR_CATEGORIES` gains `design`, `finance`, `marketing`, `commerce`, `search` and `other`;
+  `CONNECTOR_TRUST`, `CONNECTOR_SORTS`, `CONNECTOR_STORE_PAGE_SIZE` and `connectorStoreParams` are new.
+- `useConnectorActions().connect` resolves with the connection at once for a server that needs no
+  sign-in (`POST /mcp/connect` answers `{ server }`), and opens the provider's sign-in otherwise.
+- New copy: `gemie.connectors.trust.*`, `gemie.connectors.category.{design,finance,marketing,commerce,search,other}`,
+  `gemie.connectors.store.{allCount,results,more,filters,filter.*,sort,sortBy.*}`; the store's
+  description says where its servers come from.
+
 ## 4.1.0
 
 - **The group welcome no longer links Bloom's whole multi-agent template.** `GemieGroupWelcome`

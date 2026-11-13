@@ -4,10 +4,12 @@
  * A logo is read from, in order:
  *
  *  1. **The server itself** — `serverInfo.icons` in its MCP `initialize` answer
- *     (spec 2025-11-25), read when the connector connects. Providers' servers
- *     answer `initialize` only with a token, so this is known per connection.
+ *     (spec 2025-11-25). A provider's server answers `initialize` only with a
+ *     token, so for most this is known per connection; a store server that needs
+ *     no sign-in publishes it to the catalogue's health check (`storeServerLogo`).
  *  2. **The official MCP Registry** — the `icons` of the entry's `server.json`
- *     (`registry.modelcontextprotocol.io`), for a catalogue entry that is listed.
+ *     (`registry.modelcontextprotocol.io`): a curated entry's record
+ *     (`mcpRegistryName`), a synced entry's own listing.
  *  3. **The provider's website** — its brand mark: `apple-touch-icon`, then an
  *     SVG or PNG `icon` link, then `/apple-touch-icon.png` and `/favicon.ico`.
  *
@@ -28,13 +30,13 @@ import { eq } from 'drizzle-orm';
 import type { ApiDatabase } from '../db/index.js';
 import {
   CONNECTOR_LOGO_MAX_BYTES,
+  type ConnectorIcon,
   connectorLogos,
   mcpRegistryLogos,
   type ConnectorLogoSource,
   type ConnectorLogoType,
 } from '../db/schema/integrations.js';
 import { log } from './logger.js';
-import { MCP_REGISTRY, type McpRegistryEntry } from './mcp-registry.js';
 
 const FETCH_HEADERS_TIMEOUT_MS = 8_000;
 const FETCH_BODY_TIMEOUT_MS = 8_000;
@@ -44,13 +46,6 @@ const USER_AGENT = 'Mozilla/5.0 (compatible; GemiesConnectorLogos/1.0; +https://
 const MCP_REGISTRY_API = 'https://registry.modelcontextprotocol.io/v0.1/servers';
 /** How long a catalogue logo is trusted before it is read again. */
 const REGISTRY_LOGO_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-/** One icon as MCP describes it (`Icon`): a URL or a `data:` URI, with optional hints. */
-export interface McpIcon {
-  src: string;
-  mimeType?: string;
-  sizes?: string[];
-}
 
 /** What the bytes are, by their signature. `null` is anything that is not an image we serve. */
 export function sniffLogoType(bytes: Buffer): ConnectorLogoType | null {
@@ -122,7 +117,7 @@ async function readHttps(url: string, maxBytes: number): Promise<Buffer | null> 
 }
 
 /** The largest side an icon declares (`48x48`, `any` = vector), for choosing among several. */
-function iconSize(icon: McpIcon): number {
+function iconSize(icon: ConnectorIcon): number {
   if (icon.sizes?.includes('any') || icon.mimeType === 'image/svg+xml') return 10_000;
   return Math.max(0, ...(icon.sizes ?? []).map((size) => Number.parseInt(size, 10) || 0));
 }
@@ -130,7 +125,7 @@ function iconSize(icon: McpIcon): number {
 /** The first of these icons that reads as an image, largest first; its stored id or `null`. */
 export async function storeFirstIcon(
   db: ApiDatabase,
-  icons: readonly McpIcon[],
+  icons: readonly ConnectorIcon[],
 ): Promise<string | null> {
   const ordered = [...icons]
     .filter((icon) => typeof icon?.src === 'string')
@@ -146,7 +141,7 @@ export async function storeFirstIcon(
 }
 
 /** The icons of a server in the official MCP Registry, newest version first. */
-async function mcpRegistryIcons(name: string): Promise<McpIcon[]> {
+async function mcpRegistryIcons(name: string): Promise<ConnectorIcon[]> {
   const body = await readHttps(
     `${MCP_REGISTRY_API}?search=${encodeURIComponent(name)}&version=latest`,
     MAX_HTML_BYTES,
@@ -154,7 +149,7 @@ async function mcpRegistryIcons(name: string): Promise<McpIcon[]> {
   if (!body) return [];
   try {
     const listing = JSON.parse(body.toString('utf8')) as {
-      servers?: { server?: { name?: string; icons?: McpIcon[] } }[];
+      servers?: { server?: { name?: string; icons?: ConnectorIcon[] } }[];
     };
     return (listing.servers ?? [])
       .map((item) => item.server)
@@ -222,59 +217,111 @@ async function websiteBrandMark(
   return null;
 }
 
-/** Find a catalogue entry's logo: its MCP Registry icons, then its website's brand mark. */
+/**
+ * A store entry whose logo is kept: its id, the MCP Registry icons it has (a synced entry's own
+ * listing) or the registry name to read them by (a curated entry), and the website whose brand mark
+ * is the fallback.
+ */
+export interface LogoSubject {
+  registryId: string;
+  icons?: readonly ConnectorIcon[];
+  mcpRegistryName?: string;
+  website: string;
+}
+
+/** Find an entry's logo: its MCP Registry icons, then its website's brand mark. */
 async function resolveRegistryLogo(
   db: ApiDatabase,
-  entry: McpRegistryEntry,
+  subject: LogoSubject,
 ): Promise<{ logoId: string; source: ConnectorLogoSource; sourceUrl: string } | null> {
-  if (entry.mcpRegistryName) {
-    const icons = await mcpRegistryIcons(entry.mcpRegistryName);
-    const logoId = await storeFirstIcon(db, icons);
-    if (logoId) {
-      return {
-        logoId,
-        source: 'mcp_registry',
-        sourceUrl: `${MCP_REGISTRY_API}?search=${entry.mcpRegistryName}`,
-      };
-    }
+  const icons =
+    subject.icons ??
+    (subject.mcpRegistryName ? await mcpRegistryIcons(subject.mcpRegistryName) : []);
+  const logoId = await storeFirstIcon(db, icons);
+  if (logoId) {
+    const listed = subject.mcpRegistryName ?? subject.registryId.replace(/^mcp_registry:/, '');
+    return {
+      logoId,
+      source: 'mcp_registry',
+      sourceUrl: `${MCP_REGISTRY_API}?search=${encodeURIComponent(listed)}`,
+    };
   }
-  const mark = await websiteBrandMark(db, entry.website);
+  const mark = await websiteBrandMark(db, subject.website);
   return mark ? { ...mark, source: 'website' } : null;
 }
 
+async function saveRegistryLogo(
+  db: ApiDatabase,
+  registryId: string,
+  found: { logoId: string; source: ConnectorLogoSource; sourceUrl: string },
+  now: Date,
+): Promise<void> {
+  await db
+    .insert(mcpRegistryLogos)
+    .values({ registryId, ...found, refreshedAt: now })
+    .onConflictDoUpdate({
+      target: mcpRegistryLogos.registryId,
+      set: { ...found, refreshedAt: now },
+    });
+}
+
 /**
- * Read again the logo of every catalogue entry not read in the last week. One
- * entry that cannot be read keeps its previous logo (or stays a monogram); it
- * costs nothing else.
+ * Keep the icon a store server published in its own `initialize` (the health check's answer): the
+ * best source there is, so it replaces a registry or website logo.
  */
-export async function refreshRegistryLogos(db: ApiDatabase, now = new Date()): Promise<void> {
+export async function storeServerLogo(
+  db: ApiDatabase,
+  registryId: string,
+  icons: readonly ConnectorIcon[],
+  now = new Date(),
+): Promise<void> {
+  const logoId = await storeFirstIcon(db, icons);
+  if (!logoId) return;
+  const sourceUrl = icons.find((icon) => icon.src.startsWith('https://'))?.src ?? 'data:';
+  await saveRegistryLogo(db, registryId, { logoId, source: 'server', sourceUrl }, now);
+}
+
+/**
+ * Read again the logo of every entry not read in the last week, at most `limit` of them a round
+ * (a first sync brings hundreds). One entry that cannot be read keeps its previous logo (or stays a
+ * monogram); it costs nothing else. A logo its own server published is read again by the health
+ * check, never replaced by a registry or website one here.
+ */
+export async function refreshCatalogueLogos(
+  db: ApiDatabase,
+  subjects: readonly LogoSubject[],
+  { now = new Date(), limit = 150 }: { now?: Date; limit?: number } = {},
+): Promise<{ refreshed: number; missing: number }> {
   const stale = new Date(now.getTime() - REGISTRY_LOGO_MAX_AGE_MS);
   const known = await db
-    .select({ registryId: mcpRegistryLogos.registryId, refreshedAt: mcpRegistryLogos.refreshedAt })
+    .select({
+      registryId: mcpRegistryLogos.registryId,
+      source: mcpRegistryLogos.source,
+      refreshedAt: mcpRegistryLogos.refreshedAt,
+    })
     .from(mcpRegistryLogos);
   const fresh = new Set(
-    known.filter((row) => row.refreshedAt >= stale).map((row) => row.registryId),
+    known
+      .filter((row) => row.refreshedAt >= stale || row.source === 'server')
+      .map((row) => row.registryId),
   );
 
-  for (const entry of MCP_REGISTRY) {
-    if (fresh.has(entry.id)) continue;
+  let refreshed = 0;
+  let missing = 0;
+  for (const subject of subjects.filter((item) => !fresh.has(item.registryId)).slice(0, limit)) {
     try {
-      const found = await resolveRegistryLogo(db, entry);
+      const found = await resolveRegistryLogo(db, subject);
       if (!found) {
-        log.general.warn({ registryId: entry.id }, 'No logo found for a connector');
+        missing += 1;
         continue;
       }
-      await db
-        .insert(mcpRegistryLogos)
-        .values({ registryId: entry.id, ...found, refreshedAt: now })
-        .onConflictDoUpdate({
-          target: mcpRegistryLogos.registryId,
-          set: { ...found, refreshedAt: now },
-        });
+      await saveRegistryLogo(db, subject.registryId, found, now);
+      refreshed += 1;
     } catch (err: unknown) {
-      log.general.warn({ err, registryId: entry.id }, 'Connector logo refresh failed');
+      log.general.warn({ err, registryId: subject.registryId }, 'Connector logo refresh failed');
     }
   }
+  return { refreshed, missing };
 }
 
 /** Each catalogue entry's logo id. */
@@ -283,19 +330,6 @@ export async function registryLogoIds(db: ApiDatabase): Promise<Map<string, stri
     .select({ registryId: mcpRegistryLogos.registryId, logoId: mcpRegistryLogos.logoId })
     .from(mcpRegistryLogos);
   return new Map(rows.map((row) => [row.registryId, row.logoId]));
-}
-
-/** Each catalogue entry's logo id, with where it came from, for the owner and support. */
-export async function registryLogoSources(
-  db: ApiDatabase,
-): Promise<Map<string, { logoId: string; source: ConnectorLogoSource; sourceUrl: string }>> {
-  const rows = await db.select().from(mcpRegistryLogos);
-  return new Map(
-    rows.map((row) => [
-      row.registryId,
-      { logoId: row.logoId, source: row.source, sourceUrl: row.sourceUrl },
-    ]),
-  );
 }
 
 /** A stored logo, as the API serves it. */

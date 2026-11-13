@@ -1,12 +1,12 @@
 /**
  * Connectors: the catalogue a person browses, and the accounts they connected.
  *
- * - `GET /mcp/registry` — the catalogue: every provider-hosted MCP server this
- *   deployment can connect, with its logo. An entry whose provider client or
- *   approval is missing is not listed (`isRegistryEntryConfigured`).
- * - `POST /mcp/connect` — connect an account of a catalogue entry. Each call is
- *   a NEW account: its row is written when the OAuth flow completes, so the
- *   connected list never holds a half-made one.
+ * - `GET /mcp/registry` — the store, a page at a time: the curated entries this
+ *   deployment can connect and the servers synced from the official MCP Registry
+ *   (`lib/connector-catalogue/`), searched, filtered and sorted, with their logos.
+ * - `POST /mcp/connect` — connect an account of a store entry. Each call is a NEW
+ *   account: its row is written when its OAuth completes, or once a server that
+ *   needs no sign-in answered, so the connected list never holds a half-made one.
  * - `POST /mcp/custom` — add the person's own remote MCP server by URL.
  * - `GET /mcp/installed` — what the person connected: each account, its status,
  *   its logo and which gemies may use it.
@@ -46,24 +46,30 @@ import type {
 } from '../db/schema/integrations.js';
 import { ALIA_GEMIE_ID } from '../domain/alia-gemie.js';
 import { agentPromptName, attachAgentIdentities } from '../lib/agent-identity.js';
+import type { ConnectorIcon } from '../db/schema/integrations.js';
+import { CONNECTOR_CATEGORIES, MCP_CATALOGUE_TRUST } from '../db/schema/integrations.js';
+import { registryLogoIds, servedLogo, storeFirstIcon } from '../lib/connector-logos.js';
 import {
-  registryLogoIds,
-  servedLogo,
-  storeFirstIcon,
-  type McpIcon,
-} from '../lib/connector-logos.js';
+  CATALOGUE_SORTS,
+  type CatalogueEntry,
+  catalogueIntegrationsConfig,
+  findCatalogueEntry,
+  listCatalogue,
+  queryCatalogue,
+} from '../lib/connector-catalogue/catalogue.js';
+import { isSyncedEntryId } from '../lib/connector-catalogue/policy.js';
 import {
   connectorReturnTarget,
   connectorReturnUrl,
   defaultConnectorReturn,
 } from '../lib/connector-return.js';
-import { findRegistryEntry, MCP_REGISTRY, type McpRegistryEntry } from '../lib/mcp-registry.js';
+import { MCP_REGISTRY } from '../lib/mcp-registry.js';
 import {
+  curatedEntryOf,
   integrationsConfigFor,
   isRegistryEntryConfigured,
   parseCustomConnector,
   patchedCustomConnector,
-  registryIntegrationsConfig,
   type IntegrationsMcpConfig,
 } from '../lib/mcp-connector-config.js';
 import { log } from '../lib/logger.js';
@@ -76,7 +82,7 @@ interface ConnectReply {
   authorizationUrl?: unknown;
   tools?: McpServerTool[];
   resources?: McpServerResource[];
-  server?: { icons?: McpIcon[] };
+  server?: { icons?: ConnectorIcon[] };
   accountLabel?: string;
 }
 
@@ -101,18 +107,29 @@ async function callIntegrations(
   return { ok: response.ok, status: response.status, data };
 }
 
-/** A catalogue entry as the store shows it. */
-function catalogueEntry(entry: McpRegistryEntry, logos: Map<string, string>) {
+/** A store entry as the store shows it. */
+function catalogueEntry(entry: CatalogueEntry, logos: Map<string, string>) {
   const logoId = logos.get(entry.id);
   return {
     id: entry.id,
     name: entry.name,
     description: entry.description,
     category: entry.category,
-    featured: entry.featured ?? false,
+    featured: entry.featured,
+    trust: entry.trust,
+    source: entry.source,
+    signIn: entry.signIn,
+    toolCount: entry.toolCount,
     docsUrl: entry.docsUrl,
     logoUrl: logoId ? `/mcp/logos/${logoId}` : null,
   };
+}
+
+/** One of `values`, or `undefined`. */
+function oneOf<T extends string>(values: readonly T[], value: unknown): T | undefined {
+  return typeof value === 'string' && (values as readonly string[]).includes(value)
+    ? (value as T)
+    : undefined;
 }
 
 /** Which of the person's gemies may use each connector: Alia every one, others by grant. */
@@ -184,7 +201,7 @@ async function beginAuthorization(input: {
 }
 
 /** The connector's own icon, stored, when its server published one. */
-async function serverLogoId(icons: McpIcon[] | undefined): Promise<string | undefined> {
+async function serverLogoId(icons: ConnectorIcon[] | undefined): Promise<string | undefined> {
   if (!icons?.length) return undefined;
   return (await storeFirstIcon(getDb(), icons).catch(() => null)) ?? undefined;
 }
@@ -193,13 +210,41 @@ async function serverLogoId(icons: McpIcon[] | undefined): Promise<string | unde
 // The catalogue
 // ---------------------------------------------------------------------------
 
-router.get('/registry', authenticateToken, async (_req, res) => {
-  const logos = await registryLogoIds(getDb()).catch(() => new Map<string, string>());
-  res.json({
-    servers: MCP_REGISTRY.filter((entry) => isRegistryEntryConfigured(entry)).map((entry) =>
-      catalogueEntry(entry, logos),
-    ),
-  });
+/**
+ * `GET /mcp/registry?q&category&trust&signIn&sort&offset&limit` — a page of the store, the total
+ * under the same search and filters, the next page's offset, and each category's count. `trust` is a
+ * comma-separated list of badges; `signIn=none` keeps only what connects without a sign-in.
+ */
+router.get('/registry', authenticateToken, async (req, res) => {
+  try {
+    const db = getDb();
+    const [entries, logos] = await Promise.all([
+      listCatalogue(db),
+      registryLogoIds(db).catch(() => new Map<string, string>()),
+    ]);
+    const trust =
+      typeof req.query.trust === 'string'
+        ? req.query.trust.split(',').flatMap((badge) => oneOf(MCP_CATALOGUE_TRUST, badge) ?? [])
+        : undefined;
+    const page = queryCatalogue(entries, {
+      q: typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : undefined,
+      category: oneOf(CONNECTOR_CATEGORIES, req.query.category),
+      trust,
+      noSignIn: req.query.signIn === 'none',
+      sort: oneOf(CATALOGUE_SORTS, req.query.sort),
+      offset: Number.parseInt(String(req.query.offset ?? '0'), 10) || 0,
+      limit: Number.parseInt(String(req.query.limit ?? ''), 10) || undefined,
+    });
+    res.json({
+      servers: page.entries.map((entry) => catalogueEntry(entry, logos)),
+      total: page.total,
+      nextOffset: page.nextOffset,
+      categories: page.categories,
+    });
+  } catch (error: unknown) {
+    log.general.error({ err: error }, 'List connector store error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /** A stored logo. Public: its id is its content hash, and a logo is a provider's public mark. */
@@ -267,13 +312,17 @@ router.post('/oauth/complete', authenticateToken, async (req, res) => {
     }
 
     const existing = await findMcpServerForUser(db, stateRow.serverId, req.userId!);
-    const entry = stateRow.registryId ? findRegistryEntry(stateRow.registryId) : undefined;
+    const entry =
+      !existing && stateRow.registryId
+        ? await findCatalogueEntry(db, stateRow.registryId)
+        : undefined;
     if (!existing && !entry) return res.status(404).json({ error: 'Connector not found' });
 
-    const transport: McpServerTransport = existing?.transport ?? 'streamable-http';
+    const transport: McpServerTransport =
+      existing?.transport ?? (entry as CatalogueEntry).transport;
     const config = existing
       ? integrationsConfigFor(existing)
-      : registryIntegrationsConfig(entry as McpRegistryEntry);
+      : catalogueIntegrationsConfig(entry as CatalogueEntry);
     const { ok, status, data } = await callIntegrations(
       req.userId!,
       `/mcp/servers/${stateRow.serverId}/oauth/finish`,
@@ -302,22 +351,11 @@ router.post('/oauth/complete', authenticateToken, async (req, res) => {
           ...(data.accountLabel ? { accountLabel: data.accountLabel } : {}),
           ...(logoId ? { logoId } : {}),
         })
-      : await insertMcpServer(db, (entry as McpRegistryEntry).id, {
+      : await insertEntryAccount(req.userId!, entry as CatalogueEntry, {
           id: stateRow.serverId,
-          oxyUserId: req.userId!,
-          displayName: (entry as McpRegistryEntry).name,
-          description: (entry as McpRegistryEntry).description,
-          accountLabel:
-            data.accountLabel ??
-            (await defaultAccountLabel(req.userId!, (entry as McpRegistryEntry).id)),
-          source: 'registry',
-          registryId: (entry as McpRegistryEntry).id,
-          transport,
-          config: { url: (entry as McpRegistryEntry).url, requiresOAuth: true },
-          status: 'running',
-          tools: data.tools ?? [],
-          resources: data.resources ?? [],
-          logoId: logoId ?? null,
+          requiresOAuth: true,
+          reply: data,
+          logoId,
         });
     if (!connected) return res.status(409).json({ error: 'This account is already connected' });
 
@@ -342,31 +380,98 @@ async function defaultAccountLabel(oxyUserId: string, registryId: string): Promi
   return others.length === 0 ? null : `Account ${others.length + 1}`;
 }
 
+/** Write the row of a NEW account of a store entry, once it connected. */
+async function insertEntryAccount(
+  oxyUserId: string,
+  entry: CatalogueEntry,
+  connected: {
+    id: string;
+    requiresOAuth: boolean;
+    reply: ConnectReply;
+    logoId: string | undefined;
+  },
+): Promise<McpServerRow | null> {
+  return insertMcpServer(getDb(), entry.slug, {
+    id: connected.id,
+    oxyUserId,
+    displayName: entry.name,
+    description: entry.description,
+    accountLabel: connected.reply.accountLabel ?? (await defaultAccountLabel(oxyUserId, entry.id)),
+    source: 'registry',
+    registryId: entry.id,
+    transport: entry.transport,
+    config: { url: entry.url, requiresOAuth: connected.requiresOAuth },
+    status: 'running',
+    tools: connected.reply.tools ?? [],
+    resources: connected.reply.resources ?? [],
+    logoId: connected.logoId ?? null,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Connecting
 // ---------------------------------------------------------------------------
 
+/**
+ * A new account of a store entry. One that signs in through OAuth answers `{ authorizationUrl }`;
+ * one that needs no sign-in is connected here and answers `{ server }`, or `502` with why it did not
+ * answer (no row is written for it).
+ */
 router.post('/connect', authenticateToken, async (req, res) => {
   try {
-    const entry =
-      typeof req.body?.registryId === 'string' ? findRegistryEntry(req.body.registryId) : undefined;
-    if (!entry) return res.status(404).json({ error: 'Connector not found' });
-    if (!isRegistryEntryConfigured(entry)) {
+    const registryId = typeof req.body?.registryId === 'string' ? req.body.registryId : '';
+    const unconfigured = MCP_REGISTRY.find(
+      (curated) => curated.id === registryId && !isRegistryEntryConfigured(curated),
+    );
+    if (unconfigured) {
       return res
         .status(503)
-        .json({ error: `${entry.name} is not available yet`, code: 'not_configured' });
+        .json({ error: `${unconfigured.name} is not available yet`, code: 'not_configured' });
     }
+    const entry = registryId ? await findCatalogueEntry(getDb(), registryId) : undefined;
+    if (!entry) return res.status(404).json({ error: 'Connector not found' });
     if (!INTEGRATIONS_URL) {
       return res.status(503).json({ error: 'Integrations service not configured' });
     }
-    const started = await beginAuthorization({
-      oxyUserId: req.userId!,
-      serverId: crypto.randomUUID(),
-      registryId: entry.id,
-      transport: 'streamable-http',
-      config: registryIntegrationsConfig(entry),
-      returnTo: connectorReturnTarget(req.body?.returnTo),
-    });
+    const serverId = crypto.randomUUID();
+    const config = catalogueIntegrationsConfig(entry);
+    const returnTo = connectorReturnTarget(req.body?.returnTo);
+    const authorize = () =>
+      beginAuthorization({
+        oxyUserId: req.userId!,
+        serverId,
+        registryId: entry.id,
+        transport: entry.transport,
+        config: { ...config, requiresOAuth: true },
+        returnTo,
+      });
+
+    if (!config.requiresOAuth) {
+      const { ok, data } = await callIntegrations(req.userId!, `/mcp/servers/${serverId}/start`, {
+        config,
+        transport: entry.transport,
+      });
+      if (ok) {
+        const row = await insertEntryAccount(req.userId!, entry, {
+          id: serverId,
+          requiresOAuth: false,
+          reply: data,
+          logoId: await serverLogoId(data.server?.icons),
+        });
+        if (!row) return res.status(409).json({ error: 'This account is already connected' });
+        const logos = await registryLogoIds(getDb()).catch(() => new Map<string, string>());
+        return res
+          .status(201)
+          .json({ server: serializeMcpServer(row, logos.get(entry.id) ?? null) });
+      }
+      // Its health check found it open; a server that now asks for a sign-in gets one.
+      if (data.code !== 'authorization_required') {
+        return res
+          .status(502)
+          .json({ error: data.error || 'The server did not answer', code: 'connect_failed' });
+      }
+    }
+    const started = await authorize();
     if ('error' in started) return res.status(started.status).json({ error: started.error });
     res.json(started);
   } catch (error: unknown) {
@@ -446,7 +551,7 @@ async function connectServer(
     return { server: view(row), authorizationUrl: started.authorizationUrl };
   };
 
-  if (row.source === 'registry' || row.configRequiresOauth) return authorize();
+  if (integrationsConfigFor(row).requiresOAuth) return authorize();
 
   const { ok, data } = await callIntegrations(oxyUserId, `/mcp/servers/${row.id}/start`, {
     config: integrationsConfigFor(row),
@@ -505,9 +610,11 @@ router.post(
       if (!INTEGRATIONS_URL) {
         return res.status(503).json({ error: 'Integrations service not configured' });
       }
-      if (row.registryId) {
-        const entry = findRegistryEntry(row.registryId);
-        if (!entry || !isRegistryEntryConfigured(entry)) {
+      // A curated connector needs what this deployment holds for it; a synced one is reached at
+      // the address it was connected at, and stays the person's when the store stops offering it.
+      if (row.registryId && !isSyncedEntryId(row.registryId)) {
+        const curated = curatedEntryOf(row);
+        if (!curated || !isRegistryEntryConfigured(curated)) {
           return res
             .status(503)
             .json({ error: `${row.displayName} is not available now`, code: 'not_configured' });
