@@ -214,7 +214,7 @@ export const COPY_ES: Readonly<Record<string, CopyEntry>> = {
     other: '{{count}} cuentas conectadas',
   },
   'gemie.connectors.store.description':
-    'Conecta las apps con las que trabajas: los servidores MCP de los propios proveedores y cientos más del registro oficial de MCP. Oficial significa que lo publica el proveedor; Comunidad, que lo publica un desarrollador. Si alguno te pide iniciar sesión, la inicias con ellos y Gemies nunca ve tu contraseña.',
+    'Conecta las apps con las que trabajas: los servidores MCP de los propios proveedores y cientos más del registro oficial de MCP y del catálogo MCP de Docker. Oficial significa que lo publica el proveedor; Comunidad, que lo publica un desarrollador. Si alguno te pide iniciar sesión, la inicias con ellos y Gemies nunca ve tu contraseña.',
   'gemie.connectors.store.docs': 'Más información',
   'gemie.connectors.store.empty': 'Ahora mismo no hay conectores disponibles.',
   'gemie.connectors.store.featured': 'Destacados',

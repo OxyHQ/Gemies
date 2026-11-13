@@ -4,7 +4,8 @@
 
 - **The connectors store also lists Docker's MCP catalogue.** `ConnectorEntry.source` may be `docker`:
   a remote server from Docker's reviewed catalogue (`github.com/docker/mcp-registry`) that the
-  official MCP Registry does not list, with the `verified` badge.
+  official MCP Registry does not list, with the `verified` badge. The store's description
+  (`gemie.connectors.store.description`) names both catalogues.
 
 ## 6.1.0
 
