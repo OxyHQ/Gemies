@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   tokens: new Map<string, string>(),
-  links: new Map<string, { agentId: string; ownerOxyUserId: string }>(),
+  links: new Map<
+    string,
+    { agentId: string; ownerOxyUserId: string; credentialHash: string | null }
+  >(),
 }));
 
 vi.mock('../../socket-session-auth.js', () => ({
@@ -17,6 +20,7 @@ vi.mock('../../../db/agents/externalAgentRepository.js', () => ({
   markExternalLinkConnected: async () => undefined,
 }));
 
+import { hashExternalAgentCredential } from '../credential.js';
 import {
   disconnectExternalAgent,
   externalAgentRelayRoute,
@@ -26,6 +30,12 @@ import {
 } from '../relay.js';
 import { routeWebSocketUpgrades } from '../../websocket-upgrades.js';
 
+const CREDENTIAL = 'gxa_agent-1-credential';
+const linkOf = (agentId: string, credential: string | null) => ({
+  agentId,
+  ownerOxyUserId: 'user-nate',
+  credentialHash: credential === null ? null : hashExternalAgentCredential(credential),
+});
 let server: http.Server;
 let port: number;
 const sockets: WebSocket[] = [];
@@ -35,7 +45,7 @@ beforeEach(async () => {
   state.links.clear();
   state.tokens.set('tok-nate', 'user-nate');
   state.tokens.set('tok-eve', 'user-eve');
-  state.links.set('agent-1', { agentId: 'agent-1', ownerOxyUserId: 'user-nate' });
+  state.links.set('agent-1', linkOf('agent-1', CREDENTIAL));
   server = http.createServer();
   routeWebSocketUpgrades(server, {
     socketIoPath: '/socket.io/',
@@ -70,35 +80,69 @@ async function waitFor(check: () => boolean, ms = 2000): Promise<void> {
   }
 }
 
-async function connect(token = 'tok-nate', agentId = 'agent-1') {
+async function authenticate(auth: Record<string, unknown>) {
   const client = await open();
-  client.ws.send(JSON.stringify({ type: 'auth', token, agentId }));
+  client.ws.send(JSON.stringify({ type: 'auth', ...auth }));
   return client;
 }
 
+const connect = (credential = CREDENTIAL, agentId = 'agent-1') =>
+  authenticate({ credential, agentId });
+
+async function firstFrame(auth: Record<string, unknown>) {
+  const client = await authenticate(auth);
+  await waitFor(() => client.frames.length > 0);
+  return client.frames[0];
+}
+
 describe('external agent relay', () => {
-  it('authenticates the owner of a live link and reports presence', async () => {
+  it('opens a live link with its own credential and reports presence', async () => {
     const { frames } = await connect();
     await waitFor(() => frames.length > 0);
     expect(frames[0]).toEqual({ type: 'auth-ok', agentId: 'agent-1' });
     expect(await isExternalAgentReachable('agent-1')).toBe(true);
   });
 
-  it('refuses a valid session that does not own the agent', async () => {
-    const { frames, ws } = await connect('tok-eve');
+  it('refuses another credential, and closes the socket', async () => {
+    const { frames, ws } = await connect('gxa_someone-else');
     await waitFor(() => frames.length > 0);
-    expect(frames[0]).toEqual({ type: 'auth-error', reason: 'unknown_agent' });
+    expect(frames[0]).toEqual({ type: 'auth-error', reason: 'invalid_credential' });
     await waitFor(() => ws.readyState === WebSocket.CLOSED);
     expect(await isExternalAgentReachable('agent-1')).toBe(false);
   });
 
-  it('refuses a bad token and an unknown agent', async () => {
-    const bad = await connect('nope');
-    await waitFor(() => bad.frames.length > 0);
-    expect(bad.frames[0]).toEqual({ type: 'auth-error', reason: 'invalid_token' });
-    const unknown = await connect('tok-nate', 'agent-404');
-    await waitFor(() => unknown.frames.length > 0);
-    expect(unknown.frames[0]).toEqual({ type: 'auth-error', reason: 'unknown_agent' });
+  it('never opens a link that has a credential with the owner’s Oxy session', async () => {
+    expect(await firstFrame({ token: 'tok-nate', agentId: 'agent-1' })).toEqual({
+      type: 'auth-error',
+      reason: 'invalid_credential',
+    });
+  });
+
+  it('refuses an agent with no live link', async () => {
+    expect(await firstFrame({ credential: CREDENTIAL, agentId: 'agent-404' })).toEqual({
+      type: 'auth-error',
+      reason: 'unknown_agent',
+    });
+  });
+
+  it('opens a link paired before credentials with its owner’s session, and nobody else’s', async () => {
+    state.links.set('legacy', linkOf('legacy', null));
+    expect(await firstFrame({ token: 'tok-eve', agentId: 'legacy' })).toEqual({
+      type: 'auth-error',
+      reason: 'invalid_credential',
+    });
+    expect(await firstFrame({ token: 'nope', agentId: 'legacy' })).toEqual({
+      type: 'auth-error',
+      reason: 'invalid_credential',
+    });
+    expect(await firstFrame({ credential: CREDENTIAL, agentId: 'legacy' })).toEqual({
+      type: 'auth-error',
+      reason: 'invalid_credential',
+    });
+    expect(await firstFrame({ token: 'tok-nate', agentId: 'legacy' })).toEqual({
+      type: 'auth-ok',
+      agentId: 'legacy',
+    });
   });
 
   it('closes a socket that never authenticates', async () => {
@@ -163,16 +207,35 @@ describe('external agent relay', () => {
   it('cuts the daemon off on revocation', async () => {
     const { ws, frames } = await connect();
     await waitFor(() => frames.length > 0);
-    disconnectExternalAgent('agent-1');
+    disconnectExternalAgent('agent-1', { reason: 'revoked' });
     await waitFor(() => frames.some((f) => f.type === 'revoked'));
     await waitFor(() => ws.readyState === WebSocket.CLOSED);
     expect(await isExternalAgentReachable('agent-1')).toBe(false);
   });
 
+  it('cuts off the daemon of a replaced credential, untold, and keeps one holding the new credential', async () => {
+    const old = await connect();
+    await waitFor(() => old.frames.length > 0);
+    disconnectExternalAgent('agent-1', { reason: 'credential-replaced', credentialHash: 'new' });
+    await waitFor(() => old.ws.readyState === WebSocket.CLOSED);
+    expect(old.frames.some((f) => f.type === 'revoked')).toBe(false);
+
+    state.links.set('agent-1', linkOf('agent-1', 'gxa_new'));
+    const fresh = await connect('gxa_new');
+    await waitFor(() => fresh.frames.length > 0);
+    disconnectExternalAgent('agent-1', {
+      reason: 'credential-replaced',
+      credentialHash: hashExternalAgentCredential('gxa_new'),
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(fresh.ws.readyState).toBe(WebSocket.OPEN);
+    expect(await isExternalAgentReachable('agent-1')).toBe(true);
+  });
+
   it('ignores answers for a turn that belongs to another agent', async () => {
-    state.links.set('agent-2', { agentId: 'agent-2', ownerOxyUserId: 'user-nate' });
-    const one = await connect('tok-nate', 'agent-1');
-    const two = await connect('tok-nate', 'agent-2');
+    state.links.set('agent-2', linkOf('agent-2', 'gxa_two'));
+    const one = await connect(CREDENTIAL, 'agent-1');
+    const two = await connect('gxa_two', 'agent-2');
     await waitFor(() => one.frames.length > 0 && two.frames.length > 0);
     const turn = runExternalTurn({ agentId: 'agent-1', task: 'x', history: [], timeoutMs: 200 });
     await waitFor(() => one.frames.some((f) => f.type === 'turn'));

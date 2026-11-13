@@ -7,15 +7,16 @@ import {
   findExternalLink,
   listExternalLinks,
   redeemPairing,
+  replaceExternalLinkCredential,
   revokeExternalLink,
 } from '../agents/externalAgentRepository';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
 import { externalAgentPairings } from '../schema/external-agents';
 
 /**
- * Pairing codes and agent links (ADR 0030), against a real Postgres: a code is consumed by exactly
- * one conditional UPDATE, only by the account that minted it, only before it expires; a link is
- * unique per agent and a revoked one is invisible.
+ * Pairing codes and agent links (ADR 0030, ADR 0038), against a real Postgres: a code is consumed by
+ * exactly one conditional UPDATE, only before it expires, and names the account that minted it; a
+ * link is unique per agent, a revoked one is invisible, and reconnecting replaces its credential.
  */
 
 let db: ApiDatabase;
@@ -40,50 +41,35 @@ const mint = async (owner: string, ttlMs = 60_000) => {
 };
 
 describe('redeemPairing', () => {
-  it('is single use', async () => {
+  const redeem = (codeHash: string) => redeemPairing(db, { codeHash, now: new Date() });
+
+  it('is single use, and answers whose code it was', async () => {
     const codeHash = await mint('owner-a');
-    const first = await redeemPairing(db, { codeHash, ownerOxyUserId: 'owner-a', now: new Date() });
-    const second = await redeemPairing(db, {
+    expect(await redeem(codeHash)).toEqual({ ownerOxyUserId: 'owner-a', agentId: null });
+    expect(await redeem(codeHash)).toBeNull();
+  });
+
+  it('carries the agent a reconnect code is for', async () => {
+    const codeHash = `hash-${uuidv7()}`;
+    await createPairing(db, {
+      id: uuidv7(),
       codeHash,
       ownerOxyUserId: 'owner-a',
-      now: new Date(),
+      expiresAt: new Date(Date.now() + 60_000),
+      agentId: 'agent-x',
     });
-    expect(first).toBe(true);
-    expect(second).toBe(false);
+    expect(await redeem(codeHash)).toEqual({ ownerOxyUserId: 'owner-a', agentId: 'agent-x' });
   });
 
   it('lets exactly one of many racing redeemers win', async () => {
     const codeHash = await mint('owner-a');
-    const results = await Promise.all(
-      Array.from({ length: 8 }, () =>
-        redeemPairing(db, { codeHash, ownerOxyUserId: 'owner-a', now: new Date() }),
-      ),
-    );
-    expect(results.filter(Boolean)).toHaveLength(1);
-  });
-
-  it('refuses another account and leaves the code redeemable by its owner', async () => {
-    const codeHash = await mint('owner-a');
-    expect(await redeemPairing(db, { codeHash, ownerOxyUserId: 'owner-b', now: new Date() })).toBe(
-      false,
-    );
-    expect(await redeemPairing(db, { codeHash, ownerOxyUserId: 'owner-a', now: new Date() })).toBe(
-      true,
-    );
+    const results = await Promise.all(Array.from({ length: 8 }, () => redeem(codeHash)));
+    expect(results.filter((r) => r !== null)).toHaveLength(1);
   });
 
   it('refuses an expired code and an unknown one', async () => {
-    const codeHash = await mint('owner-a', -1000);
-    expect(await redeemPairing(db, { codeHash, ownerOxyUserId: 'owner-a', now: new Date() })).toBe(
-      false,
-    );
-    expect(
-      await redeemPairing(db, {
-        codeHash: 'no-such-code',
-        ownerOxyUserId: 'owner-a',
-        now: new Date(),
-      }),
-    ).toBe(false);
+    expect(await redeem(await mint('owner-a', -1000))).toBeNull();
+    expect(await redeem('no-such-code')).toBeNull();
   });
 
   it('keeps the code hash unique', async () => {
@@ -108,11 +94,21 @@ describe('external agent links', () => {
       ownerOxyUserId: owner,
       cli: 'codex',
       hostName: 'laptop',
+      credentialHash: 'cred-1',
     });
-    expect((await findExternalLink(db, agentId))?.cli).toBe('codex');
+    expect(await findExternalLink(db, agentId)).toMatchObject({
+      cli: 'codex',
+      credentialHash: 'cred-1',
+    });
     expect((await listExternalLinks(db, owner)).map((l) => l.agentId)).toEqual([agentId]);
     await expect(
-      createExternalLink(db, { agentId, ownerOxyUserId: owner, cli: 'claude', hostName: 'x' }),
+      createExternalLink(db, {
+        agentId,
+        ownerOxyUserId: owner,
+        cli: 'claude',
+        hostName: 'x',
+        credentialHash: 'cred-2',
+      }),
     ).rejects.toThrow();
 
     expect(await revokeExternalLink(db, 'someone-else', agentId)).toBe(false);
@@ -121,6 +117,30 @@ describe('external agent links', () => {
     expect(await revokeExternalLink(db, owner, agentId)).toBe(false);
     expect(await findExternalLink(db, agentId)).toBeUndefined();
     expect(await listExternalLinks(db, owner)).toEqual([]);
+  });
+
+  it('replaces the credential and machine of a live link of its owner only', async () => {
+    const agentId = `ext-${uuidv7()}`;
+    const owner = `owner-${uuidv7()}`;
+    const machine = { agentId, ownerOxyUserId: owner, cli: 'codex' as const, hostName: 'laptop' };
+    await createExternalLink(db, { ...machine, credentialHash: 'old' });
+
+    const moved = { ...machine, cli: 'claude' as const, hostName: 'desk', credentialHash: 'new' };
+    expect(await replaceExternalLinkCredential(db, { ...moved, ownerOxyUserId: 'other' })).toBe(
+      false,
+    );
+    expect((await findExternalLink(db, agentId))?.credentialHash).toBe('old');
+    expect(await replaceExternalLinkCredential(db, moved)).toBe(true);
+    expect(await findExternalLink(db, agentId)).toMatchObject({
+      cli: 'claude',
+      hostName: 'desk',
+      credentialHash: 'new',
+    });
+
+    await revokeExternalLink(db, owner, agentId);
+    expect(await replaceExternalLinkCredential(db, { ...moved, credentialHash: 'later' })).toBe(
+      false,
+    );
   });
 
   it('refuses a CLI outside the supported set', async () => {

@@ -11,10 +11,12 @@ export interface SocketSession {
 
 /**
  * Validate an Oxy access token handed over a WebSocket's first message, and
- * return the user id. Shared by the external agents' relay
- * (`lib/external-agents/relay.ts`) and voice calls (`lib/voice/voice-socket.ts`):
- * both take the token in a message because a browser-style WebSocket cannot set
- * a header.
+ * return the user id. Voice and dictation (`lib/voice/voice-socket.ts`,
+ * `lib/dictation/socket.ts`) take the token in a message because a
+ * browser-style WebSocket cannot set a header, and use the session form below;
+ * this one is left only for the external agents' relay
+ * (`lib/external-agents/relay.ts`), for a link paired before agents had their
+ * own credential (ADR 0038), and goes with that lane.
  *
  * The retired `alia_sk_*` developer keys are not a lane here: one reaches
  * `authSocket()` like any other string and is refused, because it is not a

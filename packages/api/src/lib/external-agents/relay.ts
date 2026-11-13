@@ -29,6 +29,7 @@ import {
 } from '../../domain/external-agent.js';
 import { log } from '../logger.js';
 import { authenticateSocketToken } from '../socket-session-auth.js';
+import { externalAgentCredentialMatches } from './credential.js';
 import type { WebSocketRoute } from '../websocket-upgrades.js';
 import { CMD_PREFIX, EVT_PREFIX, getClusterBus, type ClusterBus } from './cluster.js';
 
@@ -61,6 +62,8 @@ export class ExternalAgentOfflineError extends Error {
 
 interface Connection {
   readonly ws: WebSocket;
+  /** The credential this socket was opened with; null on the retired Oxy-session lane. */
+  readonly credentialHash: string | null;
 }
 
 interface PendingTurn {
@@ -98,8 +101,19 @@ type Command =
       timeoutMs?: number;
     }
   | { kind: 'cancel'; turnId: string }
-  /** The link was revoked on another instance: drop the socket held here. */
-  | { kind: 'revoke' };
+  /** The link was revoked, or its credential replaced, on another instance: drop the socket held here. */
+  | { kind: 'revoke' }
+  | { kind: 'credential-replaced'; credentialHash: string };
+
+/**
+ * Why a daemon is cut off. `revoked`: the agent is gone, and the daemon is told so it forgets it.
+ * `credential-replaced`: the agent was reconnected, so a socket opened with any other credential than
+ * `credentialHash` is closed; its daemon learns why when it reconnects (`invalid_credential`). The
+ * hash names the survivor, so the new daemon is never the one dropped, whichever arrives first.
+ */
+export type Disconnect =
+  | { reason: 'revoked' }
+  | { reason: 'credential-replaced'; credentialHash: string };
 
 export interface ExternalAgentRelay {
   readonly route: WebSocketRoute;
@@ -107,7 +121,7 @@ export interface ExternalAgentRelay {
   runTurn(input: ExternalTurnInput): Promise<{ response: string }>;
   /** True when it is connected to any instance. */
   isReachable(agentId: string): Promise<boolean>;
-  disconnect(agentId: string): void;
+  disconnect(agentId: string, why: Disconnect): void;
   shutdown(): void;
 }
 
@@ -238,11 +252,16 @@ export function createExternalAgentRelay(
       });
     });
 
-  const disconnectLocal = (agentId: string): void => {
+  const disconnectLocal = (agentId: string, why: Disconnect): void => {
     const connection = connections.get(agentId);
     if (!connection) return;
-    send(connection.ws, { type: 'revoked' });
-    connection.ws.close(4004, 'Revoked');
+    if (why.reason === 'revoked') {
+      send(connection.ws, { type: 'revoked' });
+      connection.ws.close(4004, 'Revoked');
+    } else {
+      if (connection.credentialHash === why.credentialHash) return;
+      connection.ws.close(4003, 'Credential replaced');
+    }
     connections.delete(agentId);
     bus?.clearPresence(agentId).catch(() => undefined);
     failTurnsOf(agentId, new ExternalAgentOfflineError('The external agent was disconnected'));
@@ -262,7 +281,14 @@ export function createExternalAgentRelay(
       return;
     }
     if (command.kind === 'revoke') {
-      disconnectLocal(agentId);
+      disconnectLocal(agentId, { reason: 'revoked' });
+      return;
+    }
+    if (command.kind === 'credential-replaced') {
+      disconnectLocal(agentId, {
+        reason: 'credential-replaced',
+        credentialHash: command.credentialHash,
+      });
       return;
     }
     if (command.kind === 'cancel') {
@@ -421,18 +447,16 @@ export function createExternalAgentRelay(
     try {
       if (typeof frame.agentId !== 'string' || frame.agentId === '')
         return refuse('agent_required');
-      const userId = await authenticateSocketToken(frame.token);
-      if (!userId) return refuse('invalid_token');
-
-      // The session's account must own a LIVE link to this agent: a token alone never names an agent.
+      // A revoked or deleted agent: the daemon forgets it.
       const link = await findExternalLink(getDb(), frame.agentId);
-      if (link === undefined || link.ownerOxyUserId !== userId) return refuse('unknown_agent');
+      if (link === undefined) return refuse('unknown_agent');
+      if (!(await opensLink(link, frame))) return refuse('invalid_credential');
 
       const existing = connections.get(frame.agentId);
       if (existing && existing.ws.readyState === WebSocket.OPEN) {
         existing.ws.close(4000, 'Replaced by new connection');
       }
-      connections.set(frame.agentId, { ws });
+      connections.set(frame.agentId, { ws, credentialHash: link.credentialHash });
       announce(frame.agentId);
       send(ws, { type: 'auth-ok', agentId: frame.agentId });
       void markExternalLinkConnected(getDb(), frame.agentId).catch((err: unknown) =>
@@ -444,6 +468,22 @@ export function createExternalAgentRelay(
       log.general.error({ err }, 'External agent authentication failed');
       return refuse('server_error');
     }
+  };
+
+  /**
+   * The agent's own credential opens its link (ADR 0038). A link paired before credentials existed
+   * has none, and its owner's Oxy session opens it instead — the retired lane of Codea 3.x, kept only
+   * so the daemons already running keep working until their agent is reconnected. It opens nothing
+   * else: a link that has a credential never takes a session.
+   */
+  const opensLink = async (
+    link: { ownerOxyUserId: string; credentialHash: string | null },
+    frame: Extract<DaemonFrame, { type: 'auth' }>,
+  ): Promise<boolean> => {
+    if (link.credentialHash !== null) {
+      return externalAgentCredentialMatches(frame.credential, link.credentialHash);
+    }
+    return (await authenticateSocketToken(frame.token)) === link.ownerOxyUserId;
   };
 
   const handleDaemonFrame = (agentId: string, ws: WebSocket, frame: DaemonFrame): void => {
@@ -566,13 +606,18 @@ export function createExternalAgentRelay(
       return bus.hasPresence(agentId).catch(() => false);
     },
 
-    disconnect(agentId) {
+    disconnect(agentId, why) {
       if (connections.has(agentId)) {
-        disconnectLocal(agentId);
+        disconnectLocal(agentId, why);
         return;
       }
       // The socket may be held by another instance: ask it to drop it.
-      publishCommand(agentId, { kind: 'revoke' });
+      publishCommand(
+        agentId,
+        why.reason === 'revoked'
+          ? { kind: 'revoke' }
+          : { kind: 'credential-replaced', credentialHash: why.credentialHash },
+      );
     },
 
     shutdown() {
@@ -616,9 +661,9 @@ export function runExternalTurn(input: ExternalTurnInput): Promise<{ response: s
   return current ? current.runTurn(input) : Promise.reject(new ExternalAgentOfflineError());
 }
 
-/** Cuts the agent's daemon off (revocation). */
-export function disconnectExternalAgent(agentId: string): void {
-  current?.disconnect(agentId);
+/** Cuts the agent's daemon off: it was revoked, or reconnected with a new credential. */
+export function disconnectExternalAgent(agentId: string, why: Disconnect): void {
+  current?.disconnect(agentId, why);
 }
 
 export function shutdownExternalAgentRelay(): void {

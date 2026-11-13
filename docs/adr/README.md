@@ -29,12 +29,13 @@ An ADR records a decision that is **in force now**, the context that forced it, 
 | [0023](./0023-cookie-free-voice-resume.md) | Voice reconnects through its owner without browser cookies | Accepted; receiver-first deployment required | 2026-10-26 |
 | [0024](./0024-streaming-dictation-is-a-transcription-session.md) | Streaming dictation is a transcription session through Kaana | Accepted; after Kaana ADR 0006's canary | 2026-10-28 |
 | [0025](./0025-group-rooms.md) | A group chat is a room the agents live in, not a request | Accepted (phase 1: API) | 2026-11-09 |
-| [0030](./0030-external-agents.md) | A coding-agent CLI on a person's own computer can be one of their agents | Accepted; its bot account superseded by 0036 | 2026-11-10 |
+| [0030](./0030-external-agents.md) | A coding-agent CLI on a person's own computer can be one of their agents | Accepted; its bot account superseded by 0036, its daemon's Oxy session by 0038 | 2026-11-10 |
 | [0031](./0031-external-agents-edit-by-default-and-span-instances.md) | External agents edit their working directory by default and are reachable from any instance | Accepted | 2026-11-10 |
 | [0032](./0032-external-agents-resume-sessions-and-leave-with-their-link.md) | External agents continue the CLI's own session and are deleted with their link | Accepted; its surviving bot account superseded by 0036 | 2026-11-10 |
 | [0034](./0034-gemies-and-alia.md) | Gemies and Alia: agents become Gemies, and Alia is one of them | Accepted (in progress) | 2026-11-12 |
 | [0035](./0035-connected-accounts-belong-to-a-gemie.md) | A connected account belongs to one gemie; Gmail and Signal are retired | Accepted; its per-gemie scoping superseded by its own amendment (the person's accounts, granted to their gemies) | 2026-11-13 |
 | [0036](./0036-external-agents-have-no-oxy-account.md) | An external agent has no Oxy account; its identity is its own row | Accepted | 2026-11-13 |
+| [0038](./0038-external-agents-connect-with-their-own-credential.md) | An external agent connects with its own credential; the pairing code is the authorisation | Accepted | 2026-11-13 |
 
 Companion document: [the compatibility window and sunset criteria](../migration/compatibility-window.md), which binds ADR 0002, ADR 0003 and ADR 0004 to measurable removal gates — for paths (a) and (c); path (b) left the window under ADR 0010.
 
@@ -90,5 +91,6 @@ ADR 0019 applies Oxy ADR 0043 to Alia: who owns each kind of stored bytes, how e
 - [0035 — A connected account belongs to one gemie; Gmail and Signal are retired](./0035-connected-accounts-belong-to-a-gemie.md).
 - [0036 — An external agent has no Oxy account; its identity is its own row](./0036-external-agents-have-no-oxy-account.md).
 - [0037 — Telegram runs on its official Bot API: a person's account through Telegram Business, and a gemie's own bot](./0037-telegram-on-the-bot-api.md).
+- [0038 — An external agent connects with its own credential; the pairing code is the authorisation](./0038-external-agents-connect-with-their-own-credential.md).
 
 - [0033 — Durable autonomous work](./0033-durable-autonomous-work.md).

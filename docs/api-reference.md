@@ -173,17 +173,18 @@ Own tools use the requester account and live catalogue, without per-app consent.
 
 ### External agents
 
-A coding-agent CLI on the person's own computer (Claude Code, Codex, OpenCode) served to Alia as one
-of their agents ([ADR 0030](./adr/0030-external-agents.md)). All routes take the person's Oxy
-session (`authenticateToken`).
+A coding-agent CLI on the person's own computer (Claude Code, Codex, OpenCode) served to Gemies as
+one of their gemies ([ADR 0030](./adr/0030-external-agents.md)). The app's routes take the person's
+Oxy session (`authenticateToken`); the daemon's take none: the pairing code, then the agent's own
+credential, authorise it ([ADR 0038](./adr/0038-external-agents-connect-with-their-own-credential.md)).
 
 | Route | Purpose |
 |---|---|
-| `POST /agents/external/pair` | Mint a single-use code (10 minutes) and the text to paste into the agent. Body `{ locale?: 'en' \| 'es' }`. 429 above five codes a minute. |
-| `POST /agents/external/redeem` | The daemon trades a code for an agent. Body `{ code, cli: 'claude' \| 'codex' \| 'opencode', hostName }`. Creates a private, unlisted gemie with no Oxy account (`identity: 'local'`, [ADR 0036](./adr/0036-external-agents-have-no-oxy-account.md)) and its link, and answers `{ agentId, name, cli }`; 400 `invalid_or_expired_code` for an unknown, used, expired or foreign code. |
+| `POST /agents/external/pair` | Mint a single-use code (`XXXX-XXXX-XXXX-XXXX`, 10 minutes) and the text to paste into the agent. Body `{ locale?: 'en' \| 'es', agentId? }`; with `agentId`, a live external agent of the caller's (else 404), the code reconnects that agent. Answers `{ code, expiresAt, prompt }`; 429 above five codes a minute. |
+| `POST /agents/external/redeem` | **No session.** The daemon trades a code for its agent's credential. Body `{ code, cli: 'claude' \| 'codex' \| 'opencode', hostName }`. A new code creates a private, unlisted gemie with no Oxy account (`identity: 'local'`, [ADR 0036](./adr/0036-external-agents-have-no-oxy-account.md)) and its link, for the account that minted the code; a reconnect code points the agent's link at this machine and cuts off the previous credential. Answers `{ agentId, name, cli, credential }` (`gxa_…`, returned once, stored hashed); 400 `invalid_or_expired_code` for an unknown, used or expired code; 429 above ten attempts a minute per address. |
 | `GET /agents/external` | The person's external agents with `online` presence (any instance, through Redis). `GET /agents/me` also marks them: `external: { cli, online }`. |
-| `DELETE /agents/external/:agentId` | Revoke: the link dies, the daemon is disconnected and the agent is deleted. |
-| `WS /ws/external-agent` | The daemon's socket. First frame `{ type: 'auth', token, agentId }`; then `turn` frames down and `delta` / `end` / `error` frames back. |
+| `DELETE /agents/external/:agentId` | Revoke: the link dies with its credential, the daemon is disconnected and the agent is deleted. |
+| `WS /ws/external-agent` | The daemon's socket. First frame `{ type: 'auth', agentId, credential }`; then `turn` frames down and `delta` / `end` / `error` frames back. Refusals: `unknown_agent` (no live link: the daemon forgets it), `invalid_credential` (another credential replaced it). A link paired before ADR 0038 still takes its owner's Oxy session as `token` until it is reconnected. |
 
 ### Structured automations
 

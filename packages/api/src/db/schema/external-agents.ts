@@ -11,11 +11,16 @@ import { checkOneOf } from './columns';
 import { EXTERNAL_AGENT_CLIS } from '../../domain/external-agent';
 
 /**
- * A single-use pairing code, minted in the app and redeemed by the daemon.
+ * A single-use pairing code, minted in the app by a signed-in person and redeemed by the daemon with
+ * no session at all (ADR 0038): the code is the authorisation, bound to `owner_oxy_user_id`.
  *
- * Only the SHA-256 of the code is stored: the code is the credential until it is redeemed, so a
+ * Only the SHA-256 of the code is stored: the code is a credential until it is redeemed, so a
  * database read must not yield one. `expires_at` is the sweep clock (`db/expiryTargets.ts`); a
  * redeemed row is kept until then so a replay answers "already used" rather than "unknown".
+ *
+ * `agent_id` names an existing external agent when the code reconnects it (a new machine, a lost
+ * credential, the migration off the Oxy session): redeeming replaces that agent's credential rather
+ * than creating a gemie. Null for a new connection.
  */
 export const externalAgentPairings = pgTable(
   'external_agent_pairings',
@@ -26,6 +31,7 @@ export const externalAgentPairings = pgTable(
     createdAt: createdAt(),
     expiresAt: timestamptz().notNull(),
     redeemedAt: timestamptz(),
+    agentId: text(),
   },
   (t) => [
     uniqueIndex('external_agent_pairings_code_hash_key').on(t.codeHash),
@@ -41,6 +47,10 @@ export const externalAgentPairings = pgTable(
  * one link. No foreign key: agent rows are created and deleted by flows that must not be blocked by
  * a daemon (`CONVENTIONS.md`, "foreign keys are declared per reference"), and a link whose agent is
  * gone is inert — `findExternalLink` is only reached from an agent that exists.
+ *
+ * `credential_hash` is the SHA-256 of the credential the daemon presents (ADR 0038). Null only on a
+ * link paired before credentials existed, which the relay still lets the owner's Oxy session open
+ * until it is reconnected; every link paired since has one.
  */
 export const externalAgentLinks = pgTable(
   'external_agent_links',
@@ -49,6 +59,7 @@ export const externalAgentLinks = pgTable(
     ownerOxyUserId: text().notNull(),
     cli: text({ enum: EXTERNAL_AGENT_CLIS as unknown as [string, ...string[]] }).notNull(),
     hostName: text().notNull(),
+    credentialHash: text(),
     createdAt: createdAt(),
     lastConnectedAt: timestamptz(),
     revokedAt: timestamptz(),

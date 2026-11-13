@@ -917,7 +917,7 @@ export interface CreateAgentInput {
  * the caller can already see.
  *
  */
-export async function createAgent(db: ApiDatabase, input: CreateAgentInput): Promise<AgentRecord> {
+export async function createAgent(db: Executor, input: CreateAgentInput): Promise<AgentRecord> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .insert(agents)

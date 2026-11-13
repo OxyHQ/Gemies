@@ -5,7 +5,7 @@ import {
   PAIRING_CODE_GROUP_LENGTH,
 } from '../../domain/external-agent.js';
 
-/** `XXXX-XXXX-XXXX`: 12 symbols over 31 → ~59 bits, drawn with a CSPRNG. */
+/** `XXXX-XXXX-XXXX-XXXX`: 16 symbols over 31 → ~79 bits, drawn with a CSPRNG. */
 export function generatePairingCode(): string {
   const groups: string[] = [];
   for (let g = 0; g < PAIRING_CODE_GROUPS; g++) {
