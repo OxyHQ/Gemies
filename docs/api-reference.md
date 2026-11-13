@@ -251,9 +251,9 @@ that moved.
 | `GET /notifications/email-alerts` | "Avísame de emails importantes", per actor (Alia and each owned agent) |
 | `PUT /notifications/email-alerts` | Body `{ agentId: string \| null, enabled: boolean }`; `null` is Alia; an agent's switch is its owner's alone |
 
-**Socket.IO.** Connect at the API origin, emit `subscribe-notifications` with the user id,
-and listen for `notification`. The same
-channel emits cache-invalidation events for conversation and notification lists.
+**Socket.IO.** One connection per signed-in client at the API origin, authenticated with the
+person's token: it is joined to the account's room on connect and every change arrives as `rt`
+(`notification` among them), with catch-up after a reconnect. [Realtime](./realtime.mdx).
 
 ### Catalogue and analytics
 
