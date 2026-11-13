@@ -717,7 +717,9 @@ describe('one save is one toast', () => {
 describe('the colour is the account’s', () => {
   it('writes a chosen colour to the account once, and no PATCH carries one', async () => {
     const { renderer } = await renderEditor();
-    const creator = renderer.root.findAllByType('AgentCreator' as unknown as React.ComponentType)[0];
+    const creator = renderer.root.findAllByType(
+      'AgentCreator' as unknown as React.ComponentType,
+    )[0];
     const props = creator.props as {
       agent: Record<string, unknown>;
       colors: readonly string[];
