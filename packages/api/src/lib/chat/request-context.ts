@@ -480,10 +480,12 @@ export async function buildChatRequestContext(
    */
   let requestedAgentId: string | undefined;
   /**
-   * A connected account's turn is its gemie's (ADR 0035): the binding names it, a request cannot
-   * name another, and it is authorised as unattended work, with no bearer (`resolveTurnGemie`).
+   * A connected account's turn is its answering gemie's (ADR 0035): the person's choice names it, a
+   * request cannot name another, and it is authorised as unattended work, with no bearer
+   * (`resolveTurnGemie`). `null` is an account no gemie answers, whose turn is refused.
    */
-  const channelGemieId = req.channelContext?.gemieId;
+  const channelGemieId =
+    req.channelContext?.kind === 'account' ? (req.channelContext.gemieId ?? null) : undefined;
   if (body.agentId !== undefined) {
     if (
       typeof body.agentId !== 'string' ||

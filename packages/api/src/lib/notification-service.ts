@@ -36,7 +36,7 @@ import type {
 } from '../db/schema/notifications.js';
 import { getStatusCode } from './errors/index.js';
 import { findPersonAccountOf } from '../db/integrations/connectedAccountRepository.js';
-import { notifyAccountPerson } from './gemie-accounts.js';
+import { notifyAccountPerson } from './connected-accounts.js';
 import { webPush, VAPID_PUBLIC_KEY, isUnrecoverableSubscriptionError } from './web-push.js';
 import { getIO } from '../socket.js';
 import { log } from './logger.js';

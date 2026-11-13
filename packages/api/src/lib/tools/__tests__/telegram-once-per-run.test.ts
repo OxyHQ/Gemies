@@ -21,10 +21,13 @@ const notify = vi.hoisted(() =>
 
 vi.mock('../../redis.js', () => ({ getRedisClient: () => (redisState.available ? redis : null) }));
 vi.mock('../../../db/index.js', () => ({ getDb: () => ({}) }));
+// The accounts the person granted this gemie, in the statuses asked for, as the repository filters.
 vi.mock('../../../db/integrations/connectedAccountRepository.js', () => ({
-  listGemieAccounts: vi.fn(async () => accounts.list),
+  listAccountsGrantedTo: vi.fn(async (_db: unknown, _scope: unknown, statuses: string[]) =>
+    accounts.list.filter((account) => statuses.includes(account.status)),
+  ),
 }));
-vi.mock('../../gemie-accounts.js', () => ({ notifyAccountPerson: notify }));
+vi.mock('../../connected-accounts.js', () => ({ notifyAccountPerson: notify }));
 vi.mock('../../logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   return { log: { tools: child } };
@@ -52,7 +55,7 @@ beforeEach(() => {
 });
 
 describe('sendTelegramMessage', () => {
-  it('is offered only when the person linked their Telegram to this gemie', async () => {
+  it('is offered only when the person granted this gemie their Telegram', async () => {
     accounts.list = [{ ...LINKED, platform: 'whatsapp' }];
     expect(await buildSendTelegramTool(SCOPE)).toEqual({});
     accounts.list = [{ ...LINKED, status: 'logged-out' }];
@@ -61,7 +64,7 @@ describe('sendTelegramMessage', () => {
     expect(Object.keys(await buildSendTelegramTool(SCOPE))).toEqual(['sendTelegramMessage']);
   });
 
-  it('writes to the person through their linked account', async () => {
+  it('writes to the person through their granted account', async () => {
     expect((await send(undefined, 'hola')).success).toBe(true);
     expect(notify).toHaveBeenCalledWith(LINKED, 'u1', 'hola');
   });

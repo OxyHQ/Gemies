@@ -1,5 +1,5 @@
 import { establishAgentWork, stopAgentWork } from '../../lib/agent/work.js';
-import { releaseGemieAccounts } from '../../lib/gemie-accounts.js';
+import { releaseAnsweringGemie } from '../../lib/connected-accounts.js';
 import { releaseGemieTelegramBot } from '../../lib/gemie-telegram-bot-setup.js';
 import { listExternalLinks } from '../../db/agents/externalAgentRepository.js';
 import { externalAgentPresence } from '../../lib/external-agents/presence.js';
@@ -345,26 +345,26 @@ async function respondWithAgent(
         ).ok;
 
   /**
-   * Who may manage their own connected accounts on it (ADR 0035): its editors, and on every
+   * Who may grant it their own connected accounts (ADR 0035 as amended): its editors, and on every
    * person's own assistant (Alia) every person. Her card is theirs to read for that, though she is
    * not listed (a draft-like `is_published = false` until her Oxy account exists). A gemie with no
-   * Oxy account has none to link (ADR 0036).
+   * Oxy account has no actor to use one with (ADR 0036). The same rule as `loadGrantableGemie`.
    */
-  const mayManageAccounts =
+  const mayGrantAccounts =
     isPersonsOwnAssistant(found) || (mayEdit && gemieOxyAccountId(found) !== null);
 
   // A draft is not in the catalogue and not addressable by a stranger.
-  if (!found.isPublished && !mayEdit && !mayManageAccounts) {
+  if (!found.isPublished && !mayEdit && !mayGrantAccounts) {
     res.status(404).json({ error: 'Agent not found' });
     return;
   }
   // Nor is an agent Oxy confines to another app (ADR 0021). Whoever may edit it
-  // or manage their accounts on it still loads it for that: editing is not
+  // or grant it their accounts still loads it for that: editing is not
   // opening. (Alia's account does not exist in Oxy yet, so Oxy places her
-  // nowhere; her card is for managing the person's own accounts on her.)
+  // nowhere; her card is for granting her the person's own accounts.)
   if (
     !mayEdit &&
-    !mayManageAccounts &&
+    !mayGrantAccounts &&
     (await agentOpensOn(found, await appSurfaceOf(req))) !== 'reachable'
   ) {
     res.status(404).json({ error: 'Agent not found' });
@@ -378,7 +378,7 @@ async function respondWithAgent(
         withoutInternalAgentBindings(mayEdit ? agent : withoutSystemPrompt(agent)),
       )),
       /** What this caller may do with it, so a client offers only that (its editor, its accounts). */
-      viewer: { mayEdit, mayManageAccounts },
+      viewer: { mayEdit, mayGrantAccounts },
     },
   });
 }
@@ -789,9 +789,9 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
      * and a credit balance of its own. The owner archives it from Oxy.
      */
     await stopAgentWork(id);
-    // Its connected accounts go with it (ADR 0035): their sessions end and their tasks are revoked
-    // first, and the rows cascade with the gemie's.
-    await releaseGemieAccounts(id);
+    // The connected accounts it answers lose the task it acted with; its grants cascade, and the
+    // accounts stay their people's (ADR 0035 as amended).
+    await releaseAnsweringGemie(id);
     // Its own Telegram bot stops answering for it (ADR 0037).
     await releaseGemieTelegramBot(id);
     const deleted = await deleteAgent(getDb(), id);

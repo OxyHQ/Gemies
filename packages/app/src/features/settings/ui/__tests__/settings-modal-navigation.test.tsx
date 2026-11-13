@@ -62,6 +62,9 @@ vi.mock('@/features/settings/ui/external-agents-section', () => ({
 vi.mock('@/features/settings/ui/connectors-section', () => ({
   ConnectorsSection: () => null,
 }));
+vi.mock('@/features/settings/ui/accounts-section', () => ({
+  AccountsSection: () => null,
+}));
 vi.mock('@/features/settings/ui/local-models-section', () => ({
   LocalModelsSection: () => null,
 }));

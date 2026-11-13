@@ -85,3 +85,11 @@ entrando cada vez".
   `group_replies` to bots, `0152`/`0153` (post) drop the stored webhook secrets and the
   `agent_bot` inbound kind; the integrations database's `0003` (pre) creates the Bot API tables and
   `0004` (post) drops the MTProto ones (0 rows in production).
+
+## Amendment (2026-11-13): a person's Telegram is theirs, granted to their gemies
+
+ADR 0035's latest amendment makes a connected account the person's: decision 4's "connected account
+of a gemie" is now an account the person connects once in Settings and grants to their gemies, one
+of which may answer it. Linking the same Telegram again leaves the earlier account `logged-out`;
+`sendTelegramMessage` reaches the person through a Telegram they granted the turn's gemie. A
+gemie's own bot (decision 5) is unchanged and stays the gemie's.

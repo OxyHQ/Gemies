@@ -12,7 +12,16 @@
  * integrations service (`mcp_connector_auths`), never here.
  */
 
-import { boolean, check, index, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  check,
+  index,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { createdAt, generatedId, timestamptz, updatedAt } from '@oxy.so/db';
 import {
@@ -82,24 +91,19 @@ export interface McpServerResource {
 }
 
 /**
- * A messaging account (WhatsApp, Telegram Business) a person linked to ONE gemie (ADR 0035, 0037).
+ * A messaging account (WhatsApp, Telegram Business) a PERSON connected (ADR 0035 as amended, 0037).
  *
- * The gemie answers what arrives on it, and only that gemie's turns for that
- * person can see or use it. A session-based link: the integrations service holds
- * the provider session (`session_id`), and the account carries no credential of
- * its own here. Deleting the gemie deletes its accounts (the delete route stops
- * their sessions first: `lib/gemie-accounts.ts`).
+ * The account is the person's, connected once in Settings › Connected accounts, and several of one
+ * platform are allowed. Which of their gemies may use it, and which one answers what arrives on it,
+ * are its grants ({@link connectedAccountGrants}). A session-based link: the integrations service
+ * holds the provider session (`session_id`), and the account carries no credential of its own here.
  */
 export const connectedAccounts = pgTable(
   'connected_accounts',
   {
     id: generatedId(),
-    /** The person who linked it, and for whom its gemie answers. An Oxy account. No foreign key. */
+    /** The person whose account it is. An Oxy account. No foreign key. */
     oxyUserId: text().notNull(),
-    /** The gemie it belongs to. */
-    agentId: text()
-      .notNull()
-      .references(() => agents.id, { onDelete: 'cascade' }),
     platform: text({ enum: GEMIE_ACCOUNT_PLATFORMS as unknown as [string, ...string[]] })
       .$type<GemieAccountPlatform>()
       .notNull(),
@@ -115,7 +119,7 @@ export const connectedAccounts = pgTable(
      * connection ("Reply to messages"). Null where the platform has no such grant (WhatsApp).
      */
     canReply: boolean(),
-    /** Who its gemie answers (ADR 0035): see {@link CONNECTED_ACCOUNT_REPLIES}. */
+    /** Who its answering gemie answers: see {@link CONNECTED_ACCOUNT_REPLIES}. */
     replies: text({ enum: CONNECTED_ACCOUNT_REPLIES as unknown as [string, ...string[]] })
       .$type<ConnectedAccountReplies>()
       .notNull()
@@ -128,7 +132,10 @@ export const connectedAccounts = pgTable(
       .$type<ConnectedAccountGroupReplies>()
       .notNull()
       .default('mentions'),
-    /** Durable authority from the verified person who linked this channel. */
+    /**
+     * Durable authority from the verified person, acted on by the answering gemie: bound when one is
+     * chosen, revoked when none answers (`lib/connected-accounts.ts`).
+     */
     oxyTaskId: text(),
     oxyTaskState: text({ enum: ['active', 'reauth_required'] })
       .notNull()
@@ -143,7 +150,6 @@ export const connectedAccounts = pgTable(
   (t) => [
     index('connected_accounts_oxy_user_id_idx').on(t.oxyUserId),
     index('connected_accounts_session_id_idx').on(t.sessionId),
-    index('connected_accounts_agent_user_idx').on(t.agentId, t.oxyUserId),
     checkOneOf('connected_accounts_status_check', t.status, GEMIE_ACCOUNT_STATUSES),
     checkOneOf('connected_accounts_platform_check', t.platform, GEMIE_ACCOUNT_PLATFORMS),
     checkOneOf('connected_accounts_replies_check', t.replies, CONNECTED_ACCOUNT_REPLIES),
@@ -152,6 +158,38 @@ export const connectedAccounts = pgTable(
       t.groupReplies,
       CONNECTED_ACCOUNT_GROUP_REPLIES,
     ),
+  ],
+);
+
+/**
+ * Which gemies may use a person's connected account, and which ONE of them answers it.
+ *
+ * Written only by the account's person (`routes/me-accounts.ts`), so a gemie reaches an account
+ * because its person said so, never because the gemie's owner did; Alia is granted like any other
+ * gemie, which a grant on her one shared `agents` row could not express. A granted gemie reads and
+ * sends through the account when the person asks it or its tasks need it (`tools/accounts.ts`); the
+ * answering one also replies on its own to what arrives, as the account's replies say. Deleting the
+ * account or the gemie deletes the grant.
+ */
+export const connectedAccountGrants = pgTable(
+  'connected_account_grants',
+  {
+    accountId: text()
+      .notNull()
+      .references(() => connectedAccounts.id, { onDelete: 'cascade' }),
+    agentId: text()
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    /** Whether this gemie answers what arrives on the account: at most one per account. */
+    answers: boolean().notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.agentId] }),
+    index('connected_account_grants_agent_id_idx').on(t.agentId),
+    uniqueIndex('connected_account_grants_one_answering_idx')
+      .on(t.accountId)
+      .where(sql`${t.answers}`),
   ],
 );
 

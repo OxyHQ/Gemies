@@ -7,10 +7,11 @@
  *    bot in Telegram › Settings › Telegram Business › Chatbots. It is stored as Telegram reports
  *    it and never expires here;
  *  - `business_message`, `edited_business_message` and `deleted_business_messages` are the
- *    account's private chats: stored (so the gemie can read them later), and a contact's message
- *    is answered by the account's gemie when the account's replies say so and Telegram lets it.
+ *    account's private chats: stored (so the gemies granted it can read them later), and a
+ *    contact's message is answered by the account's answering gemie when the person chose one, the
+ *    account's replies say so and Telegram lets it (the API decides: `POST /channel-accounts/inbound`).
  *
- * Every change of a session's status is told to the API right away, so a gemie's tools and the
+ * Every change of a session's status is told to the API right away, so the gemies' tools and the
  * panel follow Telegram without anybody opening Gemies.
  */
 
@@ -61,23 +62,25 @@ const COPY = {
     linked: (bot: string) =>
       `Linked. Now open Telegram › Settings › Telegram Business › Chatbots, add @${bot} and choose the chats it may answer. Telegram Business needs Telegram Premium and covers private chats only.`,
     connected:
-      'Linked and connected: your gemie answers your Telegram chats as you chose in Gemies.',
-    expired: 'This link has expired or was already used. Open it again from your gemie in Gemies.',
+      'Linked and connected. In Settings › Connected accounts, choose which of your gemies may use it and which one answers.',
+    expired:
+      'This link has expired or was already used. Open it again from Settings › Connected accounts.',
     howTo:
-      'I connect your Telegram to a gemie. In Gemies, open a gemie › Connected accounts › Telegram and follow the link from there.',
+      'I connect your Telegram to your gemies. In Gemies or Alia, open Settings › Connected accounts › Telegram and follow the link from there.',
     unlinked:
-      'Telegram Business is connected, but not to a gemie yet. In Gemies, open a gemie › Connected accounts › Telegram and follow the link from there.',
+      'Telegram Business is connected, but not to your gemies yet. In Gemies or Alia, open Settings › Connected accounts › Telegram and follow the link from there.',
   },
   es: {
     linked: (bot: string) =>
       `Vinculado. Ahora abre Telegram › Ajustes › Telegram Business › Chatbots, añade a @${bot} y elige los chats que puede responder. Telegram Business necesita Telegram Premium y solo cubre chats privados.`,
     connected:
-      'Vinculado y conectado: tu gemie responde tus chats de Telegram como elegiste en Gemies.',
-    expired: 'Este enlace ha caducado o ya se usó. Ábrelo de nuevo desde tu gemie en Gemies.',
+      'Vinculado y conectado. En Ajustes › Cuentas conectadas, elige qué gemies pueden usarlo y cuál responde.',
+    expired:
+      'Este enlace ha caducado o ya se usó. Ábrelo de nuevo desde Ajustes › Cuentas conectadas.',
     howTo:
-      'Conecto tu Telegram con un gemie. En Gemies, abre un gemie › Cuentas conectadas › Telegram y sigue el enlace desde ahí.',
+      'Conecto tu Telegram con tus gemies. En Gemies o en Alia, abre Ajustes › Cuentas conectadas › Telegram y sigue el enlace desde ahí.',
     unlinked:
-      'Telegram Business está conectado, pero aún no a un gemie. En Gemies, abre un gemie › Cuentas conectadas › Telegram y sigue el enlace desde ahí.',
+      'Telegram Business está conectado, pero aún no a tus gemies. En Gemies o en Alia, abre Ajustes › Cuentas conectadas › Telegram y sigue el enlace desde ahí.',
   },
 };
 function copyFor(user: { language_code?: string } | undefined) {

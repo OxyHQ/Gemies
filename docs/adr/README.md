@@ -33,7 +33,7 @@ An ADR records a decision that is **in force now**, the context that forced it, 
 | [0031](./0031-external-agents-edit-by-default-and-span-instances.md) | External agents edit their working directory by default and are reachable from any instance | Accepted | 2026-11-10 |
 | [0032](./0032-external-agents-resume-sessions-and-leave-with-their-link.md) | External agents continue the CLI's own session and are deleted with their link | Accepted; its surviving bot account superseded by 0036 | 2026-11-10 |
 | [0034](./0034-gemies-and-alia.md) | Gemies and Alia: agents become Gemies, and Alia is one of them | Accepted (in progress) | 2026-11-12 |
-| [0035](./0035-connected-accounts-belong-to-a-gemie.md) | A connected account belongs to one gemie; Gmail and Signal are retired | Accepted | 2026-11-13 |
+| [0035](./0035-connected-accounts-belong-to-a-gemie.md) | A connected account belongs to one gemie; Gmail and Signal are retired | Accepted; its per-gemie scoping superseded by its own amendment (the person's accounts, granted to their gemies) | 2026-11-13 |
 | [0036](./0036-external-agents-have-no-oxy-account.md) | An external agent has no Oxy account; its identity is its own row | Accepted | 2026-11-13 |
 
 Companion document: [the compatibility window and sunset criteria](../migration/compatibility-window.md), which binds ADR 0002, ADR 0003 and ADR 0004 to measurable removal gates — for paths (a) and (c); path (b) left the window under ADR 0010.

@@ -1,13 +1,14 @@
 /**
- * A gemie's connected accounts: the provider sessions behind them, the Oxy authority they carry
- * and who they answer (ADR 0035).
+ * A person's connected accounts: the provider sessions behind them, who answers them and the Oxy
+ * authority the answering gemie acts with (ADR 0035 as amended).
  *
- * A person links a WhatsApp account, or Telegram through Telegram Business (ADR 0037), to ONE gemie. The integrations gateway holds the
- * provider session and speaks one contract for every platform (`@gemies/server/internal`); this
- * service holds the row, and with it a durable Oxy task the person granted when linking it, whose
- * actor is the gemie's own (`oxyActorFor`): Alia's lane is the person's own, every other gemie
- * acts as its account. What arrives on the account is answered by that gemie when the account's
- * replies say so (`shouldAnswer`), and only that gemie's turns can use it (`tools/accounts.ts`).
+ * A person connects a WhatsApp account, or Telegram through Telegram Business (ADR 0037), once, and
+ * grants it to the gemies that may use it. The integrations gateway holds the provider session and
+ * speaks one contract for every platform (`@gemies/server/internal`); this service holds the row and
+ * its grants. At most one granted gemie ANSWERS what arrives on it, when the account's replies say
+ * so (`shouldAnswer`), with a durable Oxy task the person granted when choosing it, whose actor is
+ * that gemie's (`oxyActorFor`). Every granted gemie can read and send through it when the person
+ * asks or its tasks need it (`tools/accounts.ts`).
  */
 
 import {
@@ -22,7 +23,8 @@ import {
 } from '@gemies/server/internal';
 import { getDb } from '../db/index.js';
 import {
-  listAccountsOfGemie,
+  listAccountsAnsweredBy,
+  setAnsweringGemie,
   setConnectedAccountSessionState,
   setConnectedAccountTask,
   type ConnectedAccountRow,
@@ -80,7 +82,7 @@ async function gateway<T>(
 const sessionPath = (account: Pick<ConnectedAccountRow, 'platform' | 'sessionId'>) =>
   `/accounts/${account.platform}/sessions/${encodeURIComponent(account.sessionId ?? '')}`;
 
-/** The platform a client named, or `null` when it is not one a gemie can be linked to. */
+/** The platform a client named, or `null` when it is not one an account can be connected on. */
 export function accountPlatformOf(value: unknown): GemieAccountPlatform | null {
   return GEMIE_ACCOUNT_PLATFORMS.find((platform) => platform === value) ?? null;
 }
@@ -192,7 +194,7 @@ export function sendAccountMessage(
 }
 
 /**
- * Write to the person who linked the account — a notification, not a message to a contact. Telegram
+ * Write to the person whose account it is — a notification, not a message to a contact. Telegram
  * writes in the person's own chat with the shared Gemies bot; a platform with no way to reach them
  * answers a `GatewayError`.
  */
@@ -208,8 +210,8 @@ export function notifyAccountPerson(
 }
 
 /**
- * Whether the account's gemie answers a message that arrived on it: never one it was told not to
- * answer, in a group only when the group is allowed and the message mentions or replies to the
+ * Whether the account's answering gemie answers a message that arrived on it, by the account's
+ * replies (the caller has already found that one answers): never one it was told not to answer, in a group only when the group is allowed and the message mentions or replies to the
  * account, and with `chosen` only in the chats the person picked.
  */
 export function shouldAnswer(
@@ -225,7 +227,7 @@ export function shouldAnswer(
 }
 
 /**
- * Grant the account its durable Oxy task: the linking person's authority, acted on by the gemie.
+ * Grant the account its durable Oxy task: its person's authority, acted on by the answering gemie.
  * Replaces the task the row held (`account.oxyTaskId`) only if nobody changed it meanwhile.
  */
 export async function bindAccountTask(input: {
@@ -281,18 +283,35 @@ export async function endAccountSession(
 }
 
 /**
- * Before a gemie is deleted: end every account's session and revoke its task, whoever linked it.
- * The rows themselves go with the gemie (the foreign key cascades). Best effort per account, so one
- * unreachable session does not keep the gemie alive.
+ * Choose the gemie that answers the account, or none (`null`): stored, then the account's task is
+ * revoked and, for a gemie, granted again with that gemie as its actor. The person is present (it
+ * is their bearer that grants the task); a task that cannot be granted leaves the account typed
+ * `reauth_required`, which the panel renews on its next visit.
  */
-export async function releaseGemieAccounts(agentId: string): Promise<void> {
-  const accounts = await listAccountsOfGemie(getDb(), agentId);
+export async function setAccountAnswering(input: {
+  account: ConnectedAccountRow;
+  gemie: (OxyActorGemie & { readonly _id: string }) | null;
+  personAccountId: string;
+  accessToken: string;
+}): Promise<void> {
+  const { account, gemie } = input;
+  await setAnsweringGemie(getDb(), account.id, gemie?._id ?? null);
+  await revokeAccountTask(account);
+  if (gemie) await bindAccountTask({ ...input, gemie });
+}
+
+/**
+ * Before a gemie is deleted: every account it answers loses its task, since the task's actor is the
+ * gemie. The grants cascade with the gemie; the accounts stay their people's, answered by nobody
+ * until they choose another. Best effort per account, so one Oxy failure does not keep the gemie.
+ */
+export async function releaseAnsweringGemie(agentId: string): Promise<void> {
+  const accounts = await listAccountsAnsweredBy(getDb(), agentId);
   await Promise.all(
-    accounts.map(async (account) => {
-      await endAccountSession(account, account.oxyUserId);
-      await revokeAccountTask(account).catch((err: unknown) =>
+    accounts.map((account) =>
+      revokeAccountTask(account).catch((err: unknown) =>
         log.channels.warn({ err, accountId: account.id }, 'Could not revoke a channel task'),
-      );
-    }),
+      ),
+    ),
   );
 }

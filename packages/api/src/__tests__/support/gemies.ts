@@ -12,15 +12,7 @@ export const ALIA_GEMIE_CONFIGURATION = {
   reach: 'person',
   mailbox: false,
   taskAuthority: 'standing',
-  capabilityGrants: [
-    'web',
-    'artifacts',
-    'memory',
-    'messaging',
-    'automation',
-    'delegation',
-    'agent',
-  ],
+  capabilityGrants: ['web', 'artifacts', 'memory', 'automation', 'delegation', 'agent'],
   access: 'public',
   // Not listed until Oxy creates her account: a card with no identity would be a regression.
   isPublished: false,

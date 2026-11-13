@@ -4,10 +4,11 @@ export interface VerifiedChannelContext {
   kind: 'bot' | 'account';
   accountId: string;
   /**
-   * The gemie a connected account belongs to (`kind: 'account'`, ADR 0035): it answers every turn
-   * that arrives on the account. Absent for a bot link, whose turns go to the default gemie.
+   * The gemie that answers a connected account (`kind: 'account'`, ADR 0035 as amended): it runs
+   * every turn that arrives on the account, and `null` means no gemie answers it, so none runs.
+   * Absent for a bot link, whose turns go to the default gemie.
    */
-  gemieId?: string;
+  gemieId?: string | null;
   platform: string;
   identityId: string;
   taskId?: string;

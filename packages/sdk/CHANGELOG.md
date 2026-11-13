@@ -1,5 +1,28 @@
 # @gemies/sdk
 
+## 4.0.0
+
+- **Breaking: a connected account is the person's, granted to their gemies (Gemies ADR 0035 as
+  amended).** The person connects WhatsApp and Telegram once, in Settings, and chooses which of
+  their gemies may use each account and which one, if any, answers it on its own.
+  - `GemieConnectedAccounts` (`@gemies/sdk/accounts`) is Settings › Connected accounts: connect an
+    account, the gemies that may use it (a switch each, Alia among them), the gemie that answers
+    it and whom it answers. It takes no gemie.
+  - `GemieAccountGrants` is the list a gemie's editor shows: the person's accounts, one switch
+    each, and `onManage` to open Settings.
+  - `GemieAccounts` is gone, and so are `useGemieAccounts`, `useGemieAccountQr`,
+    `useGemieAccountChats`, `useGemieAccountMutations` and `GemieAccountsAnswer`; the hooks are
+    `useConnectedAccounts`, `useConnectedAccountQr`, `useConnectedAccountChats` and
+    `useConnectedAccountMutations` (`connect`, `update`, `grant`, `remove`) over `/me/accounts`.
+    `GemieAccount` is `ConnectedAccount`, with `gemieIds` and `answeringGemieId`;
+    `ConnectedAccountsAnswer` carries the `gemies` an account can be granted to.
+  - `@gemies/sdk/accounts` no longer re-exports `ALIA_GEMIE_ID` (it is still in the root entry).
+  - Copy: the panel says "connect" for "link"; new keys under `gemie.accounts.*`
+    (`answeringLabel`, `usedBy`, `grantLabel`, `grants.*`…); `link`, `linkNamed`, `linkFailed`
+    and `linked` are gone.
+- **New: `GrantSwitchRow` (`@gemies/sdk/connectors`)**, the switch row every list that grants a
+  connected account to a gemie draws, connectors included.
+
 ## 3.3.1
 
 - **The activity socket stops reconnecting every few seconds.** `useGemieActivity` (every Alia

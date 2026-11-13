@@ -596,7 +596,7 @@ describe('an agent the caller may not change', () => {
       url === AGENT_URL
         ? {
             data: {
-              agent: { ...agentFixture(), viewer: { mayEdit: false, mayManageAccounts: true } },
+              agent: { ...agentFixture(), viewer: { mayEdit: false, mayGrantAccounts: true } },
             },
           }
         : { data: {} },
@@ -612,7 +612,7 @@ describe('an agent the caller may not change', () => {
       url === AGENT_URL
         ? {
             data: {
-              agent: { ...agentFixture(), viewer: { mayEdit: false, mayManageAccounts: false } },
+              agent: { ...agentFixture(), viewer: { mayEdit: false, mayGrantAccounts: false } },
             },
           }
         : { data: {} },

@@ -40,7 +40,9 @@
 import { aliaGemie, personaGemie } from '../../__tests__/support/gemies.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolSet } from 'ai';
+import { asSchema } from 'ai';
 import {
+  ACCOUNT_GRANTED_TOOLS,
   CAPABILITY_FAMILIES,
   FIXED_CAPABILITY_FAMILIES,
   FIXED_FAMILY_TOOLS,
@@ -133,15 +135,13 @@ vi.mock('../logger.js', () => {
   };
 });
 vi.mock('../../db/index.js', () => ({ getDb: () => ({}) }));
-// The messaging family's account tools need the gemie's own connected account (ADR 0035).
-// `sendTelegramMessage` needs the person's Telegram linked to the gemie (ADR 0037).
+/**
+ * The accounts the turn's person granted its gemie (ADR 0035 as amended): set per test, and none by
+ * default, since that grant is the person's and no capability family reaches it.
+ */
+const grantedAccounts = vi.hoisted(() => ({ list: [] as Array<Record<string, unknown>> }));
 vi.mock('../../db/integrations/connectedAccountRepository.js', () => ({
-  listConnectedGemieAccounts: vi.fn(async () => [
-    { id: 'wa-1', platform: 'whatsapp', sessionId: 'wa-session' },
-  ]),
-  listGemieAccounts: vi.fn(async () => [
-    { id: 'tg-1', platform: 'telegram', sessionId: 'tg-session', status: 'connected' },
-  ]),
+  listAccountsGrantedTo: vi.fn(async () => grantedAccounts.list),
 }));
 /** The peers of a space member: set per test, since the rows are in a database this test lacks. */
 const space = vi.hoisted(() => ({ peers: [] as string[] }));
@@ -249,10 +249,10 @@ const INSTANCE_TOOLS: Readonly<Record<string, string>> = {
 };
 
 beforeEach(() => {
-  // The messaging family includes the connected-account tools, which exist only where a
-  // gateway is configured and the gemie has an account (`buildAccountTools`):
-  // this suite is about the vocabulary, so it runs where both exist.
+  // The connected-account tools exist only where a gateway is configured and the person granted
+  // the gemie an account (`ACCOUNT_GRANTED_TOOLS`): the gateway is, the grant is set per test.
   vi.stubEnv('INTEGRATIONS_URL', 'https://integrations.example.test');
+  grantedAccounts.list = [];
   asked.mcp = [];
   asked.oxy_service = [];
   asked.oxy_context = [];
@@ -548,8 +548,69 @@ describe('every tool the assembler can build belongs to exactly one family', () 
     // nothing, would satisfy every set comparison above by comparing two empty
     // sets — which is the shape of a passing test that measures nothing.
     const all = await namesFor(EVERY_GRANT);
-    expect(all.length).toBeGreaterThanOrEqual(23);
-    expect(CAPABILITY_FAMILIES.length).toBe(10);
+    expect(all.length).toBeGreaterThanOrEqual(19);
+    expect(CAPABILITY_FAMILIES.length).toBe(9);
+  });
+});
+
+describe('the account tools are the person’s grant, never a capability family', () => {
+  const account = (over: Record<string, unknown> = {}) => ({
+    id: 'wa-1',
+    platform: 'whatsapp',
+    sessionId: 'wa-session',
+    status: 'connected',
+    answers: false,
+    phoneNumber: '+34600',
+    displayName: null,
+    createdAt: new Date(1),
+    ...over,
+  });
+
+  it('adds exactly the account tools when the person granted the gemie an account', async () => {
+    const base = await namesFor([]);
+    grantedAccounts.list = [account(), account({ id: 'tg-1', platform: 'telegram' })];
+    const granted = await namesFor([]);
+    expect(granted.filter((name) => !base.includes(name)).sort()).toEqual(
+      [...ACCOUNT_GRANTED_TOOLS].sort(),
+    );
+    // And to Alia only the same way: she is granted per person like any other gemie.
+    grantedAccounts.list = [];
+    expect((await namesFor(null)).filter((name) => ACCOUNT_GRANTED_TOOLS.includes(name))).toEqual(
+      [],
+    );
+  });
+
+  it('adds none for every capability family at once when no account was granted', async () => {
+    const all = await namesFor(EVERY_GRANT);
+    expect(all.filter((name) => ACCOUNT_GRANTED_TOOLS.includes(name))).toEqual([]);
+  });
+
+  it('names each account, and says which one this gemie answers on its own', async () => {
+    grantedAccounts.list = [
+      account({ id: 'wa-2', answers: true, phoneNumber: '+34611', createdAt: new Date(2) }),
+      account(),
+    ];
+    const { tools } = await ToolPipeline.forUser({
+      userId: 'user-1',
+      accessToken: 'token-1',
+      isDirectSession: true,
+      actsForPerson: true,
+      toolsEnabled: true,
+      webSearch: false,
+      isLocalRuntime: false,
+      agent: agentWith([]),
+    });
+    const schema = asSchema(tools.readAccountMessages?.inputSchema).jsonSchema as {
+      properties: { account: { enum: string[]; description: string } };
+    };
+    // Keyed in the order the person connected them, so a key lasts as long as its account.
+    expect(schema.properties.account.enum).toEqual(['whatsapp', 'whatsapp_2']);
+    expect(schema.properties.account.description).toContain(
+      'whatsapp (WhatsApp +34600): another gemie or nobody answers it',
+    );
+    expect(schema.properties.account.description).toContain(
+      'whatsapp_2 (WhatsApp +34611): you answer what arrives on it on your own',
+    );
   });
 });
 
@@ -851,9 +912,14 @@ describe('the `agent` family: which agents this one may consult, and what a bare
  * clean cut removed what cannot work; these assertions are what keep a later
  * change from quietly offering the switch again.
  */
-describe('the retired shell, files and integration families stay gone', () => {
+describe('the retired shell, files, integration and messaging families stay gone', () => {
   it('names them as retired and nowhere else in the vocabulary', () => {
-    expect([...RETIRED_CAPABILITY_FAMILIES].sort()).toEqual(['files', 'integration', 'shell']);
+    expect([...RETIRED_CAPABILITY_FAMILIES].sort()).toEqual([
+      'files',
+      'integration',
+      'messaging',
+      'shell',
+    ]);
     for (const family of RETIRED_CAPABILITY_FAMILIES) {
       expect(CAPABILITY_FAMILIES as readonly string[]).not.toContain(family);
       expect(Object.keys(FIXED_FAMILY_TOOLS)).not.toContain(family);

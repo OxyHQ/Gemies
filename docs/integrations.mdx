@@ -16,7 +16,8 @@ Alia's reach comes from four layers:
    by URL. No connector runs code of ours against a provider's API.
 4. **Channel integrations** — long-running connectors in `packages/integrations/`
    for Telegram, WhatsApp and Discord. A person's own WhatsApp or Telegram account is
-   linked to ONE gemie, which answers on it ([connected accounts](#connected-accounts)).
+   theirs, connected once in Settings and granted to the gemies that may use it, at most one of
+   which answers on it ([connected accounts](#connected-accounts)).
 
 Which of these an actor may use is in [Actors: Alia and agents](./actors.mdx).
 
@@ -32,11 +33,11 @@ by a grant. The families and the tools each contributes:
 | `browser` | `browser` — the runner's Clarity primitive (`search`, `goto`, `get_text`); no Chromium |
 | `artifacts` | `canvas`, `generateFile` |
 | `memory` | `memory` (the agent's own MEMORY.md and topic files), `searchThread` |
-| `messaging` | `sendTelegramMessage` (to the person, through the Telegram they linked to the gemie), `listAccountChats`, `readAccountMessages`, `sendAccountMessage` |
 | `automation` | `createAutomation` |
 | `delegation` | `createAgent`, `searchAgents`, `delegate` |
 | `computer` | `computer_*`, `run_computer_command`, `*_computer_file(s)`, `browser_*` — the agents' computer ([agents](./agents.md#the-agents-computer-computer)) |
 | `mcp:<id>`, `agent[:<id>]`, … | instanced families: one connector or agent per grant (`consultAgent` for `agent`) |
+| the person's account grant (`ACCOUNT_GRANTED_TOOLS`) | `listAccountChats`, `readAccountMessages`, `sendAccountMessage`, `sendTelegramMessage` (to the person, through a Telegram they granted the gemie) — not a family: the [connected accounts](#connected-accounts) the person granted the turn's gemie |
 | no grant (`UNGRANTED_TOOLS`) | `getCurrentDate`, `getDeviceInfo`, `planPreview`, `plan`, `suggestNewConversation` |
 
 ### The canvas
@@ -291,9 +292,22 @@ Inbound messages arrive at the API as either:
 
 ### Connected accounts
 
-A person links their own WhatsApp or Telegram account to one gemie, from that gemie's editor
-(ADR 0035). The account is the gemie's: what arrives on it is answered by that gemie, and only that
-gemie's turns for that person can use it.
+A person's WhatsApp and Telegram accounts are theirs (ADR 0035 as amended). They connect each one
+ONCE, in Settings › Connected accounts, several per platform if they like, and then choose:
+
+- **Which gemies may use it** (`connected_account_grants`): any gemie they may act as, and Alia,
+  each with a switch. A granted gemie reads and sends through the account when the person asks it
+  or a task of theirs needs it. The grant is the person's, on their account, never a capability
+  grant on the gemie's row (no `messaging` family: a gemie's owner cannot grant somebody else's
+  account, and Alia's one row could not hold every person's choice).
+- **Which ONE answers it on its own** (`answers`, at most one per account), or none. It replies to
+  what arrives as the account's replies say; with none, nothing arriving is answered. Choosing a
+  gemie grants it the account too.
+
+The same grants show from the gemie's side: its editor lists the person's accounts with a switch
+each ("Accounts it can use", the same `GrantSwitchRow` its connectors use) and opens Settings to
+connect more, and Alia's locked editor shows the same list (`viewer.mayGrantAccounts`). What stays
+per gemie is its own Telegram bot ([below](#telegram-on-the-bot-api)).
 
 - **One contract** between the API and the gateway, for every platform
   (`@gemies/server/internal` `accounts.ts`): platforms, the session status vocabulary, chats,
@@ -301,7 +315,7 @@ gemie's turns for that person can use it.
   (`accounts/gateway-router.ts`) over an `AccountGateway` per platform (`whatsapp/gateway.ts`,
   `telegram/business/gateway.ts`), mounted at `/accounts/<platform>`, and `GET /accounts/platforms`
   says which ones run (Telegram needs the shared bot, `TELEGRAM_BOT_TOKEN`). The API offers only
-  those.
+  those. The gateway knows sessions, never gemies.
 - **Telegram is Telegram Business** (ADR 0037). The panel's link opens the shared Gemies bot with
   a one-time code, and the person adds the bot in Telegram › Settings › Telegram Business ›
   Chatbots (Telegram Premium; private chats only). The connection never expires here: turned off
@@ -309,20 +323,21 @@ gemie's turns for that person can use it.
   (`POST /channel-accounts/session`). The Bot API has no chat list or history, so the tools read
   what arrived since it was connected, and write only where the contact wrote in the last 24 hours
   and Telegram granted "Reply to messages".
-- **Who it answers.** Each account has `replies` (everyone, the chosen chats, or nobody) and
-  `group_replies` (never, or when the message mentions or replies to the account). The gateway asks
-  `POST /channel-accounts/inbound` before a message reaches a turn (`shouldAnswer`); a message it is
-  not to answer gets no reply at all. The same call records the account's last activity.
+- **Who it answers.** The account's answering gemie, and its `replies` (everyone, the chosen chats,
+  or nobody) and `group_replies` (never, or when the message mentions or replies to the account).
+  The gateway asks `POST /channel-accounts/inbound` before a message reaches a turn: it is answered
+  only when a gemie answers the account and `shouldAnswer` says so; otherwise it gets no reply at
+  all. The same call records the account's last activity. The turn is the answering gemie's
+  (`middleware/channel-auth.ts` reads it from the grants), authorised as unattended work, with the
+  account's Oxy task, whose actor is that gemie (`oxyActorFor`) and which moves when the person
+  chooses another; an account no gemie answers holds no task, and a turn on it is refused.
 - **Live status.** Listing the accounts asks the gateway for each session and stores what moved,
   so an account unlinked from the phone shows `logged-out`, not `connected`.
 - **Tools.** `listAccountChats`, `readAccountMessages` and `sendAccountMessage`
-  (`lib/tools/accounts.ts`), offered only when the turn's gemie has a connected account of the
-  person, with the platform limited to those it has.
-- **Alia's editor.** `GET /agents/:id` says what the caller may do (`viewer.mayEdit`,
-  `viewer.mayManageAccounts`). Every person may manage their own accounts on Alia
-  (`isPersonsOwnAssistant`), and nobody but Oxy may change who she is (her account has no
-  act-as holder, so `PATCH /agents/:id` refuses). The Gemies app opens her editor from her sidebar
-  row and her chat's header with her identity as text and only the accounts card.
+  (`lib/tools/accounts.ts`), and `sendTelegramMessage`, offered only over the connected accounts the
+  person granted the turn's gemie. The model names an account by a key (`whatsapp`, `whatsapp_2`,
+  `telegram`) whose description says which account it is and whether this gemie answers it on its
+  own or only acts when asked.
 - **Failures the panel can read.** A gateway that cannot be reached or refuses answers
   `503 { error, code: 'accounts_gateway_unavailable' }` (never a `502`, which the CDN serves without
   CORS headers), a platform this deployment does not run `409 platform_unavailable`; the panel
@@ -330,13 +345,21 @@ gemie's turns for that person can use it.
 - **Order of a release.** The web app deploys only after the API's release of the same commit
   (`deploy-frontends.yml` runs on `Deploy to AWS`). The API and the integrations service deploy
   independently: `GET /accounts/platforms` is the handshake, so an API newer than its gateway
-  offers nothing to link until the gateway speaks the same contract.
-- **Routes**, all under the gemie and for whoever may act as it (every person, for Alia):
-  `GET|POST /agents/:id/accounts`, `PATCH /agents/:id/accounts/:accountId` (who it answers),
-  `GET /agents/:id/accounts/:accountId/qr|chats`, `POST /agents/:id/accounts/:accountId/reauthorize`,
-  `DELETE /agents/:id/accounts/:accountId` (the gateway logs the session out and deletes what it
-  synced). Deleting a gemie ends its accounts' sessions and revokes their tasks first
-  (`lib/gemie-accounts.ts`).
+  offers nothing to connect until the gateway speaks the same contract.
+- **Routes**, all the caller's own (`routes/me-accounts.ts`; anybody else's account is `404`):
+  `GET /me/accounts` (the accounts with `gemieIds` and `answeringGemieId`, the `gemies` they can be
+  granted to, the `platforms`), `POST /me/accounts { platform }` (connect one; answers its first
+  code), `PATCH /me/accounts/:accountId { answeringGemieId?, replies?, replyChatIds?,
+  groupReplies? }`, `PUT|DELETE /me/accounts/:accountId/gemies/:gemieId` (grant or revoke; a gemie
+  the caller may not grant is `404|403 gemie_not_grantable`, and revoking the answering one revokes
+  the task), `GET /me/accounts/:accountId/qr|chats`, `POST /me/accounts/:accountId/reauthorize`
+  (renew the answering gemie's task; `409 no_answering_gemie` without one) and
+  `DELETE /me/accounts/:accountId` (the gateway logs the session out and deletes what it synced).
+  Deleting a gemie revokes the task of every account it answered; its grants cascade, and the
+  accounts stay their people's (`lib/connected-accounts.ts`).
+- **The apps.** The UI is the SDK's (`@gemies/sdk/accounts`): `GemieConnectedAccounts` is Settings ›
+  Connected accounts in the Gemies and the Alia apps alike, and `GemieAccountGrants` is the
+  editor's list.
 
 Outbound tools (e.g. `sendTelegramMessage`, `sendAccountMessage`) are `R2`: they run, flagged. Structured automation actions remain bound by their exact Oxy authority and Alia risk policy.
 
@@ -352,7 +375,7 @@ Telegram runs on its official Bot API only, in one layer in `packages/integratio
   answers. A sweep at startup and every minute handles what a restart left. Every webhook is
   registered at startup and checked with `getWebhookInfo` every ten minutes.
 - **The shared bot** (`TELEGRAM_BOT_TOKEN`) carries Telegram Business: a person's own Telegram as
-  a [connected account](#connected-accounts) of a gemie.
+  one of their [connected accounts](#connected-accounts), granted to their gemies.
 - **A gemie's own bot** is a card of the gemie's editor (`/agents/:id/telegram-bot`): the owner
   pastes a @BotFather token, and the bot takes the gemie's name, description, tagline and picture.
   The API keeps the bot and its encrypted token (`bots`) and runs every turn

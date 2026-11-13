@@ -209,7 +209,7 @@ describe('a turn that belongs to an agent', () => {
   it('discloses only the prompt families the owner explicitly granted, and memory as its own', async () => {
     const message = await SystemPromptBuilder.build({
       ...turn,
-      linkedAgent: { ...claudio, capabilityGrants: ['memory', 'messaging', 'delegation'] },
+      linkedAgent: { ...claudio, capabilityGrants: ['memory', 'automation', 'delegation'] },
       oxyUser: { name: { full: 'Still Private' } },
       userMemory: { preferences: { tone: 'granted-tone-zq' } },
     });

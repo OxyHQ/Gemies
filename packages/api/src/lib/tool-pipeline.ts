@@ -610,17 +610,16 @@ export class ToolPipeline {
         });
         aliaTools.searchThread = createSearchThreadTool(userId, agent._id);
       }
-      if (grants.allows('messaging')) {
-        // Only the accounts this person linked to THIS gemie (ADR 0035), and only those that are
-        // connected: a tool the model is shown is a tool it keeps trying. `sendTelegramMessage`
-        // writes to the person themselves, through the Telegram they linked here (ADR 0037).
-        const scope = { agentId: agent._id, oxyUserId: userId };
-        Object.assign(
-          aliaTools,
-          await buildSendTelegramTool(scope, runId),
-          await buildAccountTools(scope),
-        );
-      }
+      // Only the accounts this person granted THIS gemie (ADR 0035 as amended), and only those
+      // that are connected: a tool the model is shown is a tool it keeps trying. The grant is the
+      // person's, not a capability family (`ACCOUNT_GRANTED_TOOLS`). `sendTelegramMessage` writes
+      // to the person themselves, through the Telegram they granted it (ADR 0037).
+      const accountScope = { agentId: agent._id, oxyUserId: userId };
+      Object.assign(
+        aliaTools,
+        await buildSendTelegramTool(accountScope, runId),
+        await buildAccountTools(accountScope),
+      );
       if (grants.allows('automation') && !nested) {
         if (isDirectSession) {
           aliaTools.createAutomation = createAutomationTool(userId, accessToken, agent);

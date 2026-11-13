@@ -78,8 +78,18 @@ export const AGENT_ROUTES = {
   threadSearch: (thread: GemieThreadAddress) => `${threadPath(thread)}/search`,
   /** What a run of an agent has done so far, to hydrate the live feed. */
   sessionStatus: (sessionId: string) => `/agents/sessions/${sessionId}/status`,
-  /** The caller's WhatsApp and Telegram accounts linked to a gemie (ADR 0035), and one of them. */
-  accounts: (gemieId: string) => `/agents/${encodeURIComponent(gemieId)}/accounts`,
-  account: (gemieId: string, accountId: string) =>
-    `/agents/${encodeURIComponent(gemieId)}/accounts/${encodeURIComponent(accountId)}`,
+} as const;
+
+/**
+ * The caller's connected WhatsApp and Telegram accounts (ADR 0035 as amended): theirs, connected
+ * once, and granted to the gemies that may use them.
+ */
+export const ACCOUNT_ROUTES = {
+  /** Every account, with its grants, the gemies to grant and the platforms; `POST` connects one. */
+  all: '/me/accounts',
+  /** One account: `PATCH` its answering gemie and replies, `DELETE` it. */
+  one: (accountId: string) => `/me/accounts/${encodeURIComponent(accountId)}`,
+  /** A gemie's grant of one account: `PUT` grants it, `DELETE` revokes it. */
+  grant: (accountId: string, gemieId: string) =>
+    `/me/accounts/${encodeURIComponent(accountId)}/gemies/${encodeURIComponent(gemieId)}`,
 } as const;

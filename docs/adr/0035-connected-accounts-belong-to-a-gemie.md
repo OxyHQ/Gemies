@@ -2,7 +2,8 @@
 
 *Una cuenta conectada es de un gemie; Gmail y Signal se retiran.*
 
-**Status:** Accepted
+**Status:** Accepted; its per-gemie scoping (decisions 1–4 and the Alia editor amendment) superseded
+by the amendment of 2026-11-13 below: an account is its person's, granted to their gemies
 
 **Date:** 2026-11-13
 
@@ -111,3 +112,41 @@ Business connection to the shared Gemies bot, on Telegram's official Bot API, an
 on Gemies' side. The status vocabulary gains `paused` (turned off in Telegram, resumed by itself)
 and the account stores whether Telegram lets the gemie reply (`can_reply`). See
 [ADR 0037](./0037-telegram-on-the-bot-api.md).
+
+## Amendment (2026-11-13, latest): an account is the person's, granted to their gemies
+
+The owner's correction: "lo que es el conectar la cuenta de whatsapp/telegram etc eso pienso
+deberia estar en settings y poder activar segun gemies y que puedan reusar no tener que hacerlo por
+agente, lo que si va por agente es lo de poder vincular gemie a un bot de telegram". It supersedes
+decisions 1–4, 5's session teardown and the Alia editor amendment; the reply policy, the one
+contract, the live status, the tools and Gmail and Signal's retirement stand.
+
+1. **An account is its person's.** It is connected once, in Settings › Connected accounts
+   (`/me/accounts`), several per platform if they like, and names no gemie
+   (`connected_accounts.agent_id` is gone).
+2. **The person grants it to their gemies** (`connected_account_grants`, written only through
+   `PUT|DELETE /me/accounts/:id/gemies/:gemieId`): any gemie they may act as, and Alia, with the
+   same switch. A grant is the account owner's decision, so it is not a capability grant on the
+   gemie's row: a gemie's owner cannot grant another person's account, and Alia's one shared row
+   could not hold every person's choice. The `messaging` family is retired with it (migration 0157):
+   the account tools (`listAccountChats`, `readAccountMessages`, `sendAccountMessage`,
+   `sendTelegramMessage`) are offered to a turn only over the accounts its person granted its gemie
+   (`ACCOUNT_GRANTED_TOOLS`).
+3. **At most ONE granted gemie answers it** (`answers`, unique per account), chosen in Settings
+   (`PATCH /me/accounts/:id { answeringGemieId }`), or none. It replies on its own to what arrives,
+   as the account's replies say, under the unattended rule; its Oxy task names that gemie's actor
+   and moves with the choice. With none, nothing is answered. Every other granted gemie reads and
+   sends through the account only when the person asks it or its tasks need it, and the tools tell
+   each gemie which accounts it answers.
+4. **A gemie's editor** lists the person's accounts with a switch each ("Accounts it can use"), the
+   same row its connectors use (`GrantSwitchRow`), and links to Settings to connect more; Alia's
+   locked editor has the same list. `viewer.mayManageAccounts` becomes `mayGrantAccounts`.
+5. **Deleting a gemie** revokes the task of every account it answered; its grants cascade, and the
+   accounts stay their people's, answered by nobody until they choose.
+6. **What stays per gemie** is its own Telegram bot (ADR 0037), not a connected account.
+
+Migration: `0156` (pre) creates the grants table, drops `agent_id`'s NOT NULL and grants every
+account to the gemie it belonged to, which answers it; `0157` (post) does the same for accounts the
+replaced image linked while it drained, never overriding a choice made since, drops `agent_id` and
+removes `messaging` from every gemie's grants. Production held 0 connected accounts and 4 gemies with
+`messaging` when they were written.

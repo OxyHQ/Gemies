@@ -21,7 +21,7 @@ makes her different is the configuration of her row, never a `null` agent or her
 | Attribute (`agents`) | Alia | Every other gemie (the default) | What it decides |
 |---|---|---|---|
 | `memory_store` | `nilo` | `gemie` | Whose memory of the person: Nilo's (`oxy_nilo_memories__*`, answer settings, writing style) or its own `agent_memory_documents` |
-| `reach` | `person` | `grants` | The person's own assistant (Oxy's person lane, every connected account and agent of the person, their installed skills, their name and Inbox context, the base identity, no remit) or a persona under its grants, linked skills and remit |
+| `reach` | `person` | `grants` | The person's own assistant (Oxy's person lane, every connector and agent of the person, their installed skills, their name and Inbox context, the base identity, no remit) or a persona under its grants, linked skills and remit. Either reaches only the WhatsApp and Telegram accounts the person granted it ([connected accounts](./integrations.mdx#connected-accounts)) |
 | `mailbox` | `false` | `true` | Whether its own Oxy account is a working one (`self_*` tools, own-mailbox alerts) |
 | `task_authority` | `standing` | `session` | Tasks under standing authority on `alia-tasks`, no agent session; her chats are loose and her thread with a person is one `agent_threads` row. Or durable sessions, and every conversation with the person is a stretch of its thread |
 | `capability_grants` | no `computer`, no `browser` | its owner's | Its fixed families; Alia has no machine |

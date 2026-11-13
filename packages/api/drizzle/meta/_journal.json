@@ -1093,6 +1093,20 @@
       "when": 1794571298689,
       "tag": "0155_connectors_are_public_mcp",
       "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1794575458317,
+      "tag": "0156_connected_account_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1794575476376,
+      "tag": "0157_accounts_belong_to_their_person",
+      "breakpoints": true
     }
   ]
 }

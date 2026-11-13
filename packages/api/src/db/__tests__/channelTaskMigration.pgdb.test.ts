@@ -1,7 +1,8 @@
 import {
   createPendingConnectedAccount,
   setConnectedAccountTask,
-  findGemieAccount,
+  findPersonAccount,
+  setAnsweringGemie,
 } from '../integrations/connectedAccountRepository.js';
 import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -62,9 +63,10 @@ describe('controlled channel-task conversion', () => {
     await db.update(botUsers).set({ metadata: {}, oxyTaskId: null }).where(eq(botUsers.id, row.id));
     const connection = await createPendingConnectedAccount(db, {
       oxyUserId: 'linked-person',
-      agentId: ALIA_GEMIE_ID,
       platform: 'whatsapp',
     });
+    // Only an account a gemie answers needs a task.
+    await setAnsweringGemie(db, connection.id, ALIA_GEMIE_ID);
     await db
       .update(connectedAccounts)
       .set({ status: 'connected', sessionId: 'inventory-session' })
@@ -84,19 +86,19 @@ describe('controlled channel-task conversion', () => {
   it('permits only one task rotation for the same previous account binding', async () => {
     const row = await createPendingConnectedAccount(db, {
       oxyUserId: 'rotation-person',
-      agentId: ALIA_GEMIE_ID,
       platform: 'telegram',
     });
-    const rotation = { agentId: ALIA_GEMIE_ID, oxyUserId: 'rotation-person' };
     const updates = await Promise.all([
       setConnectedAccountTask(db, row.id, 'root-a', null),
       setConnectedAccountTask(db, row.id, 'root-b', null),
     ]);
     expect(updates.filter(Boolean)).toHaveLength(1);
-    const saved = await findGemieAccount(db, row.id, rotation);
+    const saved = await findPersonAccount(db, row.id, 'rotation-person');
     expect(saved?.oxyTaskState).toBe('active');
     expect(await setConnectedAccountTask(db, row.id, null, 'not-current')).toBe(false);
-    expect((await findGemieAccount(db, row.id, rotation))?.oxyTaskId).toBe(saved?.oxyTaskId);
+    expect((await findPersonAccount(db, row.id, 'rotation-person'))?.oxyTaskId).toBe(
+      saved?.oxyTaskId,
+    );
   });
   it('validates the original requester and removes a bearer only after persisting the task', async () => {
     const { row, bot, id } = await legacy('valid-session');

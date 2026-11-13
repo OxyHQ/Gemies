@@ -66,7 +66,9 @@ const ALLOWED: Record<string, readonly string[]> = {
     'skills',
   ],
   // notifications: an agent's own mailbox alert is a switch in its editor.
-  agents: ['chat', 'notifications'],
+  // settings: its editor opens Settings › Connected accounts, where the accounts it may use are
+  // connected (`useAliaSettings`).
+  agents: ['chat', 'notifications', 'settings'],
   chat: ['billing', 'local-models', 'memory', 'notifications', 'projects', 'skills', 'voice'],
   shows: ['notifications'],
 };

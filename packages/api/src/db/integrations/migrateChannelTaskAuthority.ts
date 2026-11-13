@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { ApiDatabase } from '../index.js';
 import { bots, botUsers } from '../schema/bots.js';
-import { connectedAccounts } from '../schema/integrations.js';
+import { connectedAccountGrants, connectedAccounts } from '../schema/integrations.js';
 import { createOxyTask, revokeOxyTask } from '../../lib/oxy-task-authority.js';
 import { personAssistantActor } from '../../lib/gemie-oxy-actor.js';
 
@@ -119,6 +119,14 @@ export async function channelTaskAuthorityInventory(db: ApiDatabase): Promise<{
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(connectedAccounts)
+      // Only an account a gemie answers needs a task: its actor is that gemie.
+      .innerJoin(
+        connectedAccountGrants,
+        and(
+          eq(connectedAccountGrants.accountId, connectedAccounts.id),
+          eq(connectedAccountGrants.answers, true),
+        ),
+      )
       .where(
         and(
           eq(connectedAccounts.status, 'connected'),

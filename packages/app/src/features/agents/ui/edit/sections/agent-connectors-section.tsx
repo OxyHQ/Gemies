@@ -2,10 +2,14 @@ import { useUpdateAgent } from '@/features/agents/runtime/use-agents';
 import { useMyAgents } from '@/features/agents/runtime/use-my-agents';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { SettingsSkeletonRows } from '@/shared/ui/skeletons';
-import { ConnectorLogo, connectorQueryKeys, useConnections } from '@gemies/sdk/connectors';
+import {
+  ConnectorLogo,
+  GrantSwitchRow,
+  connectorQueryKeys,
+  useConnections,
+} from '@gemies/sdk/connectors';
 import { AgentCreatorSection } from '@oxy.so/bloom/agent-creator';
 import { Button } from '@oxy.so/bloom/button';
-import { Switch } from '@oxy.so/bloom/switch';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
 import { useQueryClient } from '@tanstack/react-query';
@@ -61,32 +65,29 @@ export function AgentConnectorsSection({ agentId, name }: { agentId: string; nam
             </View>
           ) : (
             rows.map((connection, index) => (
-              <View
+              <GrantSwitchRow
                 key={connection._id}
-                className={`flex-row items-center gap-2.5 py-2.5 pe-2.5 ${
-                  index === 0 ? '' : 'border-t border-border'
-                }`}
-              >
-                <ConnectorLogo
-                  name={connection.displayName}
-                  logoUrl={connection.logoUrl}
-                  size={24}
-                />
-                <Text variant="body-2-regular" numberOfLines={1} className="flex-1">
-                  {connection.accountLabel
+                first={index === 0}
+                leading={
+                  <ConnectorLogo
+                    name={connection.displayName}
+                    logoUrl={connection.logoUrl}
+                    size={24}
+                  />
+                }
+                label={
+                  connection.accountLabel
                     ? `${connection.displayName} · ${connection.accountLabel}`
-                    : connection.displayName}
-                </Text>
-                <Switch
-                  accessibilityLabel={t(`${K}.grantLabel`, {
-                    connector: connection.displayName,
-                    name,
-                  })}
-                  checked={grants.includes(grantOf(connection._id))}
-                  disabled={update.isPending}
-                  onCheckedChange={(on) => void toggle(connection._id, on)}
-                />
-              </View>
+                    : connection.displayName
+                }
+                checked={grants.includes(grantOf(connection._id))}
+                disabled={update.isPending}
+                accessibilityLabel={t(`${K}.grantLabel`, {
+                  connector: connection.displayName,
+                  name,
+                })}
+                onCheckedChange={(on) => void toggle(connection._id, on)}
+              />
             ))
           )}
           <View className="flex-row border-t border-border py-2.5 pe-2.5">

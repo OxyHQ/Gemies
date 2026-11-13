@@ -56,7 +56,6 @@ export const FIXED_CAPABILITY_FAMILIES = [
   'browser',
   'artifacts',
   'memory',
-  'messaging',
   'automation',
   'delegation',
   'computer',
@@ -141,6 +140,11 @@ export const DEFAULT_NEW_AGENT_GRANTS: readonly string[] = ['agent'];
  * were replaced by the providers' own MCP servers (granted as `mcp:<id>` like any
  * connector); no agent held one when it went (migration 0155).
  *
+ * `messaging` granted the tools of a person's connected WhatsApp and Telegram. They
+ * are the PERSON's accounts, granted by the person one account at a time
+ * ({@link ACCOUNT_GRANTED_TOOLS}), so a family switch over them would grant
+ * nothing; migration 0157 removed it from every gemie.
+ *
  * Migration 0071 removed `shell` and `files` from `agents.capability_grants`. They are listed
  * here so the wire can DROP them instead of refusing the whole save — an editor
  * still holding one from before the deploy would otherwise 400 on every
@@ -148,7 +152,7 @@ export const DEFAULT_NEW_AGENT_GRANTS: readonly string[] = ['agent'];
  * so `capability-grants.test.ts` can pin that they stay gone. Anything else
  * outside the vocabulary is still refused.
  */
-export const RETIRED_CAPABILITY_FAMILIES = ['shell', 'files', 'integration'] as const;
+export const RETIRED_CAPABILITY_FAMILIES = ['shell', 'files', 'integration', 'messaging'] as const;
 
 /** A grant list with every retired family's entries removed, and nothing else touched. */
 export function withoutRetiredGrants(grants: readonly string[]): string[] {
@@ -207,13 +211,6 @@ export const FIXED_FAMILY_TOOLS: Readonly<Record<FixedCapabilityFamily, readonly
     // only in the catalog), so it is in no agent family.
     'memory',
     'searchThread',
-  ],
-  messaging: [
-    'sendTelegramMessage',
-    // The gemie's own connected WhatsApp and Telegram accounts (ADR 0035, `tools/accounts.ts`).
-    'listAccountChats',
-    'readAccountMessages',
-    'sendAccountMessage',
   ],
   automation: ['createAutomation'],
   delegation: ['createAgent', 'listMyAgents', 'updateAgent', 'searchAgents', 'delegate'],
@@ -278,6 +275,21 @@ export const UNGRANTED_TOOLS: readonly string[] = [
   'plan',
   'suggestNewConversation',
   'askUserQuestion',
+];
+
+/**
+ * The tools a person's CONNECTED ACCOUNT grant governs, not a gemie's capability grants (ADR 0035 as
+ * amended): built for a turn only when its person granted its gemie one of their WhatsApp or Telegram
+ * accounts (`connected_account_grants`, `tools/accounts.ts`, `tools/telegram.ts`), and only over the
+ * accounts granted. The grant is the account owner's, written on their account, so it is not in this
+ * vocabulary: a gemie's owner cannot grant another person's account, and Alia, one row shared by
+ * everybody, is granted per person like any other gemie.
+ */
+export const ACCOUNT_GRANTED_TOOLS: readonly string[] = [
+  'sendTelegramMessage',
+  'listAccountChats',
+  'readAccountMessages',
+  'sendAccountMessage',
 ];
 
 /** `family` or `family:instanceId`, which is how a grant is stored and sent. */

@@ -107,7 +107,7 @@ vi.mock('../logger.js', () => {
 });
 
 const { attachAgentIdentities } = await import('../agent-identity.js');
-const { canReachAgent, loadAgentForActor, loadAgentForAccounts } = await import(
+const { canReachAgent, loadAgentForActor, loadGrantableGemie } = await import(
   '../agent-account.js'
 );
 const { applyAgentEdit } = await import('../agent-update.js');
@@ -173,9 +173,9 @@ describe('only its owner may use or change it, and Oxy is not asked', () => {
     expect(state.oxyAsked).toBe(0);
   });
 
-  it('has no connected accounts to manage, even for its owner', async () => {
+  it('cannot be granted a connected account, even by its owner', async () => {
     expect(
-      await loadAgentForAccounts({} as never, {
+      await loadGrantableGemie({} as never, {
         agentId: LOCAL._id,
         oxyUserId: 'owner-1',
         accessToken: 'token',

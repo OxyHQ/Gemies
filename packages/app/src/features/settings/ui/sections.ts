@@ -4,6 +4,7 @@ import { RiSettings6Line } from '@oxy.so/bloom/icons/RiSettings6Line';
 import { RiBankCardLine } from '@oxy.so/bloom/icons/RiBankCardLine';
 import { RiDashboardLine } from '@oxy.so/bloom/icons/RiDashboardLine';
 import { RiPlugLine } from '@oxy.so/bloom/icons/RiPlugLine';
+import { RiChat3Line } from '@oxy.so/bloom/icons/RiChat3Line';
 import { RiDatabase2Line } from '@oxy.so/bloom/icons/RiDatabase2Line';
 import { RiShieldLine } from '@oxy.so/bloom/icons/RiShieldLine';
 import { RiPaletteLine } from '@oxy.so/bloom/icons/RiPaletteLine';
@@ -54,6 +55,12 @@ export const SETTINGS_GROUPS: { titleKey: string; sections: SettingsSection[] }[
         route: '/(app)/settings/connectors',
         icon: RiPlugLine,
         labelKey: 'gemie.connectors.connected.title',
+      },
+      {
+        id: 'accounts',
+        route: '/(app)/settings/accounts',
+        icon: RiChat3Line,
+        labelKey: 'gemie.accounts.title',
       },
       {
         id: 'storage',

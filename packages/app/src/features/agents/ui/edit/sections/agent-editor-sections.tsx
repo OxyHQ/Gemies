@@ -9,10 +9,10 @@ import type { AvatarCharacter } from '@oxy.so/bloom/agent-avatar';
 
 /**
  * What an agent HAS beyond who it is, as the cards below the editor's details card: how it works
- * on its own, the WhatsApp and Telegram accounts it answers on (ADR 0035), its own Telegram bot
- * (ADR 0037), the connected accounts (Notion, Linear…) it may use, what it hears about, what waits
- * in its inbox and what it remembers about the person. They are per agent, so they live here, where
- * the agent is edited, and not in the settings.
+ * on its own, which of the person's WhatsApp and Telegram accounts it may use (ADR 0035 as amended;
+ * the accounts themselves are connected in Settings), its own Telegram bot (ADR 0037), the
+ * connectors (Notion, Linear…) it may use, what it hears about, what waits in its inbox and what it
+ * remembers about the person.
  */
 export function AgentEditorSections({
   agentId,

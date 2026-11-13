@@ -23,9 +23,9 @@ export function AgentEditorLoader({
   const { data: agent, isError, error, refetch } = useAgent(agentId);
   if (agent !== undefined) {
     // Fields that would save nothing are never drawn: a gemie the caller may not change opens with
-    // its identity as text and only what they may manage (their accounts on Alia), or not at all.
+    // its identity as text and only what they may grant it (their accounts, on Alia), or not at all.
     if (agent.viewer?.mayEdit === false) {
-      return agent.viewer.mayManageAccounts ? (
+      return agent.viewer.mayGrantAccounts ? (
         <LockedGemieEditor key={agent._id} agent={agent} onClose={onClose} />
       ) : (
         <AgentEditorLoadFailed

@@ -49,7 +49,7 @@ addressed it as `/@handle` and the editor wrote its name and colour to the accou
 6. **Nothing that needs an account of its own is open to it**, refused where it would start:
    unattended work and automations (`unattendedReach`), background sessions (`startAgentSession`,
    `no_background_work`), the heartbeat (`establishAgentWork`), event subscriptions, connected
-   accounts (`loadAgentForAccounts`), feature gates, and an Oxy task for a room member.
+   accounts (`loadGrantableGemie`), feature gates, and an Oxy task for a room member.
    `lib/gemie-oxy-actor.ts` is the seam: `gemieOxyAccountId` is what a gate asks, and
    `runtimeGemieAccountId` — Gemies' own runtime, which a `local` gemie never enters — throws
    rather than act as nobody.
