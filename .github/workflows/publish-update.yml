@@ -23,6 +23,9 @@ on:
       - package.json
       - bun.lock
       - .github/workflows/publish-update.yml
+  # Publishes main's bundle again without a push (for example, after the
+  # workflow was disabled); same ref and path, so the same trusted publisher.
+  workflow_dispatch: {}
 
 permissions:
   contents: read
