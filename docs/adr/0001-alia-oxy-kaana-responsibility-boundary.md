@@ -4,6 +4,32 @@
 
 **Date:** 2026-08-15
 
+## Amendment: direct Kaana transport, 2026-11-13
+
+The owner requires Gemies, including the Alia gemie, to send inference content
+directly to `https://kaana.ai/v1`. This supersedes the Oxy payload-proxy rule
+below and the equivalent transport statements in ADRs 0012 and 0014. The
+historical implementation evidence below remains dated evidence, not a
+requirement to restore the old path. Gemies owns the backend under ADR 0034;
+Alia's app consumes that product API.
+
+The published Kaana SDK uses the existing Oxy workload identity with audience
+`kaana.ai`; Gemies neither holds provider keys nor signs inference grants.
+Kaana owns the catalogue, power-level resolution, provider selection and
+execution. External machine credentials retain their authenticated payer and
+authority rather than being replaced by Gemies's workload.
+
+The existing public Kaana lane still asks Oxy for content-free authorization
+and settlement. Oxy currently owns the upstream inference ledger. The owner
+explicitly confirmed on November 13 that Kaana authorizes spending
+and invoices, while Oxy retains identity only. Kaana ADR 0010 records the
+earlier direction; its financial migration remains unbuilt. The temporary
+Oxy authorization path is not the accepted destination. This transport
+amendment does not implement it, change economic
+terms or revive the superseded Oxy #2256 output-cap proposal. See the
+[source review and migration constraints](../migration/kaana-direct-inference-review-2026-11-13.md).
+Production cutover must be recorded separately after verification.
+
 ## Context
 
 At the time this decision was accepted, Alia also behaved as a generic inference
