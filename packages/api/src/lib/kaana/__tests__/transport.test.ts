@@ -141,6 +141,7 @@ describe('hosted text through the real Kaana SDK', () => {
           output: [{ role: 'assistant', content: [{ type: 'text', text: '{"ok":true}' }] }],
           usage: [
             { unit: 'input_tokens', quantity: 12 },
+            { unit: 'cache_write_input_tokens', quantity: 30 },
             { unit: 'output_tokens', quantity: 4 },
           ],
           routingPolicy: { routingPolicyId: 'fixture', policyVersion: 1 },
@@ -162,6 +163,7 @@ describe('hosted text through the real Kaana SDK', () => {
       },
     });
     expect(result.content).toEqual([{ type: 'text', text: '{"ok":true}' }]);
+    expect(result.usage.inputTokens).toMatchObject({ total: 42, noCache: 12, cacheWrite: 30 });
     expect(result.providerMetadata).toEqual({
       kaana: { resolvedModelReference: 'fixture/model@1' },
     });
