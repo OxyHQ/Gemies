@@ -113,9 +113,11 @@ another product's merchant or claim invoice readiness from SDK availability.
   `archive/feat/agent-authored-reactions`. Its old backend base must not be
   deployed over the Gemies split or treated as current production.
 - [Oxy #2256](https://github.com/OxyHQ/oxy/pull/2256), head
-  `ba2b36150d937e4e924f6ed7a5349bb1478f7798`, remains an open draft. The 8192
-  pilot-ceiling workaround has **no user approval** and is on hold. Its source
-  and tests are evidence only, not a migration dependency or accepted policy.
+  `ba2b36150d937e4e924f6ed7a5349bb1478f7798`, is closed **unmerged** and
+  preserved at `archive/fix/alia-planning-output-policy-20261113`. The 8192
+  pilot-ceiling workaround was superseded by the owner's identity-only Oxy
+  direction. Its source and tests are evidence only, not a migration
+  dependency or accepted policy.
 - Transport acceptance must cover direct text/structured
   output/tools/stream cancellation, catalogue and power-level semantics,
   idempotency, usage/receipt reconciliation, actual Gemies workload identity
