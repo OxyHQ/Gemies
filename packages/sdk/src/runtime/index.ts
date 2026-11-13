@@ -25,7 +25,9 @@ export type {
 } from './config';
 export type { RoomEvent } from './room-events';
 export type { MessageReactionUpdate } from './message-reactions';
+export type { MessageReactionEntry } from './types';
 export { GemieApiError, useGemieApi } from './api';
+
 export {
   GEMIE_FEATURES,
   featureOffer,
