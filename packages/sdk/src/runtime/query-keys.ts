@@ -11,6 +11,8 @@ export interface ConversationsFilter {
 }
 
 export const gemieQueryKeys = {
+  /** The person's folders, projects, pins and favourites (`runtime/collections.ts`). */
+  collections: ['conversation-collections'] as const,
   conversations: {
     all: ['conversations'] as const,
     detail: (id: string) => ['conversation', id] as const,

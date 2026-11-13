@@ -27,6 +27,7 @@ import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import type { ConversationSource } from '../../domain/conversation.js';
 import type { ApiDatabase, Executor } from '../index';
 import { conversationMembers, conversations } from '../schema/chat';
+import { conversationCollectionItems } from '../schema/collections';
 
 /** A stored conversation, as this repository reads it. */
 export interface ConversationRow {
@@ -41,6 +42,8 @@ export interface ConversationRow {
   readonly icon: string | null;
   readonly iconColor: string | null;
   readonly isFavorite: boolean;
+  /** Pinned since this instant, or `null`. */
+  readonly pinnedAt: Date | null;
   /** The gemie the conversation belongs to: Alia's unless the person opened another. */
   readonly agentId: string;
   readonly agentThreadId: string | null;
@@ -383,6 +386,15 @@ export async function deleteConversation(
         and(
           eq(conversationActivities.oxyUserId, oxyUserId),
           eq(conversationActivities.conversationId, conversationId),
+        ),
+      );
+    // Its place in the person's folders and projects goes with it.
+    await tx
+      .delete(conversationCollectionItems)
+      .where(
+        and(
+          eq(conversationCollectionItems.oxyUserId, oxyUserId),
+          eq(conversationCollectionItems.conversationId, conversationId),
         ),
       );
     await tx

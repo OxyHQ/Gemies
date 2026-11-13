@@ -15,6 +15,7 @@ import { updateReactionCaches } from '../runtime/reaction-cache';
 import type { Conversation, ConversationsInfiniteData, Message } from '../runtime/types';
 import type { RealtimeConnection } from './connection';
 import type { RealtimeConversationRow, RealtimeData, RealtimeFrame } from './contract';
+import { readCollectionsSnapshot } from '../runtime/collections-model';
 
 function toConversation(row: RealtimeConversationRow): Conversation {
   return {
@@ -182,6 +183,12 @@ export function applyRealtimeToCache(client: QueryClient, frame: RealtimeFrame):
         updateReactionCaches(client, { ...update, reactions: [...update.reactions] });
       }
       return;
+    case 'collections':
+      client.setQueryData(
+        gemieQueryKeys.collections,
+        readCollectionsSnapshot(frame.data as RealtimeData['collections']),
+      );
+      return;
     case 'connections':
       // The person's connected accounts and connectors: their lists are read again, once.
       void client.invalidateQueries({ queryKey: gemieQueryKeys.accounts.all });
@@ -195,6 +202,7 @@ export function applyRealtimeToCache(client: QueryClient, frame: RealtimeFrame):
 export function resetRealtimeCache(client: QueryClient): void {
   void client.invalidateQueries({ queryKey: gemieQueryKeys.conversations.all });
   void client.invalidateQueries({ queryKey: ['conversation'] });
+  void client.invalidateQueries({ queryKey: gemieQueryKeys.collections });
   void client.invalidateQueries({ queryKey: gemieQueryKeys.accounts.all });
   void client.invalidateQueries({ queryKey: ['gemie-connectors', 'connected'] });
 }

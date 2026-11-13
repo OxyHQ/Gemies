@@ -23,6 +23,8 @@ export const ACCOUNT_EVENT_TYPES = [
   'notification',
   /** Connected accounts or connectors changed (linked, unlinked, status). */
   'connections',
+  /** How the person files conversations changed: folders, projects, pins, favourites (a snapshot). */
+  'collections',
 ] as const;
 
 export type AccountEventType = (typeof ACCOUNT_EVENT_TYPES)[number];

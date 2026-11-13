@@ -13,6 +13,15 @@ export const API_ROUTES = {
   chat: '/v1/chat/completions',
   /** The answer to an awaited host action, read by the turn that is waiting for it. */
   hostResults: (turnId: string) => `/v1/chat/turns/${encodeURIComponent(turnId)}/host-results`,
+  /** The person's folders and projects (`runtime/collections.ts`). */
+  collections: {
+    list: '/v1/conversations/collections',
+    create: '/v1/conversations/collections',
+    import: '/v1/conversations/collections/import',
+    one: (id: string) => `/v1/conversations/collections/${encodeURIComponent(id)}`,
+    member: (id: string, conversationId: string) =>
+      `/v1/conversations/collections/${encodeURIComponent(id)}/conversations/${encodeURIComponent(conversationId)}`,
+  },
   conversations: {
     list: '/v1/conversations',
     save: '/v1/conversations',
@@ -27,6 +36,8 @@ export const API_ROUTES = {
     clearMessages: (id: string) => `/v1/conversations/${id}/messages`,
     /** The person has seen it: its unread count goes to zero on every surface. */
     read: (id: string) => `/v1/conversations/${id}/read`,
+    /** Its own marks: `{ pinned?, favorite? }`. */
+    marks: (id: string) => `/v1/conversations/${id}`,
     vote: (id: string, messageId: string) => `/v1/conversations/${id}/messages/${messageId}/vote`,
     react: (id: string, messageId: string) =>
       `/v1/conversations/${id}/messages/${messageId}/reactions`,

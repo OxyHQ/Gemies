@@ -26,6 +26,7 @@ export const REALTIME_DURABLE_TYPES = [
   'credits',
   'notification',
   'connections',
+  'collections',
 ] as const;
 
 /** Signals: only true while they happen, never replayed. */
@@ -89,6 +90,25 @@ export interface RealtimeActivity {
   readonly ttlMs: number;
 }
 
+/** A person's folders, projects, pins and favourites, as the API answers and publishes them. */
+export interface CollectionsSnapshotWire {
+  readonly collections: ReadonlyArray<{
+    readonly id: string;
+    readonly kind: 'folder' | 'project';
+    readonly name: string;
+    readonly description: string | null;
+    readonly icon: string | null;
+    readonly color: string | null;
+    readonly isFavorite: boolean;
+    readonly isExpanded: boolean;
+    readonly conversationIds: string[];
+    readonly createdAt: string;
+    readonly updatedAt: string;
+  }>;
+  readonly pinned: string[];
+  readonly favorites: string[];
+}
+
 export interface RealtimeData {
   conversation: {
     readonly conversation: RealtimeConversationRow;
@@ -113,6 +133,7 @@ export interface RealtimeData {
   credits: { readonly credits?: number };
   notification: { readonly notification: Record<string, unknown> & { readonly id: string } };
   connections: Record<string, never>;
+  collections: CollectionsSnapshotWire;
   activity: RealtimeActivity;
   room: {
     readonly conversationId: string;

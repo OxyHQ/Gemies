@@ -54,6 +54,7 @@ socket event by name.
 | `credits` | `{ credits? }` | settling or refunding a turn (with the new balance), a purchase, a referral |
 | `notification` | `{ notification }` | `notification-service.ts`, in-app channel |
 | `connections` | `{}` | `/me/accounts` writes, the integrations service's session callback, `/mcp` connectors |
+| `collections` | `{ collections, pinned, favorites }`: the whole snapshot of how the person files conversations | every write under `/conversations/collections`, `PATCH /conversations/:id`, a conversation's deletion |
 
 **Signals** — only true while they happen, never logged:
 
@@ -108,6 +109,27 @@ account's newest number (`db/schema/realtime.ts`, migration 0161).
   every `conversation` frame).
 - Gemie-to-gemie conversations, rooms and group chats are conversations: they publish the same
   frames from the same writers (`appendRoomReply`, `publishRoomEvent`).
+
+## Collections: folders, projects, pins and favourites
+
+How a person files their conversations is theirs, not a device's: what they pin on the phone is
+pinned on the laptop. Folders and projects are `conversation_collections` with their memberships in
+`conversation_collection_items` (a conversation is filed in at most one; deleting it takes it out);
+the pin and the favourite are marks on the conversation (`conversations.pinned_at`,
+`is_favorite`), which never move it in the list.
+
+- `GET /v1/conversations/collections` answers the snapshot `{ collections, pinned, favorites }`;
+  every write (`POST`, `PATCH`/`DELETE …/collections/:id`, `PUT`/`DELETE
+  …/collections/:id/conversations/:conversationId`, `PATCH /v1/conversations/:id { pinned?,
+  favorite? }`) answers it too and publishes it as the `collections` frame. A snapshot, not a diff:
+  it is small, and applying it twice or late still shows exactly what the server holds.
+- `@gemies/sdk` keeps it in one query (`useConversationCollections`, `useCollectionActions`): a
+  change is drawn at once, replaced by the server's answer, and read again if refused.
+- **What devices kept before:** pins, favourites, folders and projects used to live in each device's
+  storage. On the first sign-in after the change, a device sends what it has to `POST
+  /v1/conversations/collections/import` and forgets it. The import merges: a folder or project with
+  the same name (any case) receives the conversations instead of being made twice, so every device
+  of the person brings its own and nothing doubles. Two hundred collections per account at most.
 
 ## Typing and activity
 

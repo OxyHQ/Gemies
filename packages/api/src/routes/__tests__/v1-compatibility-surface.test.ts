@@ -284,6 +284,12 @@ const aliaChat = surface(aliaChatRouter, '/alia/chat');
  *
  * `POST /v1/conversations/:id/read` zeroes its unread count on every surface of the person. A
  * person's session, like every other conversation route.
+ *
+ * ## 31 became 39: the person's folders, projects, pins and favourites (`docs/realtime.mdx`)
+ *
+ * `/v1/conversations/collections` (read, create, import, edit, delete, file and unfile a
+ * conversation) and `PATCH /v1/conversations/:id` for a conversation's pin and favourite: the
+ * person's own filing, on their account. A person's session, like every other conversation route.
  */
 const FROZEN_ROUTES: readonly string[] = [
   'DELETE /v1/conversations/:id',
@@ -316,6 +322,14 @@ const FROZEN_ROUTES: readonly string[] = [
   'POST /v1/chat/turns/:turnId/host-results',
   'POST /v1/conversations',
   'POST /v1/conversations/:id/read',
+  'DELETE /v1/conversations/collections/:collectionId',
+  'DELETE /v1/conversations/collections/:collectionId/conversations/:conversationId',
+  'GET /v1/conversations/collections',
+  'PATCH /v1/conversations/:id',
+  'PATCH /v1/conversations/collections/:collectionId',
+  'POST /v1/conversations/collections',
+  'POST /v1/conversations/collections/import',
+  'PUT /v1/conversations/collections/:collectionId/conversations/:conversationId',
   'POST /v1/conversations/:id/share',
   'POST /v1/conversations/new',
   'POST /v1/images/generations',
@@ -339,7 +353,7 @@ describe('the compatibility surface gains no route (#139 ws6, ADR 0004)', () => 
     // removal is what the compatibility window gates and an unrecorded removal
     // is the other way this list stops describing the surface.
     expect(v1.map((e) => e.signature)).toEqual([...FROZEN_ROUTES].sort());
-    expect(FROZEN_ROUTES).toHaveLength(31);
+    expect(FROZEN_ROUTES).toHaveLength(39);
     expect(new Set(FROZEN_ROUTES).size).toBe(FROZEN_ROUTES.length);
   });
 
@@ -374,6 +388,14 @@ const FROZEN_CHAINS: Readonly<Record<string, readonly string[]>> = {
   'POST /v1/conversations/:id/messages/:messageId/reactions': PERSON,
   'POST /v1/conversations': PERSON,
   'POST /v1/conversations/:id/read': PERSON,
+  'DELETE /v1/conversations/collections/:collectionId': PERSON,
+  'DELETE /v1/conversations/collections/:collectionId/conversations/:conversationId': PERSON,
+  'GET /v1/conversations/collections': PERSON,
+  'PATCH /v1/conversations/:id': PERSON,
+  'PATCH /v1/conversations/collections/:collectionId': PERSON,
+  'POST /v1/conversations/collections': PERSON,
+  'POST /v1/conversations/collections/import': PERSON,
+  'PUT /v1/conversations/collections/:collectionId/conversations/:conversationId': PERSON,
   'POST /v1/conversations/:id/share': PERSON,
   'POST /v1/conversations/new': PERSON,
   'GET /v1/agents/:id/profile': PERSON,
@@ -444,7 +466,7 @@ describe('the compatibility surface gains no auth mechanism (#139 ws6, ADR 0004)
 
   it('admits only a person on the conversations: no key, no bot secret', () => {
     const conversations = v1.filter((e) => e.signature.includes('/v1/conversations'));
-    expect(conversations).toHaveLength(11);
+    expect(conversations).toHaveLength(19);
     for (const endpoint of conversations) {
       // Person auth first, mounted before the channel-bot pre-auth and the blanket lane, so
       // neither of those can have admitted the request.

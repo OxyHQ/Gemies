@@ -80,7 +80,10 @@ export const conversations = pgTable(
     folderId: text(),
     icon: text(),
     iconColor: text(),
+    /** A favourite of the person's, on every device (`collections` realtime event). */
     isFavorite: boolean().notNull().default(false),
+    /** Pinned to the top of the person's list since this instant; NULL when not pinned. */
+    pinnedAt: timestamptz(),
     /**
      * The gemie this conversation belongs to (ADR 0034 §1): Alia's (`ALIA_GEMIE_ID`) unless the
      * person opened another. NOT NULL since 0139. A group's or a space room's speakers are its
