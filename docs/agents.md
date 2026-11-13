@@ -129,7 +129,7 @@ an agent session — has no surface, so a confined agent never runs there.
   painted in its Oxy account's `User.color`, a Bloom preset key or any hex: the avatar's body,
   the chat's tint, the sidebar, the catalogue and every other app. The character
   (`agents.character`, also put on the account) keeps its shape and features and
-  carries no paint (`packages/api/src/lib/agent-character.ts`), so `AgentIdentity`
+  carries no paint (`@oxy.so/contracts` 7 has none), so `AgentIdentity`
   carries `color` beside it and a client paints the one in the other
   (`readAgentCharacter` in `@gemies/sdk`). The editor writes the colour to the
   account with the owner's own credential, as it writes the name; its picker is

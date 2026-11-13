@@ -27,7 +27,7 @@
  *
  * A gemie's colour is `User.color` — a Bloom preset key or any hex, which Oxy stores for every account — and
  * nothing else: the character this service stores keeps its shape and features and carries no paint
- * (`lib/agent-character.ts`). Every response that draws a gemie therefore carries this `color`
+ * (`@oxy.so/contracts` 7 has no paint). Every response that draws a gemie therefore carries this `color`
  * beside its `character`, and a client paints the one in the other (`readAgentCharacter` in
  * `@gemies/sdk`), as Bloom does for a bot account anywhere Alia's own client does not reach.
  */

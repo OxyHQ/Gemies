@@ -32,7 +32,6 @@ import {
   EXTERNAL_AGENT_CLIS,
   EXTERNAL_PAIRING_TTL_MS,
 } from '../../domain/external-agent.js';
-import { gemieCharacterOf } from '../../lib/agent-character.js';
 import { authenticateToken } from '../../middleware/auth.js';
 import { getErrorMessage } from '../../lib/errors/index.js';
 import { log } from '../../lib/logger.js';
@@ -130,7 +129,7 @@ router.post(
       const agent = await createAgent(getDb(), {
         identity: { source: 'local', name, color: EXTERNAL_AGENT_CLI_COLORS[cli] },
         // Picked from its name, so the agents of two computers look apart; its owner changes it.
-        character: gemieCharacterOf(avatarCharacterFor(name)),
+        character: avatarCharacterFor(name),
         ownerOxyAccountId: userId,
         tagline,
         description: `${label} running on ${hostName}, connected to Gemies through the Codea daemon.`,

@@ -3,7 +3,7 @@
  *
  * A gemie is an Oxy `bot` account, and its colour lives where its name and handle do: on that
  * account, in `User.color`. This service stores no colour for it, exactly as it stores no name, and
- * its character carries none (`lib/agent-character.ts`): the avatar's body, the chat's tint, the
+ * its character carries none (`@oxy.so/contracts` 7 has no paint): the avatar's body, the chat's tint, the
  * sidebar, the catalogue and every other app paint a gemie in its account's colour. A gemie with no
  * Oxy account (ADR 0036, an external agent) keeps its colour on its row (`local_color`), in the same
  * vocabulary and checked by {@link isAgentColor} when its owner changes it.
