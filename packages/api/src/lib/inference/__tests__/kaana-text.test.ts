@@ -7,18 +7,21 @@ const mocks = vi.hoisted(() => ({
   options: null as Record<string, unknown> | null,
 }));
 
-vi.mock('../oxy-inference.js', () => ({
-  getOxyInferenceClient: () => ({
-    respond: async (request: Record<string, unknown>, options: Record<string, unknown>) => {
-      mocks.request = request;
-      mocks.options = options;
-      return {
-        output: [{ role: 'assistant', content: [{ type: 'text', text: ' resultado ' }] }],
-        finishReason: 'stop',
-        usage: [],
-      };
+vi.mock('../../kaana/transport.js', () => ({
+  getHostedKaanaClient: () => ({
+    responses: {
+      create: async (request: Record<string, unknown>, options: Record<string, unknown>) => {
+        mocks.request = request;
+        mocks.options = options;
+        return {
+          output: [{ role: 'assistant', content: [{ type: 'text', text: ' resultado ' }] }],
+          finishReason: 'stop',
+          usage: [],
+        };
+      },
     },
   }),
+  disposeHostedKaanaClient: vi.fn(),
 }));
 
 import { UTILITY_REASONING_ALLOWANCE_TOKENS } from '../../chat-core.js';
@@ -47,7 +50,7 @@ describe('one-shot product inference through Oxy', () => {
       model: 'acme/big-2',
       labels: { 'alia.surface': 'background', 'alia.visibility': 'derived' },
     });
-    expect(mocks.options).toMatchObject({ delegatedUserId: 'user-id' });
+    expect(mocks.options).toMatchObject({ onBehalfOfUserId: 'user-id' });
     // A named model is the caller's to size: no reasoning allowance is added.
     expect(mocks.request?.maxOutputTokens).toBe(128);
   });
@@ -69,8 +72,8 @@ describe('one-shot product inference through Oxy', () => {
     expect(mocks.request?.responseFormat).toEqual(responseFormat);
     // No model named: the utility power level, which Oxy routes for Alia —
     // never a model Alia picked from the public catalogue itself.
-    expect(mocks.request?.model).toBeUndefined();
-    expect(mocks.request?.routingProfile).toBe('instant');
+    expect(mocks.request?.model).toBe('instant');
+    expect(mocks.request).not.toHaveProperty('routingProfile');
     expect(mocks.request).not.toHaveProperty('providerOptions');
   });
 
@@ -80,7 +83,7 @@ describe('one-shot product inference through Oxy', () => {
     // gpt-oss nothing to answer with (production 2026-10-11/12).
     await generateTextViaKaana({ prompt: 'clasifica', surface: 'background', maxOutputTokens: 60 });
 
-    expect(mocks.request?.routingProfile).toBe('instant');
+    expect(mocks.request).not.toHaveProperty('routingProfile');
     expect(mocks.request?.maxOutputTokens).toBe(60 + UTILITY_REASONING_ALLOWANCE_TOKENS);
   });
 });
