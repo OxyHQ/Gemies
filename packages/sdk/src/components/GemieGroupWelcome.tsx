@@ -1,5 +1,5 @@
 import { useAvatarFlights } from '@oxy.so/bloom/avatar-flight';
-import { SelectedAgentPreview } from '@oxy.so/bloom/multi-agent-chat';
+import { SelectedAgentPreview } from '@oxy.so/bloom/multi-agent-chat/selected-agent-preview';
 import { Text, View } from 'react-native';
 import { useMemo } from 'react';
 import { useGemieFlights } from '../lib/flights';

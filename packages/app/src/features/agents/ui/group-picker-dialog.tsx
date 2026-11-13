@@ -8,7 +8,7 @@ import { AgentAvatar } from '@oxy.so/bloom/agent-avatar';
 import { useAvatarFlights } from '@oxy.so/bloom/avatar-flight';
 import { Button } from '@oxy.so/bloom/button';
 import { Dialog } from '@oxy.so/bloom/dialog';
-import { SelectedAgentPreview } from '@oxy.so/bloom/multi-agent-chat';
+import { SelectedAgentPreview } from '@oxy.so/bloom/multi-agent-chat/selected-agent-preview';
 import { toast } from '@oxy.so/bloom/toast';
 import { Muted } from '@oxy.so/bloom/typography';
 import { useMemo, useState } from 'react';

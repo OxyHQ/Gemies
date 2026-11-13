@@ -29,7 +29,7 @@ describe('the agent editor screen has one header', () => {
     const source = read(file);
     expect(source).toContain('headerShown: false');
     expect(source).not.toMatch(/title:|headerBackVisible|headerRight/);
-    expect(source).toContain('AgentEditorLoader');
+    expect(source).toContain('AgentEditorSurface');
   });
 
   it('closes through the editor’s own control, which leaves the screen', () => {

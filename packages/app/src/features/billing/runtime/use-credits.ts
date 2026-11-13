@@ -45,7 +45,6 @@ export function useCredits() {
       // revalidated when the tab comes back. Realtime: a `credits:changed` socket event would
       // invalidate `queryKeys.credits.info` here.
       staleTime: 30_000,
-      gcTime: 0,
       refetchOnWindowFocus: true,
       queryFn: async () => {
         const { data } = await apiClient.get('/credits');
