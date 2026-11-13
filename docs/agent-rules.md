@@ -9,11 +9,14 @@ comprobable; aquí está el texto completo. Antes de tocar un área lee su doc
   las claves de API: Alia, Kaana, Mention). Alia = asistente con API de producto
   **permanente** (`/alia/chat` y `/v1/*`, un solo handler) que usan sus propias
   superficies (app, CLI), otras apps Oxy y terceros vía SDK.
-- **Texto: `Alia -> Oxy -> Kaana`** con `OxyInferenceClient` de `@oxy.so/core`
-  — `adr/0001-*.md`. **Voz y dictado** (ADR 0017): `@kaana.ai/sdk` contra
-  `https://kaana.ai/v1`, construido SOLO en `lib/kaana/transport.ts`, con el
-  token de servicio de Oxy de audiencia `kaana.ai`. Nunca credenciales de
-  proveedor ni claves de Kaana; los límites son de Oxy Console.
+- **Inferencia: `Gemies -> Kaana`**, también cuando habla el gemie Alia:
+  `@kaana.ai/sdk` contra `https://kaana.ai/v1`, con el transporte compartido de
+  `lib/kaana/transport.ts` y la identidad workload de Oxy de audiencia `kaana.ai`.
+  Oxy no recibe el contenido de la inferencia. Kaana todavía le pide autorización
+  y liquidación sin contenido: esa dependencia temporal no demuestra que la
+  migración de facturación de Kaana ADR 0010 esté implementada. Nunca claves de
+  proveedor, claves de Kaana ni firma de grants en Gemies — ADR 0001, enmienda
+  2026-11-13. Las claves externas conservan su propio payer y autoridad.
 - **Alia no emite ni acepta claves propias.** `alia_sk_*` está retirado: la API
   lo rechaza (`credential_retired`) y sus tablas no existen. La clave de Oxy
   Console usa el contrato app-only de core4.4 publicado/adoptado con scopes
@@ -21,8 +24,8 @@ comprobable; aquí está el texto completo. Antes de tocar un área lee su doc
 - **La gente elige niveles de potencia, no modelos (ADR 0014; ADR 0012):** Alia no tiene
   modelos propios. En la UI el usuario elige un nivel de potencia de Oxy —
   `auto` (por defecto), `instant`, `medium`, `high`, `xhigh`, `pro`, `ultra` —
-  y Oxy escoge el modelo disponible; nunca una lista de modelos por nombre.
-  Por API, un `model` exacto `publisher/model` del catálogo de Oxy (o
+  y Kaana escoge el modelo disponible dentro de la política autorizada; nunca una lista de modelos por nombre.
+  Por API, un `model` exacto `publisher/model` del catálogo de Kaana (o
   `local/...`) sigue valiendo para agentes fijados y llamadas de fondo. Sin
   perfiles `route:*` ni alias propios. Cero ids de modelo en código o env y
   cero listas curadas: destacados, por defecto, utilitario y voz se calculan —

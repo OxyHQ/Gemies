@@ -35,18 +35,22 @@ credential never join Kaana's hosted credential pool.
    person, gated parts are spent — [Embedding an agent](./agent-embedding.md) §5),
    then reserves product credits. A refused attachment reserves nothing.
 3. Alia assembles conversation context, memory, agent instructions and tools.
-4. The inference seam calls `@oxy.so/core`'s `OxyInferenceClient` with the
-   `model`, `reasoning: { effort }` when requested, and Alia's service credential.
-5. Oxy authenticates that credential and resolves routing policy into ordered
-   `authorizedRoutes`, signs the final envelope, and sends it to Kaana.
-6. Kaana executes only those authorized deployments, streams contract events
-   and emits metered usage.
+4. The inference seam calls the published Kaana SDK directly at
+   `https://kaana.ai/v1`, with the requested model or level and reasoning effort.
+   Own calls use Gemies's workload identity for audience `kaana.ai` and immutable
+   account attribution; external machine calls preserve their own credential.
+5. Kaana asks Oxy to authorize content-free request facts. The existing grant
+   path retains Oxy policy and economic enforcement without proxying the prompt.
+6. Kaana resolves the requested level within that authority, executes, streams
+   contract events and reports measured usage for settlement.
 7. Alia translates the result into its product stream, persists the turn and
    charges credits from the model's catalogue prices and the metered units.
 
-Alia never constructs `authorizedRoutes`, signs an edge envelope or calls a
-Kaana URL. Those are Oxy-owned responsibilities. No provider, deployment,
-region or permissive fallback may be invented in Alia.
+Gemies never constructs authorized routes or signs an inference grant. No
+provider, deployment, region or permissive fallback may be invented in the
+product. The direct transport does not establish completion of Kaana's separate
+financial-ledger migration (Kaana ADR 0010); see the
+[boundary review](./migration/kaana-direct-inference-review-2026-11-13.md).
 
 ## Request shape
 
