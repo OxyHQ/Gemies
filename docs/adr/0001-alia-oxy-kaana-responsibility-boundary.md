@@ -26,7 +26,7 @@ and invoices, while Oxy retains identity only. Kaana ADR 0010 records the
 earlier direction; its financial migration remains unbuilt. The temporary
 Oxy authorization path is not the accepted destination. This transport
 amendment does not implement it, change economic
-terms or approve the held Oxy #2256 output-cap proposal. See the
+terms or revive the superseded Oxy #2256 output-cap proposal. See the
 [source review and migration constraints](../migration/kaana-direct-inference-review-2026-11-13.md).
 Production cutover must be recorded separately after verification.
 
