@@ -152,7 +152,7 @@ export function useAliaHost(): GemieRuntimeHost {
       // The new-chat screen is replaced by the conversation it started; any other screen
       // (a task described in words) keeps its place in the back stack.
       openConversation: (id) => {
-        const target = { pathname: '/(app)/c/[id]', params: { id } } as const;
+        const target = { pathname: '/c/[id]', params: { id } } as const;
         if (pathnameRef.current === '/') router.replace(target);
         else router.push(target);
       },

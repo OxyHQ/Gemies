@@ -103,8 +103,9 @@ No level asks for approval (ADR 0020 §3): an agent's configuration is its permi
 | Path | What it does | When you touch it |
 |------|-------------|-------------------|
 | `app/_layout.tsx` | Root layout: OxyProvider, fonts, theme, auth setup | App-wide providers |
-| `app/(app)/_layout.tsx` | Main drawer layout: sidebar, screens, store hydration | Adding a new screen |
-| `app/(app)/c/[id]/index` | Chat conversation screen | Chat UI changes |
+| `app/(app)/_layout.tsx` | Main drawer layout: sidebar, screens, store hydration; the shell's header on every screen outside `(own-header)` | Adding a new screen |
+| `app/(app)/(own-header)/` | The screens that draw their own frame and header (chats, the agent editor's screen); the group is not in the URL | Adding a chat-like screen |
+| `app/(app)/(own-header)/c/[id]/index` | Chat conversation screen | Chat UI changes |
 | `packages/sdk/src/components/GemieChatContent.tsx`, `thread/GemieThread.tsx` | The conversation screen (thread, composer, voice) the sheet and the app share | Chat UX changes |
 | `src/features/chat/ui/conversation-screen.tsx` | The app around that screen: levels, add menu, breadcrumb, account dialogs | Chat wiring in the app |
 | `src/features/*/runtime/*-store.ts` | Zustand stores, each in the feature that owns it (see State Management below) | Client state changes |

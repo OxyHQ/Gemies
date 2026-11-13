@@ -4,7 +4,8 @@ import {
   AgentEditorLoadFailed,
   AgentEditorLoading,
 } from '@/features/agents/ui/edit/agent-editor-load-states';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { EditorScreenFrame } from '@/features/agents/ui/edit/editor-screen-frame';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 /**
  * `/@pepe/edit` — the agent editor as a screen, for a phone. From the `md` breakpoint up the editor
@@ -13,8 +14,8 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
  *
  * Found by handle, like `/@pepe/details`; the API answers the card to whoever may see it, and the
  * editor is for whoever may edit it (its fields are only written through the agent's own account).
- * The screen's only header is the editor's own (`OWN_HEADER_ROUTES` in the layout), so there is no
- * second bar above it.
+ * The screen's only header is the editor's own (`EditorScreenFrame`), so there is no second bar
+ * above it.
  */
 export default function EditAgentScreen() {
   const { username } = useLocalSearchParams<{ username: string }>();
@@ -24,8 +25,7 @@ export default function EditAgentScreen() {
   const toList = () => router.replace('/(app)/agents');
 
   return (
-    <>
-      <Stack.Screen options={{ headerShown: false }} />
+    <EditorScreenFrame>
       {agent !== undefined ? (
         <AgentEditorSurface
           agentId={agent._id}
@@ -37,6 +37,6 @@ export default function EditAgentScreen() {
       ) : (
         <AgentEditorLoading />
       )}
-    </>
+    </EditorScreenFrame>
   );
 }
