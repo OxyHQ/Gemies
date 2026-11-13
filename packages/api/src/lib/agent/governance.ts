@@ -27,8 +27,8 @@ const READ_ONLY_TOOLS = new Set([
   'read_file',
   'list_files',
   'search_files',
-  'getWhatsAppChats',
-  'getWhatsAppMessages',
+  'listAccountChats',
+  'readAccountMessages',
   'searchOutlookMail',
   'readOutlookMail',
   'listOutlookEvents',
@@ -47,7 +47,7 @@ const EXTERNAL_IMPACT_TOOLS = new Set([
   // the chat path; listing both was what kept the R2 flag honest while they
   // coexisted, and it is why the collapse did not silently unflag the tool.
   'sendTelegramMessage',
-  'sendWhatsAppMessage',
+  'sendAccountMessage',
   'sendEmail',
   'createCalendarEvent',
   'sendOutlookMail',

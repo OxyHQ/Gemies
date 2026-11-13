@@ -24,3 +24,5 @@ export const GEMIES_CHANNEL_SESSION_HEADER = 'x-alia-channel-session';
 export type GemieChannelIdentity =
   | { kind: 'bot'; platformUserId: string }
   | { kind: 'account'; sessionId: string };
+
+export * from './accounts.js';

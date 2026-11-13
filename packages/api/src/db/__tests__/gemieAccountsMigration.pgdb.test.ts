@@ -16,6 +16,9 @@ import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
 const BACKFILL = fileURLToPath(
   new URL('../../../drizzle/0142_gemie_accounts_without_gmail_or_signal.sql', import.meta.url),
 );
+const STATUSES = fileURLToPath(
+  new URL('../../../drizzle/0146_gemie_account_status_vocabulary.sql', import.meta.url),
+);
 
 let db: ApiDatabase;
 
@@ -31,9 +34,9 @@ afterAll(async () => {
   await closePostgres();
 });
 
-/** 0142's statements up to the first DDL: the delete and the backfill. */
-function dataStatements(): string[] {
-  return readFileSync(BACKFILL, 'utf8')
+/** A migration's data statements: its deletes and updates, without its DDL. */
+function dataStatements(file = BACKFILL): string[] {
+  return readFileSync(file, 'utf8')
     .split('--> statement-breakpoint')
     .map((statement) => statement.replace(/^--.*$/gm, '').trim())
     .filter((statement) => /^(DELETE|UPDATE)\b/.test(statement));
@@ -60,8 +63,8 @@ describe('0142: every connected account names its gemie', () => {
         await gemie('mig-public', 'someone-else', 'public');
         const account = (id: string, platform: string, autoReplyAgentId: string | null) =>
           tx.execute(sql`
-            insert into connected_accounts (id, oxy_user_id, platform, account_id, auto_reply_agent_id)
-            values (${id}, 'mig-person', ${platform}, 'acct', ${autoReplyAgentId})`);
+            insert into connected_accounts (id, oxy_user_id, platform, auto_reply_agent_id)
+            values (${id}, 'mig-person', ${platform}, ${autoReplyAgentId})`);
         await account('mig-none', 'whatsapp', null);
         await account('mig-own-row', 'telegram', 'mig-own');
         await account('mig-public-row', 'whatsapp', 'mig-public');
@@ -92,6 +95,42 @@ describe('0142: every connected account names its gemie', () => {
       'mig-stranger-row': ALIA_GEMIE_ID,
       'mig-dangling': ALIA_GEMIE_ID,
       // Gmail and Signal are gone.
+    });
+  });
+
+  it('0146 rewrites the old statuses into the gateway’s vocabulary', async () => {
+    expect(dataStatements(STATUSES)).toHaveLength(2);
+    let observed: Record<string, string> | null = null;
+    try {
+      await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`alter table connected_accounts drop constraint connected_accounts_status_check`,
+        );
+        for (const [id, status] of [
+          ['st-connecting', 'connecting'],
+          ['st-error', 'error'],
+          ['st-expired', 'expired'],
+          ['st-connected', 'connected'],
+        ]) {
+          await tx.execute(sql`
+            insert into connected_accounts (id, oxy_user_id, agent_id, platform, status)
+            values (${id}, 'st-person', ${ALIA_GEMIE_ID}, 'whatsapp', ${status})`);
+        }
+        for (const statement of dataStatements(STATUSES)) await tx.execute(sql.raw(statement));
+        const rows = await tx.execute<{ id: string; status: string }>(
+          sql`select id, status from connected_accounts where id like 'st-%' order by id`,
+        );
+        observed = Object.fromEntries(rows.map((row) => [row.id, row.status]));
+        throw new Rollback();
+      });
+    } catch (error) {
+      if (!(error instanceof Rollback)) throw error;
+    }
+    expect(observed).toEqual({
+      'st-connected': 'connected',
+      'st-connecting': 'qr-pending',
+      'st-error': 'failed',
+      'st-expired': 'failed',
     });
   });
 

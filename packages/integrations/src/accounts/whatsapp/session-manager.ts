@@ -1,6 +1,7 @@
 import { APIClient } from '../../shared/api-client';
 const apiClient = new APIClient('whatsapp');
 import makeWASocket, {
+  areJidsSameUser,
   BufferJSON,
   DisconnectReason,
   fetchLatestBaileysVersion,
@@ -20,12 +21,9 @@ import {
   deleteWhatsAppMessage,
   deleteWhatsAppMessagesForChat,
   findRestorableWhatsAppSessions,
-  findWhatsAppSession,
+  deleteWhatsAppSession,
   findWhatsAppSessionOwner,
-  findWhatsAppSessionQr,
   insertWhatsAppMessages,
-  listWhatsAppSessions,
-  listWhatsAppSessionsForUser,
   markWhatsAppConnected,
   markWhatsAppDisconnected,
   markWhatsAppFailed,
@@ -224,6 +222,8 @@ class SessionManager {
       }
 
       if (connection === 'close') {
+        // A socket this manager already replaced or removed: its close changes nothing.
+        if (this.sessions.get(sessionId) !== sock) return;
         const statusCode = (
           lastDisconnect?.error as { output?: { statusCode?: number } } | undefined
         )?.output?.statusCode;
@@ -330,20 +330,25 @@ class SessionManager {
         const remoteJid = msg.key?.remoteJid;
         if (!remoteJid) continue;
 
-        try {
-          // Look up the oxyUserId from the session record
-          const owner = await findWhatsAppSessionOwner(getDb(), sessionId);
-          if (!owner) {
-            logger.error(`Chat: No session found for sessionId ${sessionId}`);
-            continue;
-          }
+        const isGroup = remoteJid.endsWith('@g.us');
+        const context = msg.message?.extendedTextMessage?.contextInfo;
+        const self = sock.user?.id;
+        const mentionsAccount =
+          isGroup &&
+          self !== undefined &&
+          ((context?.mentionedJid ?? []).some((jid) => areJidsSameUser(jid, self)) ||
+            (context?.participant != null && areJidsSameUser(context.participant, self)));
 
+        try {
           await handleIncomingMessage(
             {
               platform: 'whatsapp',
               sessionId,
-              oxyUserId: owner,
-              chatId: remoteJid,
+              inbound: {
+                chatId: remoteJid,
+                chatKind: isGroup ? 'group' : 'direct',
+                mentionsAccount,
+              },
               messageText: text,
               sendResponse: async (text) => {
                 await sock.sendMessage(remoteJid, { text });
@@ -588,10 +593,12 @@ class SessionManager {
   }
 
   /**
-   * Disconnect and log out a session (removes auth data).
+   * Log a session out and forget it: its auth state, chats and messages go with its row.
    */
-  async disconnectSession(sessionId: string): Promise<void> {
+  async removeSession(sessionId: string): Promise<void> {
     const sock = this.sessions.get(sessionId);
+    // Out of `sessions` first, so the `close` its logout raises is not taken for a dropped link.
+    this.sessions.delete(sessionId);
     if (sock) {
       try {
         await sock.logout();
@@ -600,7 +607,6 @@ class SessionManager {
         // Force-close even if logout fails
         sock.end(undefined);
       }
-      this.sessions.delete(sessionId);
     }
 
     // Clear reconnect timer and attempts
@@ -610,29 +616,9 @@ class SessionManager {
       this.reconnectTimers.delete(sessionId);
     }
     this.reconnectAttempts.delete(sessionId);
+    this.pendingQrs.discard(sessionId);
 
-    await markWhatsAppLoggedOut(getDb(), sessionId);
-  }
-
-  /**
-   * Session status by sessionId, without the Baileys credentials.
-   */
-  async getStatus(sessionId: string) {
-    return findWhatsAppSession(getDb(), sessionId);
-  }
-
-  /**
-   * The pairing QR for a session that is awaiting a scan.
-   */
-  async getQr(sessionId: string) {
-    return findWhatsAppSessionQr(getDb(), sessionId);
-  }
-
-  /**
-   * Get all sessions for a specific user.
-   */
-  async getUserSessions(oxyUserId: string) {
-    return listWhatsAppSessionsForUser(getDb(), oxyUserId);
+    await deleteWhatsAppSession(getDb(), sessionId);
   }
 
   /**
@@ -640,13 +626,6 @@ class SessionManager {
    */
   getSocket(sessionId: string): WASocket | undefined {
     return this.sessions.get(sessionId);
-  }
-
-  /**
-   * List all sessions.
-   */
-  async listSessions() {
-    return listWhatsAppSessions(getDb());
   }
 
   /**

@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { closePostgres, connectPostgres, type IntegrationsDatabase } from '../../db';
 import {
   createTelegramSession,
+  deleteTelegramSession,
   findLatestTelegramMessageText,
   findRestorableTelegramSessions,
   findTelegramSession,
@@ -24,8 +25,6 @@ import {
   insertTelegramMessages,
   listTelegramChats,
   listTelegramMessages,
-  listTelegramSessions,
-  listTelegramSessionsForUser,
   markTelegramConnected,
   markTelegramDisconnected,
   markTelegramLoggedOut,
@@ -299,12 +298,10 @@ describe('restore picks up exactly the sessions a restart should reconnect', () 
     });
     await markTelegramDisconnected(db, 'tg-r2');
 
-    const mine = await listTelegramSessionsForUser(db, owner);
-    expect(mine.map((s) => s.sessionId)).toEqual(['tg-r1', 'tg-r2', 'tg-r3']);
-    expect(mine.map((s) => s.status)).toEqual(['connected', 'disconnected', 'qr-pending']);
+    expect(await findTelegramSession(db, 'tg-r3')).toMatchObject({ status: 'qr-pending' });
     // An absent telegramUserId stays null rather than becoming the string
     // "undefined", which is what a bare `?.toString()` would have stored.
-    expect(mine[0]?.telegramUserId).toBeNull();
+    expect((await findTelegramSession(db, 'tg-r1'))?.telegramUserId).toBeNull();
 
     const restorable = await findRestorableTelegramSessions(db);
     const ids = restorable.map((s) => s.sessionId);
@@ -313,13 +310,20 @@ describe('restore picks up exactly the sessions a restart should reconnect', () 
     expect(ids).not.toContain('tg-r3');
     expect(ids.indexOf('tg-r1')).toBeLessThan(ids.indexOf('tg-r2'));
   });
+});
 
-  it('lists every session in creation order without the credential', async () => {
-    const sessions = await listTelegramSessions(db);
-    const created = sessions.map((s) => s.createdAt.getTime());
-    expect(sessions.length).toBeGreaterThan(1);
-    expect([...created].sort((a, b) => a - b)).toEqual(created);
-    expect(Object.keys(sessions[0] ?? {})).not.toContain('sessionString');
-    expect(Object.keys(sessions[0] ?? {})).toContain('phoneNumber');
+describe('a removed session takes what it synced with it', () => {
+  it('deletes its chats and messages', async () => {
+    await newSession('tg-remove', 'tg-remove-owner');
+    await upsertTelegramChat(db, {
+      sessionId: 'tg-remove',
+      chatId: '7',
+      name: 'Ana',
+      lastMessageTimestamp: 1,
+      chatType: 'user',
+    });
+    await deleteTelegramSession(db, 'tg-remove');
+    expect(await findTelegramSession(db, 'tg-remove')).toBeNull();
+    expect(await listTelegramChats(db, 'tg-remove', 50)).toHaveLength(0);
   });
 });

@@ -19,7 +19,7 @@ import { UpdateConnectionState } from 'telegram/network';
 import { Api } from 'telegram/tl';
 import { returnBigInt } from 'telegram/Helpers';
 import type { TelegramClient } from 'telegram';
-import { closePostgres, connectPostgres } from '../../db';
+import { closePostgres, connectPostgres, getDb } from '../../db';
 
 const fakes = vi.hoisted(() => ({
   clients: [] as TelegramClient[],
@@ -114,7 +114,7 @@ vi.mock('../telegram-gateway/repository', async (importOriginal) => {
 
 // Imported after the mocks are registered (vi.mock is hoisted above these).
 import { handleIncomingMessage } from '../../shared/chat-handler';
-import { markTelegramDisconnected } from '../telegram-gateway/repository';
+import { findTelegramSession, markTelegramDisconnected } from '../telegram-gateway/repository';
 import { sessionManager as telegram } from '../telegram-gateway/session-manager';
 
 /**
@@ -233,13 +233,13 @@ describe('Telegram gateway updates that are not a disconnect', () => {
 
     expect(vi.mocked(handleIncomingMessage).mock.calls[0][0]).toMatchObject({
       sessionId,
-      chatId: '1001',
+      inbound: { chatId: '1001', chatKind: 'direct', mentionsAccount: false },
       messageText: 'hello 1',
     });
     expect(telegram.getSocket(sessionId)).toBe(client);
     expect(reconnectTimers().has(sessionId)).toBe(false);
     expect(disconnectWrites(sessionId)).toBe(0);
-    expect(await telegram.getStatus(sessionId)).toMatchObject({ status: 'connected' });
+    expect(await findTelegramSession(getDb(), sessionId)).toMatchObject({ status: 'connected' });
   });
 
   it('keeps handling messages on the same client, one after another', async () => {
@@ -338,7 +338,7 @@ describe('Telegram gateway disconnects', () => {
     expect(fakes.clients.length).toBe(opened + 1);
     expect(telegram.getSocket(sessionId)).toBe(replacement);
     expect(disconnectWrites(sessionId)).toBe(1);
-    expect(await telegram.getStatus(sessionId)).toMatchObject({ status: 'connected' });
+    expect(await findTelegramSession(getDb(), sessionId)).toMatchObject({ status: 'connected' });
     expect(unhandled).toEqual([]);
     // Destroyed, not just disconnected: GramJS's ping loop runs until then.
     expect(client._destroyed).toBe(true);
@@ -374,19 +374,19 @@ describe('Telegram gateway disconnects', () => {
     expect(unhandled).toEqual([]);
   });
 
-  it('does not reconnect a session the user unlinked', async () => {
+  it('does not reconnect a session the user removed, and forgets it', async () => {
     const { sessionId, client } = await connectedSession();
     const opened = fakes.clients.length;
 
     // The real `destroy` → `disconnect` → `_disconnect` reports the connection
     // down through GramJS's dispatch, as the MTProto sender would.
-    await telegram.disconnectSession(sessionId);
+    await telegram.removeSession(sessionId);
     await sleep(PAST_GRACE_AND_BACKOFF_MS);
 
     expect(telegram.getSocket(sessionId)).toBeUndefined();
     expect(fakes.clients.length).toBe(opened);
     expect(reconnectTimers().has(sessionId)).toBe(false);
-    expect(await telegram.getStatus(sessionId)).toMatchObject({ status: 'logged-out' });
+    expect(await findTelegramSession(getDb(), sessionId)).toBeNull();
     expect(client._destroyed).toBe(true);
   });
 

@@ -83,6 +83,8 @@ vi.mock('telegram', async (importOriginal) => {
 // Imported after the mocks are registered (vi.mock is hoisted above these).
 import { sessionManager as whatsapp } from '../whatsapp/session-manager';
 import { sessionManager as telegram } from '../telegram-gateway/session-manager';
+import { whatsAppGateway } from '../whatsapp/gateway';
+import { telegramGateway } from '../telegram-gateway/gateway';
 
 const unhandled: unknown[] = [];
 const recordUnhandled = (reason: unknown) => {
@@ -137,10 +139,7 @@ describe('WhatsApp connect', () => {
     await expect(qrPromise).resolves.toBe('wa-qr-1');
     await settle();
     expect(unhandled).toEqual([]);
-    expect(await whatsapp.getQr(sessionId)).toMatchObject({
-      status: 'qr-pending',
-      lastQr: 'wa-qr-1',
-    });
+    expect(await whatsAppGateway.qr(sessionId)).toEqual({ status: 'qr-pending', qr: 'wa-qr-1' });
   });
 
   it('fails the request with the real cause when the socket cannot open', async () => {
@@ -179,14 +178,11 @@ describe('Telegram gateway connect', () => {
       await expect(created.qrPromise).resolves.toBe(QR);
       await settle();
       expect(unhandled).toEqual([]);
-      expect(await telegram.getQr(created.sessionId)).toMatchObject({
-        status: 'qr-pending',
-        lastQr: QR,
-      });
+      expect(await telegramGateway.qr(created.sessionId)).toEqual({ status: 'qr-pending', qr: QR });
 
       scanned.resolve();
       await vi.waitFor(async () => {
-        expect(await telegram.getStatus(created.sessionId)).toMatchObject({
+        expect(await telegramGateway.session(created.sessionId)).toEqual({
           status: 'connected',
           phoneNumber: '15550001',
           displayName: 'Ada Lovelace',
@@ -208,7 +204,7 @@ describe('Telegram gateway connect', () => {
 
     await expect(qrPromise).rejects.toThrow('AUTH_TOKEN_INVALID');
     await vi.waitFor(async () => {
-      expect(await telegram.getStatus(sessionId)).toMatchObject({ status: 'failed' });
+      expect(await telegramGateway.session(sessionId)).toMatchObject({ status: 'failed' });
     });
     await settle();
     expect(unhandled).toEqual([]);

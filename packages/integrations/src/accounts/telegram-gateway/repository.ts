@@ -29,19 +29,6 @@ import { conflictKey } from '../conflictKey';
 
 const PUBLIC_SESSION = publicColumns(telegramSessions, PROTECTED_COLUMNS);
 
-/** The subset the session-list endpoints return. */
-const SESSION_SUMMARY = {
-  sessionId: telegramSessions.sessionId,
-  oxyUserId: telegramSessions.oxyUserId,
-  telegramUserId: telegramSessions.telegramUserId,
-  phoneNumber: telegramSessions.phoneNumber,
-  displayName: telegramSessions.displayName,
-  status: telegramSessions.status,
-  lastConnected: telegramSessions.lastConnected,
-  lastDisconnected: telegramSessions.lastDisconnected,
-  createdAt: telegramSessions.createdAt,
-} as const;
-
 const RESTORABLE: readonly TelegramSessionStatus[] = ['connected', 'disconnected'];
 
 // ──────────────────────────────────────────────
@@ -119,19 +106,12 @@ export async function findTelegramSessionQr(db: IntegrationsDatabase, sessionId:
   return row ?? null;
 }
 
-export async function listTelegramSessions(db: IntegrationsDatabase) {
-  return db
-    .select(SESSION_SUMMARY)
-    .from(telegramSessions)
-    .orderBy(asc(telegramSessions.createdAt), asc(telegramSessions.sessionId));
-}
-
-export async function listTelegramSessionsForUser(db: IntegrationsDatabase, oxyUserId: string) {
-  return db
-    .select(SESSION_SUMMARY)
-    .from(telegramSessions)
-    .where(eq(telegramSessions.oxyUserId, oxyUserId))
-    .orderBy(asc(telegramSessions.createdAt), asc(telegramSessions.sessionId));
+/** Forget a session; its chats and messages go with it (the foreign keys cascade). */
+export async function deleteTelegramSession(
+  db: IntegrationsDatabase,
+  sessionId: string,
+): Promise<void> {
+  await db.delete(telegramSessions).where(eq(telegramSessions.sessionId, sessionId));
 }
 
 export async function markTelegramQrPending(
@@ -272,6 +252,7 @@ export async function listTelegramChats(
     .select({
       chatId: telegramChats.chatId,
       name: telegramChats.name,
+      chatType: telegramChats.chatType,
       unreadCount: telegramChats.unreadCount,
       lastMessageTimestamp: telegramChats.lastMessageTimestamp,
     })

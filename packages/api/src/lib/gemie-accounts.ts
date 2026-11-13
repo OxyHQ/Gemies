@@ -1,49 +1,194 @@
 /**
- * A gemie's connected accounts: the provider sessions behind them and the Oxy authority they carry
- * (ADR 0035).
+ * A gemie's connected accounts: the provider sessions behind them, the Oxy authority they carry
+ * and who they answer (ADR 0035).
  *
- * A person links a WhatsApp or Telegram account to ONE gemie. The integrations service holds the
- * provider session; this service holds the row, and with it a durable Oxy task the person granted
- * when linking it, whose actor is the gemie's own (`oxyActorFor`): Alia's lane is the person's own,
- * every other gemie acts as its account. What arrives on the account is answered by that gemie
- * (`middleware/channel-auth.ts`), and only that gemie's turns can use it (`tools/whatsapp.ts`).
+ * A person links a WhatsApp or Telegram account to ONE gemie. The integrations gateway holds the
+ * provider session and speaks one contract for every platform (`@gemies/server/internal`); this
+ * service holds the row, and with it a durable Oxy task the person granted when linking it, whose
+ * actor is the gemie's own (`oxyActorFor`): Alia's lane is the person's own, every other gemie
+ * acts as its account. What arrives on the account is answered by that gemie when the account's
+ * replies say so (`shouldAnswer`), and only that gemie's turns can use it (`tools/accounts.ts`).
  */
 
+import {
+  GEMIE_ACCOUNT_PLATFORMS,
+  type GemieAccountChat,
+  type GemieAccountInbound,
+  type GemieAccountLink,
+  type GemieAccountMessage,
+  type GemieAccountPlatform,
+  type GemieAccountQr,
+  type GemieAccountSession,
+} from '@gemies/server/internal';
 import { getDb } from '../db/index.js';
 import {
   listAccountsOfGemie,
+  setConnectedAccountSessionState,
   setConnectedAccountTask,
   type ConnectedAccountRow,
 } from '../db/integrations/connectedAccountRepository.js';
-import type { ConnectedAccountPlatform } from '../db/schema/integrations.js';
-import { CONNECTED_ACCOUNT_PLATFORMS } from '../db/schema/integrations.js';
 import { oxyActorFor, type OxyActorGemie } from './gemie-oxy-actor.js';
 import { integrationsFetch } from './integrations-client.js';
 import { log } from './logger.js';
 import { createOxyTask, revokeOxyTask } from './oxy-task-authority.js';
 
-/**
- * Platform -> the integrations service's adapter path. A `Map`, so a platform read from a URL can
- * never resolve to an inherited property (`'constructor'`) the way an object literal's would.
- */
-const ADAPTER_PATHS = new Map<ConnectedAccountPlatform, string>([
-  ['whatsapp', 'accounts/whatsapp'],
-  ['telegram', 'accounts/telegram-gateway'],
-]);
+/** A gateway call that did not answer what the contract says. */
+export class GatewayError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Call the gateway as `personAccountId` and read its JSON answer, or throw what it said. */
+async function gateway<T>(
+  personAccountId: string,
+  path: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<T> {
+  const { timeoutMs = 15_000, ...rest } = init;
+  const response = await integrationsFetch(personAccountId, path, {
+    ...rest,
+    headers: { 'Content-Type': 'application/json', ...rest.headers },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const body: unknown = response.status === 204 ? null : await response.json().catch(() => null);
+  if (!response.ok) {
+    const error =
+      body && typeof body === 'object' && 'error' in body && typeof body.error === 'string'
+        ? body.error
+        : `The ${path.split('/')[2] ?? 'account'} gateway answered ${response.status}`;
+    throw new GatewayError(response.status, error);
+  }
+  return body as T;
+}
+
+const sessionPath = (account: Pick<ConnectedAccountRow, 'platform' | 'sessionId'>) =>
+  `/accounts/${account.platform}/sessions/${encodeURIComponent(account.sessionId ?? '')}`;
 
 /** The platform a client named, or `null` when it is not one a gemie can be linked to. */
-export function connectedAccountPlatformOf(value: string): ConnectedAccountPlatform | null {
-  return CONNECTED_ACCOUNT_PLATFORMS.find((platform) => platform === value) ?? null;
+export function accountPlatformOf(value: unknown): GemieAccountPlatform | null {
+  return GEMIE_ACCOUNT_PLATFORMS.find((platform) => platform === value) ?? null;
 }
 
-/** The integrations path of one session of `platform`. */
-export function sessionPath(platform: ConnectedAccountPlatform, sessionId: string): string {
-  return `/${ADAPTER_PATHS.get(platform)}/sessions/${encodeURIComponent(sessionId)}`;
+/**
+ * The platforms this deployment can link now: the gateways the integrations service runs. None
+ * when it is not configured or cannot be asked, so nothing is offered that would fail.
+ */
+export async function availablePlatforms(personAccountId: string): Promise<GemieAccountPlatform[]> {
+  if (!process.env.INTEGRATIONS_URL) return [];
+  try {
+    const { platforms } = await gateway<{ platforms: unknown[] }>(
+      personAccountId,
+      '/accounts/platforms',
+      { timeoutMs: 5_000 },
+    );
+    return GEMIE_ACCOUNT_PLATFORMS.filter((platform) => platforms.includes(platform));
+  } catch (err: unknown) {
+    log.channels.warn({ err }, 'Could not read the linkable platforms');
+    return [];
+  }
 }
 
-/** Where a new session of `platform` is opened. */
-export function connectPath(platform: ConnectedAccountPlatform): string {
-  return `/${ADAPTER_PATHS.get(platform)}/sessions/connect`;
+/** Open a new provider session for the person and answer its first code. */
+export function openAccountSession(
+  platform: GemieAccountPlatform,
+  personAccountId: string,
+): Promise<GemieAccountLink> {
+  return gateway<GemieAccountLink>(personAccountId, `/accounts/${platform}/sessions/connect`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+    timeoutMs: 60_000,
+  });
+}
+
+/**
+ * The account as its session is now: the gateway asked, the row updated when the session moved.
+ * The stored row answers when the gateway cannot be asked, so a list never fails on it.
+ */
+export async function syncAccountSession(
+  account: ConnectedAccountRow,
+  personAccountId: string,
+): Promise<ConnectedAccountRow> {
+  if (!account.sessionId || !process.env.INTEGRATIONS_URL) return account;
+  let live: GemieAccountSession;
+  try {
+    live = await gateway<GemieAccountSession>(personAccountId, `${sessionPath(account)}/status`, {
+      timeoutMs: 5_000,
+    });
+  } catch (err: unknown) {
+    log.channels.warn({ err, accountId: account.id }, 'Could not read a connected account session');
+    return account;
+  }
+  const moved =
+    live.status !== account.status ||
+    (live.phoneNumber && live.phoneNumber !== account.phoneNumber) ||
+    (live.displayName && live.displayName !== account.displayName);
+  if (!moved) return account;
+  return (await setConnectedAccountSessionState(getDb(), account.id, live)) ?? account;
+}
+
+/** The session's current code while it waits for its scan, its status synced as it moves. */
+export async function readAccountQr(
+  account: ConnectedAccountRow,
+  personAccountId: string,
+): Promise<GemieAccountQr> {
+  const qr = await gateway<GemieAccountQr>(personAccountId, `${sessionPath(account)}/qr`);
+  if (qr.status !== account.status) await syncAccountSession(account, personAccountId);
+  return qr;
+}
+
+export function listAccountChats(
+  account: ConnectedAccountRow,
+  personAccountId: string,
+): Promise<GemieAccountChat[]> {
+  return gateway<{ chats: GemieAccountChat[] }>(
+    personAccountId,
+    `${sessionPath(account)}/chats`,
+  ).then(({ chats }) => chats);
+}
+
+export function readAccountMessages(
+  account: ConnectedAccountRow,
+  personAccountId: string,
+  chatId: string,
+  limit: number,
+): Promise<GemieAccountMessage[]> {
+  return gateway<{ messages: GemieAccountMessage[] }>(
+    personAccountId,
+    `${sessionPath(account)}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}`,
+  ).then(({ messages }) => messages);
+}
+
+export function sendAccountMessage(
+  account: ConnectedAccountRow,
+  personAccountId: string,
+  chatId: string,
+  text: string,
+): Promise<{ messageId: string }> {
+  return gateway<{ messageId: string }>(personAccountId, `${sessionPath(account)}/send`, {
+    method: 'POST',
+    body: JSON.stringify({ chatId, text }),
+  });
+}
+
+/**
+ * Whether the account's gemie answers a message that arrived on it: never one it was told not to
+ * answer, in a group only when the group is allowed and the message mentions or replies to the
+ * account, and with `chosen` only in the chats the person picked.
+ */
+export function shouldAnswer(
+  account: Pick<ConnectedAccountRow, 'replies' | 'replyChatIds' | 'groupReplies'>,
+  inbound: GemieAccountInbound,
+): boolean {
+  if (account.replies === 'nobody') return false;
+  if (account.replies === 'chosen' && !account.replyChatIds.includes(inbound.chatId)) return false;
+  if (inbound.chatKind === 'group') {
+    return account.groupReplies === 'mentions' && inbound.mentionsAccount;
+  }
+  return true;
 }
 
 /**
@@ -85,18 +230,18 @@ export async function revokeAccountTask(account: ConnectedAccountRow): Promise<v
   account.oxyTaskState = 'reauth_required';
 }
 
-/** Ask the integrations service to end the account's provider session. Best effort. */
+/**
+ * Log the account's provider session out and have the gateway forget it, with everything it
+ * synced. Best effort: an account is removed here even when the gateway cannot be reached, and a
+ * session the gateway still holds then answers nothing, because no row resolves it any more.
+ */
 export async function endAccountSession(
   account: ConnectedAccountRow,
   personAccountId: string,
 ): Promise<void> {
-  if (!account.sessionId) return;
+  if (!account.sessionId || !process.env.INTEGRATIONS_URL) return;
   try {
-    await integrationsFetch(
-      personAccountId,
-      `${sessionPath(account.platform, account.sessionId)}/disconnect`,
-      { method: 'POST', signal: AbortSignal.timeout(10_000) },
-    );
+    await gateway<null>(personAccountId, sessionPath(account), { method: 'DELETE' });
   } catch (err: unknown) {
     log.channels.warn({ err, accountId: account.id }, 'Could not end a connected account session');
   }
@@ -105,8 +250,7 @@ export async function endAccountSession(
 /**
  * Before a gemie is deleted: end every account's session and revoke its task, whoever linked it.
  * The rows themselves go with the gemie (the foreign key cascades). Best effort per account, so one
- * unreachable session does not keep the gemie alive; a session the integrations service still holds
- * afterwards answers nothing, because no row resolves it any more.
+ * unreachable session does not keep the gemie alive.
  */
 export async function releaseGemieAccounts(agentId: string): Promise<void> {
   const accounts = await listAccountsOfGemie(getDb(), agentId);

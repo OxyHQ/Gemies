@@ -206,9 +206,10 @@ export const FIXED_FAMILY_TOOLS: Readonly<Record<FixedCapabilityFamily, readonly
   ],
   messaging: [
     'sendTelegramMessage',
-    'getWhatsAppChats',
-    'getWhatsAppMessages',
-    'sendWhatsAppMessage',
+    // The gemie's own connected WhatsApp and Telegram accounts (ADR 0035, `tools/accounts.ts`).
+    'listAccountChats',
+    'readAccountMessages',
+    'sendAccountMessage',
   ],
   automation: ['createAutomation'],
   delegation: ['createAgent', 'listMyAgents', 'updateAgent', 'searchAgents', 'delegate'],

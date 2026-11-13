@@ -1,22 +1,27 @@
 import {
-  GEMIE_ACCOUNT_PLATFORMS,
   GEMIE_ACCOUNT_STATUSES,
+  useGemieAccountChats,
   useGemieAccountMutations,
   useGemieAccountQr,
   useGemieAccounts,
   type GemieAccount,
+  type GemieAccountGroupReplies,
   type GemieAccountLink,
   type GemieAccountPlatform,
+  type GemieAccountReplies,
 } from '@/features/agents/runtime/use-gemie-accounts';
+import { EditorSelect } from '@/features/agents/ui/edit/sections/editor-select';
+import { errorMessage } from '@/shared/api/error-utils';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { SettingsSkeletonRows } from '@/shared/ui/skeletons';
 import { AgentCreatorField, AgentCreatorSection } from '@oxy.so/bloom/agent-creator';
 import { Button } from '@oxy.so/bloom/button';
 import * as Skeleton from '@oxy.so/bloom/skeleton';
 import { confirm } from '@oxy.so/bloom/surfaces';
+import { Switch } from '@oxy.so/bloom/switch';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 
@@ -47,19 +52,18 @@ function LinkingAccount({
 }) {
   const { t } = useTranslation();
   const { data } = useGemieAccountQr(agentId, link);
-  const connected = data?.connected === true;
+  const status = data?.status ?? 'qr-pending';
+  const label = PLATFORM_LABELS[platform];
 
   useEffect(() => {
-    if (!connected) return;
-    toast.success(t(`${K}.linked`, { platform: PLATFORM_LABELS[platform], name }));
+    if (status === 'qr-pending') return;
+    if (status === 'connected') toast.success(t(`${K}.linked`, { platform: label, name }));
+    else toast.error(t(`${K}.linkExpired`, { platform: label }));
     onDone();
-  }, [connected, name, onDone, platform, t]);
+  }, [label, name, onDone, status, t]);
 
   return (
-    <AgentCreatorField
-      label={t(`${K}.scanTitle`, { platform: PLATFORM_LABELS[platform] })}
-      multiline
-    >
+    <AgentCreatorField label={t(`${K}.scanTitle`, { platform: label })} multiline>
       <View className="items-start gap-3">
         <Text variant="body-2-regular" className="text-text-secondary">
           {t(`${K}.scan.${platform}`)}
@@ -81,40 +85,81 @@ function LinkingAccount({
   );
 }
 
-/**
- * The WhatsApp and Telegram accounts the person linked to this gemie (ADR 0035). The gemie answers
- * what arrives on them, and only its own turns can read or send through them.
- */
-export function AgentAccountsSection({ agentId, name }: { agentId: string; name: string }) {
+/** The chats a `chosen` account answers, picked from its recent ones. */
+function ChosenChats({ agentId, account }: { agentId: string; account: GemieAccount }) {
   const { t } = useTranslation();
-  const { data: accounts, isPending, isError } = useGemieAccounts(agentId);
-  const { link, remove } = useGemieAccountMutations(agentId);
-  const [linking, setLinking] = useState<{
-    platform: GemieAccountPlatform;
-    link: GemieAccountLink;
-  } | null>(null);
+  const { data: chats, isPending } = useGemieAccountChats(agentId, account._id, true);
+  const { setReplies } = useGemieAccountMutations(agentId);
 
-  const statusLabel = (account: GemieAccount) =>
-    GEMIE_ACCOUNT_STATUSES.includes(account.status)
-      ? t(`${K}.status.${account.status}`)
-      : account.status;
-
-  const handleLink = async (platform: GemieAccountPlatform) => {
+  const toggle = async (chatId: string, on: boolean) => {
+    const replyChatIds = on
+      ? [...account.replyChatIds, chatId]
+      : account.replyChatIds.filter((id) => id !== chatId);
     try {
-      setLinking({ platform, link: await link.mutateAsync(platform) });
+      await setReplies.mutateAsync({ accountId: account._id, replyChatIds });
     } catch {
-      toast.error(t(`${K}.linkFailed`, { platform: PLATFORM_LABELS[platform] }));
+      toast.error(t('settings.saveFailed'));
     }
   };
 
-  const handleCancel = async () => {
-    const pending = linking;
-    setLinking(null);
-    if (pending) await remove.mutateAsync(pending.link.accountId).catch(() => {});
+  if (isPending) return <SettingsSkeletonRows control="switch" rows={3} />;
+  if (!chats?.length) {
+    return (
+      <Text variant="body-2-regular" className="text-text-secondary">
+        {t(`${K}.noChats`)}
+      </Text>
+    );
+  }
+  return (
+    <View className="gap-1">
+      {chats.map((chat) => (
+        <View key={chat.chatId} className="flex-row items-center justify-between gap-3 py-1">
+          <Text variant="body-2-regular" numberOfLines={1} className="flex-1">
+            {chat.kind === 'group' ? t(`${K}.groupChat`, { name: chat.name }) : chat.name}
+          </Text>
+          <Switch
+            accessibilityLabel={t(`${K}.answerChat`, { name: chat.name })}
+            checked={account.replyChatIds.includes(chat.chatId)}
+            disabled={setReplies.isPending}
+            onCheckedChange={(on) => toggle(chat.chatId, on)}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** One linked account: its live status, who it answers, and removing it. */
+function AccountRow({
+  agentId,
+  name,
+  account,
+}: {
+  agentId: string;
+  name: string;
+  account: GemieAccount;
+}) {
+  const { t } = useTranslation();
+  const { setReplies, remove } = useGemieAccountMutations(agentId);
+  const platform = PLATFORM_LABELS[account.platform] ?? account.platform;
+  const status = GEMIE_ACCOUNT_STATUSES.includes(account.status)
+    ? t(`${K}.status.${account.status}`)
+    : account.status;
+  const identifier = account.phoneNumber || account.displayName;
+  const live = account.status === 'connected' || account.status === 'disconnected';
+
+  const save = async (patch: {
+    replies?: GemieAccountReplies;
+    groupReplies?: GemieAccountGroupReplies;
+  }) => {
+    try {
+      await setReplies.mutateAsync({ accountId: account._id, ...patch });
+    } catch {
+      toast.error(t('settings.saveFailed'));
+    }
   };
 
-  const handleRemove = async (account: GemieAccount) => {
-    const platform = PLATFORM_LABELS[account.platform] ?? account.platform;
+  const handleRemove = async () => {
     const ok = await confirm({
       title: t(`${K}.removeTitle`, { platform }),
       description: t(`${K}.removeDescription`, { platform, name }),
@@ -131,8 +176,105 @@ export function AgentAccountsSection({ agentId, name }: { agentId: string; name:
     }
   };
 
-  // The account being linked shows as its QR code, not as a `connecting` row beside it.
-  const listed = (accounts ?? []).filter((account) => account._id !== linking?.link.accountId);
+  return (
+    <AgentCreatorField label={platform} multiline>
+      <View className="gap-3">
+        <View className="flex-row flex-wrap items-center justify-between gap-3">
+          <View className="flex-1 gap-0.5">
+            <Text variant="body-2-regular">{[identifier, status].filter(Boolean).join(' · ')}</Text>
+            <Text variant="body-2-regular" className="text-text-secondary">
+              {account.lastActiveAt
+                ? t(`${K}.lastMessage`, {
+                    when: new Date(account.lastActiveAt).toLocaleString(),
+                  })
+                : t(`${K}.noMessagesYet`)}
+            </Text>
+          </View>
+          <Button
+            size="sm"
+            appearance="outline"
+            tone="danger"
+            accessibilityLabel={t(`${K}.removeNamed`, { platform })}
+            disabled={remove.isPending}
+            onPress={handleRemove}
+          >
+            {t(`${K}.remove`)}
+          </Button>
+        </View>
+        {live ? (
+          <>
+            <EditorSelect
+              label={t(`${K}.repliesLabel`, { name })}
+              value={account.replies}
+              disabled={setReplies.isPending}
+              items={[
+                { value: 'everyone', label: t(`${K}.replies.everyone`) },
+                { value: 'chosen', label: t(`${K}.replies.chosen`) },
+                { value: 'nobody', label: t(`${K}.replies.nobody`, { name }) },
+              ]}
+              onChange={(value) => save({ replies: value as GemieAccountReplies })}
+            />
+            {account.replies === 'chosen' ? (
+              <ChosenChats agentId={agentId} account={account} />
+            ) : null}
+            {account.replies !== 'nobody' ? (
+              <EditorSelect
+                label={t(`${K}.groupRepliesLabel`)}
+                value={account.groupReplies}
+                disabled={setReplies.isPending}
+                items={[
+                  { value: 'mentions', label: t(`${K}.groupReplies.mentions`) },
+                  { value: 'never', label: t(`${K}.groupReplies.never`) },
+                ]}
+                onChange={(value) => save({ groupReplies: value as GemieAccountGroupReplies })}
+              />
+            ) : null}
+          </>
+        ) : null}
+      </View>
+    </AgentCreatorField>
+  );
+}
+
+/**
+ * The WhatsApp and Telegram accounts the person linked to this gemie (ADR 0035). The gemie answers
+ * what arrives on them as the person chose, and only its own turns can read or send through them.
+ */
+export function AgentAccountsSection({ agentId, name }: { agentId: string; name: string }) {
+  const { t } = useTranslation();
+  const { data, isPending, isError } = useGemieAccounts(agentId);
+  const { link, remove } = useGemieAccountMutations(agentId);
+  const [linking, setLinking] = useState<{
+    platform: GemieAccountPlatform;
+    link: GemieAccountLink;
+  } | null>(null);
+
+  const linked = useCallback(() => setLinking(null), []);
+
+  const handleLink = async (platform: GemieAccountPlatform) => {
+    try {
+      setLinking({ platform, link: await link.mutateAsync(platform) });
+    } catch (error) {
+      toast.error(
+        t(`${K}.linkFailed`, {
+          platform: PLATFORM_LABELS[platform],
+          reason: errorMessage(error, t(`${K}.tryAgain`)),
+        }),
+      );
+    }
+  };
+
+  const handleCancel = async () => {
+    const pending = linking;
+    setLinking(null);
+    if (pending) await remove.mutateAsync(pending.link.accountId).catch(() => {});
+  };
+
+  // The account being linked shows as its QR code, not as a row beside it.
+  const accounts = (data?.accounts ?? []).filter(
+    (account) => account._id !== linking?.link.accountId,
+  );
+  const platforms = data?.platforms ?? [];
 
   return (
     <AgentCreatorSection title={t(`${K}.title`)}>
@@ -145,42 +287,28 @@ export function AgentAccountsSection({ agentId, name }: { agentId: string; name:
               {isError ? t(`${K}.loadFailed`) : t(`${K}.description`, { name })}
             </Text>
           </View>
-          {listed.map((account) => {
-            const platform = PLATFORM_LABELS[account.platform] ?? account.platform;
-            const identifier = account.phoneNumber || account.displayName || null;
-            return (
-              <AgentCreatorField key={account._id} label={platform}>
-                <View className="flex-row items-center gap-3">
-                  <Text variant="body-2-regular" className="text-text-secondary">
-                    {[identifier, statusLabel(account)].filter(Boolean).join(' · ')}
-                  </Text>
-                  <Button
-                    size="sm"
-                    appearance="outline"
-                    tone="danger"
-                    accessibilityLabel={t(`${K}.removeNamed`, { platform })}
-                    disabled={remove.isPending}
-                    onPress={() => handleRemove(account)}
-                  >
-                    {t(`${K}.remove`)}
-                  </Button>
-                </View>
-              </AgentCreatorField>
-            );
-          })}
+          {accounts.map((account) => (
+            <AccountRow key={account._id} agentId={agentId} name={name} account={account} />
+          ))}
           {linking ? (
             <LinkingAccount
               agentId={agentId}
               name={name}
               platform={linking.platform}
               link={linking.link}
-              onDone={() => setLinking(null)}
+              onDone={linked}
               onCancel={handleCancel}
             />
+          ) : isError ? null : platforms.length === 0 ? (
+            <AgentCreatorField label={t(`${K}.link`)}>
+              <Text variant="body-2-regular" className="text-text-secondary">
+                {t(`${K}.unavailable`)}
+              </Text>
+            </AgentCreatorField>
           ) : (
             <AgentCreatorField label={t(`${K}.link`)}>
               <View className="flex-row gap-2">
-                {GEMIE_ACCOUNT_PLATFORMS.map((platform) => (
+                {platforms.map((platform) => (
                   <Button
                     key={platform}
                     size="sm"
@@ -190,7 +318,7 @@ export function AgentAccountsSection({ agentId, name }: { agentId: string; name:
                       platform: PLATFORM_LABELS[platform],
                     })}
                     loading={link.isPending && link.variables === platform}
-                    disabled={link.isPending || isError}
+                    disabled={link.isPending}
                     onPress={() => handleLink(platform)}
                   >
                     {PLATFORM_LABELS[platform]}

@@ -37,14 +37,14 @@ const sources = vi.hoisted(() => ({
   oxy: {} as Record<string, unknown>,
   mcp: {} as Record<string, unknown>,
   mcpAsked: [] as (readonly string[] | undefined)[],
-  /** Whether the turn's gemie has a connected WhatsApp of the turn's person (ADR 0035). */
-  whatsAppLinked: true,
-  whatsAppAsked: [] as unknown[],
+  /** The platforms the turn's gemie has a connected account of, for the turn's person (ADR 0035). */
+  linked: ['whatsapp'] as string[],
+  accountsAsked: [] as unknown[],
 }));
 vi.mock('../../db/integrations/connectedAccountRepository.js', () => ({
-  findConnectedGemieAccount: vi.fn(async (_db: unknown, scope: unknown) => {
-    sources.whatsAppAsked.push(scope);
-    return sources.whatsAppLinked ? { id: 'wa-1', sessionId: 'wa-session' } : null;
+  listConnectedGemieAccounts: vi.fn(async (_db: unknown, scope: unknown) => {
+    sources.accountsAsked.push(scope);
+    return sources.linked.map((platform) => ({ id: `${platform}-1`, platform, sessionId: 's' }));
   }),
 }));
 
@@ -775,39 +775,45 @@ describe('ToolPipeline.forUser applies the budget on every path it serves', () =
     expect(mentionNames(result.activeToolNames())).toEqual(['oxy_mention__createPost']);
   });
 
-  describe('WhatsApp tools need a WhatsApp gateway', () => {
-    const WHATSAPP = ['getWhatsAppChats', 'getWhatsAppMessages', 'sendWhatsAppMessage'];
+  describe('connected-account tools need the gemie’s own connected account', () => {
+    const ACCOUNT_TOOLS = ['listAccountChats', 'readAccountMessages', 'sendAccountMessage'];
 
-    afterEach(() => vi.unstubAllEnvs());
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      sources.linked = ['whatsapp'];
+    });
 
-    it('does not offer them where no gateway is configured (production: "WhatsApp gateway not configured")', async () => {
+    it('does not offer them where no gateway is configured', async () => {
       sources.oxy = family('oxy_noted', 'Noted', 3);
       vi.stubEnv('INTEGRATIONS_URL', '');
       const result = await forUser();
-      for (const name of WHATSAPP) expect(result.tools[name]).toBeUndefined();
+      for (const name of ACCOUNT_TOOLS) expect(result.tools[name]).toBeUndefined();
       // The neighbouring messaging tool is unaffected.
       expect(result.tools.sendTelegramMessage).toBeDefined();
     });
 
-    it('offers all three where the gateway exists and the gemie has a WhatsApp — the control', async () => {
+    it('offers all three, for the platforms it has, where the gemie has an account — the control', async () => {
       sources.oxy = family('oxy_noted', 'Noted', 3);
-      sources.whatsAppLinked = true;
-      sources.whatsAppAsked = [];
-      vi.stubEnv('INTEGRATIONS_URL', 'https://wa.example.test');
+      sources.linked = ['telegram', 'whatsapp'];
+      sources.accountsAsked = [];
+      vi.stubEnv('INTEGRATIONS_URL', 'https://gateway.example.test');
       const result = await forUser();
-      for (const name of WHATSAPP) expect(result.tools[name]).toBeDefined();
+      for (const name of ACCOUNT_TOOLS) expect(result.tools[name]).toBeDefined();
       // Asked of the turn's own gemie and person, never of the person alone (ADR 0035).
-      expect(sources.whatsAppAsked).toEqual([{ agentId: aliaGemie()._id, oxyUserId: 'user-1' }]);
+      expect(sources.accountsAsked).toEqual([{ agentId: aliaGemie()._id, oxyUserId: 'user-1' }]);
+      const schema = asSchema(result.tools.sendAccountMessage?.inputSchema).jsonSchema as {
+        properties: { platform: { enum: string[] } };
+      };
+      expect(schema.properties.platform.enum).toEqual(['telegram', 'whatsapp']);
     });
 
-    it('does not offer them when the turn’s gemie has no WhatsApp of this person', async () => {
+    it('does not offer them when the turn’s gemie has no account of this person', async () => {
       sources.oxy = family('oxy_noted', 'Noted', 3);
-      sources.whatsAppLinked = false;
-      vi.stubEnv('INTEGRATIONS_URL', 'https://wa.example.test');
+      sources.linked = [];
+      vi.stubEnv('INTEGRATIONS_URL', 'https://gateway.example.test');
       const result = await forUser();
-      for (const name of WHATSAPP) expect(result.tools[name]).toBeUndefined();
+      for (const name of ACCOUNT_TOOLS) expect(result.tools[name]).toBeUndefined();
       expect(result.tools.sendTelegramMessage).toBeDefined();
-      sources.whatsAppLinked = true;
     });
   });
 

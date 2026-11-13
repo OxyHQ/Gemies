@@ -133,7 +133,9 @@ let alerts = {
 };
 let documents: { path: string }[] = [];
 let linkedAccounts: Record<string, unknown>[] = [];
+let platforms: string[] = ['whatsapp', 'telegram'];
 let qr: { status: string; qr: string | null } = { status: 'qr-pending', qr: 'QR-2' };
+let chats: Record<string, unknown>[] = [];
 
 beforeEach(() => {
   commitAccountProjection('A', 'session-A');
@@ -142,7 +144,9 @@ beforeEach(() => {
   lastHeartbeatAt = null;
   documents = [];
   linkedAccounts = [];
+  platforms = ['whatsapp', 'telegram'];
   qr = { status: 'qr-pending', qr: 'QR-2' };
+  chats = [];
   alerts = {
     alia: { enabled: true },
     agents: [{ agentId: 'agent-1', name: 'Scout', handle: 'scout', color: null, enabled: false }],
@@ -154,9 +158,10 @@ beforeEach(() => {
       if (url.endsWith('/inbox'))
         return { data: { items, heartbeat: { intervalMinutes: 60, lastHeartbeatAt } } };
       if (url.endsWith('/subscriptions')) return { data: { subscriptions } };
-      if (url === '/agents/agent-1/accounts') return { data: { accounts: linkedAccounts } };
+      if (url === '/agents/agent-1/accounts')
+        return { data: { accounts: linkedAccounts, platforms } };
       if (url.endsWith('/qr')) return { data: qr };
-      if (url.endsWith('/status')) return { data: { account: {} } };
+      if (url.endsWith('/chats')) return { data: { chats } };
       if (url.endsWith('/memory'))
         return config?.params?.path
           ? {
@@ -455,13 +460,26 @@ describe('what the agent remembers', () => {
 describe('the accounts it answers on', () => {
   const buttonLabelled = (tree: ReactTestRenderer, label: string) =>
     all(tree, 'Button').find((node) => node.props.accessibilityLabel === label);
+  const account = (over: Record<string, unknown> = {}) => ({
+    _id: 'acc-9',
+    platform: 'whatsapp',
+    phoneNumber: '+34 600',
+    displayName: null,
+    status: 'connected',
+    oxyTaskState: 'active',
+    replies: 'everyone',
+    replyChatIds: [],
+    groupReplies: 'mentions',
+    lastActiveAt: null,
+    ...over,
+  });
+  const linkReplies = (url: string) =>
+    url === '/agents/agent-1/accounts'
+      ? { data: { accountId: 'acc-1', qr: 'QR-1' } }
+      : { data: { subscription: subscription() } };
 
-  it('offers WhatsApp and Telegram only, and links one to this gemie showing its QR code', async () => {
-    api.post.mockImplementation(async (url: string) =>
-      url === '/agents/agent-1/accounts'
-        ? { data: { accountId: 'acc-1', status: 'qr-pending', qr: 'QR-1' } }
-        : { data: { subscription: subscription() } },
-    );
+  it('offers only the platforms this deployment can link, and links one showing its QR code', async () => {
+    api.post.mockImplementation(async (url: string) => linkReplies(url));
     const tree = await render();
     const offered = all(tree, 'Button')
       .map((node) => node.props.accessibilityLabel)
@@ -471,32 +489,46 @@ describe('the accounts it answers on', () => {
     await act(async () => buttonLabelled(tree, 'Link a WhatsApp account')?.props.onPress());
     await settle();
     expect(api.post).toHaveBeenCalledWith('/agents/agent-1/accounts', { platform: 'whatsapp' });
-    const code = all(tree, 'QRCode')[0];
-    expect(['QR-1', 'QR-2']).toContain(code?.props.value);
+    expect(['QR-1', 'QR-2']).toContain(all(tree, 'QRCode')[0]?.props.value);
     expect(texts(tree).some((text) => text.startsWith('Open WhatsApp on your phone'))).toBe(true);
   });
 
+  it('offers no fake control when nothing can be linked here', async () => {
+    platforms = [];
+    const tree = await render();
+    expect(buttonLabelled(tree, 'Link a WhatsApp account')).toBeUndefined();
+    expect(texts(tree)).toContain('Linking WhatsApp or Telegram is not available right now.');
+  });
+
+  it('says why a link failed', async () => {
+    api.post.mockImplementation(async (url: string) => {
+      if (url === '/agents/agent-1/accounts')
+        throw { response: { status: 502, data: { error: 'Timed out waiting for QR' } } };
+      return { data: {} };
+    });
+    const tree = await render();
+    await act(async () => buttonLabelled(tree, 'Link a WhatsApp account')?.props.onPress());
+    await settle();
+    expect(toast.error).toHaveBeenCalledWith('Could not link WhatsApp: Timed out waiting for QR');
+  });
+
   it('closes the code and says so once the account is connected', async () => {
-    api.post.mockImplementation(async (url: string) =>
-      url === '/agents/agent-1/accounts'
-        ? { data: { accountId: 'acc-1', status: 'qr-pending', qr: 'QR-1' } }
-        : { data: {} },
-    );
+    api.post.mockImplementation(async (url: string) => linkReplies(url));
     qr = { status: 'connected', qr: null };
+    toast.success.mockClear();
     const tree = await render();
     await act(async () => buttonLabelled(tree, 'Link a Telegram account')?.props.onPress());
     await settle();
-    expect(api.get).toHaveBeenCalledWith('/agents/agent-1/accounts/acc-1/status');
     expect(toast.success).toHaveBeenCalledWith('Telegram is linked. Scout answers there now.');
+    expect(toast.success).toHaveBeenCalledTimes(1);
     expect(all(tree, 'QRCode')).toHaveLength(0);
   });
 
-  it('lists a linked account with its status and removes it after confirming', async () => {
-    linkedAccounts = [
-      { _id: 'acc-9', platform: 'whatsapp', phoneNumber: '+34 600', status: 'connected' },
-    ];
+  it('shows a linked account’s live status and last message, and removes it after confirming', async () => {
+    linkedAccounts = [account({ lastActiveAt: '2026-11-13T09:00:00.000Z' })];
     const tree = await render();
     expect(texts(tree)).toContain('+34 600 · Connected');
+    expect(texts(tree).some((text) => text.startsWith('Last message: '))).toBe(true);
     await act(async () => buttonLabelled(tree, 'Remove the WhatsApp account')?.props.onPress());
     await settle();
     expect(confirm).toHaveBeenCalledWith(
@@ -505,11 +537,51 @@ describe('the accounts it answers on', () => {
     expect(api.delete).toHaveBeenCalledWith('/agents/agent-1/accounts/acc-9');
   });
 
-  it('renews a lapsed account task without a new link', async () => {
-    linkedAccounts = [
-      { _id: 'acc-7', platform: 'telegram', status: 'connected', oxyTaskState: 'reauth_required' },
+  it('says how to recover an account unlinked from the phone, and offers no settings for it', async () => {
+    linkedAccounts = [account({ status: 'logged-out' })];
+    const tree = await render();
+    expect(
+      texts(tree).some((text) =>
+        text.includes('Unlinked from the phone. Remove it and link it again.'),
+      ),
+    ).toBe(true);
+    expect(select(tree, 'Who Scout answers')).toBeUndefined();
+  });
+
+  it('saves who it answers and in groups', async () => {
+    linkedAccounts = [account()];
+    api.patch.mockResolvedValue({ data: {} });
+    const tree = await render();
+    expect(select(tree, 'Who Scout answers')?.props.value).toBe('everyone');
+    await act(async () => select(tree, 'Who Scout answers')?.props.onChange('nobody'));
+    expect(api.patch).toHaveBeenCalledWith('/agents/agent-1/accounts/acc-9', {
+      replies: 'nobody',
+    });
+    await act(async () => select(tree, 'In groups')?.props.onChange('never'));
+    expect(api.patch).toHaveBeenCalledWith('/agents/agent-1/accounts/acc-9', {
+      groupReplies: 'never',
+    });
+  });
+
+  it('chooses the chats it answers from the account’s own', async () => {
+    linkedAccounts = [account({ replies: 'chosen', replyChatIds: ['ana@s.whatsapp.net'] })];
+    chats = [
+      { chatId: 'ana@s.whatsapp.net', name: 'Ana', kind: 'direct' },
+      { chatId: 'family@g.us', name: 'Family', kind: 'group' },
     ];
+    api.patch.mockResolvedValue({ data: {} });
+    const tree = await render();
+    expect(switchLabelled(tree, 'Answer Ana')?.props.checked).toBe(true);
+    expect(switchLabelled(tree, 'Answer Family')?.props.checked).toBe(false);
+    await act(async () => switchLabelled(tree, 'Answer Family')?.props.onCheckedChange(true));
+    expect(api.patch).toHaveBeenCalledWith('/agents/agent-1/accounts/acc-9', {
+      replyChatIds: ['ana@s.whatsapp.net', 'family@g.us'],
+    });
+  });
+
+  it('renews a lapsed account task without a new link', async () => {
+    linkedAccounts = [account({ oxyTaskState: 'reauth_required' })];
     await render();
-    expect(api.post).toHaveBeenCalledWith('/agents/agent-1/accounts/acc-7/reauthorize');
+    expect(api.post).toHaveBeenCalledWith('/agents/agent-1/accounts/acc-9/reauthorize');
   });
 });

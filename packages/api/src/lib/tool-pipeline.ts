@@ -66,9 +66,7 @@ import {
   generateFileTool,
   createSearchThreadTool,
   createSendTelegramTool,
-  createGetWhatsAppChatsTool,
-  createGetWhatsAppMessagesTool,
-  createSendWhatsAppMessageTool,
+  buildAccountTools,
   createSearchAgentsTool,
   createAgentTool,
   listMyAgentsTool,
@@ -79,7 +77,6 @@ import {
   ASK_USER_QUESTION_TOOL,
   createSuggestNewConversationTool,
 } from './tools/index.js';
-import { whatsAppReachable } from './tools/whatsapp.js';
 import { getWeatherTool } from './tools/weather.js';
 import { getMarketQuoteTool } from './tools/market.js';
 import { getFairCoinTool } from './tools/faircoin.js';
@@ -150,7 +147,7 @@ export interface ForUserOptions {
    *
    * FALSE for an API-key turn. A developer key carries its owner's `userId`, so
    * every one of these tools would compile and run — and would hand a key
-   * HOLDER the key OWNER's memory, WhatsApp threads and triggers. That is what
+   * HOLDER the key OWNER's memory, messaging accounts and triggers. That is what
    * `isDirectSession` was standing in for here, and it is now said directly.
    */
   actsForPerson: boolean;
@@ -624,16 +621,12 @@ export class ToolPipeline {
            */
           sendTelegramMessage: createSendTelegramTool(userId, runId),
         });
-        // Only the WhatsApp this gemie was linked to by this person (ADR 0035), and only where a
-        // gateway exists: without one every call fails, and a tool the model is shown is a tool
-        // it keeps trying.
-        const whatsApp = { agentId: agent._id, oxyUserId: userId };
-        if (await whatsAppReachable(whatsApp))
-          Object.assign(aliaTools, {
-            getWhatsAppChats: createGetWhatsAppChatsTool(whatsApp),
-            getWhatsAppMessages: createGetWhatsAppMessagesTool(whatsApp),
-            sendWhatsAppMessage: createSendWhatsAppMessageTool(whatsApp),
-          });
+        // Only the accounts this person linked to THIS gemie (ADR 0035), and only those that are
+        // connected: a tool the model is shown is a tool it keeps trying.
+        Object.assign(
+          aliaTools,
+          await buildAccountTools({ agentId: agent._id, oxyUserId: userId }),
+        );
       }
       if (grants.allows('automation') && !nested) {
         if (isDirectSession) {

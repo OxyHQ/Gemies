@@ -48,22 +48,6 @@ import { conflictKey } from '../conflictKey';
 /** Every session column a caller outside this process may see. */
 const PUBLIC_SESSION = publicColumns(whatsappSessions, PROTECTED_COLUMNS);
 
-/**
- * The subset the session-list endpoints return.
- * Its own projection rather than a reuse of `PUBLIC_SESSION`: the two answer
- * different questions, and this one is the shape of the list response.
- */
-const SESSION_SUMMARY = {
-  sessionId: whatsappSessions.sessionId,
-  oxyUserId: whatsappSessions.oxyUserId,
-  phoneNumber: whatsappSessions.phoneNumber,
-  displayName: whatsappSessions.displayName,
-  status: whatsappSessions.status,
-  lastConnected: whatsappSessions.lastConnected,
-  lastDisconnected: whatsappSessions.lastDisconnected,
-  createdAt: whatsappSessions.createdAt,
-} as const;
-
 /** Statuses `initialize()` brings back up after a restart. */
 const RESTORABLE: readonly WhatsAppSessionStatus[] = ['connected', 'disconnected'];
 
@@ -135,19 +119,12 @@ export async function findWhatsAppSessionQr(db: IntegrationsDatabase, sessionId:
   return row ?? null;
 }
 
-export async function listWhatsAppSessions(db: IntegrationsDatabase) {
-  return db
-    .select(SESSION_SUMMARY)
-    .from(whatsappSessions)
-    .orderBy(asc(whatsappSessions.createdAt), asc(whatsappSessions.sessionId));
-}
-
-export async function listWhatsAppSessionsForUser(db: IntegrationsDatabase, oxyUserId: string) {
-  return db
-    .select(SESSION_SUMMARY)
-    .from(whatsappSessions)
-    .where(eq(whatsappSessions.oxyUserId, oxyUserId))
-    .orderBy(asc(whatsappSessions.createdAt), asc(whatsappSessions.sessionId));
+/** Forget a session; its chats and messages go with it (the foreign keys cascade). */
+export async function deleteWhatsAppSession(
+  db: IntegrationsDatabase,
+  sessionId: string,
+): Promise<void> {
+  await db.delete(whatsappSessions).where(eq(whatsappSessions.sessionId, sessionId));
 }
 
 export async function markWhatsAppQrPending(

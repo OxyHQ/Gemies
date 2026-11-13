@@ -58,12 +58,15 @@ export const queryKeys = {
     subscriptions: (id: string) => ['agents', 'subscriptions', id] as const,
     inbox: (id: string) => ['agents', 'inbox', id] as const,
     /**
-     * The caller's accounts linked to one gemie (ADR 0035), and the QR code of one being linked.
+     * The caller's accounts linked to one gemie (ADR 0035), the QR code of one being linked and an
+     * account's chats.
      * Under their own roots, NOT `agents`, so they are never persisted: phone numbers and a live
      * QR code stay in memory.
      */
     accounts: (id: string) => ['gemie-accounts', id] as const,
     accountQr: (id: string, accountId: string) => ['gemie-account-qr', id, accountId] as const,
+    accountChats: (id: string, accountId: string) =>
+      ['gemie-account-chats', id, accountId] as const,
     /** The agents that remember something about the caller. */
     /**
      * Keyed by the USERNAME the URL carries, not by the agent id, because the
