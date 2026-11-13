@@ -5,6 +5,7 @@
  * reaches its QR encoder.
  */
 export { GemieAccounts } from './components/GemieAccounts';
+export { ALIA_GEMIE_ID } from './lib/alia-gemie';
 export type { GemieAccountsProps } from './components/GemieAccounts';
 export {
   GEMIE_ACCOUNT_GROUP_REPLIES,

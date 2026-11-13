@@ -9,6 +9,8 @@
   with their types. It draws no frame of its own: the host puts it in its card or settings page and
   hands its translator (`t`, keys `gemie.accounts.*`; English and Spanish in the SDK). It needs
   `react-native-qrcode-svg` (a new peer dependency, which `@oxy.so/services` already requires).
+- **`ALIA_GEMIE_ID`** (root and `/accounts`): the fixed id of Alia's gemie, for a client that
+  addresses her by id (her thread, her connected accounts).
 - **The connected-account tools are one set for every platform:** `listAccountChats`,
   `readAccountMessages` and `sendAccountMessage` replace `getWhatsAppChats`,
   `getWhatsAppMessages` and `sendWhatsAppMessage` in the tool labels, icons and the thought panel
