@@ -2,6 +2,7 @@ import type { AgentDraft, IdentityDraft } from '@/features/agents/runtime/use-ag
 import { AgentEditorSections } from '@/features/agents/ui/edit/sections/agent-editor-sections';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { AgentCreator, AgentCreatorField } from '@oxy.so/bloom/agent-creator';
+import { FREE_USER_PROFILE_COLOR_PRESETS } from '@oxy.so/contracts/client';
 import { TextFieldInput } from '@oxy.so/bloom/text-field';
 
 /**
@@ -9,9 +10,13 @@ import { TextFieldInput } from '@oxy.so/bloom/text-field';
  * look, the handle as a row of the editor's own card, and below it the cards of what the agent has
  * (how it works on its own, what it hears, its inbox, what it remembers: `AgentEditorSections`).
  *
- * Two stores, one editor. The name (and the handle) are the bot ACCOUNT's, saved to Oxy; the
- * tagline, description and character are the agent row's, saved to Alia. The editor hands back one
- * agent, and each field is routed to the draft it belongs to. No voice: Alia's agents have none.
+ * Two stores, one editor. The name, the handle and the colour are the bot ACCOUNT's, saved to Oxy;
+ * the tagline, description and character (its shape and features, no colour) are the agent row's,
+ * saved to Alia. The editor hands back one agent, and each field is routed to the draft it belongs
+ * to. No voice: Alia's agents have none.
+ *
+ * The colour control offers exactly what Oxy accepts on a bot account
+ * (`FREE_USER_PROFILE_COLOR_PRESETS`), the list the API offers new gemies from (`lib/agent-color.ts`).
  */
 export function AgentProfileFields({
   id,
@@ -37,15 +42,20 @@ export function AgentProfileFields({
       onClose={onClose}
       showPreferences={false}
       sections={<AgentEditorSections agentId={id} name={identity.name} />}
+      colors={FREE_USER_PROFILE_COLOR_PRESETS}
       agent={{
         id,
         name: identity.name,
         label: draft.tagline,
         description: draft.description,
         avatar: draft.character,
+        color: identity.color,
       }}
       onChange={(next) => {
-        if (next.name !== identity.name) onEditIdentity({ name: next.name });
+        const account: Partial<IdentityDraft> = {};
+        if (next.name !== identity.name) account.name = next.name;
+        if (next.color !== identity.color) account.color = next.color;
+        if (Object.keys(account).length > 0) onEditIdentity(account);
         const patch: Partial<AgentDraft> = {};
         if (next.label !== draft.tagline) patch.tagline = next.label;
         if (next.description !== draft.description) patch.description = next.description;

@@ -1,8 +1,8 @@
 /**
  * `POST /agents/generate` proposes a COLOUR, and never a colour nobody offered.
  *
- * The colour is the only visual identity an agent has — there is no avatar any
- * more — so it is proposed at the same moment as the name and the handle, and
+ * The colour is the gemie's account's, and its avatar and its chat are painted
+ * in it, so it is proposed at the same moment as the name and the handle, and
  * by the same call. What makes this worth a test rather than a line of review
  * is the failure mode: a model asked for a closed vocabulary invents members of
  * it, and an invented Bloom preset key is not an error anywhere. It travels to
@@ -49,7 +49,7 @@ vi.mock('../../../lib/logger.js', () => ({
 }));
 
 const { default: generateRouter } = await import('../generate.js');
-const { AGENT_COLORS, agentColorFor } = await import('../../../domain/agent-color.js');
+const { AGENT_COLORS, agentColorFor } = await import('../../../lib/agent-color.js');
 
 let app: Express;
 let server: Server;
@@ -170,27 +170,19 @@ describe('the generator proposes a colour', () => {
 /**
  * The route never answers a colour outside the offered vocabulary.
  *
- * WHICH colours may be offered is not decided here. That is a fact about three
- * lists — this service's, the editor's, and the CHECK constraint
- * `users_color_check` on Oxy's `users` table — and it is held by
- * `scripts/check-agent-colour-vocabulary.mjs`, which reads all three. Restating
- * the constraint's eleven keys here as well would put a second copy of somebody
- * else's catalogue in the repository, and two copies drifting apart is the bug
- * that gate exists for.
- *
- * What is left for a test of the ROUTE is the behaviour: whatever the model
- * answers, the response carries something the vocabulary contains. That still
- * fails if the passthrough stops consulting the list at all, which no static
- * gate can see.
+ * WHICH colours may be offered is Oxy's: every preset it accepts on a bot account,
+ * `FREE_USER_PROFILE_COLOR_PRESETS` from `@oxy.so/contracts`, which `lib/agent-color.ts` imports
+ * rather than restates. What is left for a test of the ROUTE is the behaviour: whatever the model
+ * answers, the response carries something that list contains.
  */
 describe('the route answers only a colour it offered', () => {
   /**
-   * The four the constraint refuses, which this service offered until it was
-   * measured against the constraint: a model that names one must not have it
-   * passed through, because it would travel to `POST /accounts` and be a 400 on
-   * a value the person never typed.
+   * What Oxy refuses on a bot: a brand preset (`oxy`, `faircoin`) is its own account's, `mono` is a
+   * personal benefit, and a hex is not a preset at all. A model that names one must not have it
+   * passed through, because it would travel to `POST /accounts` and be a 400 on a value the person
+   * never typed.
    */
-  it.each(['yellow', 'rose', 'violet', 'brown'])(
+  it.each(['oxy', 'faircoin', 'mono', '#ff0000'])(
     'does not pass %s through to the response',
     async (refused) => {
       state.modelText = modelAnswer({ color: refused });
@@ -200,4 +192,9 @@ describe('the route answers only a colour it offered', () => {
       expect(AGENT_COLORS).toContain(body.color);
     },
   );
+
+  it('offers every preset Oxy accepts on a bot account, and only those', async () => {
+    const { FREE_USER_PROFILE_COLOR_PRESETS } = await import('@oxy.so/contracts');
+    expect([...AGENT_COLORS]).toEqual([...FREE_USER_PROFILE_COLOR_PRESETS]);
+  });
 });

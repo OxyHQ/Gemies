@@ -9,8 +9,9 @@ export interface GemieParticipant {
   id: string;
   name: string;
   handle?: string;
-  /** The 3D character it is drawn as. */
+  /** The character it is drawn as, painted in its colour. */
   character: AvatarCharacter;
+  /** Its colour: its Oxy account's (`User.color`, a Bloom preset key). */
   color?: string;
 }
 
@@ -59,7 +60,7 @@ export function leadOf(profile: GemieAgentProfile | null | undefined): GemieLead
     id: profile.id,
     name: profile.name,
     handle: profile.handle,
-    character: readAgentCharacter(profile.character),
+    character: readAgentCharacter(profile.character, profile.color),
     color: profile.color,
     isAlia: false,
     greeting: profile.greeting,
@@ -73,7 +74,7 @@ export function participantOf(agentInfo: NonNullable<Message['agentInfo']>): Gem
     id: agentInfo.id,
     name: agentInfo.name,
     handle: agentInfo.handle,
-    character: readAgentCharacter(agentInfo.character),
+    character: readAgentCharacter(agentInfo.character, agentInfo.color),
     color: agentInfo.color,
   };
 }

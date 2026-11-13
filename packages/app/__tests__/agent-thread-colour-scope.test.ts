@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 /**
  * The theme scope must not also lay the screen out.
  *
- * `BloomSeedScope` renders its own wrapper unless told not to, and the two
+ * `BloomColorScope` renders its own wrapper unless told not to, and the two
  * platforms disagree about what that wrapper is. Native gives it
  * `{flex: 1}`; **web gives it a bare `<div style={vars}>` with no flex**, which
  * collapses to its content height inside a flex column and lifts the whole
@@ -35,12 +35,12 @@ const SOURCE = readFileSync(
   'utf8',
 );
 
-/** The `<BloomSeedScope …>` opening tag and the element that follows it. */
+/** The `<BloomColorScope …>` opening tag and the element that follows it. */
 function scopeAndChild(text: string): string {
-  const start = text.indexOf('<BloomSeedScope');
-  if (start === -1) throw new Error('no <BloomSeedScope> in the agent theme scope');
+  const start = text.indexOf('<BloomColorScope');
+  if (start === -1) throw new Error('no <BloomColorScope> in the agent theme scope');
   const childEnd = text.indexOf('>', text.indexOf('<', text.indexOf('>', start) + 1));
-  if (childEnd === -1) throw new Error('the <BloomSeedScope> has no child element');
+  if (childEnd === -1) throw new Error('the <BloomColorScope> has no child element');
   return text.slice(start, childEnd + 1);
 }
 
@@ -50,6 +50,8 @@ describe('the agent thread’s theme scope', () => {
   it('is read at all', () => {
     // The guard against asserting over an empty string: every check below would
     // pass on one, and would keep passing after the element was renamed away.
+    // The account's colour: a preset key, or the seed of a legacy hex.
+    expect(opening).toContain('colorPreset=');
     expect(opening).toContain('seed=');
     expect(SOURCE.length).toBeGreaterThan(1000);
   });

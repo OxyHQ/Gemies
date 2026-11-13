@@ -11,7 +11,8 @@ import {
   DEFAULT_NEW_AGENT_GRANTS,
   FIXED_CAPABILITY_FAMILIES,
 } from '../../domain/capability-grants.js';
-import { AGENT_COLORS, agentColorFor } from '../../domain/agent-color.js';
+import { AGENT_COLORS, agentColorFor } from '../agent-color.js';
+import { gemieCharacterOf } from '../agent-character.js';
 import { accountCategoryChoices, isOfferedAccountCategory } from '../account-category.js';
 
 /**
@@ -88,7 +89,9 @@ export const createAgentTool = (userId: string, accessToken: string | undefined)
       color: z
         .enum(AGENT_COLORS)
         .optional()
-        .describe('Colour of its glyph (it has no picture); pick one that suits what it does.'),
+        .describe(
+          'Its colour (its account’s): its avatar and its chat are painted in it. Pick one that suits what it does.',
+        ),
     }),
 
     execute: async ({
@@ -146,7 +149,7 @@ export const createAgentTool = (userId: string, accessToken: string | undefined)
         const username = suggestAgentUsername(name) ?? fallbackAgentUsername();
         // Picked from the handle, so the same agent always looks the same; the person changes it in
         // the editor. The account is born with it and the agent row stores the same look.
-        const character = avatarCharacterFor(username);
+        const character = gemieCharacterOf(avatarCharacterFor(username));
 
         const account = await createAgentBotAccount({
           accessToken,

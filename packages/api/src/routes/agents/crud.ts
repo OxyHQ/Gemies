@@ -2,7 +2,8 @@ import { establishAgentWork, stopAgentWork } from '../../lib/agent/work.js';
 import { releaseGemieAccounts } from '../../lib/gemie-accounts.js';
 import { listExternalLinks } from '../../db/agents/externalAgentRepository.js';
 import { externalAgentPresence } from '../../lib/external-agents/presence.js';
-import { avatarCharacterFor, parseAvatarCharacter, type AvatarCharacter } from '@oxy.so/contracts';
+import { avatarCharacterFor, type AvatarCharacter } from '@oxy.so/contracts';
+import { gemieCharacterOf, parseGemieCharacter } from '../../lib/agent-character.js';
 import { Router } from 'express';
 import { authenticateToken, optionalAuth } from '../../middleware/auth.js';
 import { getDb } from '../../db/index.js';
@@ -483,11 +484,16 @@ const capabilityGrantsSchema = z
  * `z.ZodError` branch in the catch that turns anything the schema does not name
  * into a 400 with the field errors attached.
  */
-/** A character as a client writes it: the shape is checked here, the ids by the client that draws them. */
+/**
+ * A character as a client writes it: the shape is checked here, the ids by the client that draws
+ * them. It carries no paint: a gemie's colour is its account's (`lib/agent-character.ts`).
+ */
 const characterSchema = z
   .unknown()
-  .refine((value) => parseAvatarCharacter(value) !== null, { message: 'Invalid character' })
-  .transform((value) => parseAvatarCharacter(value) as AvatarCharacter);
+  .refine((value) => parseGemieCharacter(value) !== null, {
+    message: 'Invalid character: its shape and features, without a colour (the account has it)',
+  })
+  .transform((value) => parseGemieCharacter(value) as AvatarCharacter);
 
 const createAgentSchema = z
   .object({
@@ -543,7 +549,9 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
      * bot account was born with, and a look the person chose is put on the account first, so the
      * two never differ and every other app draws what this one stores.
      */
-    const character = data.character ?? verdict.character ?? avatarCharacterFor(data.oxyAccountId);
+    const character =
+      data.character ??
+      gemieCharacterOf(verdict.character ?? avatarCharacterFor(data.oxyAccountId));
     if (data.character !== undefined) {
       try {
         await setAgentAccountCharacter({

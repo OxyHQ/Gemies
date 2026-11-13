@@ -212,6 +212,7 @@ vi.mock('@gemies/sdk', async () => {
     IdentityMark: (props: Record<string, unknown>) =>
       ReactModule.createElement('IdentityMark', props),
     readAgentCharacter: () => ({ preset: 'blue_beret' }),
+    readAgentLook: () => ({ preset: 'blue_beret' }),
   };
 });
 /**

@@ -28,7 +28,8 @@ import {
   EXTERNAL_AGENT_CLIS,
   EXTERNAL_PAIRING_TTL_MS,
 } from '../../domain/external-agent.js';
-import { agentColorFor } from '../../domain/agent-color.js';
+import { agentColorFor } from '../../lib/agent-color.js';
+import { gemieCharacterOf } from '../../lib/agent-character.js';
 import { authenticateToken } from '../../middleware/auth.js';
 import { createAgentBotAccount } from '../../lib/agent-account.js';
 import { fallbackAgentUsername, suggestAgentUsername } from '../../lib/agent-identity.js';
@@ -127,7 +128,7 @@ router.post(
       const name = `${EXTERNAL_AGENT_CLI_LABELS[cli]} · ${hostName}`;
       const username =
         suggestAgentUsername(EXTERNAL_AGENT_CLI_LABELS[cli]) ?? fallbackAgentUsername();
-      const character = avatarCharacterFor(username);
+      const character = gemieCharacterOf(avatarCharacterFor(username));
       const tagline = `${EXTERNAL_AGENT_CLI_LABELS[cli]} on ${hostName}`;
       const account = await createAgentBotAccount({
         accessToken: req.accessToken,

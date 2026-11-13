@@ -174,6 +174,8 @@ const openThread = (load: ThreadGemieLoader) => async (req: Request, res: Respon
         name: agent.name,
         handle: agent.handle,
         character: agent.character,
+        // Its colour, the account's: the character carries none (`lib/agent-character.ts`).
+        color: agent.color,
         tagline: agent.tagline,
         description: agent.description,
       },

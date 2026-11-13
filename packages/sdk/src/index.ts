@@ -48,7 +48,7 @@ export { VoiceModeIcon } from './components/VoiceModeIcon';
 export { AmbientField, PARALLAX_DURATION, PARALLAX_EASE } from './components/AmbientField';
 export type { AmbientFieldProps } from './components/AmbientField';
 export { ALIA_AVATAR, GemieAvatar } from './components/GemieAvatar';
-export { DEFAULT_AGENT_CHARACTER, readAgentCharacter } from './lib/agent-character';
+export { DEFAULT_AGENT_CHARACTER, readAgentCharacter, readAgentLook } from './lib/agent-character';
 export type { GemieAvatarProps, GemieAvatarState } from './components/GemieAvatar';
 export { GemieAvatarIcon } from './components/GemieAvatarIcon';
 export { useGemieActivity } from './hooks/useGemieActivity';

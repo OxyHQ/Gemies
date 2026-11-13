@@ -31,6 +31,9 @@ is that agent. Without `agentId`, the lead is Alia.
 }
 ```
 
+- `color` is the gemie's colour, its Oxy account's `User.color` (a Bloom preset key), and
+  `character` is its shape and features without a colour: draw it with
+  `readAgentCharacter(character, color)` from `@gemies/sdk`, which paints the one in the other.
 - `greeting` is the agent's tagline, the one line its owner writes in the editor.
 - `starters` are the owner's, set with `PATCH /agents/:id` (`starters`, at most 6).
 - `features` lists every Alia feature an owner can gate (§5) and whether this agent gates it.

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ToolCallOptions } from '@ai-sdk/provider-utils';
 import { SELECTABLE_ACCOUNT_CATEGORY_IDS } from '@oxy.so/contracts';
-import type { AgentColor } from '../../../domain/agent-color.js';
+import type { AgentColor } from '../../agent-color.js';
 
 /**
  * An agent born through the CHAT door, and whether it arrives the same as one
@@ -88,7 +88,7 @@ vi.mock('../../logger.js', () => ({
 }));
 
 const { createAgentTool } = await import('../agent-create.js');
-const { agentColorFor } = await import('../../../domain/agent-color.js');
+const { agentColorFor } = await import('../../agent-color.js');
 
 const TOOL = createAgentTool('oxy-user-1', 'bearer-token');
 

@@ -1,4 +1,4 @@
-import { readAgentCharacter } from '@gemies/sdk';
+import { readAgentLook } from '@gemies/sdk';
 import { gemieQueryKeys } from '@gemies/sdk/runtime';
 import { queryKeys } from '@/shared/api/query-keys';
 import { useQueryClient } from '@tanstack/react-query';
@@ -66,19 +66,24 @@ export interface AgentDraft {
   archetypeConfig: ArchetypeConfig;
   /** `publisher/model`, or `null` for the server's default. */
   modelId: string | null;
-  /** What the agent looks like: a Bloom avatar character, written whole. */
+  /** What the agent looks like apart from its colour: a Bloom avatar character, written whole. */
   character: AvatarCharacter;
   /** What its empty chat offers to send; rows still being written included. */
   starters: AgentStarter[];
 }
 
 /**
- * The two fields that belong to the agent's Oxy bot ACCOUNT rather than to
- * its Alia row, so they are written to a different service by a different call.
+ * The fields that belong to the agent's Oxy bot ACCOUNT rather than to its
+ * Alia row, so they are written to a different service by a different call.
  */
 export interface IdentityDraft {
   name: string;
   handle: string;
+  /**
+   * The gemie's colour: the account's `User.color`, a Bloom preset key. It paints the character
+   * and tints the chat everywhere, in this app and every other.
+   */
+  color: string;
 }
 
 /** The draft an agent opens with. Seeded once; see {@link AgentDraft}. */
@@ -97,7 +102,7 @@ function agentDraftFrom(agent: Agent): AgentDraft {
     archetype: agent.archetype || 'general',
     archetypeConfig: agent.archetypeConfig || {},
     modelId: agent.modelId ?? null,
-    character: readAgentCharacter(agent.character),
+    character: readAgentLook(agent.character),
     starters: agent.starters ?? [],
   };
 }
@@ -215,15 +220,17 @@ export function useAgentDraftAutosave(agent: Agent) {
 }
 
 /**
- * The bot account's half: the NAME and the HANDLE, saved to Oxy.
+ * The bot account's half: the NAME, the HANDLE and the COLOUR, saved to Oxy.
  *
  * Two writes, two services — not one call that fans out, because a failed
  * rename must not take the tagline with it and a failed tagline must not roll
  * back a rename. `updateAccount` sweeps Oxy's own identity caches, so the
  * profile surfaces do not serve the old name for a TTL afterwards.
  *
- * What the agent LOOKS like is not on this side: it is a character, Alia's own, written with the rest
- * of the row (`AgentDraft.character`). The account's `User.color` is left as it is.
+ * The colour is the account's `User.color` and the gemie's only colour: written here with the
+ * owner's own credential, under Oxy's own checks (who may update the account, and which presets
+ * it may wear), exactly as the name is. The character, its shape and features, is the row's
+ * (`AgentDraft.character`) and carries no colour.
  */
 export function useAgentIdentityAutosave(agent: Agent) {
   const { t } = useTranslation();
@@ -233,16 +240,20 @@ export function useAgentIdentityAutosave(agent: Agent) {
   const [identity, setIdentity] = useState<IdentityDraft>(() => ({
     name: agent.name ?? '',
     handle: agent.handle ?? '',
+    color: agent.color ?? '',
   }));
 
   /** What Oxy last confirmed, so a rejected rename can be put back. */
   const savedHandle = useRef(agent.handle ?? '');
+  /** The colour Oxy holds, so it is only sent when it changed. */
+  const savedColor = useRef(agent.color ?? '');
 
   const saveIdentity = useCallback(
     async (next: IdentityDraft): Promise<void> => {
       toast.loading(t('agents.saving'), { id: SAVE_TOAST_ID });
       const trimmed = next.handle.trim();
       const handleChanged = trimmed !== savedHandle.current && trimmed !== '';
+      const colorChanged = next.color !== savedColor.current && next.color !== '';
 
       /**
        * Ask Oxy whether the handle is free BEFORE writing it, and only when the
@@ -298,10 +309,14 @@ export function useAgentIdentityAutosave(agent: Agent) {
           // re-sending the current one on every keystroke of the NAME field
           // would ask Oxy to re-check a handle nobody touched.
           ...(handleChanged && { username: trimmed }),
+          // Only when it changed, like the handle: Oxy weighs a colour against the presets the
+          // account may wear when it is set, and re-sending the same one asks for nothing.
+          ...(colorChanged && { color: next.color }),
         });
         savedHandle.current = trimmed;
-        // The name and the handle are the account's: everything that shows them (the sidebar's
-        // list, the open chat's header through the SDK's profile) reads them again.
+        if (colorChanged) savedColor.current = next.color;
+        // The name, the handle and the colour are the account's: everything that shows them (the
+        // sidebar's list, the open chat's header through the SDK's profile) reads them again.
         void Promise.all([
           queryClient.invalidateQueries({ queryKey: queryKeys.agents.mine }),
           queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agent._id) }),
@@ -327,7 +342,8 @@ export function useAgentIdentityAutosave(agent: Agent) {
           // neutral: the "Saving…" would simply vanish, which reads as saved.
           toast.error(getErrorMessage(error, t('agents.saveFailed')));
         }
-        // The name was shown ahead of the save: put back what Oxy holds.
+        // The name and the colour were shown ahead of the save: put back what Oxy holds.
+        if (colorChanged) setIdentity((prev) => ({ ...prev, color: savedColor.current }));
         look.revert();
       }
     },
@@ -339,8 +355,11 @@ export function useAgentIdentityAutosave(agent: Agent) {
   const editIdentity = (patch: Partial<IdentityDraft>): void => {
     const next = { ...identity, ...patch };
     setIdentity(next);
-    // The name reaches every screen at once. The handle does not: it is checked against Oxy first.
-    if (patch.name !== undefined) look.show({ name: patch.name });
+    // The name and the colour reach every screen at once. The handle does not: it is checked
+    // against Oxy first.
+    if (patch.name !== undefined || patch.color !== undefined) {
+      look.show({ name: patch.name, color: patch.color });
+    }
     scheduleSave(next);
   };
 

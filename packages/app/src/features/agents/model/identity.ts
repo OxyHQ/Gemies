@@ -7,10 +7,10 @@
  * afternoon — arrives as three nulls, and the listing still renders because the
  * tagline, the rating and the price are Alia's own.
  *
- * `color` has no helper here because it needs none that is about IDENTITY: what
- * to do with an unusable value is a RENDERING decision, made once in
- * `src/shared/domain/agent-color.ts` (it themes the agent's page). The agent's
- * likeness is not a colour: it is its `character`.
+ * `color` has no helper here because it needs none that is about IDENTITY: it is
+ * the gemie's colour, its account's, and what to do with an unknown one is a
+ * RENDERING decision, made once in `readAgentCharacter` (`@gemies/sdk`), which
+ * paints the agent's `character` in it.
  *
  * Every surface therefore needs the same fallback, and it is here rather than
  * inlined at each one: two screens disagreeing about what an unresolved agent

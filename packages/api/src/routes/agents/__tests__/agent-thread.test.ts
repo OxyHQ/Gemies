@@ -229,6 +229,8 @@ describe('the route is reachable, and resolves the pair', () => {
       name: 'Pepe',
       handle: 'pepe',
       character: TEST_CHARACTER,
+      // The colour is the account's, beside the character it paints.
+      color: 'lagoon',
       tagline: 'finds things out',
       description: 'a description',
     });

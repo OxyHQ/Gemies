@@ -188,7 +188,7 @@ export function SpaceDialog({
                     accessibilityLabel={agentDisplayName(agent)}
                     leading={
                       <AgentAvatar
-                        character={readAgentCharacter(agent.character)}
+                        character={readAgentCharacter(agent.character, agent.color)}
                         size={20}
                         portrait
                       />

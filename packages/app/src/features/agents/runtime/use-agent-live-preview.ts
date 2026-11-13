@@ -10,6 +10,8 @@ export interface AgentLook {
   name?: string;
   tagline?: string;
   character?: AvatarCharacter;
+  /** The account's colour, which paints the character and tints its chat. */
+  color?: string;
 }
 
 /**
@@ -28,7 +30,7 @@ export interface AgentLook {
 export function useAgentLivePreview(agentId: string) {
   const queryClient = useQueryClient();
   return useMemo(() => {
-    const merge = <T extends { name?: unknown; character?: unknown }>(
+    const merge = <T extends { name?: unknown; character?: unknown; color?: unknown }>(
       current: T,
       look: AgentLook,
       fields: ReadonlyArray<keyof AgentLook>,
@@ -41,16 +43,18 @@ export function useAgentLivePreview(agentId: string) {
       show(look: AgentLook) {
         queryClient.setQueryData<Agent[]>(queryKeys.agents.mine, (list) =>
           list?.map((agent) =>
-            agent._id === agentId ? merge(agent, look, ['name', 'tagline', 'character']) : agent,
+            agent._id === agentId
+              ? merge(agent, look, ['name', 'tagline', 'character', 'color'])
+              : agent,
           ),
         );
         queryClient.setQueryData<Agent>(queryKeys.agents.detail(agentId), (agent) =>
-          agent ? merge(agent, look, ['name', 'tagline', 'character']) : agent,
+          agent ? merge(agent, look, ['name', 'tagline', 'character', 'color']) : agent,
         );
         // The profile has no tagline: its name and look are what the chat's header draws.
         queryClient.setQueryData<GemieAgentProfile>(
           gemieQueryKeys.agents.profile(agentId),
-          (profile) => (profile ? merge(profile, look, ['name', 'character']) : profile),
+          (profile) => (profile ? merge(profile, look, ['name', 'character', 'color']) : profile),
         );
       },
       /** The save did not land: read what the server holds again. */

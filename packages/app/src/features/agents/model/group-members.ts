@@ -24,7 +24,7 @@ export function groupMembersOf(
             id,
             name: agentDisplayName(agent),
             handle: agentHandle(agent),
-            character: readAgentCharacter(agent.character),
+            character: readAgentCharacter(agent.character, agent.color),
             color: agent.color ?? undefined,
           },
         ]
