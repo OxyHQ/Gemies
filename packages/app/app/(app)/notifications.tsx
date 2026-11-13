@@ -9,7 +9,7 @@ import { useTranslation } from '@/shared/i18n/use-translation';
 import { Admonition } from '@oxy.so/bloom/admonition';
 import { Badge } from '@oxy.so/bloom/badge';
 import { Button } from '@oxy.so/bloom/button';
-import { EmptyState } from '@/shared/stickers/empty-state';
+import { EmptyState } from '@/shared/ui/empty-state';
 import { RiArrowLeftLine } from '@oxy.so/bloom/icons/RiArrowLeftLine';
 import { RiCheckDoubleLine } from '@oxy.so/bloom/icons/RiCheckDoubleLine';
 import { RiCloseLine } from '@oxy.so/bloom/icons/RiCloseLine';
@@ -194,7 +194,6 @@ export default function NotificationsScreen() {
         <ListRowsSkeleton rows={5} mark="tile" />
       ) : notifications.length === 0 ? (
         <EmptyState
-          sticker="notifications"
           title={t('pages.notifications.emptyTitle')}
           description={t('pages.notifications.emptyDescription')}
         />

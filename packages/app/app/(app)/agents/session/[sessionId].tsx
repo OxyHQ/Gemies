@@ -3,7 +3,7 @@ import { SessionSummary } from '@/features/agents/ui/session/session-summary';
 import { useSessionActivity } from '@/features/agents/runtime/use-session-activity';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { Divider } from '@oxy.so/bloom/divider';
-import { EmptyState } from '@/shared/stickers/empty-state';
+import { EmptyState } from '@/shared/ui/empty-state';
 import { ListRowsSkeleton } from '@/shared/ui/skeletons';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
@@ -54,9 +54,7 @@ export default function SessionActivityScreen() {
           renderItem={({ item }) => <SessionEventCard entry={item} />}
           contentContainerClassName="gap-2 px-4 pb-4"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          ListEmptyComponent={
-            <EmptyState sticker="agentSession" title={t('pages.agents.sessionEmpty')} />
-          }
+          ListEmptyComponent={<EmptyState title={t('pages.agents.sessionEmpty')} />}
         />
       )}
     </View>

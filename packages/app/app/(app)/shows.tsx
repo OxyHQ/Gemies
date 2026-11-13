@@ -26,7 +26,7 @@ import { Admonition } from '@oxy.so/bloom/admonition';
 import { Badge, type BadgeIcon } from '@oxy.so/bloom/badge';
 import { Button } from '@oxy.so/bloom/button';
 import { Card } from '@oxy.so/bloom/card';
-import { EmptyState } from '@/shared/stickers/empty-state';
+import { EmptyState } from '@/shared/ui/empty-state';
 import { RiAddLine } from '@oxy.so/bloom/icons/RiAddLine';
 import { RiArrowRightSLine } from '@oxy.so/bloom/icons/RiArrowRightSLine';
 import { RiGlobalLine } from '@oxy.so/bloom/icons/RiGlobalLine';
@@ -196,7 +196,6 @@ export default function ShowsScreen() {
         ListEmptyComponent={
           isEmpty ? (
             <EmptyState
-              sticker="shows"
               title={t('shows.empty.title')}
               description={t('shows.empty.description')}
               action={{

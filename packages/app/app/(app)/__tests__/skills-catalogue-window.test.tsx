@@ -161,36 +161,11 @@ vi.mock('@oxy.so/bloom/search', async () => {
     Search: (props: Record<string, unknown>) => ReactModule.createElement('Input', props),
   };
 });
-// An empty or failed catalogue is Bloom's `EmptyState`: its title as text, its
+// An empty or failed catalogue is the app's `EmptyState`: its title as text, its
 // action as a button, which is what the retry test presses.
-vi.mock('@oxy.so/bloom/empty-state', async () => {
-  const ReactModule = await import('react');
-  type Action = { label: string; onPress?: () => void };
-  return {
-    EmptyState: ({
-      title,
-      description,
-      action,
-    }: {
-      title?: string;
-      description?: string;
-      action?: Action;
-    }) =>
-      ReactModule.createElement(
-        'EmptyState',
-        null,
-        title ? ReactModule.createElement('Text', null, title) : null,
-        description ? ReactModule.createElement('Text', null, description) : null,
-        action
-          ? ReactModule.createElement(
-              'Button',
-              { onPress: action.onPress },
-              ReactModule.createElement('Text', null, action.label),
-            )
-          : null,
-      ),
-  };
-});
+vi.mock('@/shared/ui/empty-state', async () =>
+  (await import('@/shared/testing/empty-state-stub')).emptyStateModule(),
+);
 vi.mock('@oxy.so/bloom/skeleton', async () => {
   const ReactModule = await import('react');
   const shape = (name: string) => (props: Record<string, unknown>) =>

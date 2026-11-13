@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Chip } from '@oxy.so/bloom/chip';
-import { EmptyState } from '@oxy.so/bloom/empty-state';
-import { RiComputerLine } from '@oxy.so/bloom/icons/RiComputerLine';
 import * as Skeleton from '@oxy.so/bloom/skeleton';
+import { EmptyState } from '@/shared/ui/empty-state';
 import { ListRowsSkeleton } from '@/shared/ui/skeletons';
 import { Muted } from '@oxy.so/bloom/typography';
 import { AgentDetailSection } from '@/features/agents/ui/detail/agent-detail-section';
@@ -77,7 +76,6 @@ export function AgentComputer({ agentId }: { agentId: string }) {
     const status = (computer.error as { response?: { status?: number } } | null)?.response?.status;
     return (
       <EmptyState
-        icon={RiComputerLine}
         title={status === 404 ? t('agents.computer.unavailable') : t('agents.computer.loadFailed')}
       />
     );

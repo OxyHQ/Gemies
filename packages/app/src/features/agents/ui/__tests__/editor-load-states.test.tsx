@@ -51,6 +51,10 @@ vi.mock('@/shared/api/client', () => ({
   },
 }));
 
+/** The not-found and failed screens: their words and their way out, without the gemie. */
+vi.mock('@/shared/ui/empty-state', async () =>
+  (await import('@/shared/testing/empty-state-stub')).emptyStateModule(),
+);
 vi.mock('@oxy.so/bloom/toast', () => ({
   toast: {
     loading: vi.fn(),

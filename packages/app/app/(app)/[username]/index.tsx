@@ -8,7 +8,7 @@ import { UserProfile } from '@/features/profile/ui/user-profile';
 import { useMyAgents } from '@/features/agents/runtime/use-my-agents';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { AiChatMobileHeader } from '@oxy.so/bloom/ai-chat';
-import { EmptyState } from '@/shared/stickers/empty-state';
+import { EmptyState } from '@/shared/ui/empty-state';
 import { useLocalSearchParams } from 'expo-router';
 import { View } from 'react-native';
 
@@ -100,7 +100,7 @@ const AgentThreadPage = () => {
     return (
       <ChatWorkspace header={<AiChatMobileHeader title="Alia" />}>
         <View className="flex-1 justify-center">
-          <EmptyState sticker="agentNotFound" title={t('agents.notFound')} />
+          <EmptyState title={t('agents.notFound')} />
         </View>
       </ChatWorkspace>
     );

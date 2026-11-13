@@ -7,7 +7,7 @@ import { useAgentCatalogue } from '@/features/agents/runtime/use-agents';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { Button } from '@oxy.so/bloom/button';
 import { Chip, ChipRow } from '@oxy.so/bloom/chip';
-import { EmptyState } from '@/shared/stickers/empty-state';
+import { EmptyState } from '@/shared/ui/empty-state';
 import { useWindowBreakpoint } from '@oxy.so/bloom/hooks';
 import { RiAddLine } from '@oxy.so/bloom/icons/RiAddLine';
 import { Search } from '@oxy.so/bloom/search';
@@ -213,7 +213,6 @@ export default function AgentsScreen() {
     if (loading) return null;
     return (
       <EmptyState
-        sticker={searchQuery ? 'agentsNoResults' : 'agentsEmpty'}
         title={t('agents.noAgents')}
         description={searchQuery ? t('common.tryDifferentSearch') : t('agents.createFirstHint')}
         // Creating an agent is a real screen, so an empty list offers it
