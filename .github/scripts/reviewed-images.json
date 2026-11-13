@@ -15,7 +15,7 @@
       "dockerfile": "packages/integrations/Dockerfile",
       "context": ".",
       "target": null,
-      "buildInputsSha256": "98d65e8fe96d27a1c5f677721716ccf2845c36c417df06b51bb3800e82b8bdb1"
+      "buildInputsSha256": "866a2bc5878844e6ad92cc8ee61feb66dd7d8990c6e7959559abcf4d2037884e"
     }
   ]
 }

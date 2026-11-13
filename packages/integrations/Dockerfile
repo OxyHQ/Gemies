@@ -80,8 +80,11 @@ COPY packages/integrations/package.json ./packages/integrations/
 COPY packages/gemies-os/package.json ./packages/gemies-os/
 COPY packages/gemies-os-protocol/package.json ./packages/gemies-os-protocol/
 
-# Install production dependencies only.
-RUN bun install --production --frozen-lockfile --filter @alia/integrations
+# Install production dependencies only, and no peers: in this workspace the app resolves React
+# Native, Expo and the rest of Bloom's app peers, and a filtered install would bring every peer the
+# lockfile resolved (about 800 MB). What integrations needs is its own dependency — Bloom's
+# server-safe `agent-avatar/svg` imports none of them, and Baileys' peer `sharp` is listed.
+RUN bun install --production --frozen-lockfile --filter @alia/integrations --omit=peer
 
 # node-pty has no linux prebuild, so its `install` script compiles it with
 # node-gyp — and bun never runs that script here: the root `trustedDependencies`
