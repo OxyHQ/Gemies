@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { startPlatformActivity } from './platform-activity';
 import express from 'express';
 import { oxyTrustProxy } from '@oxy.so/core/server';
+import { OXY_SOURCE_REGION_HEADER } from '@oxy.so/telemetry';
 import { Server as WebSocketServer } from 'ws';
 import http from 'http';
 import { closePostgres, connectPostgres } from './db';
@@ -19,6 +20,9 @@ import { createLogger } from './shared/logger';
 import { runShutdownSteps } from './shared/shutdown';
 
 const logger = createLogger('Integrations');
+
+// Node lower-cases incoming header names.
+const SOURCE_REGION_HEADER = OXY_SOURCE_REGION_HEADER.toLowerCase();
 
 const PORT = Number(process.env.PORT) || 3005;
 const INTERNAL_PORT = 3005; // Must match the ECS container health-check port.
@@ -240,8 +244,8 @@ async function main() {
       getPeer: () => ({
         service: 'alia',
         region:
-          typeof request.headers['x-oxy-source-region'] === 'string'
-            ? request.headers['x-oxy-source-region']
+          typeof request.headers[SOURCE_REGION_HEADER] === 'string'
+            ? request.headers[SOURCE_REGION_HEADER]
             : undefined,
       }),
     });

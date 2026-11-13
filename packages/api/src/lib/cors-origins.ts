@@ -1,4 +1,5 @@
 import { createOxyCors } from '@oxy.so/core/server';
+import { OXY_TELEMETRY_REQUEST_HEADERS } from '@oxy.so/telemetry';
 import type { RequestHandler } from 'express';
 
 import { log } from './logger.js';
@@ -151,8 +152,7 @@ export function createInternalCors(webUrl: string | undefined): RequestHandler {
       'X-Device-Info',
       'X-Oxy-User-Id',
       'X-Workspace-Id',
-      'X-Oxy-Edge-Region',
-      'X-Oxy-Activity-Id',
+      ...OXY_TELEMETRY_REQUEST_HEADERS,
       // The Oxy-signed app assertion the SDK sends beside the session
       // (ADR 0045, lib/app-surface.ts). Unlisted, a browser's preflight
       // refused every SDK request that carried it.

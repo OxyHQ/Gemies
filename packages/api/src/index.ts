@@ -1,5 +1,6 @@
 import express from 'express';
 import { createOxyRateLimit, createOxySecurityHeaders, oxyTrustProxy } from '@oxy.so/core/server';
+import { OXY_TELEMETRY_REQUEST_HEADERS } from '@oxy.so/telemetry';
 import { oxy } from './lib/oxy.js';
 import { startPlatformActivity } from './lib/platform-activity.js';
 import http from 'http';
@@ -159,8 +160,7 @@ app.use(
       'X-Signature',
       'X-Session-Id',
       'X-Device-Info',
-      'X-Oxy-Edge-Region',
-      'X-Oxy-Activity-Id',
+      ...OXY_TELEMETRY_REQUEST_HEADERS,
       // The Oxy-signed app assertion the SDK sends beside the session
       // (ADR 0045, lib/app-surface.ts). Unlisted, a browser's preflight
       // refused every SDK request that carried it.
