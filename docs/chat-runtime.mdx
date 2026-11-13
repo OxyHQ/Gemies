@@ -211,7 +211,10 @@ or another gemie's stored message in the same owned conversation. The server bin
 identity and checks current sender membership, the latest person request and the exact target's
 content, role and author under the thread lock. A historical peer message remains a valid target
 after that peer leaves; reacting does not execute or wake its author. Self-reactions and spoofed
-client authors are rejected. Observation turns cannot use this tool.
+client authors are rejected. Observation turns cannot use this tool. A local identity (ADR 0036)
+runs in its external daemon and receives no hosted reaction capability; a sender that becomes
+local after admission cannot mutate or complete a hosted reaction turn. Its historical messages
+remain valid feedback targets without creating an Oxy account or waking that daemon.
 
 `reactions` remains the person's own emoji selection. Additive `reactionEntries` contains
 `{ emoji, author: { kind: 'user', id } }` or
