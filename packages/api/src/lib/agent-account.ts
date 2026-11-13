@@ -352,6 +352,20 @@ export async function actorVerdictFor(
 }
 
 /**
+ * Whether the signed-in caller may edit `agent`: {@link actorVerdictFor} as a cached READ, false for
+ * a caller without a session. What decides that a draft (`is_published = false`) is theirs to read:
+ * its card (`GET /agents/:id`) and its activity answer the same.
+ */
+export async function callerMayEditAgent(
+  agent: AgentRecord,
+  caller: { readonly oxyUserId: string | undefined; readonly accessToken: string | undefined },
+): Promise<boolean> {
+  const { oxyUserId, accessToken } = caller;
+  if (oxyUserId === undefined || accessToken === undefined) return false;
+  return (await actorVerdictFor(agent, { oxyUserId, accessToken, cache: true })).ok;
+}
+
+/**
  * Whether `oxyUserId` owns a `local` gemie (ADR 0036): its whole authority, since it has no account
  * that could be shared or acted as.
  */

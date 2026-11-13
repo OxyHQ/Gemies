@@ -3,7 +3,8 @@ import { countConversationsPerDayForAgent } from '../../db/chat/conversationRepo
 import { authenticateToken, optionalAuth } from '../../middleware/auth.js';
 import { getRecentActivity } from '../../lib/agent/runner.js';
 import { getDb } from '../../db/index.js';
-import { findAgentById } from '../../db/agents/agentRepository.js';
+import { findAgentById, type AgentRecord } from '../../db/agents/agentRepository.js';
+import { callerMayEditAgent } from '../../lib/agent-account.js';
 import {
   countAgentSessionsByDay,
   findAgentSessionOwnedBy,
@@ -18,11 +19,27 @@ import type { Request, Response } from 'express';
 
 const router = Router();
 
+/**
+ * The agent whose activity this caller may read, or null for the same 404 a stranger gets: a
+ * published agent's for anyone, a draft's for whoever may edit it, as its card decides
+ * (`GET /agents/:id`). A draft's own editor used to get a 404 here beside a card that loaded.
+ */
+async function readableAgent(req: Request): Promise<AgentRecord | null> {
+  const agent = await findAgentById(getDb(), String(req.params.id));
+  if (agent === null) return null;
+  if (agent.isPublished) return agent;
+  const mayEdit = await callerMayEditAgent(agent, {
+    oxyUserId: req.user?.id,
+    accessToken: req.accessToken,
+  });
+  return mayEdit ? agent : null;
+}
+
 // GET /agents/:id/activity - get recent activity buffer
 router.get('/:id/activity', optionalAuth, async (req: Request, res: Response) => {
   try {
-    const agent = await findAgentById(getDb(), String(req.params.id));
-    if (!agent || !agent.isPublished) {
+    const agent = await readableAgent(req);
+    if (!agent) {
       return res.status(404).json({ error: 'Agent not found' });
     }
 
@@ -72,8 +89,8 @@ router.get('/:id/activity', optionalAuth, async (req: Request, res: Response) =>
 // GET /agents/:id/activity-grid - aggregated session counts by day for heatmap
 router.get('/:id/activity-grid', optionalAuth, async (req: Request, res: Response) => {
   try {
-    const agent = await findAgentById(getDb(), String(req.params.id));
-    if (!agent || !agent.isPublished) {
+    const agent = await readableAgent(req);
+    if (!agent) {
       return res.status(404).json({ error: 'Agent not found' });
     }
 

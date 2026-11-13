@@ -1,5 +1,6 @@
 /**
- * Who gets an agent's SYSTEM PROMPT, and who gets the rest of it.
+ * Who gets an agent's SYSTEM PROMPT, and who gets the rest of it; and who reads a draft's activity
+ * (the last describe).
  *
  * `GET /agents/:id` is `optionalAuth`, `findAgentById` selects every column and
  * `toAgentRecord` carries `system_prompt` — so a published agent's instructions
@@ -149,6 +150,26 @@ vi.mock('../../../lib/logger.js', () => ({
     general: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   },
 }));
+
+vi.mock('../../../db/agents/agentSessionRepository.js', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../../db/agents/agentSessionRepository.js')
+  >('../../../db/agents/agentSessionRepository.js');
+  return {
+    ...actual,
+    countAgentSessionsByDay: vi.fn(async () => [{ date: '2026-11-12', count: 2 }]),
+    findLatestAgentSessionOwnedBy: vi.fn(async () => null),
+  };
+});
+vi.mock('../../../db/chat/conversationRepository.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../db/chat/conversationRepository.js')>(
+    '../../../db/chat/conversationRepository.js',
+  );
+  return {
+    ...actual,
+    countConversationsPerDayForAgent: vi.fn(async () => [{ day: '2026-11-13', count: 1 }]),
+  };
+});
 
 const { default: agentsRouter } = await import('../index.js');
 const { clearAgentAccountVerdicts } = await import('../../../lib/agent-account.js');
@@ -375,5 +396,50 @@ describe('what a caller may do with a gemie, as its card says (ADR 0035)', () =>
       body: JSON.stringify({ tagline: 'renamed by a person' }),
     });
     expect(patch.status).toBe(404);
+  });
+});
+
+const get = (path: string) => fetch(`${baseUrl}/agents/agent-1${path}`);
+
+/**
+ * `GET /agents/:id/activity-grid` and `/activity` answered 404 for every draft (`is_published =
+ * false`), its own editor included, beside a card that loaded for them: in production the owner of a
+ * new draft got three 404s per visit to its page (2026-11-13) and a heatmap of nothing. Whoever reads
+ * the card reads its activity.
+ */
+describe('a draft’s activity', () => {
+  beforeEach(() => {
+    repository.findAgentById.mockResolvedValue({ ...AGENT_ROW, isPublished: false });
+  });
+
+  it('is its editor’s, as its card is', async () => {
+    actingAs('oxy-owner');
+    expect((await get('')).status).toBe(200);
+
+    const grid = await get('/activity-grid?weeks=4');
+    expect(grid.status).toBe(200);
+    expect(await grid.json()).toMatchObject({ totalSessions: 3, maxCount: 2 });
+    expect((await get('/activity')).status).toBe(200);
+  });
+
+  it('is the same 404 as a missing agent for a stranger and for nobody', async () => {
+    state.userId = 'oxy-stranger';
+    state.accessToken = 'token';
+    state.account = { kind: 'bot', relationship: 'none', callerMembership: null };
+    expect((await get('/activity-grid')).status).toBe(404);
+    expect((await get('/activity')).status).toBe(404);
+
+    state.userId = undefined;
+    state.accessToken = undefined;
+    expect((await get('/activity-grid')).status).toBe(404);
+    expect(state.accountLookups).toEqual(['acct-bot']);
+  });
+});
+
+describe('a published agent’s activity', () => {
+  it('is anyone’s, without asking Oxy who they are', async () => {
+    expect((await get('/activity-grid')).status).toBe(200);
+    expect((await get('/activity')).status).toBe(200);
+    expect(state.accountLookups).toEqual([]);
   });
 });
