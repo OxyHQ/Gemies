@@ -121,12 +121,15 @@ import {
 } from './tool-budget.js';
 import { requestInputBudgetBytes, type ModelInputLimits } from './inference/request-budget.js';
 import { primaryToolNames } from './agent-primary-tools.js';
+import { AGENT_REACTION_TOOL, type AgentReactionTurn } from './chat/reactions/agent-tool.js';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface ForUserOptions {
+  /** Server-bound local conversation participation; absent outside an admitted hosted chat. */
+  conversationReaction?: AgentReactionTurn;
   userId: string;
   accessToken?: string;
   /**
@@ -888,6 +891,13 @@ export class ToolPipeline {
         ? buildHostTools(host, sseEmitter, hostTurn)
         : {};
     const tools: ToolSet = { ...aliaTools, ...(nested ? {} : editorTools), ...hostTools };
+    const reaction = opts.conversationReaction;
+    if (reaction) {
+      if (!agent || reaction.actor.id !== agent._id || reaction.userId !== userId || !actsForPerson)
+        throw new Error('Conversation reaction scope does not match the acting agent');
+      // The native capability cannot be shadowed by a host/editor tool of the same name.
+      tools[AGENT_REACTION_TOOL] = reaction.tool;
+    }
 
     // 6. The catalogue of gemies `sendMessage` can reach, for finding one to write to.
     if (actsForPerson && !nested && spacePeers === null && grants.allows('delegation')) {
@@ -923,7 +933,7 @@ export class ToolPipeline {
       ...pickedApps,
       ...primaryToolNames(agent.primaryTools, oxyServiceTools),
     ];
-    return withBudget(
+    const assembled = withBudget(
       budgetTools({
         tools,
         sources: { oxy_service: oxyServiceTools, mcp: mcpTools },
@@ -933,6 +943,9 @@ export class ToolPipeline {
       }),
       toolNameMapping,
     );
+    return reaction
+      ? { ...assembled, appCatalogPrompt: assembled.appCatalogPrompt + '\n\n' + reaction.prompt }
+      : assembled;
   }
 }
 
