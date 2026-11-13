@@ -20,7 +20,7 @@
  *
  * ## The colour is the account's, and it paints the character
  *
- * A gemie's colour is `User.color` — a Bloom preset key Oxy already stores for every account — and
+ * A gemie's colour is `User.color` — a Bloom preset key or any hex, which Oxy stores for every account — and
  * nothing else: the character this service stores keeps its shape and features and carries no paint
  * (`lib/agent-character.ts`). Every response that draws a gemie therefore carries this `color`
  * beside its `character`, and a client paints the one in the other (`readAgentCharacter` in
@@ -52,8 +52,8 @@ export interface AgentIdentity {
   /** The Oxy username. Globally unique across the whole account graph. */
   handle: string | null;
   /**
-   * The gemie's colour: a Bloom colour preset key — `"blue"`, `"lagoon"` — never a hex (an old
-   * account may still hold a legacy hex, which renders as its seed). Its character is painted in it.
+   * The gemie's colour: a Bloom colour preset key — `"blue"`, `"lagoon"` — or any hex
+   * (`"#ff8b67"`). Its character is painted in it.
    *
    * Oxy gives every account one, so null means the account did not resolve (or Oxy did not serve
    * the field), and a client paints the gemie in its fallback. `lib/agent-color.ts` says what

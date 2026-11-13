@@ -80,7 +80,7 @@ export interface IdentityDraft {
   name: string;
   handle: string;
   /**
-   * The gemie's colour: the account's `User.color`, a Bloom preset key. It paints the character
+   * The gemie's colour: the account's `User.color`, a Bloom preset key or any hex. It paints the character
    * and tints the chat everywhere, in this app and every other.
    */
   color: string;

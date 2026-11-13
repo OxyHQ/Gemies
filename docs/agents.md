@@ -107,15 +107,15 @@ What runs with no person's app around it — an automation, a delegation inside
 an agent session — has no surface, so a confined agent never runs there.
 
   **A gemie's colour is its account's.** It is drawn as a Bloom avatar character
-  painted in its Oxy account's `User.color`, a Bloom preset key: the avatar's body,
+  painted in its Oxy account's `User.color`, a Bloom preset key or any hex: the avatar's body,
   the chat's tint, the sidebar, the catalogue and every other app. The character
   (`agents.character`, also put on the account) keeps its shape and features and
   carries no paint (`packages/api/src/lib/agent-character.ts`), so `AgentIdentity`
   carries `color` beside it and a client paints the one in the other
   (`readAgentCharacter` in `@gemies/sdk`). The editor writes the colour to the
-  account with the owner's own credential, as it writes the name.
-  `packages/api/src/lib/agent-color.ts` records what a gemie may be given: every
-  preset Oxy accepts on a bot account (`FREE_USER_PROFILE_COLOR_PRESETS`).
+  account with the owner's own credential, as it writes the name; its picker is
+  free, any colour. `packages/api/src/lib/agent-color.ts` records what a new gemie
+  is offered by name (the presets Oxy accepts on a bot) and that a hex is as good.
 
   **Known dependency: a new agent is DISCOVERABLE in Oxy immediately.** Every
   Oxy account is born public — `createAccountRequestSchema` carries no privacy

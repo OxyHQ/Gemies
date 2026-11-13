@@ -50,7 +50,7 @@ describe('the agent thread’s theme scope', () => {
   it('is read at all', () => {
     // The guard against asserting over an empty string: every check below would
     // pass on one, and would keep passing after the element was renamed away.
-    // The account's colour: a preset key, or the seed of a legacy hex.
+    // The account's colour: a preset key, or a hex colour as its seed.
     expect(opening).toContain('colorPreset=');
     expect(opening).toContain('seed=');
     expect(SOURCE.length).toBeGreaterThan(1000);

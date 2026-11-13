@@ -11,7 +11,7 @@ import {
   DEFAULT_NEW_AGENT_GRANTS,
   FIXED_CAPABILITY_FAMILIES,
 } from '../../domain/capability-grants.js';
-import { AGENT_COLORS, agentColorFor } from '../agent-color.js';
+import { AGENT_COLORS, agentColorFor, isAgentColor } from '../agent-color.js';
 import { gemieCharacterOf } from '../agent-character.js';
 import { accountCategoryChoices, isOfferedAccountCategory } from '../account-category.js';
 
@@ -87,10 +87,11 @@ export const createAgentTool = (userId: string, accessToken: string | undefined)
             `${accountCategoryChoices}. Omit if none fits: none beats a wrong one.`,
         ),
       color: z
-        .enum(AGENT_COLORS)
+        .string()
+        .refine(isAgentColor, { message: 'A colour: one of the named ones, or #rrggbb' })
         .optional()
         .describe(
-          'Its colour (its account’s): its avatar and its chat are painted in it. Pick one that suits what it does.',
+          `Its colour (its account’s): its avatar and its chat are painted in it. One of ${AGENT_COLORS.join(', ')}, or any #rrggbb. Pick one that suits what it does.`,
         ),
     }),
 
@@ -163,11 +164,9 @@ export const createAgentTool = (userId: string, accessToken: string | undefined)
            * preset — so "no colour" is not a state this can reach anyway, and a
            * colour chosen for what the agent does beats one chosen by nobody.
            *
-           * Not re-validated here, unlike `accountCategory` below: `AGENT_COLORS`
-           * is a tuple, so the schema can ENUMERATE it and the tool call is
-           * refused before `execute` runs. The category's vocabulary is a
-           * `readonly` array the schema cannot enumerate, which is exactly why
-           * that one is checked in code and this one is not.
+           * Not re-validated here: the schema refines it with `isAgentColor`
+           * (an offered preset or any hex), so the tool call is refused before
+           * `execute` runs.
            */
           color: color ?? agentColorFor(username),
           character,

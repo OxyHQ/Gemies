@@ -166,18 +166,20 @@ describe('an agent created mid-conversation', () => {
     expect(oxy.accounts[0].color).toBe('mint');
   });
 
-  it('refuses a colour that is not one of ours before the tool ever runs', () => {
-    // Where the vocabulary is a tuple the SCHEMA enumerates it, so an invented
-    // colour is an invalid tool call rather than something `execute` has to
-    // defend against. Asserted through the schema, because that is the only
+  it('takes a named colour or any hex, and refuses what is no colour, before the tool runs', () => {
+    // The SCHEMA refines it, so an invented colour is an invalid tool call
+    // rather than something `execute` has to defend against. Asserted through the schema, because that is the only
     // place it is true — calling `execute` directly walks straight past it.
     const schema = TOOL.inputSchema as {
       safeParse: (value: unknown) => { success: boolean };
     };
     const base = { name: 'Nadia', description: 'Watches the markets.', category: 'Assistant' };
 
-    expect(schema.safeParse({ ...base, color: '#ff0000' }).success).toBe(false);
+    expect(schema.safeParse({ ...base, color: 'chartreuse' }).success).toBe(false);
+    expect(schema.safeParse({ ...base, color: '#ff00' }).success).toBe(false);
     expect(schema.safeParse({ ...base, color: 'mint' }).success).toBe(true);
+    // Any colour is an account colour.
+    expect(schema.safeParse({ ...base, color: '#ff0000' }).success).toBe(true);
   });
 
   it('asks the model for a person’s name, not a job title', async () => {

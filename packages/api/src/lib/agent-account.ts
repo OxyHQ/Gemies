@@ -390,7 +390,7 @@ export async function createAgentBotAccount(params: {
   bio?: string;
   parentAccountId?: string;
   /**
-   * A named preset KEY — `'blue'`, `'mint'`, … — never a hex value, and set at
+   * A named preset KEY — `'blue'`, `'mint'`, … — or a hex colour, and set at
    * CREATION rather than after it: for a managed account the colour is a visual
    * identity, and an account that exists without one and acquires it on a
    * second request is a face that changes by itself.

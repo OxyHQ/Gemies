@@ -178,11 +178,11 @@ describe('the generator proposes a colour', () => {
 describe('the route answers only a colour it offered', () => {
   /**
    * What Oxy refuses on a bot: a brand preset (`oxy`, `faircoin`) is its own account's, `mono` is a
-   * personal benefit, and a hex is not a preset at all. A model that names one must not have it
+   * personal benefit, and `#ff00` is no colour at all. A model that names one must not have it
    * passed through, because it would travel to `POST /accounts` and be a 400 on a value the person
    * never typed.
    */
-  it.each(['oxy', 'faircoin', 'mono', '#ff0000'])(
+  it.each(['oxy', 'faircoin', 'mono', '#ff00'])(
     'does not pass %s through to the response',
     async (refused) => {
       state.modelText = modelAnswer({ color: refused });
@@ -192,6 +192,11 @@ describe('the route answers only a colour it offered', () => {
       expect(AGENT_COLORS).toContain(body.color);
     },
   );
+
+  it('passes through a hex colour: any colour is an account colour', async () => {
+    state.modelText = modelAnswer({ color: '#ff8b67' });
+    expect((await generate()).color).toBe('#ff8b67');
+  });
 
   it('offers every preset Oxy accepts on a bot account, and only those', async () => {
     const { FREE_USER_PROFILE_COLOR_PRESETS } = await import('@oxy.so/contracts');
