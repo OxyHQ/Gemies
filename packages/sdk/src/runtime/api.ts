@@ -71,7 +71,7 @@ async function readBody(response: Response): Promise<unknown> {
 
 /** The structural slice of `OxyServices` the API layer needs. */
 export interface LinkableOxy {
-  createLinkedClient(config: { baseURL: string }): {
+  createLinkedClient(config: { baseURL: string; receiverSendsNoStore?: boolean }): {
     client: {
       requestAuthenticatedResponse(config: {
         method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -102,7 +102,9 @@ export function createGemieApi(
     request: GemieApiRequest = {},
   ): Promise<GemieApiResult<T>> {
     const assertion = await appAssertionHeaders();
-    const linked = oxyServices.createLinkedClient({ baseURL: apiUrl });
+    // The Gemies API sends `Cache-Control: no-store` on every response, so the browser may use its
+    // CORS preflight cache (`@oxy.so/core` >= 7.50; an older core ignores the flag).
+    const linked = oxyServices.createLinkedClient({ baseURL: apiUrl, receiverSendsNoStore: true });
     try {
       const headers = {
         ...assertion,

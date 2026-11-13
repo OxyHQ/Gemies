@@ -20,6 +20,8 @@ import { useAliaSpeech } from '@/features/chat/runtime/use-alia-speech';
 import config from '@/shared/platform/config';
 import { useAccountLifecycle } from '@/shell/account-lifecycle';
 import { AgentThemeScope } from '@/features/agents/ui/agent-theme-scope';
+import { LazyAgentEditorLoader } from '@/features/agents/ui/edit/lazy-agent-editor';
+import { usePreloadWhenIdle } from '@/shared/platform/preloadable';
 import { useFavoritesStore } from '@/features/projects/runtime/favorites-store';
 import { useSpacesOpenStore } from '@/features/spaces/runtime/spaces-open-store';
 import { useFoldersStore } from '@/features/projects/runtime/folders-store';
@@ -108,6 +110,8 @@ export default function AppLayout() {
   // profiles never shows one account's collections under another (#547).
   const { user, activeSessionId } = useOxy();
   const userId = user?.id ?? null;
+  // The agent editor is its own chunk; fetched once the page is idle, it opens without waiting.
+  usePreloadWhenIdle(LazyAgentEditorLoader, userId !== null);
   useEffect(() => {
     loadProjects(userId);
     loadFolders(userId);

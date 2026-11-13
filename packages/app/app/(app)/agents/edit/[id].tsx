@@ -1,4 +1,4 @@
-import { AgentEditorLoader } from '@/features/agents/ui/edit/agent-editor-loader';
+import { AgentEditorSurface } from '@/features/agents/ui/edit/lazy-agent-editor';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 /**
@@ -15,7 +15,7 @@ export default function EditAgentByIdScreen() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <AgentEditorLoader
+      <AgentEditorSurface
         agentId={id}
         onClose={() => (router.canGoBack() ? router.back() : toList())}
         onBackToList={toList}

@@ -1,5 +1,5 @@
 import { useAgentByHandle } from '@/features/agents/runtime/use-agents';
-import { AgentEditorLoader } from '@/features/agents/ui/edit/agent-editor-loader';
+import { AgentEditorSurface } from '@/features/agents/ui/edit/lazy-agent-editor';
 import {
   AgentEditorLoadFailed,
   AgentEditorLoading,
@@ -27,7 +27,7 @@ export default function EditAgentScreen() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       {agent !== undefined ? (
-        <AgentEditorLoader
+        <AgentEditorSurface
           agentId={agent._id}
           onClose={() => (router.canGoBack() ? router.back() : toList())}
           onBackToList={toList}

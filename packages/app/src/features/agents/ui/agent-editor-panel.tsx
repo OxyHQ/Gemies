@@ -1,4 +1,4 @@
-import { AgentEditorLoader } from '@/features/agents/ui/edit/agent-editor-loader';
+import { AgentEditorSurface } from '@/features/agents/ui/edit/lazy-agent-editor';
 import { useUIStore } from '@/features/chat/runtime/ui-store';
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
@@ -32,7 +32,7 @@ export function AgentEditorPanel() {
   // its own): the shell's bounded layout gives it the height, so the panel adds nothing.
   return (
     <View className="flex-1" testID="agent-editor-panel">
-      <AgentEditorLoader
+      <AgentEditorSurface
         agentId={agentId ?? undefined}
         onClose={() => setRightPanel(null)}
         onBackToList={() => {

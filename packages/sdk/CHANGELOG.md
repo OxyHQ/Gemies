@@ -1,5 +1,13 @@
 # @gemies/sdk
 
+## 4.1.0
+
+- **The group welcome no longer links Bloom's whole multi-agent template.** `GemieGroupWelcome`
+  imports `SelectedAgentPreview` from `@oxy.so/bloom/multi-agent-chat/selected-agent-preview`
+  instead of the `multi-agent-chat` barrel: in Gemies' web export that took `multi-agent-chat` from
+  149,484 to 9,309 bytes of the chunk every route loads first. The Bloom peer floor is
+  `>=21.1.0`, the first Bloom with that entry.
+
 ## 4.0.0
 
 - **Breaking: a connected account is the person's, granted to their gemies (Gemies ADR 0035 as
