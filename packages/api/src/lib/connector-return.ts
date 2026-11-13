@@ -15,7 +15,21 @@
  * Anything else falls back to the web app's connectors store (`/connectors`).
  */
 
+import { GEMIES_API_URL } from '@gemies/server';
 import { appOriginsFor } from './cors-origins.js';
+
+/**
+ * The one redirect URI every provider knows Gemies by: `https://api.gemies.ai/mcp/oauth/callback`
+ * in production, the API's canonical public origin (`GEMIES_API_URL`), whatever host a request
+ * arrived on. It is what each provider app is registered with, and what a Dynamic Client
+ * Registration names, so it is fixed rather than read from deployment configuration; a
+ * development API (`API_BASE_URL`, or localhost) uses its own.
+ */
+export function connectorCallbackUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const origin =
+    env.NODE_ENV === 'production' ? GEMIES_API_URL : env.API_BASE_URL || 'http://localhost:4150';
+  return `${origin.replace(/\/$/, '')}/mcp/oauth/callback`;
+}
 
 /** The schemes of the native apps that connect connectors: Gemies and Alia. */
 const NATIVE_SCHEMES = ['gemies:', 'alia:'] as const;

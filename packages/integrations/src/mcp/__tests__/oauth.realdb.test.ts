@@ -76,7 +76,7 @@ function provider(oxyUserId: string, serverId: string) {
     oxyUserId,
     serverId,
     stateToken: 'state-token',
-    callbackUrl: 'https://api.alia.onl/mcp/oauth/callback',
+    callbackUrl: 'https://api.gemies.ai/mcp/oauth/callback',
   });
 }
 
@@ -221,6 +221,22 @@ describe('secrets reach the column as ciphertext, and only as ciphertext', () =>
     const fresh = provider('mcp-enc-user', 'github');
     expect(await fresh.clientInformation()).toEqual(info);
     expect(await fresh.codeVerifier()).toBe('pkce-verifier-value');
+  });
+
+  it('forgets a client registered for another redirect URI, so the next sign-in registers again', async () => {
+    const p = provider('mcp-moved-user', 'notion');
+    await p.saveClientInformation({
+      client_id: 'registered-for-alia',
+      redirect_uris: ['https://api.alia.onl/mcp/oauth/callback'],
+    });
+    expect(await provider('mcp-moved-user', 'notion').clientInformation()).toBeUndefined();
+
+    const current = {
+      client_id: 'registered-for-gemies',
+      redirect_uris: ['https://api.gemies.ai/mcp/oauth/callback'],
+    };
+    await p.saveClientInformation(current);
+    expect(await provider('mcp-moved-user', 'notion').clientInformation()).toEqual(current);
   });
 
   it('stores the authorization URL in the CLEAR, deliberately', async () => {

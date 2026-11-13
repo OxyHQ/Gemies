@@ -127,7 +127,15 @@ export class AliaOAuthProvider implements OAuthClientProvider {
     }
     const row = await this.row();
     if (!row.clientInformation) return undefined;
-    return JSON.parse(decrypt(row.clientInformation)) as OAuthClientInformationMixed;
+    const registered = JSON.parse(decrypt(row.clientInformation)) as OAuthClientInformationMixed & {
+      redirect_uris?: string[];
+    };
+    // A client registered for another redirect URI (the API's moved) cannot finish a sign-in
+    // here: answer none, so the SDK registers again with this one and replaces it.
+    if (registered.redirect_uris && !registered.redirect_uris.includes(this.callbackUrl)) {
+      return undefined;
+    }
+    return registered;
   }
 
   async saveClientInformation(info: OAuthClientInformationMixed): Promise<void> {

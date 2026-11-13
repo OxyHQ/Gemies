@@ -85,10 +85,6 @@ const router = express.Router();
 const INTEGRATIONS_URL = process.env.INTEGRATIONS_URL;
 const INTEGRATIONS_TIMEOUT_MS = 30_000;
 
-function callbackUrl(): string {
-  return `${process.env.API_BASE_URL || 'http://localhost:4150'}/mcp/oauth/callback`;
-}
-
 async function callIntegrations(
   oxyUserId: string,
   path: string,
@@ -174,7 +170,6 @@ async function beginAuthorization(input: {
       config: input.config,
       transport: input.transport,
       stateToken: state,
-      callbackUrl: callbackUrl(),
     },
   );
   if (!ok || typeof data.authorizationUrl !== 'string') {
@@ -282,7 +277,7 @@ router.post('/oauth/complete', authenticateToken, async (req, res) => {
     const { ok, status, data } = await callIntegrations(
       req.userId!,
       `/mcp/servers/${stateRow.serverId}/oauth/finish`,
-      { config, transport, code, callbackUrl: callbackUrl() },
+      { config, transport, code },
     );
     if (!ok || !data.success) {
       if (existing) {

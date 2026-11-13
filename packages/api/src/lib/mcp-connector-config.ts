@@ -22,9 +22,12 @@ import {
   type McpServerRow,
 } from '../db/integrations/mcpServerRepository.js';
 import { MCP_SERVER_TRANSPORTS, type McpServerTransport } from '../db/schema/integrations.js';
+import { connectorCallbackUrl } from './connector-return.js';
 import { findRegistryEntry, type McpRegistryEntry } from './mcp-registry.js';
 
 export interface IntegrationsMcpConfig extends McpServerConfig {
+  /** Where the provider returns an authorization (`connectorCallbackUrl`): one URI, from the API. */
+  oauthCallbackUrl: string;
   oauthClient?: { clientId: string; clientSecret?: string };
   oauthScope?: string;
   oauthRevocation?: { url: string; clientAuth: 'basic' | 'body' };
@@ -124,6 +127,7 @@ export function registryIntegrationsConfig(
   return {
     url: entry.url,
     requiresOAuth: true,
+    oauthCallbackUrl: connectorCallbackUrl(env),
     ...(client ? { oauthClient: client } : {}),
     ...(entry.oauth?.scope ? { oauthScope: entry.oauth.scope } : {}),
     ...(entry.oauth?.revocation ? { oauthRevocation: entry.oauth.revocation } : {}),
@@ -135,5 +139,7 @@ export function integrationsConfigFor(
   env: NodeJS.ProcessEnv = process.env,
 ): IntegrationsMcpConfig {
   const entry = registryEntryOf(row);
-  return entry ? registryIntegrationsConfig(entry, env) : toMcpServerConfig(row);
+  return entry
+    ? registryIntegrationsConfig(entry, env)
+    : { ...toMcpServerConfig(row), oauthCallbackUrl: connectorCallbackUrl(env) };
 }

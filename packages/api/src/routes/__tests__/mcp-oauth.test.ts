@@ -270,9 +270,10 @@ describe('POST /connect — a new account of a catalogue entry', () => {
     expect(mockFetch.mock.calls[0]?.[0]).toBe(
       `http://integrations.test/mcp/servers/${state?.serverId}/oauth/start`,
     );
-    expect(sentBody()).toMatchObject({
-      config: { url: 'https://mcp.notion.test/mcp', requiresOAuth: true },
-      callbackUrl: 'https://api.test/mcp/oauth/callback',
+    expect(sentBody().config).toEqual({
+      url: 'https://mcp.notion.test/mcp',
+      requiresOAuth: true,
+      oauthCallbackUrl: 'https://api.test/mcp/oauth/callback',
     });
   });
 
@@ -320,6 +321,7 @@ describe('POST /connect — a new account of a catalogue entry', () => {
       oauthClient: { clientId: 'vendor-id', clientSecret: 'vendor-secret' },
       oauthScope: 'read write',
       oauthRevocation: { url: 'https://vendor.test/oauth/revoke', clientAuth: 'basic' },
+      oauthCallbackUrl: 'https://api.test/mcp/oauth/callback',
     });
   });
 
@@ -518,7 +520,11 @@ describe('POST /custom — the person’s own server', () => {
 
     expect(res.statusCode).toBe(202);
     expect(res.body.authorizationUrl).toBe('https://auth.mine.test/authorize');
-    expect(sentBody(1).config).toEqual({ url: 'https://mcp.mine.test/mcp', requiresOAuth: true });
+    expect(sentBody(1).config).toEqual({
+      url: 'https://mcp.mine.test/mcp',
+      requiresOAuth: true,
+      oauthCallbackUrl: 'https://api.test/mcp/oauth/callback',
+    });
     expect(mockCreateState.mock.calls[0]?.[1]).toMatchObject({ serverId: 'srv-c' });
   });
 
