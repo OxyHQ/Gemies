@@ -13,9 +13,9 @@ import { log } from '../lib/logger.js';
 import { authenticateChannelAccount, hasChannelContext } from './channel-auth.js';
 import { oxy, OXY_API_URL } from '../lib/oxy.js';
 import {
-  oxyInferenceEndpointRefusal,
+  oxyIdentityEndpointRefusal,
   resolveOxyDeploymentEnvironment,
-} from '../lib/inference/oxy-inference.js';
+} from '../lib/inference/workload-identity-config.js';
 
 // Extend Express Request for Oxy users and service tokens
 declare global {
@@ -90,7 +90,7 @@ export const oxyServiceAuth: RequestHandler = oxy.middleware.service({
  * Oxy origin is not one Alia may send that credential to.
  */
 const machineCredentialAuth =
-  oxyInferenceEndpointRefusal(OXY_API_URL, resolveOxyDeploymentEnvironment()) === null
+  oxyIdentityEndpointRefusal(OXY_API_URL, resolveOxyDeploymentEnvironment()) === null
     ? createOxyAliaMachineCredentialAuth(oxy, { environment: resolveOxyDeploymentEnvironment() })
     : null;
 
