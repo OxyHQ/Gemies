@@ -154,8 +154,6 @@ flowchart LR
 | [`packages/sdk`](packages/sdk/) | `@gemies/sdk` | Gemies in any React Native or Expo app |
 | [`packages/server`](packages/server/) | `@gemies/server` | The server-side client |
 
-Gemies was split out of Alia on 2026-11-12 with its full history; some packages still carry
-Alia's name inside while the move finishes ([ADR 0034](docs/adr/0034-gemies-and-alia.md)).
 Shared UI is [Bloom](https://github.com/OxyHQ/bloom) and identity is
 [`@oxy.so/services`](https://github.com/OxyHQ/oxy).
 
