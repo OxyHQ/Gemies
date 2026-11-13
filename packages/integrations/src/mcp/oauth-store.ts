@@ -37,7 +37,7 @@
  * one here — which is why it gets misdiagnosed.
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, lt } from 'drizzle-orm';
 import type { IntegrationsDatabase } from '../db';
 import { mcpConnectorAuths } from '../db/schema';
 
@@ -166,4 +166,34 @@ export async function findConnectorAuth(
     )
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * How long a sign-in may stay unfinished before its record is abandoned: well
+ * past the API's ten-minute OAuth state, after which the flow cannot complete.
+ */
+export const ABANDONED_AUTHORIZATION_MS = 60 * 60 * 1000;
+
+/**
+ * Forget a person's sign-ins that never finished: a record with no tokens, not
+ * touched for {@link ABANDONED_AUTHORIZATION_MS}. Each Connect of a new account
+ * begins its own record, so one the person walked away from is cleared the next
+ * time they start one, rather than kept as a registered client for nothing.
+ */
+export async function forgetAbandonedAuthorizations(
+  db: IntegrationsDatabase,
+  oxyUserId: string,
+  now: Date = new Date(),
+): Promise<number> {
+  const rows = await db
+    .delete(mcpConnectorAuths)
+    .where(
+      and(
+        eq(mcpConnectorAuths.oxyUserId, oxyUserId),
+        isNull(mcpConnectorAuths.tokens),
+        lt(mcpConnectorAuths.updatedAt, new Date(now.getTime() - ABANDONED_AUTHORIZATION_MS)),
+      ),
+    )
+    .returning({ id: mcpConnectorAuths.id });
+  return rows.length;
 }

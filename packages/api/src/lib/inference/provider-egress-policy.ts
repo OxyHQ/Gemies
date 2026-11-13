@@ -244,7 +244,7 @@ let installed: Installed | null = null;
  * host are all refused, an allowed host still answers. What does NOT hold is
  * the `ws` door: Bun replaces the `ws` package with a built-in whose client is
  * the native WebSocket and never calls `https.request`. Nothing in this
- * process opens a client WebSocket today (`lib/mcp-relay.ts` is a server); one
+ * process opens a client WebSocket today (its sockets are servers); one
  * that did would be reachable only through the network rule.
  */
 export function installProviderEgressBlock(

@@ -575,13 +575,8 @@ describe('one MCP connector can be selected for one direct-user turn', () => {
     expect(findMcpServerForUser).not.toHaveBeenCalled();
   });
 
-  it('accepts only an owned, enabled, running hosted connector', async () => {
-    findMcpServerForUser.mockResolvedValue({
-      id: 'server-1',
-      enabled: true,
-      status: 'running',
-      runtime: 'server',
-    });
+  it('accepts only an owned, connected connector', async () => {
+    findMcpServerForUser.mockResolvedValue({ id: 'server-1', status: 'running' });
 
     const { ctx, captured } = await run(undefined, {
       mcpServerId: 'server-1',
@@ -593,12 +588,11 @@ describe('one MCP connector can be selected for one direct-user turn', () => {
     expect(findMcpServerForUser).toHaveBeenCalledWith({}, 'server-1', 'user-1');
   });
 
-  it('returns one neutral refusal for a missing, foreign, stopped, or local connector', async () => {
+  it('returns one neutral refusal for a missing, foreign or disconnected connector', async () => {
     for (const row of [
       null,
-      { id: 'server-1', enabled: false, status: 'running', runtime: 'server' },
-      { id: 'server-1', enabled: true, status: 'stopped', runtime: 'server' },
-      { id: 'server-1', enabled: true, status: 'running', runtime: 'local' },
+      { id: 'server-1', status: 'error' },
+      { id: 'server-1', status: 'installed' },
     ]) {
       findMcpServerForUser.mockResolvedValueOnce(row);
       const { ctx, captured } = await run(undefined, {

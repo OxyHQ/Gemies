@@ -46,6 +46,7 @@ const STOPPER_FOR: Readonly<Record<string, string>> = {
   startRoomWorker: 'shutdownRoomQueue',
   startShowWorker: 'shutdownShowQueue',
   startSkillRegistrySync: 'stopSkillRegistrySync',
+  startConnectorLogoRefresh: 'stopConnectorLogoRefresh',
 };
 
 const order: string[] = [];
@@ -82,6 +83,8 @@ const startShowWorker = traced('startShowWorker');
 const shutdownShowQueue = traced('shutdownShowQueue');
 const startSkillRegistrySync = tracedSync('startSkillRegistrySync');
 const stopSkillRegistrySync = traced('stopSkillRegistrySync');
+const startConnectorLogoRefresh = tracedSync('startConnectorLogoRefresh');
+const stopConnectorLogoRefresh = traced('stopConnectorLogoRefresh');
 const failOrphanedAudioJobs = vi.fn(() => {
   order.push('failOrphanedAudioJobs');
   return Promise.resolve(0);
@@ -109,6 +112,10 @@ vi.mock('../alia-task-queue.js', () => ({
 vi.mock('../chat/room/queue.js', () => ({ initRoomQueue, startRoomWorker, shutdownRoomQueue }));
 vi.mock('../show/show-queue.js', () => ({ initShowQueue, startShowWorker, shutdownShowQueue }));
 vi.mock('../skills/scheduler.js', () => ({ startSkillRegistrySync, stopSkillRegistrySync }));
+vi.mock('../connector-logo-refresh.js', () => ({
+  startConnectorLogoRefresh,
+  stopConnectorLogoRefresh,
+}));
 vi.mock('../../db/notifications/audioJobRepository.js', () => ({ failOrphanedAudioJobs }));
 vi.mock('../agent/run-reaper.js', () => ({ startAgentRunReaper, stopAgentRunReaper }));
 vi.mock('../../db/index.js', () => ({ getDb }));
@@ -155,6 +162,7 @@ describe('startBackgroundServices', () => {
     expect(initShowQueue).toHaveBeenCalledTimes(1);
     expect(startShowWorker).toHaveBeenCalledTimes(1);
     expect(startSkillRegistrySync).toHaveBeenCalledTimes(1);
+    expect(startConnectorLogoRefresh).toHaveBeenCalledTimes(1);
   });
 
   it('returns synchronously — a starter may not stand between the process and /health/live', () => {
@@ -205,6 +213,7 @@ describe('startBackgroundServices', () => {
       'startAgentRunReaper',
       'initShowQueue',
       'startSkillRegistrySync',
+      'startConnectorLogoRefresh',
       'startWorker',
       'startAliaTaskWorker',
       'startRoomWorker',
@@ -257,6 +266,7 @@ describe('stopBackgroundServices', () => {
     expect(shutdownRoomQueue).toHaveBeenCalledTimes(1);
     expect(shutdownShowQueue).toHaveBeenCalledTimes(1);
     expect(stopSkillRegistrySync).toHaveBeenCalledTimes(1);
+    expect(stopConnectorLogoRefresh).toHaveBeenCalledTimes(1);
   });
 
   it('leaves nothing running that it started', async () => {
@@ -279,7 +289,7 @@ describe('stopBackgroundServices', () => {
     await settle();
     const started = [...order];
     // Vacuity floor: an empty `started` would make the loop below assert nothing.
-    expect(started.length).toBe(14);
+    expect(started.length).toBe(15);
 
     order.length = 0;
     await stopBackgroundServices();
@@ -350,6 +360,7 @@ describe('stopBackgroundServices', () => {
     expect(order).toEqual([
       'stopTriggerEngine',
       'stopSkillRegistrySync',
+      'stopConnectorLogoRefresh',
       'dispatcher.stop',
       'reactions.stop',
       // Stop re-enqueueing lapsed runs before the queue it enqueues into closes.

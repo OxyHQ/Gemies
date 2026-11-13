@@ -70,7 +70,6 @@ vi.mock('../tools/mcp.js', () => ({
     return ids === undefined || ids.includes('srv-github') ? sources.mcp : {};
   }),
 }));
-vi.mock('../tools/integrations.js', () => ({ buildIntegrationTools: vi.fn(async () => ({})) }));
 
 const { budgetTools, stickyToolsFrom, appsOf, coversOf, sentToolBytes, LOAD_TOOLS_TOOL } =
   await import('../tool-budget.js');
@@ -151,7 +150,7 @@ function core(count: number): ToolSet {
 function productionTurn() {
   const oxy = productionOxyServices();
   const tools = { ...core(24), ...oxy };
-  return { tools, sources: { oxy_service: oxy, mcp: {}, integration: {} } };
+  return { tools, sources: { oxy_service: oxy, mcp: {} } };
 }
 
 /** Call `loadTools` the way the AI SDK does. */
@@ -304,7 +303,7 @@ describe("the person's memory is core: it is read before the answer", () => {
     const oxy = { ...productionOxyServices(), ...memory };
     const budgeted = budgetTools({
       tools: { ...core(24), ...oxy },
-      sources: { oxy_service: oxy, mcp: {}, integration: {} },
+      sources: { oxy_service: oxy, mcp: {} },
     });
     // Over the budget, so the apps are deferred…
     expect(activeOf(budgeted).some((name) => name.startsWith('oxy_mention__'))).toBe(false);
@@ -323,7 +322,7 @@ describe('an app too big to send whole is still fully usable (the useApps loop)'
   const mention = heavy('oxy_mention', 'Mention', 94, 700);
   const turn = {
     tools: { ...core(27), ...mention },
-    sources: { oxy_service: mention, mcp: {}, integration: {} },
+    sources: { oxy_service: mention, mcp: {} },
   };
 
   it('the whole app really exceeds the definitions budget — the premise', () => {
@@ -378,7 +377,7 @@ describe('an app too big to send whole is still fully usable (the useApps loop)'
     const giant = { ...heavy('oxy_giant', 'Giant', 1, 70_000), ...mention };
     const budgeted = budgetTools({
       tools: { ...core(27), ...giant },
-      sources: { oxy_service: giant, mcp: {}, integration: {} },
+      sources: { oxy_service: giant, mcp: {} },
     });
     const result = await load(budgeted, { names: ['oxy_giant__action00'] });
     expect(result.notLoaded).toEqual([
@@ -392,7 +391,7 @@ describe('an app too big to send whole is still fully usable (the useApps loop)'
     const oxy = family('oxy_app', 'App', 110);
     const budgeted = budgetTools({
       tools: { ...core(20), ...oxy },
-      sources: { oxy_service: oxy, mcp: {}, integration: {} },
+      sources: { oxy_service: oxy, mcp: {} },
     });
     const result = await load(budgeted, { names: Object.keys(oxy) });
     expect(result.loaded).toHaveLength(107);
@@ -408,7 +407,7 @@ describe('the definitions budget is derived from the model', () => {
   const mention = heavy('oxy_mention', 'Mention', 94, 700);
   const turn = {
     tools: { ...core(27), ...mention },
-    sources: { oxy_service: mention, mcp: {}, integration: {} },
+    sources: { oxy_service: mention, mcp: {} },
   };
   const loadedFor = async (inputBudgetBytes: number) => {
     const budgeted = budgetTools({ ...turn, inputBudgetBytes });
@@ -477,7 +476,7 @@ describe("a turn that fits keeps today's behaviour", () => {
     const tools = { ...core(24), ...oxy };
     const budgeted = budgetTools({
       tools,
-      sources: { oxy_service: oxy, mcp: {}, integration: {} },
+      sources: { oxy_service: oxy, mcp: {} },
     });
 
     expect(budgeted.tools).toBe(tools);
@@ -491,7 +490,7 @@ describe("a turn that fits keeps today's behaviour", () => {
       const oxy = family('oxy_app', 'App', total - 20);
       return budgetTools({
         tools: { ...core(20), ...oxy },
-        sources: { oxy_service: oxy, mcp: {}, integration: {} },
+        sources: { oxy_service: oxy, mcp: {} },
       });
     };
     expect(at(128).routing).toEqual({});
@@ -631,7 +630,7 @@ describe('what can never be deferred', () => {
     expect(() =>
       budgetTools({
         tools,
-        sources: { oxy_service: family('oxy_noted', 'Noted', 12), mcp: {}, integration: {} },
+        sources: { oxy_service: family('oxy_noted', 'Noted', 12), mcp: {} },
       }),
     ).toThrow(ToolLimitExceededError);
   });
@@ -640,7 +639,7 @@ describe('what can never be deferred', () => {
     const oxy = family('oxy_noted', 'Noted', 12);
     const budgeted = budgetTools({
       tools: { ...core(127), ...oxy },
-      sources: { oxy_service: oxy, mcp: {}, integration: {} },
+      sources: { oxy_service: oxy, mcp: {} },
     });
     expect(budgeted.routing.activeTools).toHaveLength(128);
   });
@@ -906,7 +905,7 @@ describe('the catalogue says what each app covers', () => {
     expect(covers).not.toContain('inbox');
   });
 
-  it('reads snake_case MCP tools, a resource suffix, and plain integration names alike', () => {
+  it('reads snake_case MCP tools, a resource suffix, and plain tool names alike', () => {
     expect(
       coversOf([
         'mcp_github__create_issue',
@@ -963,7 +962,7 @@ describe('the catalogue says what each app covers', () => {
     // 40 + 96 = 136: routed.
     const budgeted = budgetTools({
       tools: { ...core(40), ...oxy },
-      sources: { oxy_service: oxy, mcp: {}, integration: {} },
+      sources: { oxy_service: oxy, mcp: {} },
     });
     expect(budgeted.appCatalogPrompt).toMatch(
       /^- skyline — Skyline \(3 tools\): weather, forecast, radar, alert\n {2}tools \(prefix `oxy_skyline__`\): getForecast, getWeatherRadar, listWeatherAlerts$/m,
@@ -978,7 +977,7 @@ describe('the catalogue says what each app covers', () => {
 describe('tool definitions are budgeted in bytes as well as in count', () => {
   const turn = (apps: ToolSet) => ({
     tools: { ...core(10), ...apps },
-    sources: { oxy_service: apps, mcp: {}, integration: {} },
+    sources: { oxy_service: apps, mcp: {} },
   });
 
   it('measures a tool as the adapter sends it', () => {

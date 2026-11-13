@@ -163,7 +163,7 @@ describe('the production turn, end to end', () => {
     expect(Object.keys(tools)).toHaveLength(143);
     const budgeted = budgetTools({
       tools,
-      sources: { oxy_service: oxyServices, mcp: {}, integration: {} },
+      sources: { oxy_service: oxyServices, mcp: {} },
     });
 
     oxy.script.push(

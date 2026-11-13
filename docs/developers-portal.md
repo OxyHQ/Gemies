@@ -35,7 +35,7 @@ acceptance went too:
 
 - **Every request presenting one is refused.** `authenticateTokenOrApiKey` answers
   `401` with `"error": "credential_retired"` before the Oxy SDK sees the token, on
-  `/alia/chat`, `/v1/*` and every other route behind it. The MCP relay has no key lane.
+  `/alia/chat`, `/v1/*` and every other route behind it.
 - **The developer platform is gone.** Every `/developer/*` route (applications, keys,
   rate limits, usage, stats), and the `POST /auth/token` refusal were deleted; they answer
   `404`. The `packages/alia-console` developer portal was deleted with them.

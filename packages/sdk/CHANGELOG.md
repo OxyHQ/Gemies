@@ -1,5 +1,22 @@
 # @gemies/sdk
 
+## 3.3.0
+
+- **New: `@gemies/sdk/connectors`**, the connectors a person connects — providers' own remote MCP
+  servers (Notion, Linear, Slack…) and their own MCP servers by URL — drawn the same in the Gemies
+  and the Alia apps:
+  - `GemieConnectorsStore`: the store, with search, categories, each connector's real logo, Connect
+    (or Add account, for a further account of the same connector) and Add a custom MCP server.
+  - `GemieConnectedConnectors`: Settings › Connected, only what the person connected, each account
+    with its state, the gemies that may use it, Reconnect, Rename and Disconnect.
+  - `ConnectorLogo`: the one logo every screen draws for a connector, loaded only from the API's
+    origin, with a monogram when there is none.
+  - `useConnectorCatalogue`, `useConnections`, `useConnectorActions`, `useWebSignInReturn`,
+    `connectionOfTool`. A web sign-in returns to `/connectors`; a native one finishes in the auth
+    session on the app's scheme (`nativeScheme`).
+- **A connector's tool step in the thought panel shows that connector's logo**
+  (`mcp_<account>__<tool>`); the connections are read only for a turn that used one.
+
 ## 3.2.0
 
 - **Telegram is Telegram Business (Gemies ADR 0037).** `GemieAccounts` links a person's Telegram

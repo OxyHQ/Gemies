@@ -105,26 +105,6 @@ const DECLARED_TTLS: readonly DeclaredTtl[] = [
     retiredBy: 'S4 integrations — mcp_oauth_states',
   },
   {
-    model: 'OAuthState',
-    collection: 'oauthstates',
-    /**
-     * `OAuthStateSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })`,
-     * read off `src/routes/integrations-oauth.ts:18` at `69d4b3d4`, the commit
-     * before S4 removed it.
-     *
-     * **The one declared in a ROUTE file**, not under `src/models/` — which is
-     * why the count moved when a route stopped declaring a model, and why the
-     * walk that used to feed this list had to read `src/routes/` too.
-     *
-     * `expires_at` IS the deadline, so retention is ZERO. The sibling
-     * `organization_invites` has a deadline column AND a 30-day retention; the
-     * two look alike and are not.
-     */
-    path: 'expiresAt',
-    expireAfterSeconds: 0,
-    retiredBy: 'S4 integrations — oauth_states',
-  },
-  {
     model: 'Notification',
     collection: 'notifications',
     /**
@@ -169,7 +149,7 @@ const TTLS_FROZEN_AS_EVIDENCE: readonly DeclaredTtl[] = [
      *
      * **The former live TTL declaration measured
      * from a deadline with a NON-ZERO retention.** Every other `expires_at` TTL
-     * here — `moderation_outboxes`, `moderation_events`, `oauth_states` — is
+     * here — `moderation_outboxes`, `moderation_events`, the dropped `oauth_states` — is
      * retention 0, so the pattern a reader arrives with deletes an invitation the
      * moment it expires and takes with it the window in which the UI can say
      * "this invitation expired" rather than 404ing somebody who followed a link
@@ -200,7 +180,6 @@ const TTLS_FROZEN_AS_EVIDENCE: readonly DeclaredTtl[] = [
 const MODEL_TO_TABLE: Readonly<Record<string, string>> = {
   ApiKeyUsage: 'api_key_usage',
   McpOAuthState: 'mcp_oauth_states',
-  OAuthState: 'oauth_states',
   Notification: 'notifications',
   AudioJob: 'audio_jobs',
   ModerationOutbox: 'moderation_outboxes',
@@ -300,6 +279,31 @@ const TTLS_RETIRED_WITH_THEIR_TABLE: readonly RetiredTtl[] = [
     table: 'trigger_executions',
     droppedBy: '0070_clean_cut_dormant_tables',
   },
+  {
+    model: 'OAuthState',
+    collection: 'oauthstates',
+    /**
+     * `OAuthStateSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })`,
+     * read off `src/routes/integrations-oauth.ts:18` at `69d4b3d4`, the commit
+     * before S4 removed it.
+     *
+     * **The one declared in a ROUTE file**, not under `src/models/` — which is
+     * why the count moved when a route stopped declaring a model, and why the
+     * walk that used to feed this list had to read `src/routes/` too.
+     *
+     * The table went with the Google and Microsoft integrations it served (migration
+     * 0155); the providers' own MCP servers replaced them.
+     *
+     * `expires_at` IS the deadline, so retention is ZERO. The sibling
+     * `organization_invites` has a deadline column AND a 30-day retention; the
+     * two look alike and are not.
+     */
+    path: 'expiresAt',
+    expireAfterSeconds: 0,
+    retiredBy: 'S4 integrations — oauth_states',
+    table: 'oauth_states',
+    droppedBy: '0155_connectors_are_public_mcp',
+  },
 ];
 
 /** Postgres tables that exist today, by SQL table name. */
@@ -326,11 +330,11 @@ describe('every declared TTL rule has a matching expiry-sweep target', () => {
      *
      * EXACT rather than a floor, in the direction that matters: the record is
      * CLOSED, and each live row is a retention requirement, so a missing one is
-     * a rule silently deleted. 13 = 7 live + 5 dropped + 1 immutable evidence table.
+     * a rule silently deleted. 13 = 6 live + 6 dropped + 1 immutable evidence table.
      */
-    expect(DECLARED_TTLS.length).toBe(7);
+    expect(DECLARED_TTLS.length).toBe(6);
     expect(TTLS_FROZEN_AS_EVIDENCE.length).toBe(1);
-    expect(TTLS_RETIRED_WITH_THEIR_TABLE.length).toBe(5);
+    expect(TTLS_RETIRED_WITH_THEIR_TABLE.length).toBe(6);
     expect(
       DECLARED_TTLS.length + TTLS_RETIRED_WITH_THEIR_TABLE.length + TTLS_FROZEN_AS_EVIDENCE.length,
     ).toBe(13);

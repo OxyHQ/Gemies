@@ -120,11 +120,11 @@ const MAX_UNLOAD_CANDIDATES = 10;
 const RESULT_DESCRIPTION_CHARS = 160;
 
 /** The instanced sources whose tools are apps. */
-export type AppToolSource = 'oxy_service' | 'mcp' | 'integration';
+export type AppToolSource = 'oxy_service' | 'mcp';
 
-/** One app: a single Oxy service, a single MCP server, or a single integration. */
+/** One app: a single Oxy service, or a single connected MCP account. */
 export interface ToolApp {
-  /** The app's id in the catalogue — `mention`, `mcp_github`, `google_calendar`. */
+  /** The app's id in the catalogue — `mention`, `mcp_github`, `mcp_notion_2`. */
   readonly id: string;
   readonly label: string;
   readonly source: AppToolSource;
@@ -171,19 +171,10 @@ export interface BudgetedToolSet {
 /*  Apps                                                                      */
 /* -------------------------------------------------------------------------- */
 
-/** `[Google Calendar] List upcoming…` → `Google Calendar`. Every source writes this prefix. */
+/** `[Notion · ana@acme.com] Search…` → `Notion · ana@acme.com`. Every source writes this prefix. */
 function bracketLabel(description: string | undefined): string | null {
   const match = /^\[([^\]]+)\]/.exec(description ?? '');
   return match ? match[1].trim() : null;
-}
-
-function slug(text: string): string {
-  return (
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '') || 'app'
-  );
 }
 
 /**
@@ -344,21 +335,14 @@ export function appsOf(
     string,
     { id: string; label: string; source: AppToolSource; names: string[] }
   >();
-  for (const source of ['oxy_service', 'mcp', 'integration'] as const) {
+  for (const source of ['oxy_service', 'mcp'] as const) {
     for (const [name, built] of Object.entries(sources[source])) {
       if (tools[name] !== built) continue;
       // The person's memory is core, never deferred: it is read before the answer.
       if (source === 'oxy_service' && isAliaMemoryTool(name)) continue;
       const label = bracketLabel(built.description);
-      let key: string;
-      let id: string;
-      if (source === 'integration') {
-        id = slug(label ?? 'integrations');
-        key = `integration:${id}`;
-      } else {
-        key = toolFamilyOf(name);
-        id = source === 'oxy_service' ? key.replace(/^oxy_/, '') : key;
-      }
+      const key = toolFamilyOf(name);
+      const id = source === 'oxy_service' ? key.replace(/^oxy_/, '') : key;
       const entry = grouped.get(key) ?? { id, label: label ?? id, source, names: [] };
       entry.names.push(name);
       grouped.set(key, entry);
@@ -401,7 +385,6 @@ function findApp(apps: readonly ToolApp[], requested: string): ToolApp | undefin
 
 /** The part of a tool name the catalogue lists under its app's prefix. */
 function prefixOf(app: ToolApp): string {
-  if (app.source === 'integration') return '';
   const prefix = `${toolFamilyOf(app.names[0] ?? '')}__`;
   return app.names.every((name) => name.startsWith(prefix)) ? prefix : '';
 }

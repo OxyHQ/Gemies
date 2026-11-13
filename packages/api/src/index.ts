@@ -34,7 +34,6 @@ import botsRouter from './routes/bots.js';
 import channelAccountsRouter from './routes/channel-accounts.js';
 import channelBotsRouter from './routes/channel-bots.js';
 import mcpRouter from './routes/mcp.js';
-import integrationsOauthRouter from './routes/integrations-oauth.js';
 import toolsProxyRouter from './routes/tools-proxy.js';
 import billingRouter from './routes/billing.js';
 import organizationRouter from './routes/organization.js';
@@ -64,8 +63,6 @@ import { startBackgroundServices, stopBackgroundServices } from './lib/backgroun
 import { initChannels } from './lib/channels/index.js';
 // Socket.io
 import { initSocket } from './socket.js';
-// MCP relay for local MCP tool calls via WebSocket
-import { mcpRelayRoute, shutdownMcpRelay } from './lib/mcp-relay.js';
 import {
   externalAgentRelayRoute,
   shutdownExternalAgentRelay,
@@ -138,7 +135,6 @@ const observeAiSocket = (socket: WebSocket, headers: http.IncomingHttpHeaders) =
 routeWebSocketUpgrades(server, {
   socketIoPath: io.path(),
   routes: [
-    mcpRelayRoute(observeAiSocket),
     externalAgentRelayRoute(observeAiSocket),
     voiceSessionRoute(observeAiSocket),
     voiceResumePeerRoute(),
@@ -326,7 +322,6 @@ app.use('/bots', botsRouter);
 app.use('/channel-accounts', channelAccountsRouter);
 app.use('/channel-bots', channelBotsRouter);
 app.use('/mcp', mcpRouter);
-app.use('/integrations', integrationsOauthRouter);
 app.use('/tools', toolsProxyRouter);
 app.use('/billing', billingRouter);
 app.use('/organization', organizationRouter);
@@ -366,7 +361,6 @@ app.get('/', (_req, res) => {
       '/v1',
       '/bots',
       '/mcp',
-      '/integrations',
       '/tools',
       '/billing',
       '/organization',
@@ -558,8 +552,7 @@ const shutdown = async (signal: string) => {
     await closeRedis();
     log.general.info('Redis connections closed');
 
-    // Close MCP relay connections
-    shutdownMcpRelay();
+    // Close the external agents' relay connections
     shutdownExternalAgentRelay();
     disposeClarityClient();
 

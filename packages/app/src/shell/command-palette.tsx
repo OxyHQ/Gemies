@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Command, type CommandItem } from '@oxy.so/bloom/command';
 import { RiBankCardLine } from '@oxy.so/bloom/icons/RiBankCardLine';
 import { RiBookOpenLine } from '@oxy.so/bloom/icons/RiBookOpenLine';
+import { RiPlugLine } from '@oxy.so/bloom/icons/RiPlugLine';
 import { RiBookShelfLine } from '@oxy.so/bloom/icons/RiBookShelfLine';
 import { RiChat3Line } from '@oxy.so/bloom/icons/RiChat3Line';
 import { RiChatNewLine } from '@oxy.so/bloom/icons/RiChatNewLine';
@@ -64,6 +65,13 @@ export function CommandPalette() {
         group: t('dialogs.commandPalette.groupNavigate'),
         icon: RiTeamLine,
         onSelect: () => router.push('/(app)/agents'),
+      },
+      {
+        id: 'connectors',
+        label: t('sidebar.connectors'),
+        group: t('dialogs.commandPalette.groupNavigate'),
+        icon: RiPlugLine,
+        onSelect: () => router.push('/(app)/connectors'),
       },
       {
         id: 'skills',

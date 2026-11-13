@@ -22,16 +22,30 @@ export interface McpResourceDefinition {
 }
 
 /**
- * How this host reaches a connector: always over the network. A connector that
- * is a command runs on the person's own device (the API's `runtime: 'local'`,
- * through the MCP relay); this host is shared by every account and never starts
- * a process a person named.
+ * How this host reaches a connector: always over the network, at an https URL.
+ * This host is shared by every account and never starts a process a person named.
  */
 export const HOSTED_TRANSPORTS = ['sse', 'streamable-http'] as const;
 export type HostedTransport = (typeof HOSTED_TRANSPORTS)[number];
 
 export function isHostedTransport(value: unknown): value is HostedTransport {
   return (HOSTED_TRANSPORTS as readonly unknown[]).includes(value);
+}
+
+/** One icon a server publishes in `serverInfo.icons` (MCP `Icon`). */
+export interface McpServerIcon {
+  src: string;
+  mimeType?: string;
+  sizes?: string[];
+}
+
+/** What a connection established: the server's capabilities and what it said about itself. */
+export interface ConnectedServer {
+  tools: McpToolDefinition[];
+  resources: McpResourceDefinition[];
+  server: { name?: string; websiteUrl?: string; icons?: McpServerIcon[] };
+  /** The account the provider authorized, when its token response named it (OpenID Connect). */
+  accountLabel?: string;
 }
 
 export interface McpServerSession {
@@ -62,7 +76,6 @@ export interface McpOAuthClient {
 export interface McpServerConfig {
   url?: string;
   headers?: Record<string, string>;
-  env?: Record<string, string>;
   /** When true, remote (sse/streamable-http) transports authenticate via the MCP OAuth flow. */
   requiresOAuth?: boolean;
   /** Pre-registered OAuth client; absent means Dynamic Client Registration. */

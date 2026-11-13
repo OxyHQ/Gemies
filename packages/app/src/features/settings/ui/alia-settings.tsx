@@ -4,7 +4,6 @@ import { SettingsModal, type SettingsModalPage } from '@oxy.so/bloom/settings-mo
 import { useOxy } from '@oxy.so/services/ui/client';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BillingSection } from './billing-section';
-import { ConnectorDetailSection } from './connector-detail-section';
 import { ConnectorsSection } from './connectors-section';
 import { ExternalAgentsSection } from './external-agents-section';
 import { GeneralSection } from './general-section';
@@ -62,16 +61,8 @@ export function AliaSettingsProvider({ children }: { children: ReactNode }) {
     [isAuthenticated, t],
   );
   const pages = useMemo(
-    () => ({
-      ...(isAuthenticated
-        ? {
-            'connector-detail': {
-              title: t('connectors.detailTitle'),
-              content: <ConnectorDetailSection />,
-            },
-          }
-        : {}),
-      ...Object.fromEntries(
+    () =>
+      Object.fromEntries(
         groups.flatMap((group) =>
           group.items.map((item) => [
             item.key,
@@ -82,8 +73,7 @@ export function AliaSettingsProvider({ children }: { children: ReactNode }) {
           ]),
         ),
       ),
-    }),
-    [groups, isAuthenticated, t],
+    [groups],
   );
   const open = useCallback(
     (next?: string, nextParams: Record<string, string> = {}) => {

@@ -3,27 +3,26 @@
  *
  * ## `config` is FLAT in the database and NESTED on both wires
  *
- * `config` is stored flat as `config_command`, `config_args`, `config_url`, `config_headers`, `config_env`
- * and `config_requires_oauth`. Two consumers still need the nested object and
+ * `config` is stored flat as `config_url`, `config_headers` and
+ * `config_requires_oauth`. Two consumers still need the nested object and
  * neither can be changed from here:
  *
  *  - **`packages/integrations`** receives `{ config }` verbatim in the body of
  *    every `/mcp/servers/:id/{start,stop,oauth/start,oauth/finish}` call. It is
  *    a separate service with its own deploy.
- *  - **the shipped mobile build** reads `server.config.url`,
- *    `server.config.requiresOAuth` and friends off the API response, and reads
- *    the row's id as **`_id`**. A shipped build cannot be recalled.
+ *  - **the shipped mobile builds** read `server.config.url`,
+ *    `server.config.requiresOAuth` off the API response, and the row's id as
+ *    **`_id`**. A shipped build cannot be recalled.
  *
  * So `toMcpServerConfig` and `serializeMcpServer` are the two seams that keep
  * the stored shape and the wire shape apart, and they live here beside the
  * columns rather than in the route, because getting one of them wrong is a
  * silent `undefined` on the far side rather than an error. `_id` is served
- * ALONGSIDE `id`; what retires it is a mobile release that reads `id`, not a
- * decision taken here.
+ * ALONGSIDE `id`.
  *
- * `config_headers` and `config_env` hold user-supplied secrets — an API key in
- * an `Authorization` header is the ordinary case. They are projected only into
- * the two shapes above, which is what the source did, and they are never logged.
+ * `config_headers` holds user-supplied secrets — an API key in an
+ * `Authorization` header is the ordinary case. It is projected only into the
+ * integrations body, never into a response, and never logged.
  */
 
 import { and, desc, eq, inArray } from 'drizzle-orm';
@@ -31,7 +30,6 @@ import type { ApiDatabase } from '../index';
 import {
   mcpServers,
   type McpServerResource,
-  type McpServerRuntime,
   type McpServerSource,
   type McpServerStatus,
   type McpServerTool,
@@ -43,11 +41,8 @@ export type McpServerRow = typeof mcpServers.$inferSelect;
 
 /** The nested `config` both wires expect. */
 export interface McpServerConfig {
-  command?: string;
-  args?: string[];
   url?: string;
   headers?: Record<string, string>;
-  env?: Record<string, string>;
   requiresOAuth?: boolean;
 }
 
@@ -61,64 +56,77 @@ export interface McpServerConfig {
  */
 export function toMcpServerConfig(row: McpServerRow): McpServerConfig {
   return {
-    ...(row.configCommand === null ? {} : { command: row.configCommand }),
-    ...(row.configArgs === null ? {} : { args: row.configArgs }),
     ...(row.configUrl === null ? {} : { url: row.configUrl }),
     ...(row.configHeaders === null ? {} : { headers: row.configHeaders }),
-    ...(row.configEnv === null ? {} : { env: row.configEnv }),
     ...(row.configRequiresOauth === null ? {} : { requiresOAuth: row.configRequiresOauth }),
   };
 }
 
-/** The connector as the API has always served it. */
+/**
+ * The connector as the API serves it. `config` carries only what the person may
+ * read back: its URL and whether it authorizes over OAuth, never its headers.
+ * `logoUrl` is a path on the API's own origin (`GET /mcp/logos/:id`), or `null`
+ * for a monogram.
+ */
 export interface SerializedMcpServer {
   _id: string;
   id: string;
   name: string;
   displayName: string;
   description: string | null;
-  icon: string | null;
+  accountLabel: string | null;
   source: McpServerSource;
   registryId: string | null;
   transport: McpServerTransport;
-  runtime: McpServerRuntime;
-  config: McpServerConfig;
+  config: Pick<McpServerConfig, 'url' | 'requiresOAuth'>;
   status: McpServerStatus;
   statusMessage: string | null;
   tools: McpServerTool[];
   resources: McpServerResource[] | null;
-  enabled: boolean;
+  logoUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
 /**
- * Row -> the response body.
+ * Row -> the response body. The logo is the server's own when it published one,
+ * else its catalogue entry's (`registryLogoId`, read by the caller).
  *
  * `oxy_user_id` is deliberately absent: it is the scope every query already
  * filters on, so echoing it back tells the caller only what they asked with.
  */
-export function serializeMcpServer(row: McpServerRow): SerializedMcpServer {
+export function serializeMcpServer(
+  row: McpServerRow,
+  registryLogoId: string | null = null,
+): SerializedMcpServer {
+  const logoId = row.logoId ?? registryLogoId;
   return {
     _id: row.id,
     id: row.id,
     name: row.name,
     displayName: row.displayName,
     description: row.description,
-    icon: row.icon,
+    accountLabel: row.accountLabel,
     source: row.source,
     registryId: row.registryId,
     transport: row.transport,
-    runtime: row.runtime,
-    config: toMcpServerConfig(row),
+    config: {
+      ...(row.configUrl === null ? {} : { url: row.configUrl }),
+      ...(row.configRequiresOauth === null ? {} : { requiresOAuth: row.configRequiresOauth }),
+    },
     status: row.status,
     statusMessage: row.statusMessage,
     tools: row.tools,
     resources: row.resources,
-    enabled: row.enabled,
+    logoUrl: logoId ? connectorLogoPath(logoId) : null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+/** Where the API serves a stored logo. Its id is its content hash, so the path is immutable. */
+export function connectorLogoPath(logoId: string): string {
+  return `/mcp/logos/${logoId}`;
 }
 
 /**
@@ -144,21 +152,6 @@ export async function findMcpServerForUser(
   return row ?? null;
 }
 
-/** One connector by the name it was installed under, for the idempotent install. */
-export async function findMcpServerByName(
-  db: ApiDatabase,
-  oxyUserId: string,
-  name: string,
-): Promise<McpServerRow | null> {
-  const [row] = await db
-    .select()
-    .from(mcpServers)
-    .where(and(eq(mcpServers.oxyUserId, oxyUserId), eq(mcpServers.name, name)))
-    .limit(1);
-
-  return row ?? null;
-}
-
 /** Every connector this user has installed, newest first. */
 export async function listMcpServersForUser(
   db: ApiDatabase,
@@ -172,62 +165,82 @@ export async function listMcpServersForUser(
 }
 
 export interface NewMcpServer {
+  /** Minted by the caller for a registry connection, whose OAuth began before the row exists. */
+  readonly id?: string | undefined;
   readonly oxyUserId: string;
-  readonly name: string;
   readonly displayName: string;
   readonly description?: string | undefined;
-  readonly icon?: string | undefined;
+  readonly accountLabel?: string | null | undefined;
   readonly source: McpServerSource;
   readonly registryId?: string | undefined;
   readonly transport: McpServerTransport;
-  readonly runtime: McpServerRuntime;
   readonly config: McpServerConfig;
+  readonly status?: McpServerStatus | undefined;
+  readonly tools?: McpServerTool[] | undefined;
+  readonly resources?: McpServerResource[] | undefined;
+  readonly logoId?: string | null | undefined;
 }
 
+/** The slugs a connector named `base` may take, in order: `notion`, `notion_2`, `notion_3`… */
+export function connectorSlug(base: string, attempt: number): string {
+  const slug =
+    base
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'mcp';
+  return attempt === 0 ? slug : `${slug}_${attempt + 1}`;
+}
+
+/** How many slugs an install tries before giving up: more accounts of one connector than anyone has. */
+const MAX_SLUG_ATTEMPTS = 50;
+
 /**
- * Install a connector, or answer `null` when this user already has one by that
- * name.
+ * Add a connector under the first free slug of `slugBase` (`mcp_servers_oxy_user_name_key`
+ * decides, not a read-then-write race), or answer `null` when every slug is taken
+ * or a row with this id already exists.
  *
- * `null` is the answer `mcp_servers_oxy_user_name_key` gives, and the route
- * turns it into either a 200 with the existing row (registry installs, so the
- * Connect flow can ensure-installed before OAuth) or a 409 (custom installs).
- * `ON CONFLICT DO NOTHING` rather than a caught error, for the reason the event
- * log states: a thrown constraint violation aborts a surrounding transaction and
- * the recovery read would go with it.
- *
- * That unique index did NOT exist in Postgres before this change — it is the one
- * declaration of this slice's twenty-six the schema batch missed. Without it the
- * insert always succeeds and every Connect attempt silently installs another
- * copy.
+ * `ON CONFLICT DO NOTHING` rather than a caught error: a thrown constraint
+ * violation aborts a surrounding transaction and the next attempt with it.
  */
-export async function installMcpServer(
+export async function insertMcpServer(
   db: ApiDatabase,
+  slugBase: string,
   input: NewMcpServer,
 ): Promise<McpServerRow | null> {
-  const [row] = await db
-    .insert(mcpServers)
-    .values({
-      oxyUserId: input.oxyUserId,
-      name: input.name,
-      displayName: input.displayName,
-      description: input.description ?? null,
-      icon: input.icon ?? null,
-      source: input.source,
-      registryId: input.registryId ?? null,
-      transport: input.transport,
-      runtime: input.runtime,
-      configCommand: input.config.command ?? null,
-      configArgs: input.config.args ?? null,
-      configUrl: input.config.url ?? null,
-      configHeaders: input.config.headers ?? null,
-      configEnv: input.config.env ?? null,
-      configRequiresOauth: input.config.requiresOAuth ?? null,
-      status: 'installed',
-    })
-    .onConflictDoNothing({ target: [mcpServers.oxyUserId, mcpServers.name] })
-    .returning();
-
-  return row ?? null;
+  for (let attempt = 0; attempt < MAX_SLUG_ATTEMPTS; attempt += 1) {
+    const [row] = await db
+      .insert(mcpServers)
+      .values({
+        ...(input.id ? { id: input.id } : {}),
+        oxyUserId: input.oxyUserId,
+        name: connectorSlug(slugBase, attempt),
+        displayName: input.displayName,
+        description: input.description ?? null,
+        accountLabel: input.accountLabel ?? null,
+        source: input.source,
+        registryId: input.registryId ?? null,
+        transport: input.transport,
+        configUrl: input.config.url ?? null,
+        configHeaders: input.config.headers ?? null,
+        configRequiresOauth: input.config.requiresOAuth ?? null,
+        status: input.status ?? 'installed',
+        tools: input.tools ?? [],
+        resources: input.resources ?? null,
+        logoId: input.logoId ?? null,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (row) return row;
+    if (input.id) {
+      const [taken] = await db
+        .select({ id: mcpServers.id })
+        .from(mcpServers)
+        .where(eq(mcpServers.id, input.id))
+        .limit(1);
+      if (taken) return null;
+    }
+  }
+  return null;
 }
 
 /** Remove a connector belonging to this user, returning what was removed. */
@@ -244,25 +257,18 @@ export async function deleteMcpServerForUser(
   return row ?? null;
 }
 
-/**
- * What `PATCH /mcp/:id` is allowed to change. Not `runtime`: where a connector
- * runs follows from its transport (`lib/mcp-connector-config.ts`).
- */
+/** What `PATCH /mcp/:id` may change: a custom connector's address, and any connector's account label. */
 export interface McpServerPatch {
-  readonly config?: McpServerConfig | undefined;
-  readonly enabled?: boolean | undefined;
+  readonly config?: Pick<McpServerConfig, 'url' | 'headers'> | undefined;
+  readonly accountLabel?: string | null | undefined;
 }
 
 /**
  * Apply a patch and return the updated row.
  *
- * `config` MERGES rather than replaces, which is what `server.config = { ...server.config,
- * ...config }` did — and the merge has to be per-KEY, because the columns are
- * flat. A key the caller did not send keeps its stored value; a key sent as
- * `null` clears it. JSON cannot carry `undefined`, so those two are the only
- * cases a request can express, and `in` is what tells them apart —
- * `patch.config.url === undefined` cannot, since it is also what an absent key
- * reads as.
+ * `config` merges per KEY, because the columns are flat: a key the caller did
+ * not send keeps its stored value; a key sent as `null` clears it. JSON cannot
+ * carry `undefined`, so `in` is what tells the two apart.
  */
 export async function updateMcpServer(
   db: ApiDatabase,
@@ -274,18 +280,13 @@ export async function updateMcpServer(
 
   if (patch.config !== undefined) {
     const c = patch.config;
-    if ('command' in c) set.configCommand = c.command ?? null;
-    if ('args' in c) set.configArgs = c.args ?? null;
     if ('url' in c) set.configUrl = c.url ?? null;
     if ('headers' in c) set.configHeaders = c.headers ?? null;
-    if ('env' in c) set.configEnv = c.env ?? null;
-    if ('requiresOAuth' in c) set.configRequiresOauth = c.requiresOAuth ?? null;
   }
-  if (patch.enabled !== undefined) set.enabled = patch.enabled;
+  if (patch.accountLabel !== undefined) set.accountLabel = patch.accountLabel;
 
-  // An empty patch is a legitimate request — the `!== undefined`
-  // guards could all miss — and `db.update()` with no columns is a syntax error.
-  // Answer with the current row rather than raising.
+  // An empty patch is a legitimate request, and `db.update()` with no columns
+  // is a syntax error: answer with the current row rather than raising.
   if (Object.keys(set).length === 0) return findMcpServerForUser(db, id, oxyUserId);
 
   const [row] = await db
@@ -297,13 +298,17 @@ export async function updateMcpServer(
   return row ?? null;
 }
 
-/** What a start / stop / OAuth-finish outcome records. */
+/** What a connect or OAuth-finish outcome records. */
 export interface McpServerStatusPatch {
   readonly status: McpServerStatus;
   readonly statusMessage?: string | null | undefined;
   readonly tools?: McpServerTool[] | undefined;
   readonly resources?: McpServerResource[] | undefined;
   readonly requiresOAuth?: boolean | undefined;
+  /** Written only when the provider named the account (a reconnect keeps the person's label otherwise). */
+  readonly accountLabel?: string | undefined;
+  /** The server's own icon, when it published one. */
+  readonly logoId?: string | undefined;
 }
 
 /**
@@ -329,6 +334,8 @@ export async function setMcpServerStatus(
       ...(patch.tools === undefined ? {} : { tools: patch.tools }),
       ...(patch.resources === undefined ? {} : { resources: patch.resources }),
       ...(patch.requiresOAuth === undefined ? {} : { configRequiresOauth: patch.requiresOAuth }),
+      ...(patch.accountLabel === undefined ? {} : { accountLabel: patch.accountLabel }),
+      ...(patch.logoId === undefined ? {} : { logoId: patch.logoId }),
     })
     .where(and(eq(mcpServers.id, id), eq(mcpServers.oxyUserId, oxyUserId)))
     .returning();
@@ -337,12 +344,8 @@ export async function setMcpServerStatus(
 }
 
 /**
- * The connectors the chat tool builder dispatches to: enabled, running, and
- * hosted in the integrations service rather than on the user's own machine.
- *
- * All four predicates are the source's, and none is optional — a `local` runtime
- * has no integrations-side process to call, and a `stopped` one would answer
- * every tool call with a connection error.
+ * The connectors the chat tool builder dispatches to: the connected ones. One
+ * that is not `running` would answer every tool call with a connection error.
  */
 export async function listRunnableMcpServersForUser(
   db: ApiDatabase,
@@ -364,9 +367,7 @@ export async function listRunnableMcpServersForUser(
     .where(
       and(
         eq(mcpServers.oxyUserId, oxyUserId),
-        eq(mcpServers.enabled, true),
         eq(mcpServers.status, 'running'),
-        eq(mcpServers.runtime, 'server'),
         ...(selectedServerIds === undefined
           ? []
           : [inArray(mcpServers.id, [...selectedServerIds])]),

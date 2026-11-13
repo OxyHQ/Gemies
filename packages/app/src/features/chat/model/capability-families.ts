@@ -20,7 +20,7 @@
  *
  * ## Instanced families are not toggles
  *
- * `mcp`, `integration` and `agent` are granted a row at a time,
+ * `mcp` and `agent` are granted a row at a time,
  * so a grant names the row: `mcp:<connectorId>`, `agent:<agentId>`. They have
  * no entry in the list below, because a switch labelled "MCP Tools" would be a
  * grant over every connector the owner will ever install. They are their own
@@ -30,7 +30,7 @@
  * `agent` is the one family that ALSO offers a row for the whole family ("all
  * your active agents"), and that row is a grant string like any other, built on
  * the same server. `packages/api/src/domain/capability-grants.ts` argues why
- * that one may and the other three may not.
+ * that one may and `mcp` may not.
  *
  * ## Bloom's icon contract
  *
@@ -197,5 +197,4 @@ export function capabilityIconForTool(toolName: string): BloomIconComponent | un
 export const INSTANCED_FAMILY_LABELS: Readonly<Record<string, string>> = {
   agent: 'agents.instancedFamily.agent',
   mcp: 'agents.instancedFamily.mcp',
-  integration: 'agents.instancedFamily.integration',
 };

@@ -585,7 +585,7 @@ jobs:
   # The API image as ECS runs it, on the production architecture (arm64,
   # Graviton): Bun as PID 1, a refused boot exiting non-zero, every migrator
   # phase and the seeder with the deploy's own commands, /health/ready 200, the
-  # socket.io handshake and the `/ws/mcp` upgrade on one server, and a graceful
+  # socket.io handshake and the `/ws/external-agent` upgrade on one server, and a graceful
   # exit 0 on SIGTERM. `Build API` above proves the bundle builds; only running
   # the image proves the RUNTIME the Dockerfile ships can serve it — the image
   # moved from Node to Bun in 2026-10, and this is the gate that holds it there.

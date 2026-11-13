@@ -1,12 +1,14 @@
-import { integrationsFetch } from '../integrations-client.js';
 /**
- * MCP Tools — Dynamic tool generation from user's MCP servers
+ * MCP Tools — the tools of a person's connected MCP connectors, as AI SDK tools.
  *
- * Queries user's enabled + running MCP servers (server-side) and
- * connected local MCP clients (via WebSocket relay) to create
- * Vercel AI SDK tool() wrappers for the chat pipeline.
+ * Each connected ACCOUNT is its own connector row, so two Notion workspaces are
+ * two sets of tools: `mcp_notion__search` and `mcp_notion_2__search`, each
+ * described as `[Notion · <account>] …`. The model chooses the account by the
+ * tool it calls, and an agent reaches only the accounts it was granted
+ * (`mcp:<id>`, one row at a time); nothing picks an account behind its back.
  */
 
+import { integrationsFetch } from '../integrations-client.js';
 import { tool, type ToolSet } from 'ai';
 import { getDb } from '../../db/index.js';
 import {
@@ -18,7 +20,6 @@ import type { McpServerTool } from '../../db/schema/integrations.js';
 import { log } from '../logger.js';
 import { TTLCache } from '../ttl-cache.js';
 import { jsonSchemaToZod } from './mcp-schema.js';
-import { getLocalTools, callLocalTool } from '../mcp-relay.js';
 
 const INTEGRATIONS_URL = process.env.INTEGRATIONS_URL;
 const TOOL_CALL_TIMEOUT_MS = 60_000;
@@ -36,18 +37,16 @@ interface McpToolCallResult {
 const cache = new TTLCache<ToolSet>({ ttlMs: 30_000, maxSize: 2000 });
 
 /**
- * Build MCP tool set for a user.
- * Includes both server-side MCP tools (via integrations service) and
- * local MCP tools (via WebSocket relay from a client).
- * Tool names are prefixed with `mcp_{serverName}_` to avoid collisions.
+ * The MCP tool set of a person's connected connectors, named
+ * `mcp_<connector slug>__<tool>`.
  */
 export async function buildMcpTools(
   oxyUserId: string,
   /**
    * Which connectors this turn may reach.
    *
-   * `undefined` means every runnable one, which is the historical behaviour for
-   * a turn with no agent and no composer selection. An ARRAY names them
+   * `undefined` means every connected one: the person's own assistant with no
+   * composer selection. An ARRAY names them
    * exactly, and an EMPTY array is a real answer meaning none — which is what an
    * agent granted no connector asks. The pipeline resolves the agent's grants
    * and the composer's per-turn pick into this one value.
@@ -67,7 +66,6 @@ export async function buildMcpTools(
   const tools: ToolSet = {};
 
   try {
-    // Server-side MCP tools (running in integrations service)
     if (INTEGRATIONS_URL) {
       const servers = await listRunnableMcpServersForUser(getDb(), oxyUserId, selectedServerIds);
 
@@ -83,30 +81,9 @@ export async function buildMcpTools(
             continue;
           }
 
-          tools[toolName] = createServerTool(server.displayName, mcpTool, server, oxyUserId);
+          tools[toolName] = createServerTool(connectorLabel(server), mcpTool, server, oxyUserId);
         }
       }
-    }
-
-    /**
-     * Local MCP tools (from connected client).
-     *
-     * A named selection is an allow-list of ROWS, and a local relay server is
-     * not one: it lives as long as a device stays connected, has no row the
-     * composer can offer and no id an agent's owner could grant. So it comes
-     * only with the unselected path — which also means an AGENT never sees a
-     * local connector, since an agent always arrives with a named selection.
-     * That is the deliberate consequence of granting by instance.
-     */
-    const localEntries = selectedServerIds === undefined ? getLocalTools(oxyUserId) : [];
-    for (const { serverId, serverName, tool: mcpTool } of localEntries) {
-      const toolName = `mcp_${sanitizeName(serverName)}__${sanitizeName(mcpTool.name)}`;
-      if (tools[toolName]) {
-        log.general.warn({ toolName, serverId }, 'Local MCP tool name collision, skipping');
-        continue;
-      }
-
-      tools[toolName] = createLocalTool(serverName, mcpTool, oxyUserId, serverId);
     }
 
     cache.set(cacheKey, tools);
@@ -121,6 +98,13 @@ export async function buildMcpTools(
     log.general.error({ err, userId: oxyUserId }, 'Failed to load MCP tools');
     return {};
   }
+}
+
+/** `Notion · ana@acme.com`: which connector, and which of the person's accounts on it. */
+function connectorLabel(server: McpServerRow): string {
+  return server.accountLabel
+    ? `${server.displayName} · ${server.accountLabel}`
+    : server.displayName;
 }
 
 function sanitizeName(name: string): string {
@@ -145,28 +129,6 @@ function createServerTool(
     inputSchema,
     execute: async (args: unknown) => {
       return callServerTool(oxyUserId, server, mcpTool.name, args as Record<string, any>);
-    },
-  });
-}
-
-function createLocalTool(
-  serverName: string,
-  mcpTool: { name: string; description: string; inputSchema: Record<string, any> },
-  userId: string,
-  serverId: string,
-) {
-  let inputSchema;
-  try {
-    inputSchema = jsonSchemaToZod(mcpTool.inputSchema as Record<string, any>);
-  } catch {
-    inputSchema = jsonSchemaToZod({});
-  }
-
-  return tool({
-    description: `[${serverName}] ${mcpTool.description || mcpTool.name}`,
-    inputSchema,
-    execute: async (args: unknown) => {
-      return callLocalTool(userId, serverId, mcpTool.name, args as Record<string, any>);
     },
   });
 }

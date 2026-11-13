@@ -106,6 +106,9 @@ vi.mock('expo-web-browser', () => ({ openBrowserAsync: async () => {} }));
 vi.mock('../../../src/lib/labels', () => ({
   useLabels: () => ({ t: (key: string) => key }),
 }));
+// A connector's logo needs the person's connections; these steps are not a connector's.
+vi.mock('../../../src/runtime/connectors', () => ({ useConnectionOfTool: () => undefined }));
+vi.mock('../../../src/components/connectors/ConnectorLogo', () => ({ ConnectorLogo: () => null }));
 vi.mock('../../../src/lib/tool-icons', async () => {
   const ReactModule = await import('react');
   return {

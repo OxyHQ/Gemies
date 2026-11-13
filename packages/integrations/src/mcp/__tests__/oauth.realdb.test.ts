@@ -21,7 +21,12 @@ import { createCipheriv, randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { closePostgres, connectPostgres, type IntegrationsDatabase } from '../../db';
 import { mcpConnectorAuths } from '../../db/schema';
-import { getOrCreateConnectorAuth, updateConnectorAuth } from '../oauth-store';
+import {
+  ABANDONED_AUTHORIZATION_MS,
+  forgetAbandonedAuthorizations,
+  getOrCreateConnectorAuth,
+  updateConnectorAuth,
+} from '../oauth-store';
 
 /** A 32-byte key as 64 hex chars, which is the only shape `crypto.ts` accepts. */
 const TEST_KEY = 'a'.repeat(64);
@@ -128,6 +133,31 @@ describe('one row per (user, server), whichever call gets there first', () => {
 
     const again = await getOrCreateConnectorAuth(db, 'mcp-user-b', 'notion');
     expect(again.tokens).toBe('already-here');
+  });
+});
+
+describe('a sign-in left unfinished is forgotten when the person starts another', () => {
+  it("clears the person's own records that never got tokens, and nothing else", async () => {
+    const abandoned = await getOrCreateConnectorAuth(db, 'abandon-user', 'srv-abandoned');
+    const finished = await getOrCreateConnectorAuth(db, 'abandon-user', 'srv-finished');
+    await updateConnectorAuth(db, finished.id, { tokens: 'ciphertext' });
+    const someoneElses = await getOrCreateConnectorAuth(db, 'abandon-other', 'srv-abandoned');
+
+    const later = new Date(Date.now() + ABANDONED_AUTHORIZATION_MS + 60_000);
+    // Still within the hour: kept, the person may be signing in right now.
+    expect(await forgetAbandonedAuthorizations(db, 'abandon-user')).toBe(0);
+    expect(await forgetAbandonedAuthorizations(db, 'abandon-user', later)).toBe(1);
+
+    const left = await db
+      .select({ id: mcpConnectorAuths.id })
+      .from(mcpConnectorAuths)
+      .where(eq(mcpConnectorAuths.id, abandoned.id));
+    expect(left).toEqual([]);
+    const kept = await db
+      .select({ id: mcpConnectorAuths.id })
+      .from(mcpConnectorAuths)
+      .where(and(eq(mcpConnectorAuths.oxyUserId, 'abandon-other')));
+    expect(kept.map((row) => row.id)).toEqual([someoneElses.id]);
   });
 });
 

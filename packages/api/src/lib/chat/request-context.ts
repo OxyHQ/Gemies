@@ -577,11 +577,7 @@ export async function buildChatRequestContext(
     return null;
   } else {
     const selectedServer = await findMcpServerForUser(getDb(), body.mcpServerId, req.user.id);
-    const runnable =
-      selectedServer?.enabled === true &&
-      selectedServer.status === 'running' &&
-      selectedServer.runtime === 'server';
-    if (!runnable) {
+    if (selectedServer?.status !== 'running') {
       res.status(400).json({
         error: {
           message: 'The selected connector is unavailable.',

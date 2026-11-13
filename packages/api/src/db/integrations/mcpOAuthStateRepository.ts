@@ -29,18 +29,29 @@ export interface McpOAuthStateRow {
   readonly id: string;
   readonly oxyUserId: string;
   readonly serverId: string;
+  /** Set when the flow connects a new account of this catalogue entry. */
+  readonly registryId: string | null;
+  readonly returnTo: string;
   readonly createdAt: Date;
 }
 
 /** Mint a state for an authorize that is about to start. */
 export async function createMcpOAuthState(
   db: ApiDatabase,
-  input: { state: string; oxyUserId: string; serverId: string },
+  input: {
+    state: string;
+    oxyUserId: string;
+    serverId: string;
+    registryId?: string | undefined;
+    returnTo: string;
+  },
 ): Promise<void> {
   await db.insert(mcpOauthStates).values({
     state: input.state,
     oxyUserId: input.oxyUserId,
     serverId: input.serverId,
+    registryId: input.registryId ?? null,
+    returnTo: input.returnTo,
   });
 }
 
@@ -57,6 +68,8 @@ export async function findLiveMcpOAuthState(
       id: mcpOauthStates.id,
       oxyUserId: mcpOauthStates.oxyUserId,
       serverId: mcpOauthStates.serverId,
+      registryId: mcpOauthStates.registryId,
+      returnTo: mcpOauthStates.returnTo,
       createdAt: mcpOauthStates.createdAt,
     })
     .from(mcpOauthStates)

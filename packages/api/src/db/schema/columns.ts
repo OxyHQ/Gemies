@@ -72,6 +72,14 @@ export const encryptedText = customType<{ data: string; driverData: string }>({
 });
 
 /**
+ * A binary column (`bytea`), read and written as a `Buffer`. drizzle 0.45 has no
+ * built-in for it; both Postgres drivers hand a `bytea` back as a `Buffer`.
+ */
+export const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => 'bytea',
+});
+
+/**
  * `CHECK (<column> in (…))`, rendered from the SAME tuple that types the column.
  *
  * `text({ enum })` emits NO DDL — it is a TypeScript narrowing only, so a closed

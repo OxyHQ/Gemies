@@ -70,11 +70,10 @@ comprobable; aquí está el texto completo. Antes de tocar un área lee su doc
   (`MIGRATION_RUNTIME`, comando post-rollout, canary): un `bun`
   contra una imagen Node muere — `src/__tests__/dockerfileRuntime.test.ts`.
 - **Upgrades WebSocket: un solo enrutador** (`lib/websocket-upgrades.ts`). Socket.IO sirve su ruta con
-  `destroyUpgrade: false`; voz, relay MCP y cualquier ruta nueva son un `WebSocketRoute`; lo demás
+  `destroyUpgrade: false`; voz, el relay de agentes externos y cualquier ruta nueva son un `WebSocketRoute`; lo demás
   es 404. Nunca otro `server.on('upgrade')`: en Bun, engine.io cerraba al segundo todo socket ajeno.
   `test:bun-runtime` lo prueba en el runtime real.
 - `Relay` es un nombre retirado; el único origen de Kaana es `https://kaana.ai`.
-  `lib/mcp-relay.ts` es el transporte WebSocket de MCP y no se renombra.
 - **Shows** (podcasts en Syra): la ruta acuña un ticket de ingesta de un solo
   uso y el worker lo canjea; jamás un token de servicio. `title`/`topic` son
   overrides opcionales y por eso admiten NULL; `topic` se envía entero —

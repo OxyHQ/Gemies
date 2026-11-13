@@ -52,7 +52,7 @@ under its service token (`aud: kaana.ai`) with the person as delegated attributi
 ### The socket
 
 `lib/voice/voice-socket.ts` mounts `GET /v1/voice/session` with `ws` in `noServer`
-mode on the shared HTTP server, exactly as `lib/mcp-relay.ts` does, so socket.io's
+mode on the shared HTTP server, through the one upgrade router (`lib/websocket-upgrades.ts`), so socket.io's
 handshake is never stomped. The protocol is `lib/voice/protocol.ts` (the SDK keeps its
 own copy in `src/lib/voice-protocol.ts`; `VOICE_PROTOCOL_VERSION` makes a mismatch a
 refusal):
