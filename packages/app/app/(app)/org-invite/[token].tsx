@@ -18,7 +18,7 @@ export default function OrgInviteScreen() {
           title={t('orgInvite.unavailableTitle')}
           description={t('orgInvite.unavailableDescription')}
           action={{
-            label: t('invitePage.goToAlia'),
+            label: t('invitePage.goToGemies'),
             icon: RiArrowRightLine,
             onPress: () => router.replace('/(app)'),
           }}

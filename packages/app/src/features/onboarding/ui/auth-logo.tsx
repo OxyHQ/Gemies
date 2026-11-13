@@ -1,11 +1,11 @@
 import { View } from 'react-native';
-import { AliaLogo } from '@/shared/ui/alia-logo';
+import { GemiesMark } from '@/shared/ui/gemies-mark';
 
-/** The Alia lockup, centred above an auth-style page's content. */
+/** The Gemies mark, centred above an auth-style page's content. */
 export function AuthLogo() {
   return (
     <View className="items-center">
-      <AliaLogo width={160} />
+      <GemiesMark size={64} />
     </View>
   );
 }

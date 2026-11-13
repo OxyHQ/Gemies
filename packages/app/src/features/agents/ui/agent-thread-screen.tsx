@@ -59,7 +59,7 @@ export function AgentThreadScreen({
    */
   if (isError && !resolving) {
     return (
-      <ChatWorkspace header={<AiChatMobileHeader title="Alia" />}>
+      <ChatWorkspace header={<AiChatMobileHeader title="Gemies" />}>
         <View className="flex-1 justify-center">
           <EmptyState title={t('agents.notFound')} />
         </View>

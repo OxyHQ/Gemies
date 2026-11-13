@@ -171,9 +171,9 @@
     },
     "localModels": {
       "title": "Modelos locales",
-      "description": "Ejecuta un modelo en este dispositivo y úsalo desde Alia. Todo lo demás funciona igual — herramientas, memoria, y tus chats se siguen guardando.",
+      "description": "Ejecuta un modelo en este dispositivo y úsalo desde Gemies. Todo lo demás funciona igual — herramientas, memoria, y tus chats se siguen guardando.",
       "enable": "Ofrecer los modelos de este dispositivo",
-      "enableHint": "Mientras tengas Alia abierta aquí, tus otros dispositivos también pueden usarlos.",
+      "enableHint": "Mientras tengas Gemies abierta aquí, tus otros dispositivos también pueden usarlos.",
       "endpoint": "Endpoint",
       "endpointHint": "Cualquier servidor local que hable la API de chat estándar — Ollama, LM Studio y vLLM la hablan.",
       "deviceName": "Nombre del dispositivo",
@@ -184,7 +184,7 @@
       "notConnected": "Sin conexión",
       "modelsTitle": "Modelos en este dispositivo",
       "free": "Gratis",
-      "freeNote": "Los modelos locales no gastan créditos. La investigación profunda y el modo agente no están disponibles con ellos — esos corren en los modelos de Alia.",
+      "freeNote": "Los modelos locales no gastan créditos. La investigación profunda y el modo agente no están disponibles con ellos — esos corren en los modelos de Gemies.",
       "unreachable": "No contesta nada en {{endpoint}}.",
       "unreachableHint": "Arranca tu servidor de modelos, o revisa la dirección y el puerto.",
       "refused": "{{endpoint}} está arrancado, pero ha rechazado esta página.",
@@ -210,7 +210,7 @@
       "perYear": "año",
       "creditsPerMonth": "{{count}} créditos al mes",
       "logout": "Cerrar sesión",
-      "logoutConfirm": "Cerrarás la sesión de Alia en este dispositivo. Tus otros dispositivos siguen con la sesión iniciada."
+      "logoutConfirm": "Cerrarás la sesión de Gemies en este dispositivo. Tus otros dispositivos siguen con la sesión iniciada."
     },
     "connections": {
       "externalAgents": {
@@ -347,7 +347,7 @@
       "to": "Hasta",
       "viewAll": "Ver todo",
       "warning": "Aviso",
-      "exportShareTitle": "Exportación de auditoría de Alia ({{format}})"
+      "exportShareTitle": "Exportación de auditoría de Gemies ({{format}})"
     },
     "responseLength": {
       "title": "Longitud de respuesta",
@@ -527,7 +527,7 @@
   },
   "library": {
     "title": "Biblioteca",
-    "subtitle": "Sube y administra tus archivos, documentos y recursos para usar con Alia",
+    "subtitle": "Sube y administra tus archivos, documentos y recursos para usar con tus Gemies",
     "empty": "Aún no hay elementos",
     "searchPlaceholder": "Buscar archivos...",
     "addFiles": "Añadir archivos",
@@ -878,14 +878,14 @@
     "upgrade": "Mejorar",
     "getStarted": "Comenzar",
     "freeTrial": "Prueba gratuita",
-    "freeUsage": "Empieza con Alia",
+    "freeUsage": "Empieza con Gemies",
     "goUsage": "IA esencial para tareas diarias",
     "proUsage": "Asistente IA completo",
     "maxUsage": "Capacidad extendida para usuarios avanzados",
     "ultraUsage": "Máxima potencia para cargas pesadas",
-    "sharedCredits": "Créditos compartidos con tu plan de Alia",
+    "sharedCredits": "Créditos compartidos con tu plan de Gemies",
     "teamTitle": "Equipo",
-    "teamDescription": "Escala la productividad de tu equipo con Alia",
+    "teamDescription": "Escala la productividad de tu equipo con Gemies",
     "getTeam": "Obtener equipo",
     "securityTitle": "Seguridad y Cumplimiento",
     "securityDescription": "Seguridad de nivel empresarial y certificaciones estándar de la industria.",
@@ -914,10 +914,10 @@
     "free": "Gratis",
     "loadError": "No se han podido cargar los planes. Inténtalo de nuevo en un momento.",
     "download": {
-      "pageTitle": "Descargar Alia",
-      "metaDescription": "Descarga la app de Alia para Android e iOS.",
-      "title": "Lleva Alia en tu móvil",
-      "back": "Volver a Alia",
+      "pageTitle": "Descargar Gemies",
+      "metaDescription": "Descarga la app de Gemies para Android e iOS.",
+      "title": "Lleva Gemies en tu móvil",
+      "back": "Volver a Gemies",
       "platform": "Plataforma",
       "scanTitle": "Escanea para descargar",
       "scanDescription": "Escanea el código QR con el móvil para obtener la app.",
@@ -930,7 +930,7 @@
   },
   "usageLimit": {
     "outOfCreditsTitle": "Sin créditos",
-    "outOfCreditsDescription": "Agrega más créditos o mejora tu plan para seguir chateando con Alia.",
+    "outOfCreditsDescription": "Agrega más créditos o mejora tu plan para seguir chateando con tus Gemies.",
     "limitReachedTitle": "Límite alcanzado",
     "limitReachedDescription": "Has alcanzado el límite de tu plan. Mejora para obtener más.",
     "slowDownTitle": "Más despacio",
@@ -1068,7 +1068,6 @@
     "activity": "Actividad",
     "hireStarted": "El Gemie está trabajando en tu tarea",
     "chat": "Chat",
-    "native": "De Alia",
     "rating": "rating",
     "removeSkill": "Quitar habilidad",
     "removeKnowledge": "Quitar conocimiento",
@@ -1244,7 +1243,7 @@
     "reviews": "Reseñas",
     "writeReview": "Escribir una reseña",
     "modelPinned": "Modelo fijado (%{model})",
-    "modelPinnedDescription": "Usa exactamente este modelo. Elige un nivel para que Alia elija.",
+    "modelPinnedDescription": "Usa exactamente este modelo. Elige un nivel para que Gemies elija.",
     "computer": {
       "open": "Ordenador",
       "title": "El ordenador de {{name}}",
@@ -1368,7 +1367,7 @@
           "waiting": "Esperando novedades"
         },
         "reason": {
-          "needs_session": "Abre Alia con tu cuenta para continuar.",
+          "needs_session": "Abre Gemies con tu cuenta para continuar.",
           "insufficient_credits": "No hay suficientes créditos para continuar.",
           "work_limit_reached": "Ha llegado al límite de la tarea. Revisa sus avances.",
           "temporarily_unavailable": "Un servicio no está disponible. Se reintentará más tarde.",
@@ -1510,7 +1509,7 @@
     "connectionFailed": "No se pudo conectar la voz",
     "errors": {
       "not-authenticated": "Inicia sesión para usar la voz",
-      "credential-not-supported": "La voz solo está disponible con tu sesión de Alia",
+      "credential-not-supported": "La voz solo está disponible con tu sesión de Gemies",
       "plan-required": "El modo voz necesita un plan de pago",
       "credits-exhausted": "Te has quedado sin créditos para esta llamada",
       "agent-unavailable": "Este Gemie no está disponible para una llamada",
@@ -1548,7 +1547,7 @@
       "max-duration": "La llamada llegó a su límite de 30 minutos",
       "idle-timeout": "La llamada terminó tras dos minutos de silencio",
       "credits-exhausted": "La llamada terminó: te quedaste sin créditos",
-      "server-shutdown": "La llamada terminó mientras Alia se actualizaba: empieza una nueva"
+      "server-shutdown": "La llamada terminó mientras Gemies se actualizaba: empieza una nueva"
     },
     "endingSoon": "Queda un minuto de llamada",
     "dictationRemaining": "Quedan %{seconds} s de dictado"
@@ -1624,26 +1623,6 @@
       "updateUserPreferences": "Actualizando preferencias",
       "updateUserContext": "Actualizando contexto"
     }
-  },
-  "landing": {
-    "tagline": "Tu asistente de IA inteligente",
-    "capabilitiesTitle": "Lo que Alia puede hacer",
-    "cap1Title": "Chat con IA y Memoria",
-    "cap1Desc": "Conversaciones que recuerdan tus preferencias y contexto entre sesiones.",
-    "cap2Title": "Visión, Voz y Multimodal",
-    "cap2Desc": "Analiza imágenes, habla de forma natural y trabaja con múltiples formatos.",
-    "cap3Title": "Gemies IA y Automatizaciones",
-    "cap3Desc": "Crea Gemies autónomos y automatiza tareas repetitivas.",
-    "cap4Title": "Generación de Código y Razonamiento",
-    "cap4Desc": "Escribe, depura y razona problemas complejos paso a paso.",
-    "ctaTitle": "¿Listo para empezar?",
-    "ctaSubtitle": "Gratis. Sin tarjeta de crédito.",
-    "demo1": "Escribe un poema sobre las auroras boreales...",
-    "demo2": "Explica la computación cuántica de forma simple...",
-    "demo3": "Ayúdame a planificar un viaje a Tokio...",
-    "demo4": "Depura esta función de Python...",
-    "demo5": "Crea un plan de ejercicios para principiantes...",
-    "metaDescription": "Conoce a Alia, tu asistente de IA inteligente. Conversa con naturalidad, recuerda todo y cambia entre los mejores modelos de IA sin esfuerzo."
   },
   "keyboardShortcuts": {
     "title": "Atajos de teclado",
@@ -1772,7 +1751,7 @@
     "dismissFailed": "Descartar %{name}",
     "fileTooLarge": "%{name} supera %{limit} y no se ha adjuntado",
     "fileEmpty": "%{name} está vacío: no se pueden adjuntar carpetas",
-    "attachmentNotSent": "No se envió %{name}: por ahora Alia solo puede leer imágenes en un mensaje",
+    "attachmentNotSent": "No se envió %{name}: por ahora Gemies solo puede leer imágenes en un mensaje",
     "attachmentUnreadable": "No se pudo leer %{name} y no se envió",
     "addGroup": "Adjuntar",
     "capabilitiesGroup": "Capacidades",
@@ -1866,7 +1845,7 @@
       },
       "markAllRead": "Marcar todo como leído",
       "emptyTitle": "Aún no hay notificaciones",
-      "emptyDescription": "Configura disparadores y rutinas para recibir novedades proactivas de Alia.",
+      "emptyDescription": "Configura disparadores y rutinas para recibir novedades proactivas de tus Gemies.",
       "dismiss": "Descartar notificación"
     },
     "agents": {
@@ -1968,11 +1947,11 @@
       "message": "Algo falló al mostrarla. Vuelve a intentarlo; si sigue pasando, ya nos ha llegado el aviso."
     },
     "notFound": {
-      "pageTitle": "404 - Página no encontrada | Alia",
-      "metaDescription": "La página que buscas no existe. Vuelve a Alia para seguir con tus conversaciones.",
+      "pageTitle": "404 - Página no encontrada | Gemies",
+      "metaDescription": "La página que buscas no existe. Vuelve a Gemies para seguir con tus conversaciones.",
       "title": "Esta página no existe",
       "description": "Puede que el enlace esté roto o que la página se haya movido.",
-      "home": "Ir a Alia"
+      "home": "Ir a Gemies"
     },
     "invite": {
       "title": "Invita y consigue créditos",
@@ -1985,7 +1964,7 @@
       "copied": "¡Copiado!",
       "shareOn": "Compartir en",
       "share": "Compartir enlace de invitación",
-      "shareText": "Prueba Alia: regístrate con mi enlace y los dos conseguimos 500 créditos.",
+      "shareText": "Prueba Gemies: regístrate con mi enlace y los dos conseguimos 500 créditos.",
       "creditsEarned": "Créditos ganados",
       "referrals": "Invitaciones",
       "codeLabel": "Código de invitación",
@@ -1997,21 +1976,21 @@
   },
   "invitePage": {
     "redeemFailed": "No se ha podido canjear el código de invitación",
-    "acceptTitle": "Aceptar invitación - Alia",
-    "acceptMeta": "Acepta tu invitación y consigue {{count}} créditos gratis en Alia.",
+    "acceptTitle": "Aceptar invitación - Gemies",
+    "acceptMeta": "Acepta tu invitación y consigue {{count}} créditos gratis en Gemies.",
     "redeemedTitle": "¡Has conseguido {{count}} créditos!",
     "redeemedDescription": "Has canjeado tu invitación. Tu amigo y tú habéis ganado {{count}} créditos cada uno.",
     "startChatting": "Empezar a chatear",
     "redeemErrorTitle": "No se ha podido canjear la invitación",
-    "goToAlia": "Ir a Alia",
     "redeeming": "Canjeando la invitación…",
     "redeemingDescription": "Espera mientras aplicamos tus créditos.",
-    "invitedTitle": "Te han invitado a Alia",
-    "invitedMeta": "Únete a Alia y consigue {{count}} créditos gratis con este enlace de invitación.",
-    "invitedHeading": "Te han invitado a Alia",
-    "invitedDescription": "Regístrate ahora y los dos recibiréis {{count}} créditos para usar en Alia.",
+    "invitedTitle": "Te han invitado a Gemies",
+    "invitedMeta": "Únete a Gemies y consigue {{count}} créditos gratis con este enlace de invitación.",
+    "invitedHeading": "Te han invitado a Gemies",
+    "invitedDescription": "Regístrate ahora y los dos recibiréis {{count}} créditos para usar en Gemies.",
     "signUp": "Regístrate y consigue los créditos",
-    "signIn": "¿Ya tienes cuenta? Inicia sesión"
+    "signIn": "¿Ya tienes cuenta? Inicia sesión",
+    "goToGemies": "Ir a Gemies"
   },
   "orgInvite": {
     "unavailableTitle": "Esta invitación ya no está disponible",
@@ -2023,12 +2002,12 @@
       "member": "miembro"
     },
     "acceptFailed": "No se ha podido aceptar la invitación",
-    "invalidTitle": "Invitación no válida - Alia",
+    "invalidTitle": "Invitación no válida - Gemies",
     "notFound": "Invitación no encontrada",
     "notFoundDescription": "Este enlace de invitación no es válido, ha caducado o ya se ha usado.",
-    "pageTitle": "Únete a {{org}} - Alia",
-    "metaJoin": "Únete a {{org}} en Alia como {{role}}.",
-    "metaSignIn": "Inicia sesión para unirte a {{org}} en Alia.",
+    "pageTitle": "Únete a {{org}} - Gemies",
+    "metaJoin": "Únete a {{org}} en Gemies como {{role}}.",
+    "metaSignIn": "Inicia sesión para unirte a {{org}} en Gemies.",
     "joined": "¡Te has unido a {{org}}!",
     "joinedDescription": "Ahora eres {{role}} de {{org}}.",
     "joinFailed": "No te has podido unir",
@@ -2110,14 +2089,14 @@
       "title": "¿Eliminar este episodio en todas partes?",
       "description": "La grabación también se elimina de Syra, junto con su audio y el punto en que cada oyente la dejó. No se puede deshacer.",
       "failed": "No se ha podido eliminar el episodio",
-      "done": "Episodio eliminado de Alia y de Syra",
+      "done": "Episodio eliminado de Gemies y de Syra",
       "label": "Eliminar {{name}} en todas partes"
     },
     "deleteShow": {
       "title": "¿Eliminar este programa en todas partes?",
       "description": "El pódcast también se elimina de Syra, con todos sus episodios, todo su audio y todas sus suscripciones. No se puede deshacer.",
       "failed": "No se ha podido eliminar el programa",
-      "done": "Programa eliminado de Alia y de Syra",
+      "done": "Programa eliminado de Gemies y de Syra",
       "button": "Eliminar este programa en todas partes"
     },
     "starting": "Iniciando…",
@@ -2237,9 +2216,9 @@
     "onDevice": "En %{device}"
   },
   "sharedConversation": {
-    "pageTitle": "Conversación compartida | Alia",
+    "pageTitle": "Conversación compartida | Gemies",
     "title": "Conversación compartida",
-    "open": "Abrir Alia",
+    "open": "Abrir Gemies",
     "footer": "Una copia de solo lectura, compartida por quien tuvo esta conversación."
   },
   "profile": {

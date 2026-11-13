@@ -1,4 +1,4 @@
-import { AliaLogo } from '@/shared/ui/alia-logo';
+import { GemiesMark } from '@/shared/ui/gemies-mark';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { EmptyState } from '@oxy.so/bloom/empty-state';
 import { RiAndroidFill } from '@oxy.so/bloom/icons/RiAndroidFill';
@@ -59,7 +59,7 @@ export default function DownloadScreen() {
       >
         <ScreenScrollView>
           <View className="mx-auto w-full max-w-sm items-center gap-6 px-6 py-8">
-            <AliaLogo width={100} />
+            <GemiesMark size={72} />
 
             <View>
               <SegmentedControl

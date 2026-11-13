@@ -222,7 +222,7 @@ export function BillingSection({ success }: BillingSectionProps) {
     : activeBundle
       ? {
           badge: t('settings.account.currentPlan'),
-          title: bundle.source === 'oxy_one' ? 'Oxy One' : `Alia ${bundle.planId}`,
+          title: bundle.source === 'oxy_one' ? 'Oxy One' : `Gemies ${bundle.planId}`,
           description: `${bundle.included.toLocaleString()} ${t('credits.credits')} · ${t('billing.creditsEvery24h', { count: creditsInfo.dailyRefresh })}`,
         }
       : {
@@ -285,7 +285,7 @@ export function BillingSection({ success }: BillingSectionProps) {
   if (bundle && activeBundle) {
     sections.unshift({
       key: 'oxy-one',
-      label: bundle.source === 'oxy_one' ? 'Oxy One' : `Alia ${bundle.planId}`,
+      label: bundle.source === 'oxy_one' ? 'Oxy One' : `Gemies ${bundle.planId}`,
       description: `${bundle.included.toLocaleString()} ${t('credits.credits')} · ${new Date(bundle.periodEnd).toLocaleDateString()}`,
       rows: [
         {
