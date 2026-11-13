@@ -18,35 +18,38 @@ const oxy = vi.hoisted(() => ({
   script: [] as Array<Record<string, unknown>>,
 }));
 
-vi.mock('../oxy-inference.js', () => ({
-  getOxyInferenceClient: () => ({
-    respond: async (request: { tools?: Array<{ name: string }> }) => {
-      oxy.requests.push(request);
-      const next = oxy.script.shift() ?? { toolCalls: [], text: 'done' };
-      return {
-        requestId: `req-${oxy.requests.length}`,
-        model: 'openai/gpt-6-luna@2026-09-01',
-        output: [
-          {
-            role: 'assistant',
-            content: next.text ? [{ type: 'text', text: next.text }] : [],
-            toolCalls: next.toolCalls,
-          },
-        ],
-        finishReason: (next.toolCalls as unknown[]).length > 0 ? 'tool_calls' : 'stop',
-        usage: [
-          { unit: 'input_tokens', quantity: 1 },
-          { unit: 'output_tokens', quantity: 1 },
-        ],
-      };
-    },
-    stream: (request: { tools?: Array<{ name: string }> }) => {
-      oxy.requests.push(request);
-      return (async function* () {
-        yield { type: 'done', finishReason: 'stop' };
-      })();
+vi.mock('../../kaana/transport.js', () => ({
+  getHostedKaanaClient: () => ({
+    responses: {
+      create: async (request: { tools?: Array<{ name: string }> }) => {
+        oxy.requests.push(request);
+        const next = oxy.script.shift() ?? { toolCalls: [], text: 'done' };
+        return {
+          requestId: `req-${oxy.requests.length}`,
+          model: 'openai/gpt-6-luna@2026-09-01',
+          output: [
+            {
+              role: 'assistant',
+              content: next.text ? [{ type: 'text', text: next.text }] : [],
+              toolCalls: next.toolCalls,
+            },
+          ],
+          finishReason: (next.toolCalls as unknown[]).length > 0 ? 'tool_calls' : 'stop',
+          usage: [
+            { unit: 'input_tokens', quantity: 1 },
+            { unit: 'output_tokens', quantity: 1 },
+          ],
+        };
+      },
+      stream: (request: { tools?: Array<{ name: string }> }) => {
+        oxy.requests.push(request);
+        return (async function* () {
+          yield { type: 'done', finishReason: 'stop' };
+        })();
+      },
     },
   }),
+  disposeHostedKaanaClient: vi.fn(),
 }));
 
 const { kaanaLanguageModel } = await import('../kaana-language-model.js');
