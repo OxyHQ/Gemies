@@ -128,9 +128,9 @@ is no service credential to hold, because service-token delegation is closed
 platform-wide until ADR 0012 lands.
 
 **Oxy Files** ([Alia on Oxy Files](./oxy-files.md)): `OXY_FILES_WEBHOOK_SECRET`
-(SSM `/oxy/alia/OXY_FILES_WEBHOOK_SECRET`) is the `whsec_…` secret Oxy Console
-shows once when the file-events endpoint `https://api.alia.onl/webhooks/oxy-files`
-is registered; without it the route answers only the registration challenge (404 to everything else). Private content (library,
+(SSM `/oxy/alia/OXY_FILES_WEBHOOK_SECRET`, bound in the API task definition) is the `whsec_…`
+secret Oxy shows once when the file-events endpoint `https://api.gemies.ai/webhooks/oxy-files`
+is registered (every registration issues a new one); without it the route answers only the registration challenge (404 to everything else). Private content (library,
 spoken clips, skill files) always goes to Oxy first — there is no switch — and
 the backfill (`dist/scripts/migrate-to-oxy-files.js`) runs as an ECS one-shot;
 `SYRA_COVER_FILE_IDS` stays unset until Syra is deployed with `imageFileId`

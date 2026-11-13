@@ -85,14 +85,22 @@ and `skill_file`.
 `express.json()` because the `oxy-signature` HMAC covers the raw bytes, and
 verified with `verifyFileEventSignature` from `@oxy.so/core/server`.
 
-1. In Oxy Console → Alia → Webhooks → **File events**, set
-   `https://api.alia.onl/webhooks/oxy-files`. Oxy sends a `webhook.challenge`
+1. In Oxy Console → Alia → Webhooks → **File events** (or
+   `PUT https://api.oxy.so/applications/6a2f851751b784a86fd0e934/files-webhook`
+   `{ "url": … }` as an owner or admin of the application's account), set
+   `https://api.gemies.ai/webhooks/oxy-files`. Oxy sends a `webhook.challenge`
    that the endpoint echoes — before Alia holds any secret, since registering
-   is what issues it; the console shows the `whsec_…` secret **once**.
+   is what issues it; the `whsec_…` secret is shown **once**. Every successful
+   registration issues a NEW secret, so changing the URL is also a rotation.
 2. Write it to SSM: `/oxy/alia/OXY_FILES_WEBHOOK_SECRET`, then bind it in the
-   task definition (SSM first, then the binding — `docs/deployment.md`).
-   Without the secret the route answers the challenge and 404 to everything
-   else.
+   task definition (SSM first, then the binding — `docs/deployment.md`) and
+   roll the service so the tasks read it. Without the secret the route answers
+   the challenge and 404 to everything else; until the tasks hold the new
+   secret, events are refused and Oxy retries them (1 minute doubling, 16
+   attempts).
+
+Registered at `https://api.gemies.ai/webhooks/oxy-files` on 2026-11-13, with the
+secret bound from `oxy-alia:758`.
 
 | Event | What Alia does |
 |---|---|
