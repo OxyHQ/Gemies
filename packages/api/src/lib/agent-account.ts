@@ -361,9 +361,9 @@ function ownsLocalGemie(agent: AgentRecord, oxyUserId: string): boolean {
 
 /**
  * Whether a gemie is every person's own assistant (Alia): `reach = 'person'`, public and active.
- * Oxy's lane for her is the person's own (`lib/gemie-oxy-actor.ts`), so every person may link their
- * OWN accounts to her, while her identity stays Oxy's: nobody acts as her account, so no person may
- * edit her (`loadAgentForActor` refuses, and `PATCH /agents/:id` with it).
+ * Oxy's lane for her is the person's own (`lib/gemie-oxy-actor.ts`), so every person may grant her
+ * their OWN connected accounts, while her identity stays Oxy's: nobody acts as her account, so no
+ * person may edit her (`loadAgentForActor` refuses, and `PATCH /agents/:id` with it).
  */
 export function isPersonsOwnAssistant(agent: {
   readonly reach: string;
@@ -374,20 +374,18 @@ export function isPersonsOwnAssistant(agent: {
 }
 
 /**
- * The gemie whose connected accounts a caller may link and manage (ADR 0035), or the reason not:
- * whoever may act as the gemie ({@link loadAgentForActor}), and on every person's own assistant
- * ({@link isPersonsOwnAssistant}) every person. Their accounts on a gemie are theirs alone: every
- * read of `connected_accounts` is scoped to the person as well as the gemie.
+ * A gemie a person may grant their connected accounts to (ADR 0035 as amended), or the reason not:
+ * one they may act as ({@link loadAgentForActor}), and every person's own assistant
+ * ({@link isPersonsOwnAssistant}). A gemie with no Oxy account has no actor to answer one with
+ * (ADR 0036). The grant is the person's alone: it is written on their account, never on the gemie.
  */
-export async function loadAgentForAccounts(
+export async function loadGrantableGemie(
   db: Executor,
   params: { agentId: string; oxyUserId: string; accessToken: string },
 ): Promise<AgentForActor> {
   const agent = await findAgentById(db, params.agentId);
   if (agent === null) return { ok: false, refusal: 'agent_not_found' };
   if (isPersonsOwnAssistant(agent)) return { ok: true, agent };
-  // A connected account answers as the gemie it is linked to, through that gemie's own Oxy account:
-  // a gemie with none has nothing to link (ADR 0036).
   if (agent.identity.source === 'local') return { ok: false, refusal: 'agent_not_found' };
   return loadAgentForActor(db, { ...params, cache: false });
 }

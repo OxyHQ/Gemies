@@ -3,13 +3,12 @@ import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { getDb } from '../../db/index.js';
 import {
-  listGemieAccounts,
+  listAccountsGrantedTo,
   type ConnectedAccountRow,
-  type GemieAccountScope,
 } from '../../db/integrations/connectedAccountRepository.js';
 import { log } from '../logger.js';
 import { getErrorMessage } from '../errors/index.js';
-import { notifyAccountPerson } from '../gemie-accounts.js';
+import { notifyAccountPerson } from '../connected-accounts.js';
 import { getRedisClient } from '../redis.js';
 
 /** How long a run's sent messages are remembered: past any retry of that run. */
@@ -49,27 +48,29 @@ async function claimSend(
   }
 }
 
+/** Whose turn, with which gemie. */
+interface TelegramScope {
+  readonly agentId: string;
+  readonly oxyUserId: string;
+}
+
 /**
- * The person's Telegram, as linked to this gemie (ADR 0037): the account whose own chat with the
- * shared Gemies bot a notification is written in. One that moved to another gemie is not it.
+ * The person's Telegram that they granted this gemie (ADR 0035 as amended, 0037): the account whose
+ * own chat with the shared Gemies bot a notification is written in. One turned off in Telegram
+ * (`paused`) still reaches the person there; one unlinked or never finished does not.
  */
-async function telegramAccountOf(scope: GemieAccountScope): Promise<ConnectedAccountRow | null> {
-  const accounts = await listGemieAccounts(getDb(), scope);
-  return (
-    accounts.find(
-      (account) =>
-        account.platform === 'telegram' && account.sessionId && account.status !== 'logged-out',
-    ) ?? null
-  );
+async function telegramAccountOf(scope: TelegramScope): Promise<ConnectedAccountRow | null> {
+  const accounts = await listAccountsGrantedTo(getDb(), scope, ['connected', 'paused']);
+  return accounts.find((account) => account.platform === 'telegram' && account.sessionId) ?? null;
 }
 
 /**
  * `sendTelegramMessage`: write to the person on Telegram — a notification, in their own chat with
- * the shared Gemies bot. Offered only when the person linked their Telegram to this gemie, and it
+ * the shared Gemies bot. Offered only when the person granted this gemie their Telegram, and it
  * works with nobody present (a task, a watch, an event), since the link never expires here.
  */
 export async function buildSendTelegramTool(
-  scope: GemieAccountScope,
+  scope: TelegramScope,
   runId?: string,
 ): Promise<ToolSet> {
   if (!process.env.INTEGRATIONS_URL) return {};

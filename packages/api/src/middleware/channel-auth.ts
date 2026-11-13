@@ -124,8 +124,9 @@ async function resolveChannelAccount(
         context = {
           kind: 'account',
           accountId: connection.oxyUserId,
-          // The account's own gemie answers on it (ADR 0035), never one the request names.
-          gemieId: connection.agentId,
+          // The gemie its person chose to answer it (ADR 0035), never one the request names; `null`
+          // when none does, and then no turn runs on it.
+          gemieId: connection.answeringAgentId,
           platform,
           identityId: connection.id,
           ...(connection.oxyTaskState === 'active' && connection.oxyTaskId

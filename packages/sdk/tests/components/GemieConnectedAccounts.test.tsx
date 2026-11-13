@@ -4,15 +4,18 @@ import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * The connected-accounts panel (ADR 0035), the one both apps draw: the Gemies app in a gemie's
- * editor, the Alia app for Alia's gemie. Bloom is stubbed into host elements carrying their props;
- * the hooks and the routes are real, over a stubbed API.
+ * The connected-accounts screens (ADR 0035 as amended), the ones both apps draw: Settings ›
+ * Connected accounts (`GemieConnectedAccounts`), where a person connects each account once, grants
+ * it to their gemies and chooses the one that answers it, and a gemie's editor
+ * (`GemieAccountGrants`), the same grants seen from one gemie. Bloom is stubbed into host elements
+ * carrying their props; the hooks and the routes are real, over a stubbed API.
  */
 
 const api = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
   patch: vi.fn(),
+  put: vi.fn(),
   delete: vi.fn(),
 }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
@@ -30,6 +33,8 @@ vi.mock('react-native', async () => {
 vi.mock('@oxy.so/bloom/typography', async () => host('Text'));
 vi.mock('@oxy.so/bloom/button', async () => host('Button'));
 vi.mock('@oxy.so/bloom/switch', async () => host('Switch'));
+vi.mock('@oxy.so/bloom/icons/RiWhatsappFill', async () => host('RiWhatsappFill'));
+vi.mock('@oxy.so/bloom/icons/RiTelegramFill', async () => host('RiTelegramFill'));
 vi.mock('@oxy.so/bloom/skeleton', async () => ({
   ...(await host('Box')),
   ...(await host('Region')),
@@ -57,7 +62,7 @@ async function host(name: string): Promise<Record<string, unknown>> {
   };
 }
 
-import { GemieAccounts } from '../../src/accounts';
+import { GemieAccountGrants, GemieConnectedAccounts } from '../../src/accounts';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -66,6 +71,10 @@ let accounts: Record<string, unknown>[] = [];
 let platforms: string[] = [];
 let qr: { status: string; qr: string | null } = { status: 'qr-pending', qr: 'QR-2' };
 let chats: Record<string, unknown>[] = [];
+const GEMIES = [
+  { id: 'alia', name: 'Alia' },
+  { id: 'scout', name: 'Scout' },
+];
 
 const account = (over: Record<string, unknown> = {}) => ({
   _id: 'acc-9',
@@ -74,6 +83,8 @@ const account = (over: Record<string, unknown> = {}) => ({
   displayName: null,
   status: 'connected',
   oxyTaskState: 'active',
+  gemieIds: [],
+  answeringGemieId: null,
   replies: 'everyone',
   replyChatIds: [],
   groupReplies: 'mentions',
@@ -88,17 +99,16 @@ beforeEach(() => {
   chats = [];
   vi.clearAllMocks();
   api.get.mockImplementation(async (path: string) => {
-    if (path === '/agents/gemie-1/accounts') return { data: { accounts, platforms } };
+    if (path === '/me/accounts') return { data: { accounts, gemies: GEMIES, platforms } };
     if (path.endsWith('/qr')) return { data: qr };
     if (path.endsWith('/chats')) return { data: { chats } };
     throw new Error(`unexpected GET ${path}`);
   });
   api.post.mockImplementation(async (path: string) =>
-    path === '/agents/gemie-1/accounts'
-      ? { data: { accountId: 'acc-1', qr: 'QR-1' } }
-      : { data: {} },
+    path === '/me/accounts' ? { data: { accountId: 'acc-1', qr: 'QR-1' } } : { data: {} },
   );
   api.patch.mockResolvedValue({ data: {} });
+  api.put.mockResolvedValue({ data: {} });
   api.delete.mockResolvedValue({ data: {} });
   confirm.mockResolvedValue(true);
 });
@@ -116,13 +126,13 @@ async function settle(): Promise<void> {
   }
 }
 
-async function render(): Promise<TestRenderer.ReactTestRenderer> {
+async function render(
+  element: React.ReactElement = <GemieConnectedAccounts />,
+): Promise<TestRenderer.ReactTestRenderer> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     renderer = TestRenderer.create(
-      <QueryClientProvider client={client}>
-        <GemieAccounts gemieId="gemie-1" name="Scout" />
-      </QueryClientProvider>,
+      <QueryClientProvider client={client}>{element}</QueryClientProvider>,
     );
   });
   await settle();
@@ -141,29 +151,29 @@ const select = (tree: TestRenderer.ReactTestRenderer, value: string) =>
 const switchLabelled = (tree: TestRenderer.ReactTestRenderer, label: string) =>
   all(tree, 'Switch').find((node) => node.props.accessibilityLabel === label);
 
-describe('linking an account', () => {
-  it('offers only the platforms this deployment can link, and shows the code to scan', async () => {
+describe('connecting an account, once, in Settings', () => {
+  it('offers only the platforms this deployment can connect, and shows the code to scan', async () => {
     const tree = await render();
     const offered = all(tree, 'Button')
       .map((node) => node.props.accessibilityLabel)
-      .filter((label) => String(label).startsWith('Link a'));
-    expect(offered).toEqual(['Link a WhatsApp account', 'Link a Telegram account']);
+      .filter((label) => String(label).startsWith('Connect a'));
+    expect(offered).toEqual(['Connect a WhatsApp account', 'Connect a Telegram account']);
 
-    await act(async () => button(tree, 'Link a WhatsApp account')?.props.onPress());
+    await act(async () => button(tree, 'Connect a WhatsApp account')?.props.onPress());
     await settle();
-    expect(api.post).toHaveBeenCalledWith('/agents/gemie-1/accounts', { platform: 'whatsapp' });
+    expect(api.post).toHaveBeenCalledWith('/me/accounts', { platform: 'whatsapp' });
     expect(['QR-1', 'QR-2']).toContain(all(tree, 'QRCode')[0]?.props.value);
     expect(texts(tree).some((text) => text.startsWith('Open WhatsApp on your phone'))).toBe(true);
   });
 
-  it('offers no fake control when nothing can be linked here', async () => {
+  it('offers no fake control when nothing can be connected here', async () => {
     platforms = [];
     const tree = await render();
-    expect(button(tree, 'Link a WhatsApp account')).toBeUndefined();
-    expect(texts(tree)).toContain('Linking WhatsApp or Telegram is not available right now.');
+    expect(button(tree, 'Connect a WhatsApp account')).toBeUndefined();
+    expect(texts(tree)).toContain('Connecting WhatsApp or Telegram is not available right now.');
   });
 
-  it('says why a link failed, in the panel, and tries again', async () => {
+  it('says why a connection failed, in the panel, and tries again', async () => {
     api.post.mockRejectedValueOnce({
       response: {
         status: 503,
@@ -171,114 +181,125 @@ describe('linking an account', () => {
       },
     });
     const tree = await render();
-    await act(async () => button(tree, 'Link a WhatsApp account')?.props.onPress());
+    await act(async () => button(tree, 'Connect a WhatsApp account')?.props.onPress());
     await settle();
-    expect(texts(tree)).toContain('Could not link WhatsApp: Timed out waiting for QR');
+    expect(texts(tree)).toContain('Could not connect WhatsApp: Timed out waiting for QR');
 
     const retry = all(tree, 'Button').find((node) => node.props.children === 'Retry');
     await act(async () => retry?.props.onPress());
     await settle();
     expect(api.post).toHaveBeenCalledTimes(2);
     expect(all(tree, 'QRCode')).toHaveLength(1);
-    expect(texts(tree).some((text) => text.startsWith('Could not link'))).toBe(false);
+    expect(texts(tree).some((text) => text.startsWith('Could not connect'))).toBe(false);
   });
 
   it('closes the code and says so, once, when the account is connected', async () => {
     qr = { status: 'connected', qr: null };
     const tree = await render();
-    await act(async () => button(tree, 'Link a Telegram account')?.props.onPress());
+    await act(async () => button(tree, 'Connect a Telegram account')?.props.onPress());
     await settle();
     expect(toast.success).toHaveBeenCalledTimes(1);
-    expect(toast.success).toHaveBeenCalledWith('Telegram is linked. Scout answers there now.');
+    expect(toast.success).toHaveBeenCalledWith(
+      'Telegram is connected. Choose which of your gemies may use it.',
+    );
     expect(all(tree, 'QRCode')).toHaveLength(0);
   });
 
   it('says so when the code expired before the scan', async () => {
     qr = { status: 'failed', qr: null };
     const tree = await render();
-    await act(async () => button(tree, 'Link a WhatsApp account')?.props.onPress());
+    await act(async () => button(tree, 'Connect a WhatsApp account')?.props.onPress());
     await settle();
     expect(toast.error).toHaveBeenCalledWith(
-      'The WhatsApp code expired before it was scanned. Link it again.',
+      'The WhatsApp code expired before it was scanned. Connect it again.',
     );
   });
 
-  it('forgets the link when the person cancels it', async () => {
+  it('forgets the connection when the person cancels it', async () => {
     const tree = await render();
-    await act(async () => button(tree, 'Link a WhatsApp account')?.props.onPress());
+    await act(async () => button(tree, 'Connect a WhatsApp account')?.props.onPress());
     await settle();
     const cancel = all(tree, 'Button').find((node) => node.props.children === 'Cancel');
     await act(async () => cancel?.props.onPress());
     await settle();
-    expect(api.delete).toHaveBeenCalledWith('/agents/gemie-1/accounts/acc-1');
+    expect(api.delete).toHaveBeenCalledWith('/me/accounts/acc-1');
   });
-});
 
-describe('when the API does not answer', () => {
-  it('says so with a retry, offers nothing else, and recovers when it answers', async () => {
+  it('says so with a retry when the API does not answer, and recovers when it does', async () => {
     const answer = api.get.getMockImplementation();
     api.get.mockRejectedValue(new TypeError('Failed to fetch'));
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    await act(async () => {
-      renderer = TestRenderer.create(
-        <QueryClientProvider client={client}>
-          <GemieAccounts gemieId="gemie-1" name="Scout" />
-        </QueryClientProvider>,
-      );
-    });
-    await settle();
-    const tree = renderer!;
+    const tree = await render();
     expect(texts(tree)).toContain('Could not load this. Try again.');
-    expect(button(tree, 'Link a WhatsApp account')).toBeUndefined();
+    expect(button(tree, 'Connect a WhatsApp account')).toBeUndefined();
 
     api.get.mockImplementation(answer!);
     const retry = all(tree, 'Button').find((node) => node.props.children === 'Retry');
     await act(async () => retry?.props.onPress());
     await settle();
-    expect(button(tree, 'Link a WhatsApp account')).toBeDefined();
+    expect(button(tree, 'Connect a WhatsApp account')).toBeDefined();
   });
 });
 
-describe('a linked account', () => {
-  it('shows its live status and last message, and is removed after confirming', async () => {
+describe('a connected account in Settings', () => {
+  it('shows which account it is, its live status and last message, and is removed after confirming', async () => {
     accounts = [account({ lastActiveAt: '2026-11-13T09:00:00.000Z' })];
     const tree = await render();
-    expect(texts(tree)).toContain('+34 600 · Connected');
+    expect(texts(tree)).toContain('WhatsApp · +34 600');
+    expect(texts(tree)).toContain('Connected');
     expect(texts(tree).some((text) => text.startsWith('Last message: '))).toBe(true);
     await act(async () => button(tree, 'Remove the WhatsApp account')?.props.onPress());
     await settle();
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({ destructive: true, title: 'Remove WhatsApp' }),
     );
-    expect(api.delete).toHaveBeenCalledWith('/agents/gemie-1/accounts/acc-9');
+    expect(api.delete).toHaveBeenCalledWith('/me/accounts/acc-9');
   });
 
-  it('says how to recover one unlinked from the phone, and offers no settings for it', async () => {
-    accounts = [account({ status: 'logged-out' })];
+  it('grants and revokes each of the person’s gemies, Alia among them', async () => {
+    accounts = [account({ gemieIds: ['alia'] })];
     const tree = await render();
-    expect(
-      texts(tree).some((text) =>
-        text.includes('Unlinked from the phone. Remove it and link it again.'),
-      ),
-    ).toBe(true);
-    expect(all(tree, 'Select')).toHaveLength(0);
+    expect(switchLabelled(tree, 'Alia may use WhatsApp · +34 600')?.props.checked).toBe(true);
+    expect(switchLabelled(tree, 'Scout may use WhatsApp · +34 600')?.props.checked).toBe(false);
+    await act(async () =>
+      switchLabelled(tree, 'Scout may use WhatsApp · +34 600')?.props.onCheckedChange(true),
+    );
+    expect(api.put).toHaveBeenCalledWith('/me/accounts/acc-9/gemies/scout');
+    await act(async () =>
+      switchLabelled(tree, 'Alia may use WhatsApp · +34 600')?.props.onCheckedChange(false),
+    );
+    expect(api.delete).toHaveBeenCalledWith('/me/accounts/acc-9/gemies/alia');
   });
 
-  it('saves who it answers and in groups', async () => {
-    accounts = [account()];
+  it('answers with nobody until the person chooses a gemie, and says what that means', async () => {
+    accounts = [account({ gemieIds: ['alia'] })];
     const tree = await render();
+    expect(texts(tree).some((text) => text.startsWith('No gemie replies on its own'))).toBe(true);
+    // No reply policy for a gemie that does not exist.
+    expect(select(tree, 'everyone')).toBeUndefined();
+    await act(async () => select(tree, '')?.props.onValueChange('scout'));
+    expect(api.patch).toHaveBeenCalledWith('/me/accounts/acc-9', { answeringGemieId: 'scout' });
+  });
+
+  it('saves who the answering gemie answers, and in groups, or makes nobody answer', async () => {
+    accounts = [account({ gemieIds: ['scout'], answeringGemieId: 'scout' })];
+    const tree = await render();
+    expect(texts(tree)).toContain('Answers on its own');
     await act(async () => select(tree, 'everyone')?.props.onValueChange('nobody'));
-    expect(api.patch).toHaveBeenCalledWith('/agents/gemie-1/accounts/acc-9', {
-      replies: 'nobody',
-    });
+    expect(api.patch).toHaveBeenCalledWith('/me/accounts/acc-9', { replies: 'nobody' });
     await act(async () => select(tree, 'mentions')?.props.onValueChange('never'));
-    expect(api.patch).toHaveBeenCalledWith('/agents/gemie-1/accounts/acc-9', {
-      groupReplies: 'never',
-    });
+    expect(api.patch).toHaveBeenCalledWith('/me/accounts/acc-9', { groupReplies: 'never' });
+    await act(async () => select(tree, 'scout')?.props.onValueChange(''));
+    expect(api.patch).toHaveBeenCalledWith('/me/accounts/acc-9', { answeringGemieId: null });
   });
 
   it('chooses the chats it answers from the account’s own', async () => {
-    accounts = [account({ replies: 'chosen', replyChatIds: ['ana@s.whatsapp.net'] })];
+    accounts = [
+      account({
+        answeringGemieId: 'scout',
+        replies: 'chosen',
+        replyChatIds: ['ana@s.whatsapp.net'],
+      }),
+    ];
     chats = [
       { chatId: 'ana@s.whatsapp.net', name: 'Ana', kind: 'direct' },
       { chatId: 'family@g.us', name: 'Family', kind: 'group' },
@@ -287,15 +308,31 @@ describe('a linked account', () => {
     expect(switchLabelled(tree, 'Answer Ana')?.props.checked).toBe(true);
     expect(switchLabelled(tree, 'Answer Family')?.props.checked).toBe(false);
     await act(async () => switchLabelled(tree, 'Answer Family')?.props.onCheckedChange(true));
-    expect(api.patch).toHaveBeenCalledWith('/agents/gemie-1/accounts/acc-9', {
+    expect(api.patch).toHaveBeenCalledWith('/me/accounts/acc-9', {
       replyChatIds: ['ana@s.whatsapp.net', 'family@g.us'],
     });
   });
 
-  it('renews a lapsed account task without a new link', async () => {
-    accounts = [account({ oxyTaskState: 'reauth_required' })];
+  it('says how to recover one unlinked from the phone, and offers no settings for it', async () => {
+    accounts = [account({ status: 'logged-out' })];
+    const tree = await render();
+    expect(
+      texts(tree).some((text) =>
+        text.includes('Unlinked from the phone. Remove it and connect it again.'),
+      ),
+    ).toBe(true);
+    expect(all(tree, 'Select')).toHaveLength(0);
+    expect(all(tree, 'Switch')).toHaveLength(0);
+  });
+
+  it('renews the answering gemie’s lapsed task without a new link, and only where one answers', async () => {
+    accounts = [
+      account({ oxyTaskState: 'reauth_required', answeringGemieId: 'scout' }),
+      account({ _id: 'acc-10', oxyTaskState: 'reauth_required' }),
+    ];
     await render();
-    expect(api.post).toHaveBeenCalledWith('/agents/gemie-1/accounts/acc-9/reauthorize');
+    expect(api.post).toHaveBeenCalledWith('/me/accounts/acc-9/reauthorize');
+    expect(api.post).not.toHaveBeenCalledWith('/me/accounts/acc-10/reauthorize');
   });
 });
 
@@ -308,7 +345,7 @@ describe('Telegram Business (ADR 0037)', () => {
     const tree = await render();
     expect(texts(tree).some((text) => text.includes('needs Telegram Premium'))).toBe(true);
 
-    await act(async () => button(tree, 'Link a Telegram account')?.props.onPress());
+    await act(async () => button(tree, 'Connect a Telegram account')?.props.onPress());
     await settle();
     expect(texts(tree)).toContain('Connect Telegram');
     expect(texts(tree).some((text) => text.includes('Telegram Business › Chatbots'))).toBe(true);
@@ -318,7 +355,7 @@ describe('Telegram Business (ADR 0037)', () => {
     expect(linking.openURL).toHaveBeenCalledWith(LINK);
   });
 
-  it('keeps the steps of a link the person left, until Telegram connects it', async () => {
+  it('keeps the steps of a connection the person left, until Telegram connects it', async () => {
     accounts = [account({ platform: 'telegram', status: 'qr-pending', phoneNumber: null })];
     qr = { status: 'qr-pending', qr: null };
     const tree = await render();
@@ -330,8 +367,9 @@ describe('Telegram Business (ADR 0037)', () => {
       account({ platform: 'telegram', status: 'paused', displayName: '@ada', phoneNumber: null }),
     ];
     let tree = await render();
+    expect(texts(tree)).toContain('Telegram · @ada');
     expect(texts(tree)).toContain(
-      '@ada · Paused in Telegram. It resumes on its own when you turn the bot back on there.',
+      'Paused in Telegram. It resumes on its own when you turn the bot back on there.',
     );
     act(() => renderer?.unmount());
     renderer = null;
@@ -345,21 +383,67 @@ describe('Telegram Business (ADR 0037)', () => {
       }),
     ];
     tree = await render();
-    expect(
-      texts(tree).some((text) =>
-        text.includes('Revoked: this Telegram now answers through another gemie'),
-      ),
-    ).toBe(true);
+    expect(texts(tree).some((text) => text.includes('Revoked: this Telegram was connected'))).toBe(
+      true,
+    );
     expect(texts(tree).some((text) => /sign in|log in/i.test(text))).toBe(false);
   });
 
-  it('says when Telegram does not let it reply, and offers no group setting', async () => {
+  it('says when Telegram does not let the answering gemie reply, and offers no group setting', async () => {
     accounts = [
-      account({ platform: 'telegram', canReply: false, displayName: '@ada', phoneNumber: null }),
+      account({
+        platform: 'telegram',
+        canReply: false,
+        displayName: '@ada',
+        phoneNumber: null,
+        answeringGemieId: 'scout',
+      }),
     ];
     const tree = await render();
-    expect(texts(tree).some((text) => text.includes('Reply to messages'))).toBe(true);
+    expect(texts(tree).some((text) => text.includes('does not let Scout reply'))).toBe(true);
     expect(select(tree, 'mentions')).toBeUndefined();
     expect(select(tree, 'everyone')).toBeDefined();
+  });
+});
+
+describe('the accounts a gemie can use, in its editor', () => {
+  const manage = vi.fn();
+  const grants = () =>
+    render(<GemieAccountGrants gemieId="scout" name="Scout" onManage={manage} />);
+
+  it('lists the person’s connected accounts, one switch each, and grants or revokes this gemie', async () => {
+    accounts = [
+      account({ gemieIds: ['scout'], answeringGemieId: 'scout' }),
+      account({ _id: 'acc-10', platform: 'telegram', phoneNumber: null, displayName: '@ada' }),
+      // Not connected yet: Settings' to finish, never a switch here.
+      account({ _id: 'acc-11', status: 'qr-pending' }),
+    ];
+    const tree = await grants();
+    expect(all(tree, 'Switch').map((node) => node.props.accessibilityLabel)).toEqual([
+      'Scout may use WhatsApp · +34 600',
+      'Scout may use Telegram · @ada',
+    ]);
+    expect(switchLabelled(tree, 'Scout may use WhatsApp · +34 600')?.props.checked).toBe(true);
+    // Which account it answers on its own is said, not hidden.
+    expect(texts(tree)).toContain('Answers on its own');
+
+    await act(async () =>
+      switchLabelled(tree, 'Scout may use Telegram · @ada')?.props.onCheckedChange(true),
+    );
+    expect(api.put).toHaveBeenCalledWith('/me/accounts/acc-10/gemies/scout');
+    await act(async () =>
+      switchLabelled(tree, 'Scout may use WhatsApp · +34 600')?.props.onCheckedChange(false),
+    );
+    expect(api.delete).toHaveBeenCalledWith('/me/accounts/acc-9/gemies/scout');
+  });
+
+  it('sends the person to Settings to connect one, and says when there is none', async () => {
+    const tree = await grants();
+    expect(texts(tree)).toContain('You have not connected a WhatsApp or Telegram account yet.');
+    const open = all(tree, 'Button').find(
+      (node) => node.props.children === 'Connect or manage accounts',
+    );
+    await act(async () => open?.props.onPress());
+    expect(manage).toHaveBeenCalledOnce();
   });
 });

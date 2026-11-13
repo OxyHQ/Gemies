@@ -1,7 +1,7 @@
 /**
  * What the integrations gateway asks of a connected account it serves (ADR 0035), over a verified
- * channel: the account comes from the live provider session (`middleware/channel-auth.ts`), never
- * from the request.
+ * channel: the account, and the gemie that answers it, come from the live provider session and the
+ * person's grants (`middleware/channel-auth.ts`), never from the request.
  */
 
 import type { Request, Response } from 'express';
@@ -14,7 +14,7 @@ import {
   setConnectedAccountSessionState,
   touchConnectedAccount,
 } from '../db/integrations/connectedAccountRepository.js';
-import { shouldAnswer } from '../lib/gemie-accounts.js';
+import { shouldAnswer } from '../lib/connected-accounts.js';
 import { log } from '../lib/logger.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -30,7 +30,7 @@ const inboundSchema = z
 
 /**
  * POST /channel-accounts/inbound — a message arrived on the account: record it, and say whether
- * its gemie answers it.
+ * it is answered: only when a gemie answers the account and the account's replies cover it.
  */
 router.post('/inbound', authenticateToken, async (req: Request, res: Response) => {
   const context = req.channelContext;
@@ -43,7 +43,9 @@ router.post('/inbound', authenticateToken, async (req: Request, res: Response) =
     const account = await findConnectedAccount(getDb(), context.identityId);
     if (!account) return res.status(404).json({ error: 'Account not found' });
     await touchConnectedAccount(getDb(), account.id);
-    const decision: GemieAccountInboundDecision = { answer: shouldAnswer(account, parsed.data) };
+    const decision: GemieAccountInboundDecision = {
+      answer: typeof context.gemieId === 'string' && shouldAnswer(account, parsed.data),
+    };
     res.json(decision);
   } catch (err: unknown) {
     log.channels.error({ err }, 'Inbound decision failed');
@@ -62,7 +64,7 @@ const sessionSchema = z
 
 /**
  * POST /channel-accounts/session — the account's provider session moved (Telegram reported the
- * connection turned off or on again, or its rights changed): stored now, so its gemie's tools and
+ * connection turned off or on again, or its rights changed): stored now, so its gemies' tools and
  * the panel follow it with nobody opening Gemies.
  */
 router.post('/session', authenticateToken, async (req: Request, res: Response) => {

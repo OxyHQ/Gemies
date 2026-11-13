@@ -10,7 +10,7 @@ vi.mock('../logger.js', () => {
   return { log: { channels: child } };
 });
 
-const { shouldAnswer } = await import('../gemie-accounts.js');
+const { shouldAnswer } = await import('../connected-accounts.js');
 
 const direct = { chatId: 'ana', chatKind: 'direct', mentionsAccount: false } as const;
 const group = { chatId: 'family', chatKind: 'group', mentionsAccount: false } as const;

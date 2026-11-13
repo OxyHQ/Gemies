@@ -1,13 +1,14 @@
 /**
  * The connected-account contract between the Gemies API and its integrations process (ADR 0035).
  *
- * A person links a WhatsApp or Telegram account to one gemie. The integrations process holds the
- * provider session and speaks this contract for every platform alike (`accounts/gateway-router.ts`
- * there); the API stores the account and decides who it answers (`routes/agents/accounts.ts`,
- * `lib/gemie-accounts.ts`). One vocabulary on both sides, so neither translates the other's.
+ * A person connects a WhatsApp or Telegram account once and grants it to their gemies. The
+ * integrations process holds the provider session and speaks this contract for every platform alike
+ * (`accounts/gateway-router.ts` there); the API stores the account and its grants and decides who
+ * answers it (`routes/me-accounts.ts`, `lib/connected-accounts.ts`). One vocabulary on both sides,
+ * so neither translates the other's.
  */
 
-/** The platforms a gemie can be linked to, as the API stores them and the gateway mounts them. */
+/** The platforms an account can be connected on, as the API stores them and the gateway mounts them. */
 export const GEMIE_ACCOUNT_PLATFORMS = ['whatsapp', 'telegram'] as const;
 export type GemieAccountPlatform = (typeof GEMIE_ACCOUNT_PLATFORMS)[number];
 
@@ -19,7 +20,7 @@ export type GemieAccountPlatform = (typeof GEMIE_ACCOUNT_PLATFORMS)[number];
  *  - `disconnected`: dropped, and the gateway is reconnecting it;
  *  - `paused`: the person turned it off in the platform (Telegram Business); it comes back by
  *    itself when they turn it on again;
- *  - `logged-out`: unlinked (from the phone, or linked to another gemie), and over;
+ *  - `logged-out`: unlinked (from the phone, or connected again as another account), and over;
  *  - `failed`: it could not reconnect, and needs linking again.
  */
 export const GEMIE_ACCOUNT_STATUSES = [
@@ -38,7 +39,7 @@ export interface GemieAccountSession {
   readonly phoneNumber?: string | null;
   readonly displayName?: string | null;
   /**
-   * Whether the platform lets the gemie write from the account. Telegram Business grants it per
+   * Whether the platform lets a gemie write from the account. Telegram Business grants it per
    * connection ("Reply to messages"); absent where the platform has no such grant.
    */
   readonly canReply?: boolean | null;

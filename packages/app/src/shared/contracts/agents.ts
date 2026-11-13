@@ -89,10 +89,10 @@ export interface Agent {
   authorName: string | null;
   /**
    * What the caller may do with it, on the card `GET /agents/:id` answers (ADR 0035): change it
-   * (`mayEdit`), and manage their own connected accounts on it (`mayManageAccounts`, every person
-   * on Alia). Absent on lists and on a write's answer, which only an editor gets.
+   * (`mayEdit`), and grant it their own connected accounts (`mayGrantAccounts`, every person on
+   * Alia). Absent on lists and on a write's answer, which only an editor gets.
    */
-  viewer?: { mayEdit: boolean; mayManageAccounts: boolean };
+  viewer?: { mayEdit: boolean; mayGrantAccounts: boolean };
   category: string;
   tags: string[];
   rating: number;

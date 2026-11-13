@@ -37,23 +37,24 @@ const sources = vi.hoisted(() => ({
   oxy: {} as Record<string, unknown>,
   mcp: {} as Record<string, unknown>,
   mcpAsked: [] as (readonly string[] | undefined)[],
-  /** The platforms the turn's gemie has a connected account of, for the turn's person (ADR 0035). */
+  /** The platforms of the accounts the turn's person granted its gemie (ADR 0035 as amended). */
   linked: ['whatsapp'] as string[],
   accountsAsked: [] as unknown[],
 }));
 vi.mock('../../db/integrations/connectedAccountRepository.js', () => ({
-  listConnectedGemieAccounts: vi.fn(async (_db: unknown, scope: unknown) => {
-    sources.accountsAsked.push(scope);
-    return sources.linked.map((platform) => ({ id: `${platform}-1`, platform, sessionId: 's' }));
-  }),
-  listGemieAccounts: vi.fn(async () =>
-    sources.linked.map((platform) => ({
+  listAccountsGrantedTo: vi.fn(async (_db: unknown, scope: unknown, statuses?: string[]) => {
+    if (statuses === undefined) sources.accountsAsked.push(scope);
+    return sources.linked.map((platform) => ({
       id: `${platform}-1`,
       platform,
       sessionId: 's',
       status: 'connected',
-    })),
-  ),
+      answers: false,
+      phoneNumber: null,
+      displayName: null,
+      createdAt: new Date(platform === 'telegram' ? 1 : 2),
+    }));
+  }),
 }));
 
 vi.mock('../tools/oxy-services.js', () => ({
@@ -782,7 +783,7 @@ describe('ToolPipeline.forUser applies the budget on every path it serves', () =
     expect(mentionNames(result.activeToolNames())).toEqual(['oxy_mention__createPost']);
   });
 
-  describe('connected-account tools need the gemie’s own connected account', () => {
+  describe('connected-account tools need an account the person granted the gemie', () => {
     const ACCOUNT_TOOLS = ['listAccountChats', 'readAccountMessages', 'sendAccountMessage'];
 
     afterEach(() => {
@@ -799,24 +800,24 @@ describe('ToolPipeline.forUser applies the budget on every path it serves', () =
       expect(result.tools.sendTelegramMessage).toBeUndefined();
     });
 
-    it('offers all three, for the platforms it has, where the gemie has an account — the control', async () => {
+    it('offers all three, over the accounts granted, where the gemie was granted one — the control', async () => {
       sources.oxy = family('oxy_noted', 'Noted', 3);
       sources.linked = ['telegram', 'whatsapp'];
       sources.accountsAsked = [];
       vi.stubEnv('INTEGRATIONS_URL', 'https://gateway.example.test');
       const result = await forUser();
       for (const name of ACCOUNT_TOOLS) expect(result.tools[name]).toBeDefined();
-      // A linked Telegram also reaches its person (ADR 0037).
+      // A granted Telegram also reaches its person (ADR 0037).
       expect(result.tools.sendTelegramMessage).toBeDefined();
       // Asked of the turn's own gemie and person, never of the person alone (ADR 0035).
       expect(sources.accountsAsked).toEqual([{ agentId: aliaGemie()._id, oxyUserId: 'user-1' }]);
       const schema = asSchema(result.tools.sendAccountMessage?.inputSchema).jsonSchema as {
-        properties: { platform: { enum: string[] } };
+        properties: { account: { enum: string[] } };
       };
-      expect(schema.properties.platform.enum).toEqual(['telegram', 'whatsapp']);
+      expect(schema.properties.account.enum).toEqual(['telegram', 'whatsapp']);
     });
 
-    it('does not offer them when the turn’s gemie has no account of this person', async () => {
+    it('does not offer them when the person granted the turn’s gemie no account', async () => {
       sources.oxy = family('oxy_noted', 'Noted', 3);
       sources.linked = [];
       vi.stubEnv('INTEGRATIONS_URL', 'https://gateway.example.test');

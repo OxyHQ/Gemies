@@ -13,11 +13,11 @@ import { ScrollView, View } from 'react-native';
 const AVATAR = 56;
 
 /**
- * The editor of a gemie whose identity the person may not change but whose connected accounts they
- * may manage (`viewer.mayManageAccounts` without `mayEdit`): Alia, every person's own assistant
- * (ADR 0035). Who she is shows as text, never as fields that would save nothing — her identity is
- * Oxy's, and the API refuses any edit of it — and the one card the person can use is their own
- * accounts on her.
+ * The editor of a gemie whose identity the person may not change but to which they may grant their
+ * connected accounts (`viewer.mayGrantAccounts` without `mayEdit`): Alia, every person's own
+ * assistant (ADR 0035 as amended). Who she is shows as text, never as fields that would save nothing
+ * — her identity is Oxy's, and the API refuses any edit of it — and the one card the person can use
+ * is which of their accounts she may use, the same switches every gemie's editor has.
  *
  * Her name and look are the SDK's until her Oxy account exists (ADR 0034): the card has no name
  * for her yet, so the header draws her the way the sidebar does.

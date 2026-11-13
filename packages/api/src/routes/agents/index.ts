@@ -13,7 +13,6 @@ import externalAgentsRouter from './external-agents.js';
 import featureGatesRouter from './feature-gates.js';
 import primaryToolsRouter from './primary-tools.js';
 import inboxRouter from './inbox.js';
-import accountsRouter from './accounts.js';
 import telegramBotRouter from './telegram-bot.js';
 
 const router = Router();
@@ -40,7 +39,6 @@ router.use('/', externalAgentsRouter);
 router.use('/', featureGatesRouter);
 router.use('/', primaryToolsRouter);
 router.use('/', inboxRouter);
-router.use('/', accountsRouter);
 router.use('/', telegramBotRouter);
 
 // Session-specific routes (sessions/:sid/...) before parameterized /:id routes

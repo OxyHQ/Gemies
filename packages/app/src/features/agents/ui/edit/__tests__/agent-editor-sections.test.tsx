@@ -57,12 +57,32 @@ vi.mock('@oxy.so/bloom/icons/RiRefreshLine', () => ({ RiRefreshLine: 'RiRefreshL
 vi.mock('@oxy.so/bloom/icons/RiTelegramFill', () => ({ RiTelegramFill: 'RiTelegramFill' }));
 vi.mock('@oxy.so/bloom/admonition', async () => hosts('Admonition'));
 vi.mock('@oxy.so/bloom/badge', async () => hosts('Badge'));
-vi.mock('@gemies/sdk/accounts', async () => hosts('GemieAccounts'));
+vi.mock('@gemies/sdk/accounts', async () => hosts('GemieAccountGrants'));
+const settings = vi.hoisted(() => ({ open: vi.fn() }));
+vi.mock('@/features/settings/ui/settings-context', () => ({ useAliaSettings: () => settings }));
 vi.mock('@gemies/sdk', async () => ({ readAgentCharacter: (character: unknown) => character }));
 vi.mock('@oxy.so/bloom/agent-avatar', async () => hosts('AgentAvatar'));
 vi.mock('@oxy.so/bloom/text-field', async () => hosts('TextFieldInput'));
 vi.mock('@gemies/sdk/connectors', async () => ({
   ...(await hosts('ConnectorLogo')),
+  // The SDK's grant row, reduced to what it draws: what it grants, its name and its switch.
+  GrantSwitchRow: await (async () => {
+    const ReactModule = await import('react');
+    return ({
+      leading,
+      label,
+      detail: _detail,
+      first: _first,
+      ...props
+    }: Record<string, unknown> & { leading?: React.ReactNode; label: string }) =>
+      ReactModule.createElement(
+        'View',
+        null,
+        leading,
+        ReactModule.createElement('Text', null, label),
+        ReactModule.createElement('Switch', props),
+      );
+  })(),
   connectorQueryKeys: { connected: ['gemie-connectors', 'connected'] },
   useConnections: () => ({ data: connections.list, isPending: false }),
 }));
@@ -518,15 +538,19 @@ describe('what the agent remembers', () => {
   });
 });
 
-describe('the accounts it answers on', () => {
-  it('draws the SDK’s accounts panel for this gemie, in the editor’s words', async () => {
+describe('the WhatsApp and Telegram accounts it may use', () => {
+  it('draws the SDK’s grant list for this gemie, in the editor’s words, and opens Settings to connect more', async () => {
     const tree = await render();
-    const panel = all(tree, 'GemieAccounts')[0];
-    expect(panel?.props).toMatchObject({ gemieId: 'agent-1', name: 'Scout' });
-    expect(panel?.props.t('gemie.accounts.link')).toBe('Link an account');
+    const list = all(tree, 'GemieAccountGrants')[0];
+    expect(list?.props).toMatchObject({ gemieId: 'agent-1', name: 'Scout' });
+    expect(list?.props.t('gemie.accounts.grants.manage')).toBe('Connect or manage accounts');
     expect(
-      all(tree, 'AgentCreatorSection').some((node) => node.props.title === 'Connected accounts'),
+      all(tree, 'AgentCreatorSection').some(
+        (node) => node.props.title === 'Accounts Scout can use',
+      ),
     ).toBe(true);
+    await act(async () => list?.props.onManage());
+    expect(settings.open).toHaveBeenCalledWith('accounts');
   });
 });
 

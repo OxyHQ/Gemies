@@ -34,10 +34,11 @@ export interface TurnIdentity {
   /** An exact gemie selector the caller already validated, or `undefined` for the default (Alia). */
   readonly requestedAgentId?: string;
   /**
-   * The gemie a verified connected account belongs to (ADR 0035). It answers the turn, in place of
-   * any requested one, under the rule unattended work follows: no bearer is present to ask Oxy with.
+   * The gemie that answers a verified connected account (ADR 0035 as amended). It answers the turn,
+   * in place of any requested one, under the rule unattended work follows: no bearer is present to
+   * ask Oxy with. `null` is an account no gemie answers: the turn is out of reach, never Alia's.
    */
-  readonly channelGemieId?: string;
+  readonly channelGemieId?: string | null;
   /** The app the turn comes from, by its verified app assertion (`lib/app-surface.ts`), or `null`. */
   readonly surfaceApplicationId: string | null;
   /** `false` when the person turned personalization off for this turn: no memory profile is read. */
@@ -111,7 +112,9 @@ export async function resolveTurnGemie(identity: TurnIdentity): Promise<TurnAgen
   const { requestedAgentId, oxyUserId, channelGemieId } = identity;
   try {
     if (channelGemieId !== undefined) {
-      if (oxyUserId === undefined) return { kind: 'unavailable', reason: 'out_of_reach' };
+      if (channelGemieId === null || oxyUserId === undefined) {
+        return { kind: 'unavailable', reason: 'out_of_reach' };
+      }
       return await loadUnattendedTurnAgent(getDb(), { agentId: channelGemieId, oxyUserId });
     }
     if (requestedAgentId === undefined) return { kind: 'agent', agent: await loadAliaGemie() };

@@ -62,7 +62,7 @@ beforeEach(() => {
   fixture.connection.mockResolvedValue({
     id: 'connection',
     oxyUserId: ACCOUNT,
-    agentId: 'gemie-of-the-account',
+    answeringAgentId: 'gemie-of-the-account',
     oxyTaskState: 'active',
     oxyTaskId: 'task',
   });
@@ -91,7 +91,7 @@ describe('channel workload identity', () => {
     expect(req.channelContext).toMatchObject({
       kind: 'account',
       accountId: ACCOUNT,
-      // The account's own gemie answers on it (ADR 0035).
+      // The gemie its person chose to answer it (ADR 0035 as amended).
       gemieId: 'gemie-of-the-account',
       identityId: 'connection',
     });

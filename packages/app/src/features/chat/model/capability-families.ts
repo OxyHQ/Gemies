@@ -45,7 +45,6 @@ import { RiRobot2Line } from '@oxy.so/bloom/icons/RiRobot2Line';
 import { RiTimeLine } from '@oxy.so/bloom/icons/RiTimeLine';
 import { RiGlobalLine } from '@oxy.so/bloom/icons/RiGlobalLine';
 import { RiLightbulbFlashLine } from '@oxy.so/bloom/icons/RiLightbulbFlashLine';
-import { RiMessage2Line } from '@oxy.so/bloom/icons/RiMessage2Line';
 import { RiShapesLine } from '@oxy.so/bloom/icons/RiShapesLine';
 import { RiWindowLine } from '@oxy.so/bloom/icons/RiWindowLine';
 
@@ -59,17 +58,19 @@ export interface CapabilityFamily {
 }
 
 /**
- * The eight families granted whole, in the order they are shown.
+ * The seven families granted whole, in the order they are shown.
  *
  * Ordered by how much of the world the family reaches — reading the web, then
  * reading pages step by step, then what the agent produces, the
- * person's memory and messages, then acting through other agents. Not
+ * person's memory, then acting through other agents. Not
  * alphabetical: the ones with the widest blast radius are the ones an owner
  * should decide about first.
  *
  * `shell` and `files` are not here and must not come back as switches: they
  * granted a sandbox container production never had, so they could be turned
  * on and never do anything. The API drops them on read and on write.
+ * `messaging` is not here either: a person's WhatsApp and Telegram are theirs, granted one account
+ * at a time in Settings and in the editor's "Accounts it can use" (ADR 0035 as amended).
  * `computer` is their successor under a new name, and it is last because it
  * runs code: its tools exist only where GemiesOS is configured.
  *
@@ -105,12 +106,6 @@ export const CAPABILITY_FAMILIES: readonly CapabilityFamily[] = [
     label: 'agents.capabilityFamily.memory.label',
     description: 'agents.capabilityFamily.memory.description',
     icon: RiLightbulbFlashLine,
-  },
-  {
-    id: 'messaging',
-    label: 'agents.capabilityFamily.messaging.label',
-    description: 'agents.capabilityFamily.messaging.description',
-    icon: RiMessage2Line,
   },
   {
     id: 'automation',

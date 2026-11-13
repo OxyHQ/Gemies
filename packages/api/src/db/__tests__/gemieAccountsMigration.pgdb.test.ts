@@ -10,7 +10,8 @@ import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
  * Signal. This database was migrated from empty, so 0142's data statements are REPLAYED over rows
  * shaped like production's before the cut, inside a transaction that loosens what 0142 tightened
  * (it has to, to write the old shape at all) and is rolled back, so the suite's database ends as the
- * migrations left it.
+ * migrations left it. ADR 0035's amendment then makes each account its person's: 0156 and 0157's
+ * backfills are replayed the same way, across the window the image being replaced still drains in.
  */
 
 const BACKFILL = fileURLToPath(
@@ -18,6 +19,12 @@ const BACKFILL = fileURLToPath(
 );
 const STATUSES = fileURLToPath(
   new URL('../../../drizzle/0146_gemie_account_status_vocabulary.sql', import.meta.url),
+);
+const GRANTS_PRE = fileURLToPath(
+  new URL('../../../drizzle/0156_connected_account_grants.sql', import.meta.url),
+);
+const GRANTS_POST = fileURLToPath(
+  new URL('../../../drizzle/0157_accounts_belong_to_their_person.sql', import.meta.url),
 );
 
 let db: ApiDatabase;
@@ -34,12 +41,12 @@ afterAll(async () => {
   await closePostgres();
 });
 
-/** A migration's data statements: its deletes and updates, without its DDL. */
+/** A migration's data statements: its inserts, deletes and updates, without its DDL. */
 function dataStatements(file = BACKFILL): string[] {
   return readFileSync(file, 'utf8')
     .split('--> statement-breakpoint')
     .map((statement) => statement.replace(/^--.*$/gm, '').trim())
-    .filter((statement) => /^(DELETE|UPDATE)\b/.test(statement));
+    .filter((statement) => /^(INSERT|DELETE|UPDATE)\b/.test(statement));
 }
 
 describe('0142: every connected account names its gemie', () => {
@@ -48,8 +55,8 @@ describe('0142: every connected account names its gemie', () => {
     let observed: Record<string, string | null> | null = null;
     try {
       await db.transaction(async (tx) => {
-        // The shape before the cut.
-        await tx.execute(sql`alter table connected_accounts alter column agent_id drop not null`);
+        // The shape before the cut (0157 has since dropped `agent_id` again).
+        await tx.execute(sql`alter table connected_accounts add column agent_id text`);
         await tx.execute(
           sql`alter table connected_accounts drop constraint connected_accounts_platform_check`,
         );
@@ -113,8 +120,8 @@ describe('0142: every connected account names its gemie', () => {
           ['st-connected', 'connected'],
         ]) {
           await tx.execute(sql`
-            insert into connected_accounts (id, oxy_user_id, agent_id, platform, status)
-            values (${id}, 'st-person', ${ALIA_GEMIE_ID}, 'whatsapp', ${status})`);
+            insert into connected_accounts (id, oxy_user_id, platform, status)
+            values (${id}, 'st-person', 'whatsapp', ${status})`);
         }
         for (const statement of dataStatements(STATUSES)) await tx.execute(sql.raw(statement));
         const rows = await tx.execute<{ id: string; status: string }>(
@@ -134,16 +141,80 @@ describe('0142: every connected account names its gemie', () => {
     });
   });
 
-  it('leaves every account named, and only WhatsApp and Telegram', async () => {
-    const [column] = await db.execute<{ is_nullable: string }>(
-      sql`select is_nullable from information_schema.columns
+  it('0156 and 0157 make every account its person’s, granted to its gemie, which answers it', async () => {
+    expect(dataStatements(GRANTS_PRE)).toHaveLength(1);
+    expect(dataStatements(GRANTS_POST)).toHaveLength(2);
+    let observed: { grants: string[]; capabilities: string[] } | null = null;
+    try {
+      await db.transaction(async (tx) => {
+        // The shape the image being replaced writes until it drains.
+        await tx.execute(sql`alter table connected_accounts add column agent_id text`);
+        const gemie = (id: string, grants: string[]) =>
+          tx.execute(sql`
+            insert into agents (id, oxy_account_id, character, tagline, description, author_oxy_user_id, category, capability_grants)
+            values (${id}, ${`bot-${id}`}, '{"preset":"blue_beret"}'::jsonb, 't', 'd', 'author', 'general', ${sql.param(grants)}::text[])`);
+        await gemie('grm-one', ['web', 'messaging', 'agent']);
+        await gemie('grm-two', ['messaging']);
+        const account = (id: string, agentId: string | null) =>
+          tx.execute(sql`
+            insert into connected_accounts (id, oxy_user_id, platform, agent_id)
+            values (${id}, 'grm-person', 'whatsapp', ${agentId})`);
+
+        // Linked by the old image before the pre half ran.
+        await account('grm-before', 'grm-one');
+        for (const statement of dataStatements(GRANTS_PRE)) await tx.execute(sql.raw(statement));
+        // While it drains: the old image links another, and the new image's person makes another
+        // gemie answer the first (and links one that names no gemie).
+        await account('grm-draining', 'grm-two');
+        await account('grm-new', null);
+        await tx.execute(
+          sql`update connected_account_grants set answers = false where account_id = 'grm-before'`,
+        );
+        await tx.execute(sql`
+          insert into connected_account_grants (account_id, agent_id, answers)
+          values ('grm-before', 'grm-two', true)`);
+        for (const statement of dataStatements(GRANTS_POST)) await tx.execute(sql.raw(statement));
+
+        const grants = await tx.execute<{ account_id: string; agent_id: string; answers: boolean }>(
+          sql`select account_id, agent_id, answers from connected_account_grants
+              where account_id like 'grm-%' order by account_id, agent_id`,
+        );
+        const capabilities = await tx.execute<{ id: string; capability_grants: string[] }>(
+          sql`select id, capability_grants from agents where id like 'grm-%' order by id`,
+        );
+        observed = {
+          grants: grants.map((g) => `${g.account_id} ${g.agent_id} ${g.answers}`),
+          capabilities: capabilities.map((a) => `${a.id} ${a.capability_grants.join(',')}`),
+        };
+        throw new Rollback();
+      });
+    } catch (error) {
+      if (!(error instanceof Rollback)) throw error;
+    }
+    expect(observed).toEqual({
+      grants: [
+        // The person's later choice is kept; the gemie it belonged to keeps its grant.
+        'grm-before grm-one false',
+        'grm-before grm-two true',
+        // Linked while the old image drained: granted to its gemie, which answers it.
+        'grm-draining grm-two true',
+      ],
+      // `messaging` is retired; nothing else changes.
+      capabilities: ['grm-one web,agent', 'grm-two '],
+    });
+  });
+
+  it('leaves accounts with no gemie of their own, and only WhatsApp and Telegram', async () => {
+    const [column] = await db.execute<{ column_name: string }>(
+      sql`select column_name from information_schema.columns
           where table_name = 'connected_accounts' and column_name = 'agent_id'`,
     );
-    expect(column?.is_nullable).toBe('NO');
-    const [fk] = await db.execute<{ convalidated: boolean }>(
-      sql`select convalidated from pg_constraint where conname = 'connected_accounts_agent_id_agents_id_fk'`,
+    expect(column).toBeUndefined();
+    const [answering] = await db.execute<{ indexdef: string }>(
+      sql`select indexdef from pg_indexes where indexname = 'connected_account_grants_one_answering_idx'`,
     );
-    expect(fk?.convalidated).toBe(true);
+    expect(answering?.indexdef).toContain('UNIQUE');
+    expect(answering?.indexdef).toContain('WHERE answers');
     const dropped = await db.execute<{ column_name: string }>(
       sql`select column_name from information_schema.columns
           where table_name = 'connected_accounts'

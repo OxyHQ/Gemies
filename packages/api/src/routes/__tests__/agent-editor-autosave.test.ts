@@ -684,12 +684,14 @@ function appFamilyIds(): string[] {
 describe('the app and the API name the same capability families', () => {
   it('reads ids out of the app source, so an empty parse cannot pass', () => {
     const ids = appFamilyIds();
-    expect(ids.length).toBeGreaterThanOrEqual(10);
+    expect(ids.length).toBeGreaterThanOrEqual(9);
     expect(ids).toContain('browser');
     expect(ids).toContain('mcp');
     // Retired with the sandbox they needed; the API drops them on read and write.
     expect(ids).not.toContain('shell');
     expect(ids).not.toContain('files');
+    // Retired for the person's own grant of each connected account (ADR 0035 as amended).
+    expect(ids).not.toContain('messaging');
   });
 
   it('declares exactly the families the vocabulary declares', () => {

@@ -343,19 +343,19 @@ describe('what a caller may do with a gemie, as its card says (ADR 0035)', () =>
     reach: 'person',
   };
 
-  it('lets its editor edit it and manage their accounts on it', async () => {
+  it('lets its editor edit it and grant it their accounts', async () => {
     actingAs('oxy-owner');
-    expect((await card()).agent?.viewer).toEqual({ mayEdit: true, mayManageAccounts: true });
+    expect((await card()).agent?.viewer).toEqual({ mayEdit: true, mayGrantAccounts: true });
   });
 
   it('lets somebody else do neither', async () => {
     state.userId = 'oxy-stranger';
     state.accessToken = 'token';
     state.account = { kind: 'bot', relationship: 'none', callerMembership: null };
-    expect((await card()).agent?.viewer).toEqual({ mayEdit: false, mayManageAccounts: false });
+    expect((await card()).agent?.viewer).toEqual({ mayEdit: false, mayGrantAccounts: false });
   });
 
-  it('opens Alia to every person for their own accounts, never for her identity', async () => {
+  it('opens Alia to every person to grant her their own accounts, never for her identity', async () => {
     repository.findAgentById.mockResolvedValue({ ...ALIA_ROW });
     // Oxy places her nowhere: she has no Oxy account yet.
     availability.opens = 'out_of_reach';
@@ -366,7 +366,7 @@ describe('what a caller may do with a gemie, as its card says (ADR 0035)', () =>
 
     const res = await card();
     expect(res.status).toBe(200);
-    expect(res.agent?.viewer).toEqual({ mayEdit: false, mayManageAccounts: true });
+    expect(res.agent?.viewer).toEqual({ mayEdit: false, mayGrantAccounts: true });
     expect(res.raw).not.toContain(PROMPT);
 
     const patch = await fetch(`${baseUrl}/agents/agent-1`, {
