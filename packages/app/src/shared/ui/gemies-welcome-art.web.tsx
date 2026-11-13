@@ -7,10 +7,11 @@ import { createElement, useState } from 'react';
  * The owner's GIF is 24 MB (150 frames at 1024 px). Here it is a VP9 WebM with an alpha channel
  * at 768 px, 1.4 MB and visually the same (`public/welcome/gemies.webm`). WebKit (Safari, and
  * every browser on iOS) plays VP9 but ignores its alpha, which would paint the frogs on a black
- * square, so WebKit gets the same animation as an animated WebP (`gemies.webp`, quality 95 at
- * 576 px). The first frame is the poster, so the space is never empty while either loads.
+ * square, so WebKit gets the same animation as an animated WebP (`gemies.webp`, quality 85 at
+ * 576 px: 3.7 MB, where quality 95 was 5.4 MB with no visible difference, 45.7 dB PSNR). The
+ * first frame is the poster (a 39 KB WebP), so the space is never empty while either loads.
  */
-const POSTER = require('../../../assets/images/gemies-welcome.png');
+const POSTER = require('../../../assets/images/gemies-welcome.webp');
 const WEBM = '/welcome/gemies.webm';
 const WEBP = '/welcome/gemies.webp';
 
