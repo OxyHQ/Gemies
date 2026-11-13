@@ -497,7 +497,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
           conversationId,
           conversationStored: true,
         };
-        if (body.stream) sseEmitter.emit('alia.agent_turn', reactionTurnEvent);
+        if (body.stream) sseEmitter.emit('alia.turn_state', reactionTurnEvent);
         const trigger = await findLatestUserMessage(getDb(), req.user.id, conversationId);
         const target = trigger
           ? await findReactionTarget(
@@ -715,7 +715,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
     const loopResult = await runProviderLoop({
       conversationReaction,
       onReactionComplete: reactionTurnEvent
-        ? () => sseEmitter.emit('alia.agent_turn', { ...reactionTurnEvent, reactionOnly: true })
+        ? () => sseEmitter.emit('alia.turn_state', { ...reactionTurnEvent, reactionOnly: true })
         : undefined,
       skills,
       req,
