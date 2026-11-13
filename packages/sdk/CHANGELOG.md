@@ -1,5 +1,16 @@
 # @gemies/sdk
 
+## 3.3.1
+
+- **The activity socket stops reconnecting every few seconds.** `useGemieActivity` (every Alia
+  button's avatar) and `useAgentActivity` authenticated their sockets with the session's base
+  `accessToken`, which is not refreshed for the Gemies API; once it expired the server refused
+  every handshake ("Token expired") and the shared socket opened a new websocket every 5 s for as
+  long as the tab stayed open (51 upgrades in 12 minutes for one person). Both now ask a linked
+  client for the API's own token on every handshake, refreshed by `@oxy.so/core` when due, as
+  every other request does; the shared socket asks a holder still holding it. A refused handshake
+  is retried after 5 s, doubling to at most a minute, and the next outage starts from 5 s again.
+
 ## 3.3.0
 
 - **New: `@gemies/sdk/connectors`**, the connectors a person connects — providers' own remote MCP

@@ -105,6 +105,11 @@ export async function getUserTier(userId: string): Promise<string> {
   return 'pro';
 }
 
+/** Methods that only read: never counted against a person's per-minute burst window. */
+export function isRead(method: string): boolean {
+  return method === 'GET' || method === 'HEAD';
+}
+
 /**
  * Per-user rate limiting for Alia's API surfaces.
  * Must be used AFTER `authenticateTokenOrApiKey` (or another Oxy auth middleware).
@@ -116,6 +121,15 @@ export async function apiKeyRateLimit(
 ): Promise<void> {
   // Internal service tokens bypass rate limiting (platform cost)
   if (req.serviceApp) {
+    return next();
+  }
+
+  // A person reading their own data (the conversation list, a conversation, an agent card) is not
+  // the burst this per-minute window brakes: it is paced by the API-wide per-person budget
+  // (`createOxyRateLimit` in `index.ts`). Counted here, a sidebar's reads and background refreshes
+  // spent the 20-a-minute free budget meant for model calls, and the person's next attempt to open
+  // a conversation was refused (429, 2026-11-13). Writes and model calls still count.
+  if (req.user?.id && isRead(req.method)) {
     return next();
   }
 

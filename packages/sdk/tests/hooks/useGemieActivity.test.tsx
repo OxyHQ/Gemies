@@ -6,8 +6,17 @@ const mocks = vi.hoisted(() => ({
     isAuthenticated: true,
     canUsePrivateApi: true,
     isAccountCacheReady: true,
-    oxyServices: { session: { accessToken: 'tok' } },
+    oxyServices: {
+      // The base token is stale on purpose: the socket must never send it.
+      session: { accessToken: 'stale-base-token' },
+      createLinkedClient: vi.fn((config: { baseURL: string }) => ({
+        getAccessToken: vi.fn(async (target: string) => `fresh-for-${target}`),
+        dispose: mocks.dispose,
+        config,
+      })),
+    },
   },
+  dispose: vi.fn(),
   acquire: vi.fn(),
   release: vi.fn(),
 }));
@@ -34,22 +43,25 @@ describe('useGemieActivity', () => {
     seen = [];
     mocks.acquire.mockClear();
     mocks.release.mockClear();
+    mocks.dispose.mockClear();
     mocks.auth.isAuthenticated = true;
     useGemieActivityStore.setState({ local: {}, remote: {} });
   });
 
-  it('listens while signed in, with the live session token, and releases on unmount', () => {
+  it('listens while signed in, with the API’s refreshed token, and releases on unmount', async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     act(() => {
       renderer = TestRenderer.create(<Probe />);
     });
     expect(mocks.acquire).toHaveBeenCalledTimes(1);
-    const [url, getToken] = mocks.acquire.mock.calls[0] as [string, () => string | null];
+    const [url, getToken] = mocks.acquire.mock.calls[0] as [string, () => Promise<string | null>];
     expect(url).toBe('https://api.test');
-    expect(getToken()).toBe('tok');
+    // The linked client's token for this API, refreshed by core when due; never the base one.
+    await expect(getToken()).resolves.toBe('fresh-for-https://api.test');
 
     act(() => renderer.unmount());
     expect(mocks.release).toHaveBeenCalledTimes(1);
+    expect(mocks.dispose).toHaveBeenCalledTimes(1);
   });
 
   it('opens no connection when signed out, and closes it on sign-out', () => {

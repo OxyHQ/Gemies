@@ -24,9 +24,6 @@ import type { Agent } from '@/shared/contracts/agents';
  * keeps that true between loads; nothing else may sort it, because a second
  * order would only disagree with the one the next fetch brings.
  */
-/** How often the sidebar re-reads who is connected, when it lists an external agent. */
-const EXTERNAL_PRESENCE_REFRESH_MS = 30_000;
-
 export function useMyAgents() {
   const { user, canUsePrivateApi, isAccountCacheReady } = useOxy();
 
@@ -38,9 +35,11 @@ export function useMyAgents() {
     },
     enabled: canUsePrivateApi && isAccountCacheReady,
     staleTime: 1000 * 60 * 5,
-    // A connected computer comes and goes: while any of the agents is one, look again now and then.
-    refetchInterval: (query) =>
-      query.state.data?.some((agent) => agent.external) ? EXTERNAL_PRESENCE_REFRESH_MS : false,
+    // No presence polling (it re-read the whole list every 30 s for anyone with an external agent).
+    // A connected computer's presence is refreshed when the tab comes back; the server knows the
+    // moment one connects or drops (`external-agents/relay.ts`), and an `external-agents:presence`
+    // socket event invalidating `queryKeys.agents.mine` is where realtime takes over.
+    refetchOnWindowFocus: true,
   });
   // This handshake is not persisted. Each agent retries independently, without
   // blocking the sidebar or requiring another list refresh after an outage.

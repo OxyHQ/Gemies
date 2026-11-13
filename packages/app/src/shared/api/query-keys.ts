@@ -35,6 +35,8 @@ export const queryKeys = {
   agents: {
     /** The agents this person owns, which the sidebar lists. */
     mine: ['agents', 'mine'] as const,
+    /** The coding-agent CLIs the person connected (Settings > External agents), with presence. */
+    external: ['agents', 'external'] as const,
     /** Owner-present work handshake, deliberately outside persisted account-query roots. */
     workAuthority: (ownerId: string, agentId: string) =>
       ['agent-work-authority', ownerId, agentId] as const,

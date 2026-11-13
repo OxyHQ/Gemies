@@ -32,7 +32,12 @@ vi.mock('socket.io-client', () => ({
   },
 }));
 
-import { ACTIVITY_QUIET_MS, acquireActivitySocket } from '../../src/lib/activity-socket';
+import {
+  ACTIVITY_QUIET_MS,
+  MAX_RETRY_MS,
+  RETRY_MS,
+  acquireActivitySocket,
+} from '../../src/lib/activity-socket';
 import { selectGemieActivity, useGemieActivityStore } from '../../src/lib/activity-store';
 
 const now = () => selectGemieActivity(useGemieActivityStore.getState());
@@ -67,14 +72,32 @@ describe('activity socket', () => {
     releaseC();
   });
 
-  it('reads the token at every handshake', () => {
+  it('asks for a token at every handshake, of a holder still holding it', async () => {
     let token = 'first';
-    const release = acquireActivitySocket('https://api.test', () => token);
+    const releaseA = acquireActivitySocket('https://api.test', () => token);
+    const releaseB = acquireActivitySocket('https://api.test', async () => 'from-b');
+    const seen: unknown[] = [];
+    const handshake = async () => {
+      sockets()[0].options.auth((a) => seen.push(a));
+      await vi.runAllTimersAsync();
+    };
+    await handshake();
+    releaseB();
+    await handshake();
+    token = 'rotated';
+    await handshake();
+    expect(seen).toEqual([{ token: 'from-b' }, { token: 'first' }, { token: 'rotated' }]);
+    releaseA();
+  });
+
+  it('hands the server no token, rather than a stale one, when the source fails', async () => {
+    const release = acquireActivitySocket('https://api.test', async () => {
+      throw new Error('no session');
+    });
     const seen: unknown[] = [];
     sockets()[0].options.auth((a) => seen.push(a));
-    token = 'rotated';
-    sockets()[0].options.auth((a) => seen.push(a));
-    expect(seen).toEqual([{ token: 'first' }, { token: 'rotated' }]);
+    await vi.runAllTimersAsync();
+    expect(seen).toEqual([{}]);
     release();
   });
 
@@ -117,13 +140,31 @@ describe('activity socket', () => {
     expect(now()).toBe('writing');
   });
 
-  it('retries a refused handshake itself, because socket.io will not', () => {
+  it('retries a refused handshake itself, backing off to a minute, and resets once connected', () => {
     const release = acquireActivitySocket('https://api.test', () => null);
     const socket = sockets()[0];
     socket.active = false;
-    fire('connect_error');
-    fire('connect_error');
-    vi.advanceTimersByTime(5_001);
+    const refuseAndWait = (ms: number) => {
+      fire('connect_error');
+      fire('connect_error'); // a second refusal while one retry is pending schedules nothing
+      vi.advanceTimersByTime(ms);
+    };
+    // 5 s, 10 s, 20 s, 40 s, then a minute at most: never a socket every few seconds.
+    const waits = [RETRY_MS, 10_000, 20_000, 40_000, MAX_RETRY_MS, MAX_RETRY_MS];
+    waits.forEach((wait, i) => {
+      refuseAndWait(wait - 1);
+      expect(socket.connect).toHaveBeenCalledTimes(i);
+      vi.advanceTimersByTime(1);
+      expect(socket.connect).toHaveBeenCalledTimes(i + 1);
+    });
+    // Over ten minutes of refusals, at most about one attempt a minute.
+    socket.connect.mockClear();
+    for (let t = 0; t < 10; t++) refuseAndWait(MAX_RETRY_MS);
+    expect(socket.connect.mock.calls.length).toBeLessThanOrEqual(10);
+    // A successful connection starts the next outage from 5 s again.
+    fire('connect');
+    socket.connect.mockClear();
+    refuseAndWait(RETRY_MS);
     expect(socket.connect).toHaveBeenCalledTimes(1);
     release();
   });

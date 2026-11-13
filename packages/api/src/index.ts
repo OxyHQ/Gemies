@@ -170,6 +170,9 @@ app.use(
     // this, `Deprecation`, `Sunset` and `Link` are stripped from every
     // cross-origin response before the SDK ever sees them.
     exposedHeaders: ['Deprecation', 'Sunset', 'Link'],
+    // Without it a browser keeps a preflight for 5 s, so every bearer request to /v1 went out
+    // twice. Two hours is Chrome's ceiling; the internal routes send the same (createOxyCors).
+    maxAge: 7200,
     optionsSuccessStatus: 200,
   }),
 );
