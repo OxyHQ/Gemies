@@ -72,15 +72,17 @@ describe('deploy-aws.yml migration wiring', () => {
     expect(workflow).toContain("RUN_MIGRATIONS: 'true'");
   });
 
-  it('re-asserts both Alia origins and the Oxy inference origin on every task revision', () => {
+  it('re-asserts the canonical API origin and the Oxy inference origin on every task revision', () => {
     const from = workflow.indexOf('      - name: Stage Oxy inference configuration');
     const to = workflow.indexOf('      # RUN_MIGRATIONS', from);
     const environmentStage = workflow.slice(from, to);
 
     expect(from).toBeGreaterThanOrEqual(0);
     expect(to).toBeGreaterThan(from);
-    expect(environmentStage).toContain('API_BASE_URL: "https://api.alia.onl"');
-    expect(environmentStage).toContain('ALIA_API_URL: "https://api.alia.onl"');
+    expect(environmentStage).toContain('API_BASE_URL: "https://api.gemies.ai"');
+    // `api.alia.onl` is being retired: nothing derives from it, and the unused alias is removed.
+    expect(environmentStage).not.toContain('api.alia.onl');
+    expect(workflow).toContain('TASK_CONFIGURATION_REMOVALS_JSON: \'["ALIA_API_URL",');
     expect(environmentStage).toContain('OXY_API_URL: "https://api.oxy.so"');
     expect(environmentStage).toContain("jq -cs '.[0] * .[1]'");
     // Required values merge last, so a future optional block cannot silently
@@ -458,6 +460,8 @@ describe('the deploy removes retired credentials and runtime configuration', () 
       throw new Error('the workflow declares no plain configuration removals');
     }
     expect((JSON.parse(removalJson) as string[]).sort()).toEqual([
+      // An alias of the API's origin that nothing read; `API_BASE_URL` is the one.
+      'ALIA_API_URL',
       // Retired with GemiesOS's rename: the API reads GEMIES_OS_URL / _INSTANCE_ID.
       'ALIA_COMPUTER_HOST_INSTANCE_ID',
       'ALIA_COMPUTER_HOST_URL',

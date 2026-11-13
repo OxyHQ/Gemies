@@ -72,7 +72,7 @@ Configured in `packages/app/src/shared/platform/config.ts`.
 
 Expected production API:
 
-- `https://api.alia.onl`
+- `https://api.gemies.ai`
 
 ## Notes
 

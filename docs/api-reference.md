@@ -1,6 +1,6 @@
 # Alia API reference
 
-Base URL: `https://api.alia.onl`
+Base URL: `https://api.gemies.ai` (`https://api.alia.onl` still answers while it is retired)
 
 This is the HTTP surface of **Alia's product API** — permanent under
 [ADR 0010](./adr/0010-alia-keeps-a-product-api-credentials-come-from-oxy-console.md),

@@ -261,6 +261,9 @@ jobs:
           MIGRATION_TARGET_DATABASE: ${{ env.MIGRATION_DATABASE }}
           POST_DEPLOY_TASK_COMMAND_JSON: ${{ steps.phases.outputs.post_command }}
           TASK_SECRET_OVERRIDES_JSON: ${{ steps.telegram.outputs.secret_overrides }}
+          # The API's canonical public origin, re-asserted on every revision like the API's own
+          # (deploy-aws.yml): Telegram webhooks are registered at it and the API is reached at it.
+          TASK_ENV_OVERRIDES_JSON: '{"API_BASE_URL":"https://api.gemies.ai"}'
           # Registered task-role identity is the only own process credential.
           # Explicitly remove inherited legacy bindings from the running revision;
           # this does not delete SSM parameters or external provider credentials.
