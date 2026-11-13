@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { TEST_CHARACTER } from './support/agent-character';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
 import { agents } from '../schema/agents';
+import { setUpTestDatabase, type TestDatabaseHandle } from '../testDatabase';
 import { isGatedFeature, MAX_STARTER_TITLE_LENGTH } from '../../domain/agent-features';
 
 /**
@@ -22,6 +23,7 @@ const MIGRATION = fileURLToPath(
 );
 
 let db: ApiDatabase;
+let database: TestDatabaseHandle | undefined;
 
 /** Every key is one of Alia's gated features, and every gate names an app and a feature. */
 function isGatesShape(gates: Record<string, unknown>): boolean {
@@ -33,9 +35,12 @@ function isGatesShape(gates: Record<string, unknown>): boolean {
   );
 }
 
+// Both historical migrations address the same official Sindi ID. Each file needs
+// its own migrated database so parallel DELETE/INSERT/replay cannot alter the other.
 beforeAll(async () => {
-  const connected = connectPostgres(process.env.DATABASE_URL);
-  if (!connected) throw new Error('DATABASE_URL is not set; vitest.pg.globalSetup.ts must run.');
+  database = await setUpTestDatabase();
+  const connected = connectPostgres(database.databaseUrl);
+  if (!connected) throw new Error("could not connect to this file's throwaway database");
   db = connected;
   await db.delete(agents).where(inArray(agents.id, [SINDI, CLARITY]));
   for (const [id, account] of [
@@ -62,8 +67,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.delete(agents).where(inArray(agents.id, [SINDI, CLARITY]));
   await closePostgres();
+  await database?.drop();
 });
 
 async function row(id: string) {

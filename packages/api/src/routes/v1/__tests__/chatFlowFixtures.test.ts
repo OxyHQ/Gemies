@@ -310,9 +310,15 @@ vi.mock('../../../lib/autonomy/runtime.js', () => ({
 }));
 
 vi.mock('../../../lib/conversation-saver.js', () => ({
-  saveConversation: vi.fn(async (params: { assistantResponse?: string }) => {
-    H.timeline.push(`persist:conversation(${JSON.stringify(params.assistantResponse ?? '')})`);
-  }),
+  saveConversation: vi.fn(
+    async (params: { assistantResponse?: string; omitLeadReply?: boolean }) => {
+      H.timeline.push(
+        params.omitLeadReply
+          ? 'admission:person'
+          : `persist:conversation(${JSON.stringify(params.assistantResponse ?? '')})`,
+      );
+    },
+  ),
   generateTitle: vi.fn(async () => 'Recorded title'),
   generateConversationTitle: vi.fn(async () => {
     H.timeline.push('persist:titleAsync');
@@ -367,11 +373,13 @@ vi.mock('../../../db/chat/conversationMemberRepository.js', () => ({
 }));
 
 vi.mock('../../../db/chat/conversationRepository.js', () => ({
+  findConversation: vi.fn(async () => undefined),
   conversationExists: vi.fn(async () => false),
   updateConversationTitle: vi.fn(async () => 1),
   upsertConversation: vi.fn(async () => ({})),
 }));
 vi.mock('../../../db/chat/messageRepository.js', () => ({
+  findLatestUserMessage: vi.fn(async () => undefined),
   messageExistsInConversation: vi.fn(async () => false),
   countMessages: vi.fn(async () => 0),
   countMessagesInConversation: vi.fn(async () => 0),
@@ -873,6 +881,8 @@ describe('fixture: app chat flow — streaming, direct user session, one server 
       // connection immediately (`lib/chat/request-context.ts:134`).
       'sse:comment(keep-alive)',
       'credits:reserve',
+      'admission:person',
+      'sse:event:alia.turn_state',
       // Memory recall runs here — before the model call, and its result reaches
       // the system prompt (asserted separately below).
       // What the turn puts in the context window, once it is assembled and
@@ -1045,7 +1055,7 @@ describe('fixture: app chat flow — streaming, direct user session, one server 
     const named = res.raw
       .filter((frame) => frame.startsWith('event: '))
       .map((frame) => frame.slice(7, frame.indexOf('\n')));
-    expect(named).toEqual(['alia.context', 'alia.tool_result', 'alia.title']);
+    expect(named).toEqual(['alia.turn_state', 'alia.context', 'alia.tool_result', 'alia.title']);
 
     // The generic half: every `data:` frame that is not the terminator carries
     // the OpenAI chunk envelope, and the model field is the CHOSEN MODEL — never
@@ -1322,7 +1332,7 @@ describe('fixture: what a failure surfaces to the user', () => {
     expect(bytes).not.toContain('oxy-private-request');
     expect(bytes).not.toContain('"synthetic":true');
 
-    // A failed turn has no row, is not charged, and is recorded as failed.
+    // A failed answer has no row, is not charged, and is recorded as failed.
     expect(H.timeline.filter((entry) => entry.startsWith('persist:conversation'))).toEqual([]);
     expect(H.timeline).not.toContain('credits:finalize');
     expect(H.timeline.filter((entry) => entry === 'credits:refund')).toHaveLength(1);
@@ -1448,7 +1458,7 @@ describe('fixture: what a failure surfaces to the user', () => {
       },
     });
 
-    // Nothing is stored and nothing is charged.
+    // The admitted person message remains; no answer is stored and nothing is charged.
     expect(H.timeline.filter((entry) => entry.startsWith('persist:'))).toEqual([]);
     expect(H.timeline).not.toContain('credits:finalize');
     expect(H.timeline.filter((entry) => entry === 'credits:refund')).toHaveLength(1);

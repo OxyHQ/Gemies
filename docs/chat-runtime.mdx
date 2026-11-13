@@ -116,6 +116,11 @@ stored replies reconcile on reload.
   quoted `@mentions` do not automatically activate anyone. Follow-ups use context; open questions
   select useful contributions without a compulsory round. After each stored answer, reconsider
   whether another contribution or handoff is needed. The selector has no tools or private memories.
+  Its input separates `personRequest`, earlier `context` and `memberContributions`. It returns
+  one legal `{ choice }`: each choice is bound to the original request or the latest substantive
+  contribution of the current speaker. The server maps it to a validated room decision. A question
+  addressed back to the person does not create another request; outstanding original recipients
+  still get their turn. An explicit peer request within that task can produce a handoff.
 - **Identity by ID.** Build each actor's history from stored `agentInfoId`. Only its own replies
   retain role `assistant`; other actors' words are attributed observations, not user instructions.
   Room policy is separate from the person's original request. Each actor retains its own tools and
@@ -129,8 +134,10 @@ stored replies reconcile on reload.
   ordinary empty responses and cut-off streams still fail.
 - **Bounded execution.** Retain the room lock across instances, 12 replies, 24 turns and 3 handoffs
   per person message (both selection and speaking count toward the 24 operations), no consecutive substantive self-answer, supersession by the newest person message and
-  60 replies per room per 10 minutes. Selection uses Oxy's utility resolver, a 10-second generation deadline,
-  at most one retry and accounted usage. A returned generation is settled before roster validation;
+  60 replies per room per 10 minutes, including completed reaction-only contributions. General
+  selection uses Kaana's capability-aware `auto`, a 30-second generation deadline and an 8192-token
+  output allowance. Binary feedback selection uses the utility level, 10 seconds and
+  `utilityOutputTokens(512)`. Both retain at most one retry, earlier parent cancellation and accounted usage. A returned generation is settled before roster validation;
   throwing inference calls release their reservations. No hardcoded model or fallback that wakes every member.
 - **One execution record.** Replies use `group-reply-<person message id>-<turn>` IDs. Retried
   speaking jobs find their stored reply before running again. The saver preserves unseen replies.
@@ -155,7 +162,7 @@ feedback context, including removals; they do not trust reaction metadata echoed
 `POST /conversations/:id/messages/:messageId/reactions` accepts `{ emoji, active, mutationId }`.
 New clients send the desired boolean state and a UUID mutation ID. Reusing that ID retries the
 same mutation, including a no-op; conflicting reuse returns 409. Omitting `active` retains the
-legacy toggle contract. The response is `{ messageId, reactions, revision, mutationId }`, and
+legacy toggle contract. The response is `{ messageId, reactions, reactionEntries, revision, mutationId }`, and
 `conversation:reaction` adds `conversationId` on the existing authenticated Socket.IO connection.
 History exposes `reactionRevision`. Clients reconcile snapshots by revision and mutation ID;
 reload repairs a missed socket notification. A quiet reaction creates no empty assistant bubble
@@ -196,6 +203,48 @@ Real Postgres tests in `reactionEvents.pgdb.test.ts`, `chatRepositories.pgdb.tes
 updates, lease recovery, activity exclusion, atomic reply guards and deletion. These deterministic
 checks prove persistence and execution rules; they do not establish the model's interpretation of
 an emoji or replace a signed-in end-to-end acceptance test.
+
+### Gemies can author reactions during a turn
+
+During a normally admitted hosted turn, `react_to_message` can react to the person's message
+or another gemie's stored message in the same owned conversation. The server binds the sender's
+identity and checks current sender membership, the latest person request and the exact target's
+content, role and author under the thread lock. A historical peer message remains a valid target
+after that peer leaves; reacting does not execute or wake its author. Self-reactions and spoofed
+client authors are rejected. Observation turns cannot use this tool. A local identity (ADR 0036)
+runs in its external daemon and receives no hosted reaction capability; a sender that becomes
+local after admission cannot mutate or complete a hosted reaction turn. Its historical messages
+remain valid feedback targets without creating an Oxy account or waking that daemon.
+
+`reactions` remains the person's own emoji selection. Additive `reactionEntries` contains
+`{ emoji, author: { kind: 'user', id } }` or
+`{ emoji, author: { kind: 'agent', id, name } }`, with one shared `reactionRevision` in history
+and `revision` in responses/socket snapshots. Different authors can retain the same emoji;
+the six-emoji limit applies independently to each author. Legacy writers preserve the separate
+agent state. Both sets survive stable-target rewrites and clear on target replacement/deletion.
+Ordinary context includes agent feedback even when the person's own set is empty. An agent
+mutation records a completed receipt without scheduling a feedback observation, preventing loops.
+A shared revision can conservatively supersede an uncommitted human-feedback observation.
+
+A committed tool mutation alone is not a completed turn. Only a clean model finish, with all tool
+calls resolved and successful reaction work, can persist a reaction-only completion. The admission
+frame `alia.turn_state` carries `{ eventVersion: 1, turnId, agentId, conversationId,
+conversationStored: true }`; a later frame adds `reactionOnly: true` only after durable clean
+completion. The SDK also requires a clean terminal stream before removing its empty placeholder.
+`alia.agent_turn` remains reserved for actual agent sessions. Mixed text/tool output stays visible;
+failed or cut-off streams remain typed failures.
+
+Queued group retries can recover the completed reaction turn and its actual touched target
+snapshots without another inference, then select the next useful contribution. Direct chat keeps
+its existing turn-control rule: reusing a turn ID is rejected; reconnecting reloads canonical state,
+and a newly admitted retry is a new turn. The person message is stored before tool execution,
+including a stable generated ID for incoming messages without one. A clean reaction-only direct
+turn skips an unnecessary final history rewrite and creates no empty assistant row.
+
+`agentReactions.pgdb.test.ts` and `agent-admission.pgdb.test.ts` exercise the author, stale-target,
+atomic admission, idempotency, replay and rate-count boundaries. SDK reaction and stream tests
+cover independent optimistic human selection, canonical revision ordering and clean completion.
+These deterministic checks do not replace real-model acceptance on the final deployed source.
 
 ## Product stream events
 

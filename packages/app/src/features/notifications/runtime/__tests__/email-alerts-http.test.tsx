@@ -5,6 +5,11 @@ import { createElement } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { expect, it, vi } from 'vitest';
 import { OxyServices } from '@oxy.so/core';
+// Load the app graph during collection: the case deadline measures HTTP cancellation,
+// not Vite transforming this fixture's dependencies while other files are running.
+import * as api from '@/shared/api/client';
+import { useEmailAlerts } from '@/features/notifications/runtime/use-email-alerts';
+import { useAccountLifecycle } from '@/shell/account-lifecycle';
 
 const world = vi.hoisted(() => ({
   origin: '',
@@ -55,10 +60,7 @@ it.each(['projection', 'shell-unmount'] as const)(
     world.origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     world.userId = 'A';
     world.sessionId = 'session-A';
-    const api = await import('@/shared/api/client');
     api.default.defaults.baseURL = world.origin;
-    const { useEmailAlerts } = await import('@/features/notifications/runtime/use-email-alerts');
-    const { useAccountLifecycle } = await import('@/shell/account-lifecycle');
     const oxy = new OxyServices({ baseURL: world.origin });
     const token = `h.${Buffer.from(JSON.stringify({ userId: 'A', sessionId: 'session-A', exp: 4102444800 })).toString('base64url')}.s`;
     oxy.session.setAccessToken(token);
@@ -180,10 +182,7 @@ it('drops an old response after an already dispatched request changes owner', as
   world.userId = 'A';
   world.sessionId = 'session-A';
   world.toastError.mockClear();
-  const api = await import('@/shared/api/client');
   api.default.defaults.baseURL = world.origin;
-  const { useEmailAlerts } = await import('@/features/notifications/runtime/use-email-alerts');
-  const { useAccountLifecycle } = await import('@/shell/account-lifecycle');
   const oxy = new OxyServices({ baseURL: world.origin });
   const token = (userId: string) =>
     `h.${Buffer.from(JSON.stringify({ userId, sessionId: `session-${userId}`, exp: 4102444800 })).toString('base64url')}.s`;
