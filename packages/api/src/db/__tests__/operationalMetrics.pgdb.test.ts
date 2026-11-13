@@ -30,23 +30,23 @@ const NOW = new Date();
 const minutesAgo = (n: number) => new Date(NOW.getTime() - n * 60_000);
 
 async function gauge(name: string): Promise<number> {
-  const found = (await databaseGauges(db, NOW)).find((g) => g.name === name);
+  const found = (await databaseGauges(db, NOW)).find((g) => g.metric.name === name);
   if (!found) throw new Error(`gauge ${name} missing`);
   return found.value;
 }
 
 describe('databaseGauges', () => {
   it('reports every gauge', async () => {
-    expect((await databaseGauges(db, NOW)).map((g) => g.name).sort()).toEqual([
-      'alia_agent_inbox_pending',
-      'alia_automation_events_stalled',
-      'alia_channel_inbound_failed_total',
-      'alia_channel_inbound_stalled',
+    expect((await databaseGauges(db, NOW)).map((g) => g.metric.name).sort()).toEqual([
+      'AgentInboxPending',
+      'AutomationEventsStalled',
+      'ChannelInboundFailed',
+      'ChannelInboundStalled',
     ]);
   });
 
   it('counts an Oxy event as stalled only once it has sat past two minutes', async () => {
-    const before = await gauge('alia_automation_events_stalled');
+    const before = await gauge('AutomationEventsStalled');
     const event = {
       eventId: uuidv7(),
       appId: `metrics-${uuidv7()}`,
@@ -62,17 +62,17 @@ describe('databaseGauges', () => {
       data: {},
     };
     await claimAutomationEvent(db, event);
-    expect(await gauge('alia_automation_events_stalled')).toBe(before); // fresh
+    expect(await gauge('AutomationEventsStalled')).toBe(before); // fresh
     await db
       .update(automationEvents)
       .set({ updatedAt: minutesAgo(5), receivedAt: minutesAgo(5) })
       .where(eq(automationEvents.eventId, event.eventId));
-    expect(await gauge('alia_automation_events_stalled')).toBe(before + 1);
+    expect(await gauge('AutomationEventsStalled')).toBe(before + 1);
     await db
       .update(automationEvents)
       .set({ status: 'processed' })
       .where(eq(automationEvents.eventId, event.eventId));
-    expect(await gauge('alia_automation_events_stalled')).toBe(before);
+    expect(await gauge('AutomationEventsStalled')).toBe(before);
   });
 
   it('counts a stored channel message as stalled, and a failed one as failed', async () => {
@@ -96,8 +96,8 @@ describe('databaseGauges', () => {
       platformUserId: 'p',
       chatId: 'c',
     });
-    const stalledBefore = await gauge('alia_channel_inbound_stalled');
-    const failedBefore = await gauge('alia_channel_inbound_failed_total');
+    const stalledBefore = await gauge('ChannelInboundStalled');
+    const failedBefore = await gauge('ChannelInboundFailed');
     const id = await acceptChannelInbound(
       db,
       {
@@ -110,17 +110,17 @@ describe('databaseGauges', () => {
       },
       minutesAgo(10),
     );
-    expect(await gauge('alia_channel_inbound_stalled')).toBe(stalledBefore + 1);
+    expect(await gauge('ChannelInboundStalled')).toBe(stalledBefore + 1);
     await db
       .update(channelInbound)
       .set({ status: 'failed', message: null })
       .where(eq(channelInbound.id, id ?? ''));
-    expect(await gauge('alia_channel_inbound_stalled')).toBe(stalledBefore);
-    expect(await gauge('alia_channel_inbound_failed_total')).toBe(failedBefore + 1);
+    expect(await gauge('ChannelInboundStalled')).toBe(stalledBefore);
+    expect(await gauge('ChannelInboundFailed')).toBe(failedBefore + 1);
   });
 
   it('counts waiting inbox items and paused people', async () => {
-    const inboxBefore = await gauge('alia_agent_inbox_pending');
+    const inboxBefore = await gauge('AgentInboxPending');
     await addInboxItem(db, {
       agentId: `metrics-agent-${uuidv7()}`,
       ownerAccountId: 'metrics-owner',
@@ -129,6 +129,6 @@ describe('databaseGauges', () => {
       dedupeKey: `inbox:${uuidv7()}`,
       summary: {},
     });
-    expect(await gauge('alia_agent_inbox_pending')).toBe(inboxBefore + 1);
+    expect(await gauge('AgentInboxPending')).toBe(inboxBefore + 1);
   });
 });

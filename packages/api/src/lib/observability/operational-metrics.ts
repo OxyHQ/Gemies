@@ -1,21 +1,41 @@
 /**
- * The operational gauges: what an operator needs to see that background work is flowing, read at
- * scrape time from the stores that hold it (`GET /internal/metrics`).
+ * The operational gauges: what an operator needs to see that background work is flowing, read from
+ * the stores that hold it and published to CloudWatch as EMF (`metrics.ts`).
  *
- * The in-memory registry (`metrics.ts`) counts what THIS process did and is lost on restart; these are
+ * The counters in `metrics.ts` count what THIS process did and are summed across tasks; these are
  * facts about the system (a backlog, a stuck event, a queue's depth) and are true whichever instance
- * answers. Each is one cheap, indexed count.
+ * reads them, so only the trigger-engine leader publishes them (one series, not one per task). Each
+ * is one cheap, indexed count.
  */
 
 import { and, eq, gt, inArray, lt, sql } from 'drizzle-orm';
 import { agentInboxItems } from '../../db/schema/agent-runtime.js';
 import { automationEvents } from '../../db/schema/agency.js';
 import { channelInbound } from '../../db/schema/bots.js';
+import type { EmfPublisher, MetricDefinition } from '@oxy.so/telemetry/metrics';
 import type { ApiDatabase } from '../../db/index.js';
+import { log } from '../logger.js';
+
+const gauge = (name: string, dimensionSets?: readonly (readonly string[])[]): MetricDefinition => ({
+  name,
+  unit: 'Count',
+  kind: 'gauge',
+  ...(dimensionSets ? { dimensionSets } : {}),
+});
+
+/** Oxy events accepted but not dispatched for over two minutes (a sweep should take them). */
+export const AUTOMATION_EVENTS_STALLED = gauge('AutomationEventsStalled');
+/** Messaging-platform messages stored but not answered for over two minutes. */
+export const CHANNEL_INBOUND_STALLED = gauge('ChannelInboundStalled');
+/** Messaging-platform messages that could not be answered (kept for an hour). */
+export const CHANNEL_INBOUND_FAILED = gauge('ChannelInboundFailed');
+/** Items waiting in agents' inboxes for a heartbeat to deliver them. */
+export const AGENT_INBOX_PENDING = gauge('AgentInboxPending');
+/** BullMQ jobs by queue and state: two queues and BullMQ's fixed states, a closed set. */
+export const QUEUE_JOBS = gauge('QueueJobs', [['Queue', 'State']]);
 
 export interface OperationalGauge {
-  name: string;
-  help: string;
+  metric: MetricDefinition;
   value: number;
   labels?: Record<string, string>;
 }
@@ -35,10 +55,9 @@ export async function databaseGauges(
   const eventCutoff = new Date(now.getTime() - STALLED_EVENT_AFTER_MS);
   const inboundCutoff = new Date(now.getTime() - STALLED_INBOUND_AFTER_MS);
   const dayAgo = new Date(now.getTime() - 24 * 60 * 60_000);
-  const reads: Array<[string, string, Promise<number>]> = [
+  const reads: Array<[MetricDefinition, Promise<number>]> = [
     [
-      'alia_automation_events_stalled',
-      'Oxy events accepted but not dispatched for over two minutes (a sweep should take them).',
+      AUTOMATION_EVENTS_STALLED,
       count(
         db
           .select({ n: sql<number>`count(*)::int` })
@@ -53,8 +72,7 @@ export async function databaseGauges(
       ),
     ],
     [
-      'alia_channel_inbound_stalled',
-      'Messaging-platform messages stored but not answered for over two minutes.',
+      CHANNEL_INBOUND_STALLED,
       count(
         db
           .select({ n: sql<number>`count(*)::int` })
@@ -68,8 +86,7 @@ export async function databaseGauges(
       ),
     ],
     [
-      'alia_channel_inbound_failed_total',
-      'Messaging-platform messages that could not be answered (kept for an hour).',
+      CHANNEL_INBOUND_FAILED,
       count(
         db
           .select({ n: sql<number>`count(*)::int` })
@@ -78,8 +95,7 @@ export async function databaseGauges(
       ),
     ],
     [
-      'alia_agent_inbox_pending',
-      'Items waiting in agents’ inboxes for a heartbeat to deliver them.',
+      AGENT_INBOX_PENDING,
       count(
         db
           .select({ n: sql<number>`count(*)::int` })
@@ -88,10 +104,10 @@ export async function databaseGauges(
       ),
     ],
   ];
-  const settled = await Promise.allSettled(reads.map(([, , value]) => value));
-  return reads.flatMap(([name, help], index) => {
+  const settled = await Promise.allSettled(reads.map(([, value]) => value));
+  return reads.flatMap(([metric], index) => {
     const result = settled[index];
-    return result?.status === 'fulfilled' ? [{ name, help, value: result.value }] : [];
+    return result?.status === 'fulfilled' ? [{ metric, value: result.value }] : [];
   });
 }
 
@@ -101,39 +117,15 @@ export function queueGauges(
 ): OperationalGauge[] {
   return queues.flatMap(({ queue, counts }) =>
     Object.entries(counts ?? {}).map(([state, value]) => ({
-      name: 'alia_queue_jobs',
-      help: 'BullMQ jobs by queue and state.',
+      metric: QUEUE_JOBS,
       value,
-      labels: { queue, state },
+      labels: { Queue: queue, State: state },
     })),
   );
 }
 
-const escapeLabel = (value: string) => value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-
-/** Prometheus text exposition for a list of gauges (one HELP/TYPE per name). */
-export function renderGauges(gauges: readonly OperationalGauge[]): string {
-  const lines: string[] = [];
-  const declared = new Set<string>();
-  for (const gauge of gauges) {
-    if (!declared.has(gauge.name)) {
-      declared.add(gauge.name);
-      lines.push(`# HELP ${gauge.name} ${gauge.help}`, `# TYPE ${gauge.name} gauge`);
-    }
-    const labels = gauge.labels
-      ? `{${Object.entries(gauge.labels)
-          .map(([key, value]) => `${key}="${escapeLabel(value)}"`)
-          .join(',')}}`
-      : '';
-    lines.push(`${gauge.name}${labels} ${gauge.value}`);
-  }
-  return `${lines.join('\n')}\n`;
-}
-
 export interface MetricsSources {
   readonly db: Pick<ApiDatabase, 'select'>;
-  /** What this process counted (`metrics.ts`). */
-  readonly processMetrics: () => string;
   readonly queues: ReadonlyArray<{
     queue: string;
     counts: () => Promise<Record<string, number> | null>;
@@ -142,10 +134,13 @@ export interface MetricsSources {
 }
 
 /**
- * The whole `/internal/metrics` body. A queue that cannot be counted (Redis down) is left out; the
- * rest still answers, because a monitor that dies when Redis does cannot say that Redis died.
+ * Read every gauge and record it. A queue that cannot be counted (Redis down) is left out; the rest
+ * still publishes, because a monitor that dies when Redis does cannot say that Redis died.
  */
-export async function renderOperationalMetrics(sources: MetricsSources): Promise<string> {
+export async function publishOperationalGauges(
+  publisher: EmfPublisher,
+  sources: MetricsSources,
+): Promise<void> {
   const [database, counted] = await Promise.all([
     databaseGauges(sources.db, sources.now),
     Promise.all(
@@ -155,5 +150,37 @@ export async function renderOperationalMetrics(sources: MetricsSources): Promise
       })),
     ),
   ]);
-  return `${sources.processMetrics()}\n${renderGauges([...database, ...queueGauges(counted)])}`;
+  for (const { metric, value, labels } of [...database, ...queueGauges(counted)]) {
+    publisher.record(metric, value, labels);
+  }
+}
+
+/** How often the gauges are read: CloudWatch's standard resolution. */
+const GAUGE_INTERVAL_MS = 60_000;
+
+let timer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Publish the gauges every minute while `isLeader()` says this task is the trigger-engine leader
+ * (the predicate is consulted per tick, so leadership moving moves the publishing with it). A
+ * failed read is logged, never thrown.
+ */
+export function startOperationalGauges(
+  publisher: EmfPublisher | null,
+  sources: MetricsSources,
+  isLeader: () => boolean,
+): void {
+  if (!publisher || timer) return;
+  timer = setInterval(() => {
+    if (!isLeader()) return;
+    publishOperationalGauges(publisher, sources).catch((error: unknown) => {
+      log.general.error({ err: error }, 'Could not publish the operational gauges');
+    });
+  }, GAUGE_INTERVAL_MS);
+  timer.unref();
+}
+
+export function stopOperationalGauges(): void {
+  if (timer) clearInterval(timer);
+  timer = null;
 }
