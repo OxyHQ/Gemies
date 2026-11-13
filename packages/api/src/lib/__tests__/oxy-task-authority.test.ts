@@ -48,6 +48,37 @@ describe('original requester task authority', () => {
     await revokeOxyTask('task-1');
     expect(authority.revokeTask).toHaveBeenCalledWith('task-1');
   });
+  it('never outlives the requester bearer a request task is minted on', async () => {
+    // Oxy refuses a request task that outlives its requester (400 "Task lifetime is out of
+    // range"): a room member minted on a token with three minutes left got no task at all.
+    const exp = Math.floor(Date.now() / 1000) + 180;
+    const claims = Buffer.from(JSON.stringify({ exp, userId: 'requester' })).toString('base64url');
+    await createOxyTask({
+      accessToken: `header.${claims}.signature`,
+      effectiveAccountId: 'requester',
+      actorAccountId: 'bot',
+      origin: { kind: 'request', id: 'room:1:bot' },
+    });
+    expect(Date.parse(authority.createTask.mock.calls[0][0].expiresAt)).toBe(exp * 1000);
+  });
+  it('keeps the ten-minute request lifetime for a bearer that lives longer or does not say', async () => {
+    const claims = Buffer.from(JSON.stringify({ exp: Date.now() / 1000 + 3600 })).toString(
+      'base64url',
+    );
+    for (const accessToken of [`h.${claims}.s`, 'opaque-session', 'h.not-json.s']) {
+      authority.createTask.mockClear();
+      const before = Date.now();
+      await createOxyTask({
+        accessToken,
+        effectiveAccountId: 'requester',
+        actorAccountId: 'bot',
+        origin: { kind: 'request', id: 'turn' },
+      });
+      const lifetime = Date.parse(authority.createTask.mock.calls[0][0].expiresAt) - before;
+      expect(lifetime).toBeGreaterThanOrEqual(10 * 60000);
+      expect(lifetime).toBeLessThan(10 * 60000 + 1000);
+    }
+  });
   it('retains the human requester of a managed organization session', async () => {
     authority.createTask.mockResolvedValue({
       id: 'managed-task',

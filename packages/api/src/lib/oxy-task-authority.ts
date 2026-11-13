@@ -6,6 +6,38 @@ import { log } from './logger.js';
 import { oxy } from './oxy.js';
 
 const TASK_LIFETIME_MS = 365 * 24 * 60 * 60_000;
+const REQUEST_TASK_LIFETIME_MS = 10 * 60_000;
+
+/**
+ * When the requester's bearer stops being valid, read from its own `exp` (milliseconds), or
+ * undefined for a bearer that does not say. Only a bound: Oxy verifies the bearer, and refuses a
+ * request task that outlives its requester ("Task lifetime is out of range").
+ */
+function bearerExpiresAt(token: string): number | undefined {
+  const payload = token.split('.')[1];
+  if (payload === undefined) return undefined;
+  try {
+    const { exp } = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+      exp?: unknown;
+    };
+    return typeof exp === 'number' && Number.isFinite(exp) ? exp * 1000 : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A request task lives as long as the request may (ten minutes) and never past its requester's
+ * bearer: a person's access token near the end of its life otherwise cost every task minted on it.
+ * Goals and automations are durable.
+ */
+function taskExpiresAt(kind: 'request' | 'goal' | 'automation', accessToken: string): Date {
+  const now = Date.now();
+  if (kind !== 'request') return new Date(now + TASK_LIFETIME_MS);
+  return new Date(
+    Math.min(now + REQUEST_TASK_LIFETIME_MS, bearerExpiresAt(accessToken) ?? Infinity),
+  );
+}
 function agency() {
   return oxy.agency;
 }
@@ -31,9 +63,7 @@ export async function createOxyTask(input: {
       origin: input.origin,
       actor,
       effectiveAccountId: input.effectiveAccountId,
-      expiresAt: new Date(
-        Date.now() + (input.origin.kind === 'request' ? 10 * 60_000 : TASK_LIFETIME_MS),
-      ).toISOString(),
+      expiresAt: taskExpiresAt(input.origin.kind, input.accessToken).toISOString(),
     },
     { requesterToken: input.accessToken },
   );
