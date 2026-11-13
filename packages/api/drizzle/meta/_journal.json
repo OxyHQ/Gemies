@@ -1163,6 +1163,13 @@
       "when": 1794597476068,
       "tag": "0165_gemie_bots_take_their_server_drawn_photo",
       "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1794600879544,
+      "tag": "0166_gemie_bots_redraw_their_photo",
+      "breakpoints": true
     }
   ]
 }
