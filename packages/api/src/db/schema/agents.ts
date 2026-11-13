@@ -156,7 +156,7 @@ export const agents = pgTable(
      * What the agent looks like apart from its colour: a Bloom avatar character, stored whole
      * (`shape` or `preset`, `eyes`, `eyewear`, `accessory`, an optional `eyeSpacing`) and WITHOUT a
      * paint. The colour is the bot account's `User.color`, and a client paints the character in it
-     * (`lib/agent-character.ts`); migration 0147 removed the paints rows used to carry.
+     * (`@oxy.so/contracts` 7 has no paint); migration 0147 removed the paints rows used to carry.
      *
      * It is put on the Oxy account too (`users.character`), so another app draws the bot from the
      * account alone. NOT NULL, with no "legacy" shape to fall back on: a new agent gets one picked by

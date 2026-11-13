@@ -84,7 +84,7 @@ export function aliaGemie(): HydratedAgent {
     identity: { source: 'oxy', oxyAccountId: ALIA_PENDING_OXY_ACCOUNT_ID },
     ownerOxyAccountId: null,
     author: ALIA_PENDING_OXY_ACCOUNT_ID,
-    character: { preset: 'blue_beret', accessory: 'none', color: 'orchid' },
+    character: { preset: 'blue_beret', accessory: 'none' },
     tagline: 'Oxy’s assistant, the same one for everybody.',
     category: 'assistant',
     ...ALIA_GEMIE_CONFIGURATION,

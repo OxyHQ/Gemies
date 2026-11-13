@@ -49,7 +49,7 @@ const SINDI = {
   handle: 'sindibot',
   color: 'teal',
   authorName: 'Homiio',
-  character: { shape: 'heart', eyes: 'oval', eyewear: 'none', accessory: 'bow', color: 'teal' },
+  character: { shape: 'heart', eyes: 'oval', eyewear: 'none', accessory: 'bow' },
   tagline: 'Your housing assistant',
   description: 'Finds homes and knows tenancy law.',
   systemPrompt: 'never shown',

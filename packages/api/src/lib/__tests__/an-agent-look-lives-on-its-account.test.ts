@@ -11,7 +11,7 @@ const oxy = vi.hoisted(() => ({
   created: [] as Array<Record<string, unknown>>,
   updated: [] as Array<{ accountId: string; data: Record<string, unknown>; token: string | null }>,
   token: null as string | null,
-  accountCharacter: { shape: 'heart', color: 'pink' } as Record<string, unknown> | undefined,
+  accountCharacter: { shape: 'heart', eyes: 'oval' } as Record<string, unknown> | undefined,
 }));
 
 vi.mock('@oxy.so/core', async () => {
@@ -68,13 +68,13 @@ import {
 beforeEach(() => {
   oxy.created.length = 0;
   oxy.updated.length = 0;
-  oxy.accountCharacter = { shape: 'heart', color: 'pink' };
+  oxy.accountCharacter = { shape: 'heart', eyes: 'oval' };
   clearAgentAccountVerdicts();
 });
 
 describe('an agent’s look on its Oxy account', () => {
   it('is sent when the account is created, so the account is born with it', async () => {
-    const character = { shape: 'star', eyes: 'oval', color: 'teal' };
+    const character = { shape: 'star', eyes: 'oval' };
     await createAgentBotAccount({
       accessToken: 'owner-token',
       username: 'ada',
@@ -102,7 +102,7 @@ describe('an agent’s look on its Oxy account', () => {
     });
     expect(verdict).toMatchObject({
       permitted: true,
-      character: { shape: 'heart', color: 'pink' },
+      character: { shape: 'heart', eyes: 'oval' },
     });
   });
 
@@ -119,7 +119,7 @@ describe('an agent’s look on its Oxy account', () => {
   });
 
   it('is written whole to the account with the caller’s own token', async () => {
-    const character = { preset: 'blue_beret', color: 'orchid' };
+    const character = { preset: 'blue_beret', accessory: 'none' };
     await setAgentAccountCharacter({
       accessToken: 'owner-token',
       oxyAccountId: 'bot-1',
