@@ -12,7 +12,7 @@ import {
   type SpaceDialogState,
   type SpaceDialogValues,
 } from '@/features/spaces/ui/space-dialog';
-import { AgentSpaceActions, SpaceActions } from '@/shell/sidebar-space-menus';
+import { SpaceActions } from '@/shell/sidebar-space-menus';
 import { useStore } from '@/features/chat/runtime/global-store';
 import type { Agent } from '@/shared/contracts/agents';
 import type { Space } from '@/shared/contracts/spaces';
@@ -27,8 +27,8 @@ import React from 'react';
 /**
  * The sidebar's half of Spaces (ADR 0028): the spaces, what the person can do to them, and the
  * dialog those actions open. The sidebar gives it the agents and conversations it already holds and
- * the two row builders it draws a contact and a room with; it gives back the section, the agent
- * row's menu, the "New space" entry and the dialog.
+ * the two row builders it draws a contact and a room with; it gives back the section, the move a
+ * gemie row's menu makes, the "New space" entry and the dialog.
  */
 export function useSidebarSpaces({
   enabled,
@@ -116,15 +116,6 @@ export function useSidebarSpaces({
     [createSpace, updateSpace, moveAgent],
   );
 
-  /** The ⋯ menu of an agent row: shown for a member, and for any agent once a space exists. */
-  const agentMenu = React.useCallback(
-    (agent: Agent) =>
-      enabled && (agent.spaceId || spaces.length > 0) ? (
-        <AgentSpaceActions agent={agent} spaces={spaces} onMove={move} />
-      ) : undefined,
-    [enabled, spaces, move],
-  );
-
   /** One section per space; none when the person has no space (or a search finds none). */
   const buildSections = React.useCallback(
     ({
@@ -182,7 +173,8 @@ export function useSidebarSpaces({
     isError,
     retry: refetch,
     openCreate,
-    agentMenu,
+    /** Put an agent in a space, or (`null`) take it out of the one it is in: the gemie row's menu. */
+    move,
     buildSections,
     dialogs,
   };

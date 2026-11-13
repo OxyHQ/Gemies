@@ -1,30 +1,27 @@
-import { WEB_ORIGIN } from '@/shared/platform/web-origin';
-import { agentDisplayName } from '@/features/agents/model/identity';
-import { agentChatRoute, agentDetailsRoute, agentThreadHref } from '@/shared/routing/agent-address';
+import { agentChatRoute, agentThreadHref } from '@/shared/routing/agent-address';
+import { shareAgent } from '@/features/agents/runtime/share-agent';
 import { useSetAgentStatus } from '@/features/agents/runtime/use-agent-thread-actions';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import type { Agent } from '@/shared/contracts/agents';
 import { toast } from '@oxy.so/bloom/toast';
 import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
-import { Share } from 'react-native';
 
-/**
- * The text "Share" hands the system sheet: who the agent is and its page.
- *
- * The link pointed at `alia.app`, which is not Alia's domain, so every shared
- * agent was a dead link. And `agent.name` is nullable (Oxy's lookup fails
- * open), which printed "null — …"; the display name never is. An agent with no handle has no page
- * to link to, so it is shared by who it is alone.
- */
-export function agentShareMessage(
-  agent: Pick<Agent, '_id' | 'name' | 'handle' | 'tagline'>,
-): string {
-  const who = agent.tagline
-    ? `${agentDisplayName(agent)} — ${agent.tagline}`
-    : agentDisplayName(agent);
-  const page = agentDetailsRoute(agent);
-  return page === null ? who : `${who}\n${WEB_ORIGIN}${page}`;
+/** What a share ended in, said to the person: a copied link, or a gemie with no page to share. */
+export function useAnswerShare() {
+  const { t } = useTranslation();
+  return useCallback(
+    async (agent: Agent) => {
+      try {
+        const outcome = await shareAgent(agent);
+        if (outcome === 'copied') toast.success(t('agents.linkCopied'));
+        if (outcome === 'unavailable') toast.error(t('agents.chatUnavailable'));
+      } catch {
+        toast.error(t('agents.shareFailed'));
+      }
+    },
+    [t],
+  );
 }
 
 /**
@@ -37,6 +34,7 @@ export function useAgentDetailActions(agent: Agent) {
   const router = useRouter();
   const { t } = useTranslation();
   const setStatus = useSetAgentStatus();
+  const answerShare = useAnswerShare();
 
   /** The thread with this agent, addressed by its handle. */
   const openThread = useCallback(
@@ -63,15 +61,7 @@ export function useAgentDetailActions(agent: Agent) {
     router.push(route);
   }, [agent, router, t]);
 
-  const handleShare = async () => {
-    try {
-      await Share.share({
-        message: agentShareMessage(agent),
-      });
-    } catch {
-      // user cancelled — no action needed
-    }
-  };
+  const handleShare = () => answerShare(agent);
 
   const handleStatusToggle = async (newStatus: 'active' | 'idle') => {
     try {

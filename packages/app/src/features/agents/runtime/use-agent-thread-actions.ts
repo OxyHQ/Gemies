@@ -22,6 +22,10 @@ export function useSetAgentStatus() {
       queryClient.setQueryData<Agent>(queryKeys.agents.detail(agentId), (previous) =>
         previous === undefined ? previous : { ...previous, status },
       );
+      // The sidebar's list too: its menu says "Pause" or "Resume" from the same field.
+      queryClient.setQueryData<Agent[]>(queryKeys.agents.mine, (previous) =>
+        previous?.map((agent) => (agent._id === agentId ? { ...agent, status } : agent)),
+      );
     },
   });
 }

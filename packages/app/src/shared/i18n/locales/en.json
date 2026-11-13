@@ -1442,7 +1442,17 @@
         "changedMeanwhile": "The Gemie changed this note while you were editing. Its latest version is shown."
       }
     },
-    "threads": "Threads"
+    "threads": "Threads",
+    "options": "Options for {{name}}",
+    "viewProfile": "View profile",
+    "pause": "Pause",
+    "resume": "Resume",
+    "delete": "Delete Gemie",
+    "deleteTitle": "Delete {{name}}?",
+    "deleteDescription": "{{name}} is deleted, with its memory and its inbox. This cannot be undone.",
+    "deleted": "{{name}} was deleted",
+    "linkCopied": "Link copied",
+    "shareFailed": "Could not share the Gemie"
   },
   "authorize": {
     "linkingAccount": "Linking account...",
@@ -1927,7 +1937,6 @@
     "deleteTitle": "Delete this space?",
     "deleteDescription": "“{{name}}” and its General conversation are deleted. Its Gemies are kept and go back to the Gemies list.",
     "deleteFailed": "Couldn't delete the space. Try again.",
-    "agentOptions": "Options for {{name}}",
     "moveToSpace": "Move to a space…",
     "noSpace": "No space",
     "full": "A space holds up to {{count}} Gemies.",

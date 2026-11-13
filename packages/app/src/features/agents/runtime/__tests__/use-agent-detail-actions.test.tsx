@@ -27,7 +27,7 @@ vi.mock('@tanstack/react-query', () => ({
   useMutation: () => ({ mutateAsync: vi.fn() }),
   useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
 }));
-vi.mock('react-native', () => ({ Share: { share: vi.fn() } }));
+vi.mock('@/features/agents/runtime/share-agent', () => ({ shareAgent: vi.fn() }));
 
 import { useAgentDetailActions } from '../use-agent-detail-actions';
 import type { Agent } from '@/shared/contracts/agents';

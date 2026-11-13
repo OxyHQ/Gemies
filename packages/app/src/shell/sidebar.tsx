@@ -7,6 +7,7 @@ import {
 } from '@/features/spaces/model/space-rows';
 import { FolderRowsSkeleton } from '@/shared/ui/skeletons/folder-rows-skeleton';
 import { useSidebarSpaces } from '@/shell/use-sidebar-spaces';
+import { GemieRowActions, useGemieRowHandlers } from '@/shell/sidebar-gemie-menu';
 import { GroupPickerDialog } from '@/features/agents/ui/group-picker-dialog';
 import { InviteDialog } from '@/features/onboarding/ui/invite-dialog';
 import {
@@ -170,8 +171,9 @@ function useSidebarProps() {
     isError: agentsError,
     refetch: retryAgents,
   } = useMyAgents();
-  const { isAuthenticated } = useOxy();
+  const { isAuthenticated, user } = useOxy();
   const spacesUi = useSidebarSpaces({ enabled: isAuthenticated, agents: myAgents });
+  const gemieHandlers = useGemieRowHandlers(spacesUi.move);
   const { signIn } = useAuth();
   const projects = useProjectsStore((state) => state.projects);
   const toggleProject = useProjectsStore((state) => state.toggleProject);
@@ -477,10 +479,25 @@ function useSidebarProps() {
         onHoverIntent(() =>
           prefetchAgentThread(agentHandle(agent), Boolean(agent.lastMessage?.trim())),
         ),
-      // Move it to a space, or out of the one it is in.
-      actions: spacesUi.agentMenu(agent),
+      // Its page, edit, computer, share, move to a space, pause and delete (`sidebar-gemie-menu.tsx`).
+      actions: isAuthenticated ? (
+        <GemieRowActions
+          agent={agent}
+          isOwner={user?.id === agent.author}
+          spaces={spacesUi.spaces}
+          handlers={gemieHandlers}
+        />
+      ) : undefined,
     }),
-    [t, onHoverIntent, prefetchAgentThread, spacesUi.agentMenu],
+    [
+      t,
+      onHoverIntent,
+      prefetchAgentThread,
+      isAuthenticated,
+      user?.id,
+      spacesUi.spaces,
+      gemieHandlers,
+    ],
   );
 
   /** A space's room ("General"): its members' avatars together and the last thing said there. */

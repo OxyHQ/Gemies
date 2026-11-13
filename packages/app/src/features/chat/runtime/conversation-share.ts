@@ -45,8 +45,8 @@ export async function deliverMarkdownFile(
 export type ShareLinkOutcome = 'shared' | 'copied' | 'dismissed';
 
 /**
- * Hand a conversation's share link (`useShareConversation` → `share.url`, Alia's one shared page)
- * to the person, however this platform does that.
+ * Hand a share link to the person, however this platform does that: a conversation's
+ * (`useShareConversation` → `share.url`) or a gemie's page (`features/agents/runtime/share-agent.ts`).
  *
  * It opens the system's share sheet wherever there is one: React Native's on a phone (iOS takes the
  * link as a `url`, Android only a `message`, so there the text carries it) and the browser's own

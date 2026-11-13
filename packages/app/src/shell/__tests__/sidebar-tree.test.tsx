@@ -35,6 +35,11 @@ const state = vi.hoisted(() => ({
   },
   push: vi.fn(),
   replace: vi.fn(),
+  pathname: '/',
+  deleteAgent: vi.fn(),
+  setStatus: vi.fn(),
+  shareAgent: vi.fn(),
+  openEditor: vi.fn(),
 }));
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
@@ -64,7 +69,19 @@ vi.mock('react-native', async () => {
 
 vi.mock('expo-router', () => ({
   useRouter: () => ({ push: state.push, replace: state.replace }),
-  usePathname: () => '/',
+  usePathname: () => state.pathname,
+}));
+
+// What the gemie rows' menus write, stubbed where the API would be.
+vi.mock('@/features/agents/runtime/use-agents', () => ({
+  useDeleteAgent: () => ({ mutateAsync: state.deleteAgent }),
+}));
+vi.mock('@/features/agents/runtime/use-agent-thread-actions', () => ({
+  useSetAgentStatus: () => ({ mutateAsync: state.setStatus }),
+}));
+vi.mock('@/features/agents/runtime/share-agent', () => ({ shareAgent: state.shareAgent }));
+vi.mock('@/features/chat/runtime/use-open-agent-editor', () => ({
+  useOpenAgentEditor: () => state.openEditor,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -351,6 +368,10 @@ beforeEach(async () => {
   await useSpacesOpenStore.getState().loadSpacesOpen('user-a');
   state.replace.mockClear();
   state.push.mockClear();
+  state.pathname = '/';
+  for (const spy of [state.deleteAgent, state.setStatus, state.shareAgent, state.openEditor]) {
+    spy.mockReset();
+  }
   await usePinnedStore.getState().loadPinned('user-a');
   await useFavoritesStore.getState().loadFavorites('user-a');
 });
@@ -757,5 +778,107 @@ describe('spaces in the sidebar', () => {
     await act(async () => menuItem(menu.root, 'spaces.delete').props.onPress());
     await settle();
     expect(state.mutations.deleteSpace.mutateAsync).toHaveBeenCalledWith('s1');
+  });
+});
+
+describe("a gemie row's menu", () => {
+  const mine = (over: Record<string, unknown> = {}) => ({
+    ...agent('a1', 'Pepe'),
+    author: 'user-a',
+    status: 'active',
+    capabilityGrants: ['computer'],
+    ...over,
+  });
+  /** The row's menu, mounted, and the labels of its items in order. */
+  async function openMenu() {
+    const row = sections()
+      .find((s) => s.key === 'agents')!
+      .items.find((i: { key: string }) => i.key === 'agent:a1');
+    let menu!: ReactTestRenderer;
+    await act(async () => {
+      menu = create(row.actions);
+    });
+    const labels = menu.root
+      .findAll((node) => is(node, 'MenuItem') || is(node, 'SubTrigger'))
+      .map((node) => node.props.children);
+    return { menu, labels };
+  }
+
+  it('offers its owner the gemie’s page, edit, computer, share, pause and delete, even with no space', async () => {
+    state.agents = [mine()];
+    await mount();
+    const { labels } = await openMenu();
+    expect(labels).toEqual([
+      'agents.viewProfile',
+      'agents.edit',
+      'agents.computer.open',
+      'agents.share',
+      'agents.pause',
+      'agents.delete',
+    ]);
+  });
+
+  it('adds "Move to a space" once a space exists, and says Resume for a paused gemie', async () => {
+    state.agents = [mine({ status: 'idle' })];
+    state.spaces = [space({ memberAgentIds: [] })];
+    await mount();
+    const { labels } = await openMenu();
+    expect(labels).toContain('spaces.moveToSpace');
+    expect(labels).toContain('agents.resume');
+  });
+
+  it('offers no editor, computer or pause for a gemie connected from a computer', async () => {
+    state.agents = [mine({ external: { cli: 'claude', online: true }, status: 'offline' })];
+    await mount();
+    const { labels } = await openMenu();
+    expect(labels).toEqual(['agents.viewProfile', 'agents.share', 'agents.delete']);
+  });
+
+  it('offers only its page and share to someone who does not own it', async () => {
+    state.agents = [mine({ author: 'someone-else' })];
+    await mount();
+    const { labels } = await openMenu();
+    expect(labels).toEqual(['agents.viewProfile', 'agents.computer.open', 'agents.share']);
+  });
+
+  it('opens the page, the editor and the computer, and shares and pauses the gemie', async () => {
+    state.agents = [mine()];
+    await mount();
+    const { menu } = await openMenu();
+    await act(async () => menuItem(menu.root, 'agents.viewProfile').props.onPress());
+    expect(state.push).toHaveBeenCalledWith('/@pepe/details');
+    await act(async () => menuItem(menu.root, 'agents.edit').props.onPress());
+    expect(state.openEditor).toHaveBeenCalledWith('a1');
+    await act(async () => menuItem(menu.root, 'agents.computer.open').props.onPress());
+    expect(state.push).toHaveBeenCalledWith({
+      pathname: '/(app)/agents/computer/[id]',
+      params: { id: 'a1' },
+    });
+    await act(async () => menuItem(menu.root, 'agents.share').props.onPress());
+    expect(state.shareAgent).toHaveBeenCalledWith(expect.objectContaining({ _id: 'a1' }));
+    await act(async () => menuItem(menu.root, 'agents.pause').props.onPress());
+    expect(state.setStatus).toHaveBeenCalledWith({ agentId: 'a1', status: 'idle' });
+  });
+
+  it('deletes the gemie after confirming, and leaves its thread when it is the open screen', async () => {
+    state.agents = [mine()];
+    state.pathname = '/@pepe';
+    await mount();
+    const { menu } = await openMenu();
+    await act(async () => menuItem(menu.root, 'agents.delete').props.onPress());
+    await settle();
+    expect(state.deleteAgent).toHaveBeenCalledWith(expect.objectContaining({ _id: 'a1' }));
+    expect(state.replace).toHaveBeenCalledWith('/(app)');
+  });
+
+  it('stays where it is after deleting a gemie whose screens are not open', async () => {
+    state.agents = [mine()];
+    state.pathname = '/@pepeluis';
+    await mount();
+    const { menu } = await openMenu();
+    await act(async () => menuItem(menu.root, 'agents.delete').props.onPress());
+    await settle();
+    expect(state.deleteAgent).toHaveBeenCalled();
+    expect(state.replace).not.toHaveBeenCalled();
   });
 });
