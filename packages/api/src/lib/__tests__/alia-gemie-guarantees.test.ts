@@ -56,6 +56,7 @@ vi.mock('../agent/agent-memory-runtime.js', () => ({
 }));
 
 const { ToolPipeline } = await import('../tool-pipeline.js');
+const { createAgentReactionTurn } = await import('../chat/reactions/agent-tool.js');
 const { SystemPromptBuilder } = await import('../system-prompt-builder.js');
 const { threadIsThePair } = await import('../gemie-thread.js');
 
@@ -253,4 +254,32 @@ describe('her thread (ADR 0034: the Alia app’s continuous mode)', () => {
       expect(codeOfFile(path.join(API_SRC, file))).not.toMatch(/agentThreadId|agent_thread_id/);
     }
   });
+});
+
+describe('native conversation reactions use the configured gemie', () => {
+  it.each([aliaGemie(), persona()])(
+    'offers the bound local capability without mixing memory for $reach',
+    async (agent) => {
+      const reaction = createAgentReactionTurn(
+        {
+          userId: 'person-1',
+          conversationId: 'conversation-1',
+          turnId: 'admitted-turn',
+          actor: { id: agent._id, name: 'Acting gemie' },
+          targets: [],
+        },
+        {
+          mutate: async () => undefined,
+          publish: async () => undefined,
+          complete: async () => true,
+        },
+      );
+      const names = await toolsFor(agent, { conversationReaction: reaction });
+      expect(names).toContain('react_to_message');
+      for (const name of NILO) expect(names.includes(name)).toBe(agent.memoryStore === 'nilo');
+      await expect(
+        toolsFor(agent, { userId: 'different-person', conversationReaction: reaction }),
+      ).rejects.toThrow('Conversation reaction scope');
+    },
+  );
 });
