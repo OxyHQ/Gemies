@@ -36,6 +36,7 @@ export type MemberTurnEvent =
       status: 'completed' | 'failed';
       content?: string;
       messageId?: string;
+      reactionOnly?: boolean;
       errorCode?: string;
     };
 type Raw = Record<string, unknown>;
@@ -97,10 +98,11 @@ export function parseMemberTurnEvent(event: string, data: unknown): MemberTurnEv
       };
     }
     case 'alia.agent_end': {
-      const { status, content, error, messageId } = frame;
+      const { status, content, error, messageId, reactionOnly } = frame;
       if (status !== 'completed' && status !== 'failed') return null;
       if (content !== undefined && typeof content !== 'string') return null;
       if (messageId !== undefined && !isText(messageId)) return null;
+      if (reactionOnly !== undefined && typeof reactionOnly !== 'boolean') return null;
       const errorCode = isObject(error) && isText(error.code) ? error.code : undefined;
       return {
         type: 'end',
@@ -108,6 +110,7 @@ export function parseMemberTurnEvent(event: string, data: unknown): MemberTurnEv
         status,
         ...(content === undefined ? {} : { content }),
         ...(messageId === undefined ? {} : { messageId }),
+        ...(reactionOnly === undefined ? {} : { reactionOnly }),
         ...(errorCode === undefined ? {} : { errorCode }),
       };
     }
