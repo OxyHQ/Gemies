@@ -200,7 +200,7 @@ const COMMIT_SHA = /^[0-9a-f]{40}$/;
  * here — otherwise every path in the bundle would carry a prefix that changes on
  * every commit, and a `path` filter written by a person would never match.
  */
-async function fetchRepositoryFiles(
+export async function fetchRepositoryFiles(
   source: GitHubSource,
   options?: { ifNoneMatch?: string },
 ): Promise<

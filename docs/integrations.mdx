@@ -76,7 +76,8 @@ Risk is classified per call by `classifyActionRisk` (`lib/agent/governance.ts`):
 
 A connector is a **remote MCP server** reached over streamable HTTP (or SSE) at an `https` URL: a
 provider's own server from the curated catalogue (Notion, Linear, Slack…, `lib/mcp-registry.ts`), a
-server synced from the official MCP Registry into the store ([the synced store](#the-synced-store)),
+server synced from the official MCP Registry or Docker's MCP catalogue into the store
+([the synced store](#the-synced-store)),
 or a server the person adds by URL. Nothing runs on our servers against a provider's API, and nothing
 is started as a process: a server that is only a package (`npx`, a container, stdio) is never offered.
 Integrations (`packages/integrations/src/mcp/`) is the MCP client: it connects, keeps the OAuth tokens
@@ -190,14 +191,22 @@ the API answers `502 revoke_failed` and the person retries.
 
 ### The synced store
 
-Beside the curated catalogue, the store offers the remote MCP servers of the **official MCP Registry**
-(`registry.modelcontextprotocol.io`), copied into `mcp_catalogue_entries` by one leader-gated job
-(`lib/connector-catalogue/`, lease `connector-catalogue`, every hour):
+Beside the curated catalogue, the store offers the remote MCP servers of two public catalogues, copied
+into `mcp_catalogue_entries` with their provenance (`source`, `upstream_name`, `upstream_version`) by
+one leader-gated job (`lib/connector-catalogue/`, lease `connector-catalogue`, every hour):
 
-1. **Sync** (`sync.ts`, when the last complete pass is older than 12 hours): every server's latest
-   version, a page of 100 at a time with a pause between, a failed page asked again twice, and a 429
-   honoured until its `Retry-After` (`mcp_catalogue_sync_state.retry_after`). A pass that fails
-   changes nothing; a complete one inserts new servers (`pending`), updates changed ones (a new
+- the **official MCP Registry** (`registry.modelcontextprotocol.io`, `official-registry.ts`), the
+  primary source: every server's latest version, a page of 100 at a time with a pause between;
+- **Docker's MCP catalogue** (`github.com/docker/mcp-registry`, MIT, `docker-catalogue.ts`): its
+  `type: remote` entries, read from one archive of the repository. Docker reviews every entry, so its
+  servers carry the `verified` badge; an endpoint the official registry already lists is not taken
+  from Docker (`earlier_source` in its report), so one server is listed once.
+
+Both are read into one shape (`ListedServer`) and judged by the same policy, gates and health check.
+
+1. **Sync** (`sync.ts`, each source when its last complete pass is older than 12 hours, the registry
+   first): a failed page asked again twice, and a 429 honoured until its `Retry-After`
+   (`mcp_catalogue_sync_state.retry_after`, per source). A pass that fails changes nothing; a complete one inserts new servers (`pending`), updates changed ones (a new
    endpoint is `pending` again), marks those no longer listed `removed_at` and brings back those
    listed again. `mcp_catalogue_sync_state.last_report` keeps its counts, refusals by reason included.
 2. **Health check** (`health.ts`, up to 600 a round, 8 at a time, never-checked and best-proven first):
@@ -212,10 +221,13 @@ Beside the curated catalogue, the store offers the remote MCP servers of the **o
    nothing. An OAuth server's tools are known only once a person connects it.
 3. **Logos** of every offered entry ([logos](#connectors), above).
 
-**What is taken** (`policy.ts`): an `active` server with a streamable HTTP (preferred) or SSE remote
-at an `https` URL, with no `{template}` and no header the registry marks required; never a package
-(stdio, `npx`, a container). Left out: a publisher with more than 25 such servers (a listing farm;
-the registry holds publishers with thousands), a server the curated catalogue already has (same
+**What is taken** (`policy.ts`): an active server with a streamable HTTP (preferred) or SSE remote
+at an `https` URL, with no `{template}` and no header its catalogue marks required (a Docker header
+naming a secret is required unless the secret says `required: false`); never a package (stdio, `npx`,
+a container, an image Docker runs). Left out: a registry publisher with more than 25 such servers (a
+listing farm; the registry holds publishers with thousands; on 2026-11-13 the 54 namespaces past it
+were all generated wrappers of other companies' APIs or aggregators, and the big vendors' namespaces,
+Microsoft's 12 the largest, were all under it, so no `allowBulk` is set), a server the curated catalogue already has (same
 endpoint or same registry name: a synced server never overrides a curated one), and every listing of
 one endpoint but the best-proven, most recent one. Names and descriptions are the registry's,
 made plain text and cut (`lib/untrusted-text.ts`); a category is read from their words.
@@ -224,7 +236,8 @@ made plain text and cut (`lib/untrusted-text.ts`); a category is read from their
 (a reverse-DNS namespace through DNS or HTTP, `io.github.<login>` through GitHub), and the registry
 does not check that a remote is on the proven domain. So the store says `official` when a proven
 domain's server is reached on that domain (`com.notion/mcp` at `mcp.notion.com`; every curated entry
-is official), `verified` when it is reached elsewhere, and `community` for a GitHub namespace.
+is official), `verified` when it is reached elsewhere or Docker's reviewed catalogue lists it, and
+`community` for a GitHub namespace.
 
 **The operator's say** is `CATALOGUE_OVERRIDES` in `policy.ts`, reviewed like code, keyed by a
 server's registry name, `host:<host>` (and every host under it) or `publisher:<namespace>`: `hide`
@@ -237,16 +250,16 @@ registry data to the public domain (CC0 1.0, §10) and let subregistries copy, e
 (§11) without implying a partnership (§6); its API needs no key and documents no rate limit, and it
 asks aggregators to poll regularly but infrequently, never per user request
 ([registry aggregators](https://modelcontextprotocol.io/registry/registry-aggregators.md),
-[terms](https://modelcontextprotocol.io/registry/terms-of-service.md)). Not synced:
+[terms](https://modelcontextprotocol.io/registry/terms-of-service.md)). [Docker's MCP registry](https://github.com/docker/mcp-registry) (MIT, about 75 reviewed remote
+servers) is the second source. Not synced:
 [Glama](https://glama.ai/policies/terms-of-service) (needs a key; its licence requires a credit on
 every page and forbids a competing directory), [PulseMCP](https://www.pulsemcp.com/api/docs/v0.1)
 (partners only, no public terms), [Smithery](https://smithery.ai/future) (its API and proxies shut
 down on 2026-10-31; its URLs are its own proxies, not providers'), [mcp.so](https://mcp.so/terms-of-service)
 (no API, claims its content), GitHub's MCP registry (a curated mirror of the official one, under
-GitHub's terms only) and the awesome-mcp-servers lists (repositories, not remote endpoints).
-[Docker's MCP registry](https://github.com/docker/mcp-registry) (MIT, 77 reviewed remote servers)
-is a possible second source; adding one is a new `MCP_CATALOGUE_SOURCES` value and a reader beside
-`official-registry.ts`, deduplicated by endpoint like the rest.
+GitHub's terms only) and the awesome-mcp-servers lists (repositories, not remote endpoints). Adding
+a source is a new `MCP_CATALOGUE_SOURCES` value, a reader into `ListedServer` and its place in
+`CATALOGUE_SOURCES` (`sync.ts`).
 
 ### What the owner registers
 

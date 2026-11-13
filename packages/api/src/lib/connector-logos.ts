@@ -7,9 +7,9 @@
  *     (spec 2025-11-25). A provider's server answers `initialize` only with a
  *     token, so for most this is known per connection; a store server that needs
  *     no sign-in publishes it to the catalogue's health check (`storeServerLogo`).
- *  2. **The official MCP Registry** — the `icons` of the entry's `server.json`
- *     (`registry.modelcontextprotocol.io`): a curated entry's record
- *     (`mcpRegistryName`), a synced entry's own listing.
+ *  2. **Its catalogue listing** — the `icons` of the entry's `server.json` in the
+ *     official MCP Registry (a curated entry's record, `mcpRegistryName`, or a
+ *     synced entry's own listing), or the icon of its Docker catalogue entry.
  *  3. **The provider's website** — its brand mark: `apple-touch-icon`, then an
  *     SVG or PNG `icon` link, then `/apple-touch-icon.png` and `/favicon.ico`.
  *
@@ -217,35 +217,43 @@ async function websiteBrandMark(
   return null;
 }
 
+/** Where a server's listing in the official MCP Registry is read. */
+export function mcpRegistryListingUrl(name: string): string {
+  return `${MCP_REGISTRY_API}?search=${encodeURIComponent(name)}`;
+}
+
 /**
- * A store entry whose logo is kept: its id, the MCP Registry icons it has (a synced entry's own
- * listing) or the registry name to read them by (a curated entry), and the website whose brand mark
- * is the fallback.
+ * A store entry whose logo is kept: its id, the icons its catalogue listing carries (a synced
+ * entry's own listing, with which catalogue and where) or the MCP Registry name to read them by (a
+ * curated entry), and the website whose brand mark is the fallback.
  */
 export interface LogoSubject {
   registryId: string;
-  icons?: readonly ConnectorIcon[];
+  listing?: {
+    source: Extract<ConnectorLogoSource, 'mcp_registry' | 'docker'>;
+    icons: readonly ConnectorIcon[];
+    url: string;
+  };
   mcpRegistryName?: string;
   website: string;
 }
 
-/** Find an entry's logo: its MCP Registry icons, then its website's brand mark. */
+/** Find an entry's logo: its catalogue listing's icons, then its website's brand mark. */
 async function resolveRegistryLogo(
   db: ApiDatabase,
   subject: LogoSubject,
 ): Promise<{ logoId: string; source: ConnectorLogoSource; sourceUrl: string } | null> {
-  const icons =
-    subject.icons ??
-    (subject.mcpRegistryName ? await mcpRegistryIcons(subject.mcpRegistryName) : []);
-  const logoId = await storeFirstIcon(db, icons);
-  if (logoId) {
-    const listed = subject.mcpRegistryName ?? subject.registryId.replace(/^mcp_registry:/, '');
-    return {
-      logoId,
-      source: 'mcp_registry',
-      sourceUrl: `${MCP_REGISTRY_API}?search=${encodeURIComponent(listed)}`,
-    };
-  }
+  const listing =
+    subject.listing ??
+    (subject.mcpRegistryName
+      ? {
+          source: 'mcp_registry' as const,
+          icons: await mcpRegistryIcons(subject.mcpRegistryName),
+          url: mcpRegistryListingUrl(subject.mcpRegistryName),
+        }
+      : undefined);
+  const logoId = listing ? await storeFirstIcon(db, listing.icons) : null;
+  if (logoId && listing) return { logoId, source: listing.source, sourceUrl: listing.url };
   const mark = await websiteBrandMark(db, subject.website);
   return mark ? { ...mark, source: 'website' } : null;
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { RegistryServer } from '../official-registry.js';
+import { listedFromRegistry, type RegistryServer } from '../official-registry.js';
 import {
-  candidateFromRegistry,
+  type CatalogueOverride,
+  candidateOf,
   categoryOf,
   endpointKey,
   isSyncedEntryId,
@@ -9,6 +10,12 @@ import {
   slugOf,
   trustOf,
 } from '../policy.js';
+
+/** A registry server read the way the sync reads it. */
+const candidateFromRegistry = (
+  server: RegistryServer,
+  overrides?: Readonly<Record<string, CatalogueOverride>>,
+) => candidateOf(listedFromRegistry(server), overrides);
 
 function listed(
   server: Partial<RegistryServer['server']> & { name: string },

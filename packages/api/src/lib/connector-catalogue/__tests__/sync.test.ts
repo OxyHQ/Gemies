@@ -12,17 +12,19 @@ vi.mock('../../../db/integrations/mcpCatalogueRepository.js', () => ({
 }));
 
 const repository = await import('../../../db/integrations/mcpCatalogueRepository.js');
-const { RegistryRateLimitError } = await import('../official-registry.js');
-const { syncConnectorCatalogue } = await import('../sync.js');
-const { candidateFromRegistry } = await import('../policy.js');
+const { listedFromRegistry } = await import('../official-registry.js');
+const { CatalogueRateLimitError } = await import('../policy.js');
+const { syncCatalogueSources, syncConnectorCatalogue } = await import('../sync.js');
+const { listedFromDocker } = await import('../docker-catalogue.js');
+const { candidateOf } = await import('../policy.js');
 
 type Pass = Awaited<ReturnType<typeof import('../official-registry.js').readOfficialRegistry>>;
 
 function server(name: string, url: string, extra: Record<string, unknown> = {}) {
-  return {
+  return listedFromRegistry({
     server: { name, version: '1.0.0', remotes: [{ type: 'streamable-http', url }], ...extra },
     _meta: { 'io.modelcontextprotocol.registry/official': { status: 'active' } },
-  };
+  });
 }
 
 const curated = [
@@ -41,7 +43,7 @@ const curated = [
 const now = new Date('2026-11-13T12:00:00Z');
 
 function storedRowOf(listed: ReturnType<typeof server>) {
-  const read = candidateFromRegistry(listed as never);
+  const read = candidateOf(listed);
   if (!read.ok) throw new Error('expected a candidate');
   return {
     ...read.candidate,
@@ -64,8 +66,8 @@ describe('a sync of the official MCP Registry', () => {
         server('io.github.copy/weather', 'https://mcp.weather.com/mcp/'),
         server('com.notion/mcp', 'https://mcp.notion.com/mcp'),
         server('io.github.other/notion-proxy', 'https://mcp.notion.com/mcp'),
-        { server: { name: 'io.github.pkg/local', version: '1.0.0' }, _meta: {} },
-      ] as Pass['servers'],
+        listedFromRegistry({ server: { name: 'io.github.pkg/local', version: '1.0.0' } }),
+      ] as never,
     };
     const outcome = await syncConnectorCatalogue({} as never, {
       read: async () => pass,
@@ -104,7 +106,7 @@ describe('a sync of the official MCP Registry', () => {
     const outcome = await syncConnectorCatalogue({} as never, {
       read: async () => ({
         malformed: 0,
-        servers: [kept, server('com.maps/mcp', 'https://v2.maps.com/mcp')] as Pass['servers'],
+        servers: [kept, server('com.maps/mcp', 'https://v2.maps.com/mcp')] as never,
       }),
       curated,
       overrides: {},
@@ -132,7 +134,7 @@ describe('a sync of the official MCP Registry', () => {
     const farm = Array.from({ length: 26 }, (_, index) =>
       server(`io.github.farm/city-${index}`, `https://farm.example.com/city/${index}`),
     );
-    const read = async () => ({ malformed: 0, servers: farm as Pass['servers'] });
+    const read = async () => ({ malformed: 0, servers: farm as never });
     const refused = await syncConnectorCatalogue({} as never, {
       read,
       curated,
@@ -154,7 +156,7 @@ describe('a sync of the official MCP Registry', () => {
     const retryAt = new Date('2026-11-13T13:00:00Z');
     const outcome = await syncConnectorCatalogue({} as never, {
       read: async () => {
-        throw new RegistryRateLimitError(retryAt);
+        throw new CatalogueRateLimitError(retryAt, 'The MCP Registry');
       },
       curated,
       now,
@@ -169,6 +171,44 @@ describe('a sync of the official MCP Registry', () => {
     );
     expect(repository.markCatalogueRowsRemoved).not.toHaveBeenCalled();
     expect(repository.insertCatalogueRows).not.toHaveBeenCalled();
+  });
+
+  it('takes from Docker only what the official registry does not already list', async () => {
+    vi.mocked(repository.listCatalogueRowsOfSource).mockImplementation(async (_db, source) =>
+      source === 'mcp_registry'
+        ? ([storedRowOf(server('com.notion2/mcp', 'https://mcp.notion2.com/mcp'))] as never)
+        : [],
+    );
+    const docker = (name: string, url: string) =>
+      listedFromDocker({ name, type: 'remote', remote: { transport_type: 'sse', url } }, 'v1');
+    const outcomes = await syncCatalogueSources({} as never, {
+      now,
+      curated,
+      overrides: {},
+      isDue: async (source) => source === 'docker',
+      sources: [
+        { source: 'mcp_registry', label: 'registry', read: vi.fn() },
+        {
+          source: 'docker',
+          label: 'docker',
+          read: async () => ({
+            malformed: 0,
+            servers: [
+              docker('notion2', 'https://mcp.notion2.com/mcp'),
+              docker('aisfleet', 'https://mcp.aisfleet.com/sse'),
+            ],
+          }),
+        },
+      ],
+    });
+    expect(outcomes.mcp_registry).toBeUndefined();
+    expect(outcomes.docker).toMatchObject({
+      report: { candidates: 1, created: 1, refused: { earlier_source: 1 } },
+    });
+    const inserted = vi.mocked(repository.insertCatalogueRows).mock.calls.at(-1)?.[1];
+    expect(inserted?.map((row) => [row.id, row.source, row.trust])).toEqual([
+      ['docker:aisfleet', 'docker', 'verified'],
+    ]);
   });
 
   it('waits while the registry asked to', async () => {

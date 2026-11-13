@@ -1,5 +1,11 @@
 # @gemies/sdk
 
+## 6.2.0
+
+- **The connectors store also lists Docker's MCP catalogue.** `ConnectorEntry.source` may be `docker`:
+  a remote server from Docker's reviewed catalogue (`github.com/docker/mcp-registry`) that the
+  official MCP Registry does not list, with the `verified` badge.
+
 ## 6.1.0
 
 - **New: a person's folders, projects, pins and favourites are their account's**, the same on every
