@@ -708,7 +708,10 @@
     "taskUnfinished": "%{name} no ha podido terminar esta tarea.",
     "shareFailed": "No se pudo crear el enlace para compartir.",
     "sharedFailed": "No se pudo cargar esta conversación.",
-    "sharedGone": "Esta conversación compartida ya no está disponible."
+    "sharedGone": "Esta conversación compartida ya no está disponible.",
+    "reactionAuthors": "{{emoji}}: {{names}} ({{count}})",
+    "reactionYou": "Tú",
+    "reactionPerson": "Persona"
   },
   "credits": {
     "title": "Créditos",

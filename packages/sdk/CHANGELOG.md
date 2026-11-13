@@ -1,5 +1,11 @@
 # @gemies/sdk
 
+## 8.1.0
+
+- Show gemie-authored reactions with counts and accessible author names. The person's pending reaction changes only their own selection; peer reactions remain visible across retries and revisions.
+- Accept reaction-only completion after the server confirms a clean, durable turn. Remove the empty reply bubble while preserving earlier replies, feedback and typed failures.
+- Bind the default gemie from the server's scoped turn admission when a caller omits `agentId`, including Alia's chats. Explicit actor, conversation and turn mismatches remain rejected.
+
 ## 8.0.0
 
 Gemies talk to each other in real conversations (Gemies ADR 0042). A gemie that wants something from
@@ -27,6 +33,7 @@ other answers in its own turn, and the first reads the answer and continues or t
   `chat.gemieWriting`, `chat.gemiesOpen`, `tasks.tool.*.sendMessage` are new; `chat.consultFailed`
   is `chat.agentFailed`; `chat.chattedWith`, `chat.agentChatNotice` and `tasks.tool.*.consultAgent`
   are gone.
+
 
 ## 7.1.0
 
