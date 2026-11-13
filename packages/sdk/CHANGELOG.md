@@ -1,5 +1,11 @@
 # @gemies/sdk
 
+## 3.1.0
+
+- Show gemie-authored reactions with counts and accessible author names. The person's pending reaction changes only their own selection; peer reactions remain visible across retries and revisions.
+- Accept reaction-only completion after the server confirms a clean, durable turn. Remove the empty reply bubble while preserving earlier replies, feedback and typed failures.
+- Bind the default gemie from the server's scoped turn admission when a caller omits `agentId`, including Alia's chats. Explicit actor, conversation and turn mismatches remain rejected.
+
 ## 3.0.0
 
 - **Breaking: a gemie is painted in its Oxy account's colour, and nothing else.**
