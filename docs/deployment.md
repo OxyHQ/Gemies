@@ -63,8 +63,7 @@ production API:
 PORT=3001
 NODE_ENV=production
 WEB_URL=https://alia.onl
-API_BASE_URL=https://api.alia.onl
-GEMIES_API_URL=https://api.alia.onl
+API_BASE_URL=https://api.gemies.ai
 OXY_API_URL=https://api.oxy.so
 DATABASE_URL=<postgres-connection-string>
 ```
@@ -89,12 +88,13 @@ Alia's identity to Oxy is not an upstream provider credential either way.
 Provider keys are absent from this contract and remain only in Kaana's
 PostgreSQL/KMS custody.
 
-Terraform declares both public-origin names, while `deploy-aws.yml` re-asserts
-them through `TASK_ENV_OVERRIDES_JSON` on every runnable revision. The split is
-required because the existing ECS service ignores Terraform task-definition
-changes. `API_BASE_URL` advertises callbacks and webhooks; `GEMIES_API_URL` also
-builds user-facing links and service-to-self `/v1` requests, so neither may fall
-back to loopback in production.
+The API's public origin is ONE variable, `API_BASE_URL` = `https://api.gemies.ai`. Terraform
+declares it for both services, and `deploy-aws.yml` (the API) and `deploy-integrations.yml`
+re-assert it through `TASK_ENV_OVERRIDES_JSON` on every runnable revision. The split is required
+because the existing ECS services ignore Terraform task-definition changes. Connector OAuth
+callbacks, Telegram webhooks (re-registered at startup, so a new origin heals them) and links are
+built from it, so it may not fall back to loopback in production. `api.alia.onl` still answers
+through the load balancer while it is retired, but nothing is derived from it.
 
 `PORT` has no correct default to rely on: `packages/api/src/index.ts:93` falls back to
 `4150`, while the container's health check and `EXPOSE` use `3001`

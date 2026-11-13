@@ -306,8 +306,7 @@ jobs:
 
           voice_peer_vpc_cidr="$(python3 .github/scripts/voice-peer-vpc.py --cluster "$CLUSTER" --service "$APP")"
           required_env="$(jq -cn --arg gemies_os_instance_id "$gemies_os_instance_id" --arg voice_peer_vpc_cidr "$voice_peer_vpc_cidr" '{
-            API_BASE_URL: "https://api.alia.onl",
-            ALIA_API_URL: "https://api.alia.onl",
+            API_BASE_URL: "https://api.gemies.ai",
             OXY_API_URL: "https://api.oxy.so",
             GEMIES_OS_URL: "http://computer.alia.internal.oxy.so:8080",
             GEMIES_OS_INSTANCE_ID: $gemies_os_instance_id,
@@ -385,7 +384,7 @@ jobs:
           # the live task definition. Keeping a removal here is harmless after
           # the first clean revision and prevents a rollback descendant from
           # silently reintroducing the obsolete contract.
-          TASK_CONFIGURATION_REMOVALS_JSON: '["RELAY_BASE_URL","ALIA_RELAY_APPLICATION_ID","ALIA_RELAY_ACCOUNT_ID","ALIA_RELAY_CREDENTIAL_ID","ALIA_RELAY_ENVIRONMENT","ALIA_RELAY_INFERENCE_SCOPES","KAANA_EDGE_KEY_ID","ALIA_KAANA_CLIENT_ENABLED","ALIA_KAANA_APPLICATION_ID","ALIA_KAANA_ACCOUNT_ID","ALIA_KAANA_CREDENTIAL_ID","ALIA_KAANA_ENVIRONMENT","ALIA_KAANA_INFERENCE_SCOPES","KAANA_BASE_URL","ALIA_INTERNAL_MCP_PILOT","ALIA_COMPUTER_HOST_URL","ALIA_COMPUTER_HOST_INSTANCE_ID"]'
+          TASK_CONFIGURATION_REMOVALS_JSON: '["ALIA_API_URL","RELAY_BASE_URL","ALIA_RELAY_APPLICATION_ID","ALIA_RELAY_ACCOUNT_ID","ALIA_RELAY_CREDENTIAL_ID","ALIA_RELAY_ENVIRONMENT","ALIA_RELAY_INFERENCE_SCOPES","KAANA_EDGE_KEY_ID","ALIA_KAANA_CLIENT_ENABLED","ALIA_KAANA_APPLICATION_ID","ALIA_KAANA_ACCOUNT_ID","ALIA_KAANA_CREDENTIAL_ID","ALIA_KAANA_ENVIRONMENT","ALIA_KAANA_INFERENCE_SCOPES","KAANA_BASE_URL","ALIA_INTERNAL_MCP_PILOT","ALIA_COMPUTER_HOST_URL","ALIA_COMPUTER_HOST_INSTANCE_ID"]'
           TASK_ENV_OVERRIDES_JSON: ${{ steps.kaana.outputs.env_overrides }}
         run: |
           STATUS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$APP" --query 'services[0].status' --output text 2>/dev/null || echo NONE)

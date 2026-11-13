@@ -44,9 +44,9 @@ describe('where a connector sign-in returns the person', () => {
 });
 
 describe('the one redirect URI every provider knows Gemies by', () => {
-  it("is api.gemies.ai's in production, whatever host the API is also configured as", () => {
+  it("is the API's public origin, the deploy's `API_BASE_URL`", () => {
     expect(
-      connectorCallbackUrl({ NODE_ENV: 'production', API_BASE_URL: 'https://api.alia.onl' }),
+      connectorCallbackUrl({ NODE_ENV: 'production', API_BASE_URL: 'https://api.gemies.ai' }),
     ).toBe('https://api.gemies.ai/mcp/oauth/callback');
   });
 
