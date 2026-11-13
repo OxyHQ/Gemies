@@ -1,9 +1,9 @@
 /**
- * One-shot text generation directly through Kaana, for product code.
+ * One-shot text generation through Oxy inference, for product code.
  *
  * Most of Alia needs only a string back from a prompt. This helper sends that
- * request through the published Kaana SDK, using workload identity from Oxy.
- * Prompt and output travel only between Gemies and Kaana.
+ * request through the published `OxyInferenceClient`; Oxy authenticates Alia,
+ * resolves policy and is the only component that calls Kaana.
  *
  * An empty generated answer is represented as `null`; configuration and
  * transport failures throw. Hosted callers never select a second provider path.
@@ -14,10 +14,10 @@
  * surface; this helper stays intentionally narrow for one-shot derivations.
  */
 
-import type { ResponseFormat } from '@kaana.ai/contracts';
+import type { ResponseFormat } from '@oxy.so/contracts';
 
 import { UTILITY_POWER_LEVEL, utilityOutputTokens } from '../chat-core.js';
-import { getHostedKaanaClient, disposeHostedKaanaClient } from '../kaana/transport.js';
+import { getOxyInferenceClient } from './oxy-inference.js';
 import type { AliaInferenceSurface } from './product-seam.js';
 import { fitControlledInput } from './request-budget.js';
 
@@ -75,7 +75,7 @@ class KaanaClientUnavailableError extends Error {
 }
 
 /**
- * The generated text, or `null` when Kaana returned no text.
+ * The generated text, or `null` when Oxy inference returned no text.
  *
  * `derived` visibility and `drop` on disconnect: every caller today is a
  * background derivation — a suggestion, a title, a summary — that nobody is
@@ -83,6 +83,9 @@ class KaanaClientUnavailableError extends Error {
  * questions and should build its own context rather than inherit these.
  */
 export async function generateTextViaKaana(request: KaanaTextRequest): Promise<string | null> {
+  const client = getOxyInferenceClient();
+  if (client === null) throw new KaanaClientUnavailableError();
+
   const budgetMs = request.budgetMs ?? DEFAULT_BUDGET_MS;
   // One user message has nothing to shrink: an input over Oxy's byte budget is
   // refused here, typed, rather than at the edge (`request-budget.ts`).
@@ -94,32 +97,30 @@ export async function generateTextViaKaana(request: KaanaTextRequest): Promise<s
     },
     { surface: request.surface },
   );
-  const client = getHostedKaanaClient(request.oxyUserId);
-  if (client === null) throw new KaanaClientUnavailableError();
-  const completion = await client.responses
-    .create(
-      {
-        // A named model when the caller has one; otherwise the utility power level,
-        // which Kaana resolves to an admitted model (`chat-core.ts`).
-        model: request.model ?? UTILITY_POWER_LEVEL,
-        input: messages,
-        maxOutputTokens:
-          request.model === undefined
-            ? utilityOutputTokens(request.maxOutputTokens)
-            : request.maxOutputTokens,
-        ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
-        tools: [],
-        ...(request.responseFormat === undefined ? {} : { responseFormat: request.responseFormat }),
-        labels: { 'alia.surface': request.surface, 'alia.visibility': 'derived' },
-      },
-      {
-        signal: request.signal ?? AbortSignal.timeout(budgetMs),
-        ...(request.oxyUserId === undefined || request.oxyUserId === null
-          ? {}
-          : { onBehalfOfUserId: request.oxyUserId }),
-      },
-    )
-    .finally(() => disposeHostedKaanaClient(client));
+  const completion = await client.respond(
+    {
+      // A named model when the caller has one; otherwise the utility power level,
+      // which Oxy routes to a model it can serve for Alia (`chat-core.ts`).
+      ...(request.model === undefined
+        ? { routingProfile: UTILITY_POWER_LEVEL }
+        : { model: request.model }),
+      input: messages,
+      maxOutputTokens:
+        request.model === undefined
+          ? utilityOutputTokens(request.maxOutputTokens)
+          : request.maxOutputTokens,
+      ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+      tools: [],
+      ...(request.responseFormat === undefined ? {} : { responseFormat: request.responseFormat }),
+      labels: { 'alia.surface': request.surface, 'alia.visibility': 'derived' },
+    },
+    {
+      signal: request.signal ?? AbortSignal.timeout(budgetMs),
+      ...(request.oxyUserId === undefined || request.oxyUserId === null
+        ? {}
+        : { delegatedUserId: request.oxyUserId }),
+    },
+  );
   const text = completion.output
     .flatMap((message) => message.content)
     .filter((part) => part.type === 'text' || part.type === 'refusal')

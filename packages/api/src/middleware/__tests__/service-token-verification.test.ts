@@ -323,9 +323,11 @@ describe('inbound verification is @oxy.so/core, not a local implementation (#139
       ),
     ).toEqual(['jwt.verify']);
 
-    // The SDK owns outbound audience binding; no raw identity token is forwarded.
-    const transport = readFileSync(path.join(kaanaDir, '../kaana/transport.ts'), 'utf8');
-    expect(transport).toContain('kaanaForOxyService(oxy');
-    expect(transport).not.toMatch(/getAccessToken|jwt\.verify|jwtVerify/);
+    // The published SDK receives a presenter function backed by OxyServices;
+    // Alia neither verifies nor parses an outbound token.
+    const credential = readFileSync(path.join(kaanaDir, 'oxy-inference-credential.ts'), 'utf8');
+    expect(credential).toContain("oxy.createServiceClient({ baseURL, audience: 'oxy-api' })");
+    expect(credential).toContain('return () => transport.getAccessToken(baseURL)');
+    expect(credential).not.toMatch(/jwt\.verify|verifyToken|jwtVerify/);
   });
 });

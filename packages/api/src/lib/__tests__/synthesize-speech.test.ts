@@ -1,4 +1,4 @@
-import { KaanaError, KaanaProtocolError } from '@kaana.ai/sdk';
+import { OxyInferenceError, OxyInferenceProtocolError } from '@oxy.so/core/inference';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const H = vi.hoisted(() => ({
   speech: vi.fn(),
@@ -7,9 +7,8 @@ const H = vi.hoisted(() => ({
   warn: vi.fn(),
 }));
 vi.mock('../models/selection.js', () => ({ getSpeechModelIds: H.speechModels }));
-vi.mock('../kaana/transport.js', () => ({
-  getHostedKaanaClient: () => (H.configured ? { audio: { speech: H.speech } } : null),
-  disposeHostedKaanaClient: vi.fn(),
+vi.mock('../inference/oxy-inference.js', () => ({
+  getOxyInferenceClient: () => (H.configured ? { speech: H.speech } : null),
 }));
 vi.mock('../logger.js', () => ({ log: { speech: { warn: H.warn } } }));
 import {
@@ -25,11 +24,11 @@ const audio = (requestId: string) => ({
   requestId,
 });
 function refusal(
-  code: KaanaError['code'],
+  code: OxyInferenceError['code'],
   status: number,
   extra: { retryable?: boolean; retryAfterMs?: number; param?: string } = {},
 ) {
-  return new KaanaError({
+  return new OxyInferenceError({
     code,
     status,
     message: `upstream said ${code}`,
@@ -65,7 +64,7 @@ describe('speech through Oxy', () => {
         response_format: 'mp3',
         speed: 1.15,
       },
-      { onBehalfOfUserId: 'u1', signal: expect.any(AbortSignal) },
+      { delegatedUserId: 'u1', signal: expect.any(AbortSignal) },
     );
   });
 
@@ -172,6 +171,8 @@ describe('a refusal that is not the model’s is never retried on another', () =
     ['insufficient_balance', 402, 'SPEECH_LIMIT_REACHED', 429],
     ['spending_limit_exceeded', 402, 'SPEECH_LIMIT_REACHED', 429],
     ['quota_exceeded', 429, 'SPEECH_LIMIT_REACHED', 429],
+    ['provider_credential_invalid', 502, 'SPEECH_PROVIDER_FAILED', 502],
+    ['provider_billing_refused', 502, 'SPEECH_PROVIDER_FAILED', 502],
     ['policy_violation', 400, 'SPEECH_REJECTED', 422],
     ['upstream_content_filtered', 400, 'SPEECH_REJECTED', 422],
     ['provider_error', 502, 'SPEECH_PROVIDER_FAILED', 502],
@@ -211,7 +212,7 @@ describe('a refusal that is not the model’s is never retried on another', () =
 
 describe('failures that are not a refusal', () => {
   it('a transport or protocol failure is the provider’s, typed, and not retried', async () => {
-    H.speech.mockRejectedValue(new KaanaProtocolError('empty audio', 'req_proto'));
+    H.speech.mockRejectedValue(new OxyInferenceProtocolError('empty audio', 'req_proto'));
     await expect(synthesizeSpeech(request)).rejects.toMatchObject({
       code: 'SPEECH_PROVIDER_FAILED',
       reason: 'transport',

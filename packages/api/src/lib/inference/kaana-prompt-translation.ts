@@ -11,7 +11,7 @@ import type {
   ResponseFormat,
   ToolChoice,
   ToolDefinition,
-} from '@kaana.ai/contracts';
+} from '@oxy.so/contracts';
 import type {
   SharedV3Warning,
   LanguageModelV3CallOptions,

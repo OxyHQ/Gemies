@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { sql } from 'drizzle-orm';
 import { getDb } from '../db/index.js';
-import { unsetOxyIdentityVariables } from '../lib/inference/workload-identity-config.js';
+import { unsetOxyInferenceVariables } from '../lib/inference/oxy-inference.js';
 import { isQueueActive } from '../lib/task-queue.js';
 import { log } from '../lib/logger.js';
 
@@ -44,15 +44,15 @@ async function isPostgresReady(): Promise<boolean> {
  * Everything this process knows about its Kaana path, under ONE compatibility name.
  *
  * `credentials` says only whether this process has what it needs to authenticate
- * using Oxy workload identity. `configured` is not `serving`: nothing is probed to answer it.
+ * to Oxy. `configured` is not `serving`: nothing is probed to answer it.
  */
 function kaanaReport(): {
-  readonly path: 'kaana';
+  readonly path: 'oxy';
   readonly credentials: 'configured' | 'not_configured';
 } {
   return {
-    path: 'kaana',
-    credentials: unsetOxyIdentityVariables().length === 0 ? 'configured' : 'not_configured',
+    path: 'oxy',
+    credentials: unsetOxyInferenceVariables().length === 0 ? 'configured' : 'not_configured',
   };
 }
 

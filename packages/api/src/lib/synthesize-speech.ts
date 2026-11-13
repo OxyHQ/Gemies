@@ -1,5 +1,5 @@
 /**
- * Speech generation through the published Kaana SDK, on the speech models the
+ * Speech generation through the published Oxy client, on the speech models the
  * catalogue offers, in the order `rankSpeechModelIds` gives them
  * (`lib/models/auto-selection.ts`).
  *
@@ -8,9 +8,9 @@
  * and the show pipeline — see a `SpeechSynthesisError` whose `code` is Alia's
  * own and stable, whatever client answers underneath.
  */
-import { KaanaError, KaanaProtocolError } from '@kaana.ai/sdk';
+import { OxyInferenceError, OxyInferenceProtocolError } from '@oxy.so/core/inference';
 import { getSpeechModelIds } from './models/selection.js';
-import { getHostedKaanaClient, disposeHostedKaanaClient } from './kaana/transport.js';
+import { getOxyInferenceClient } from './inference/oxy-inference.js';
 import { log } from './logger.js';
 
 export interface SynthesizeSpeechOptions {
@@ -73,7 +73,7 @@ const FAILURE_MESSAGE: Readonly<Record<SpeechFailureCode, string>> = {
   SPEECH_PROVIDER_FAILED: 'Speech could not be generated. Please try again.',
 };
 
-type UpstreamCode = KaanaError['code'];
+type UpstreamCode = OxyInferenceError['code'];
 
 /**
  * What every refusal Oxy can answer means for a spoken answer. Total over the
@@ -90,6 +90,7 @@ const FAILURE_FOR: Readonly<Record<UpstreamCode, SpeechFailureCode>> = {
   upstream_content_filtered: 'SPEECH_REJECTED',
   model_not_found: 'SPEECH_UNAVAILABLE',
   no_route_available: 'SPEECH_UNAVAILABLE',
+  deployment_unavailable: 'SPEECH_UNAVAILABLE',
   service_unavailable: 'SPEECH_UNAVAILABLE',
   // Oxy refusing Alia's own authority is not the person's to fix.
   authentication_failed: 'SPEECH_UNAVAILABLE',
@@ -103,6 +104,8 @@ const FAILURE_FOR: Readonly<Record<UpstreamCode, SpeechFailureCode>> = {
   provider_error: 'SPEECH_PROVIDER_FAILED',
   provider_timeout: 'SPEECH_PROVIDER_FAILED',
   provider_overloaded: 'SPEECH_PROVIDER_FAILED',
+  provider_credential_invalid: 'SPEECH_PROVIDER_FAILED',
+  provider_billing_refused: 'SPEECH_PROVIDER_FAILED',
   idempotency_conflict: 'SPEECH_PROVIDER_FAILED',
   cancelled: 'SPEECH_PROVIDER_FAILED',
   internal_error: 'SPEECH_PROVIDER_FAILED',
@@ -182,14 +185,14 @@ export class SpeechSynthesisError extends Error {
   }
 }
 
-function fromRefusal(error: KaanaError, models: readonly string[]): SpeechSynthesisError {
+function fromRefusal(error: OxyInferenceError, models: readonly string[]): SpeechSynthesisError {
   return new SpeechSynthesisError(FAILURE_FOR[error.code], {
     reason: 'refused',
     retryable: error.retryable,
     ...(error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }),
     upstreamCode: error.code,
-    upstreamStatus: error.status ?? undefined,
-    requestId: error.requestId ?? undefined,
+    upstreamStatus: error.status,
+    requestId: error.requestId,
     ...(error.param === undefined ? {} : { param: error.param }),
     models,
   });
@@ -212,81 +215,78 @@ export async function synthesizeSpeech(
 ): Promise<SynthesizedSpeech> {
   if (!options.userId || options.format !== 'mp3')
     throw new Error('Speech requires a user and MP3 output');
-  const models = await speechModelCandidates();
-  const client = getHostedKaanaClient(options.userId);
+  const client = getOxyInferenceClient();
   if (client === null)
     throw new SpeechSynthesisError('SPEECH_UNAVAILABLE', { reason: 'not_configured' });
+  const models = await speechModelCandidates();
   const timeout = AbortSignal.timeout(SPEECH_TIMEOUT_MS);
   const signal =
     options.signal === undefined ? timeout : AbortSignal.any([options.signal, timeout]);
   const tried: string[] = [];
-  try {
-    for (const [index, model] of models.entries()) {
-      tried.push(model);
-      let result: Awaited<ReturnType<typeof client.audio.speech>>;
-      try {
-        result = await client.audio.speech(
+
+  for (const [index, model] of models.entries()) {
+    tried.push(model);
+    let result: Awaited<ReturnType<typeof client.speech>>;
+    try {
+      result = await client.speech(
+        {
+          model,
+          input: options.input,
+          voice: options.voice,
+          response_format: 'mp3',
+          ...(options.speed === undefined ? {} : { speed: options.speed }),
+        },
+        { delegatedUserId: options.userId, signal },
+      );
+    } catch (error: unknown) {
+      // The caller withdrew: theirs to handle, not a failure to classify.
+      if (options.signal?.aborted) throw error;
+      if (timeout.aborted)
+        throw new SpeechSynthesisError('SPEECH_PROVIDER_FAILED', {
+          reason: 'timeout',
+          httpStatus: 504,
+          models: [...tried],
+          cause: error,
+        });
+      if (!(error instanceof OxyInferenceError))
+        throw new SpeechSynthesisError('SPEECH_PROVIDER_FAILED', {
+          reason: 'transport',
+          ...(error instanceof OxyInferenceProtocolError && error.requestId
+            ? { requestId: error.requestId }
+            : {}),
+          models: [...tried],
+          cause: error,
+        });
+      const next = models[index + 1];
+      if (next !== undefined && NEXT_MODEL_ON.has(error.code)) {
+        log.speech.warn(
           {
             model,
-            input: options.input,
-            voice: options.voice,
-            response_format: 'mp3',
-            ...(options.speed === undefined ? {} : { speed: options.speed }),
+            next,
+            upstreamCode: error.code,
+            upstreamStatus: error.status,
+            requestId: error.requestId || undefined,
+            param: error.param,
           },
-          { onBehalfOfUserId: options.userId, signal },
+          'Speech model refused the request; trying the next',
         );
-      } catch (error: unknown) {
-        // The caller withdrew: theirs to handle, not a failure to classify.
-        if (options.signal?.aborted) throw error;
-        if (timeout.aborted)
-          throw new SpeechSynthesisError('SPEECH_PROVIDER_FAILED', {
-            reason: 'timeout',
-            httpStatus: 504,
-            models: [...tried],
-            cause: error,
-          });
-        if (!(error instanceof KaanaError))
-          throw new SpeechSynthesisError('SPEECH_PROVIDER_FAILED', {
-            reason: 'transport',
-            ...(error instanceof KaanaProtocolError && error.requestId
-              ? { requestId: error.requestId }
-              : {}),
-            models: [...tried],
-            cause: error,
-          });
-        const next = models[index + 1];
-        if (next !== undefined && NEXT_MODEL_ON.has(error.code)) {
-          log.speech.warn(
-            {
-              model,
-              next,
-              upstreamCode: error.code,
-              upstreamStatus: error.status ?? undefined,
-              requestId: error.requestId || undefined,
-              param: error.param,
-            },
-            'Speech model refused the request; trying the next',
-          );
-          continue;
-        }
-        throw fromRefusal(error, [...tried]);
+        continue;
       }
-      if (result.mediaType !== 'audio/mpeg')
-        throw new SpeechSynthesisError('SPEECH_PROVIDER_FAILED', {
-          reason: 'unexpected_format',
-          requestId: result.requestId,
-          models: [...tried],
-        });
-      return {
-        audio: Buffer.from(result.audio),
-        format: 'mp3',
-        requestId: result.requestId,
-        model,
-      };
+      throw fromRefusal(error, [...tried]);
     }
-    // `getSpeechModelIds` never answers an empty list, so the loop always returns or throws.
-    throw new SpeechSynthesisError('SPEECH_UNAVAILABLE', { reason: 'no_speech_model' });
-  } finally {
-    disposeHostedKaanaClient(client);
+    if (result.mediaType !== 'audio/mpeg')
+      throw new SpeechSynthesisError('SPEECH_PROVIDER_FAILED', {
+        reason: 'unexpected_format',
+        requestId: result.requestId,
+        models: [...tried],
+      });
+    return {
+      audio: Buffer.from(result.audio),
+      format: 'mp3',
+      requestId: result.requestId,
+      model,
+    };
   }
+  // `getSpeechModelIds` never answers an empty list, so the loop always returns or throws.
+  throw new SpeechSynthesisError('SPEECH_UNAVAILABLE', { reason: 'no_speech_model' });
 }

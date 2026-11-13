@@ -16,7 +16,6 @@
 import { AliaError, AliaErrorCode, type FailoverReason } from './error-codes';
 import { BILLING_RE, AUTH_RE } from '../constants.js';
 import { OxyInferenceError } from '@oxy.so/core/inference';
-import { KaanaError } from '@kaana.ai/sdk';
 import type { InferenceErrorCode } from '@oxy.so/contracts';
 
 // The hosted contract is authoritative. Provider messages and HTTP status can
@@ -84,11 +83,11 @@ const TIMEOUT_ERROR_CODES = new Set(['ETIMEDOUT', 'ESOCKETTIMEDOUT', 'ECONNRESET
  * `context_length_exceeded` then falls to the HTTP-400 rule and is reported as
  * `INVALID_REQUEST`. Bounded, and cycle-safe.
  */
-function findOxyInferenceError(err: unknown): OxyInferenceError | KaanaError | undefined {
+function findOxyInferenceError(err: unknown): OxyInferenceError | undefined {
   const seen = new Set<unknown>();
   let current: unknown = err;
   for (let depth = 0; depth < 6 && current && typeof current === 'object'; depth += 1) {
-    if (current instanceof OxyInferenceError || current instanceof KaanaError) return current;
+    if (current instanceof OxyInferenceError) return current;
     if (seen.has(current)) return undefined;
     seen.add(current);
     current = (current as { cause?: unknown }).cause;
@@ -316,7 +315,7 @@ export function classifyError(err: unknown): FailoverReason {
     // user's authentication, and "try a different model" is what they can do.
     if (
       (oxyError.code === 'permission_denied' || oxyError.code === 'commercial_permission_denied') &&
-      (oxyError.status === null || oxyError.status >= 500)
+      oxyError.status >= 500
     ) {
       return 'model_not_found';
     }
@@ -571,7 +570,7 @@ export function toAliaError(
           oxy: {
             code: oxyError.code,
             ...(oxyError.requestId ? { requestId: oxyError.requestId } : {}),
-            ...(oxyError.status === null ? {} : { status: oxyError.status }),
+            status: oxyError.status,
           },
         }
       : {}),

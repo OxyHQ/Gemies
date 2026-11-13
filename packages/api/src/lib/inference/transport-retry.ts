@@ -1,7 +1,7 @@
 /**
  * Retrying a connection that died before the model said anything.
  *
- * `ECONNRESET` against `https://kaana.ai/v1/responses` is a socket the load
+ * `ECONNRESET` against `https://api.oxy.so/v1/responses` is a socket the load
  * balancer or a rolling deploy closed under an idle keep-alive connection. It
  * is thrown by `fetch` (or by the first read of the body), before one token
  * existed, and the turn used to die on it.
@@ -16,24 +16,24 @@
  * ## The idempotency key
  *
  * Every attempt of ONE request carries the SAME `Idempotency-Key` (the caller
- * builds the options once). The reset may have happened after Kaana received the
+ * builds the options once). The reset may have happened after Oxy received the
  * request and reserved funds; a fresh key would open a second reservation and
- * charge twice. With the same key, Kaana refuses the repeat instead.
+ * charge twice. With the same key, Oxy refuses the repeat instead.
  *
  * That refusal is `idempotency_conflict`, and on a RETRY it is evidence that
- * the earlier attempt did reach Kaana and reserved. The call then stops: it fails
+ * the earlier attempt did reach Oxy and reserved. The call then stops: it fails
  * with a typed, user-retryable error ({@link conflictAfterRetry}). It never
  * "resolves" the conflict with another key, because that is exactly the double
  * reservation the key exists to prevent. (Responses are not retained, so there
  * is nothing to replay either.) The person's own retry is a new request with a
  * new key.
  *
- * Refusals the server asserted (`KaanaError`, `KaanaProtocolError`)
- * are never retried here: they are answers, and `retryable` on them is Kaana's to
+ * Refusals the server asserted (`OxyInferenceError`, `OxyInferenceProtocolError`)
+ * are never retried here: they are answers, and `retryable` on them is Oxy's to
  * say, not a transport guess.
  */
 
-import { KaanaError, KaanaProtocolError } from '@kaana.ai/sdk';
+import { OxyInferenceError, OxyInferenceProtocolError } from '@oxy.so/core/inference';
 
 import { AliaError, AliaErrorCode } from '../errors/error-codes.js';
 import { log } from '../logger.js';
@@ -55,7 +55,7 @@ const TRANSIENT_CODES = new Set([
 
 /** The errno-style `code` anywhere on an error's `cause` chain, if it is a transient one. */
 function transientTransportCode(error: unknown): string | null {
-  if (error instanceof KaanaError || error instanceof KaanaProtocolError) return null;
+  if (error instanceof OxyInferenceError || error instanceof OxyInferenceProtocolError) return null;
   let current: unknown = error;
   for (let depth = 0; depth < 5 && typeof current === 'object' && current !== null; depth += 1) {
     const code = (current as { code?: unknown }).code;
@@ -86,7 +86,7 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
 function transportExhausted(code: string, attempts: number, cause: unknown): AliaError {
   return new AliaError({
     code: AliaErrorCode.PROVIDER_UNAVAILABLE,
-    message: `The connection to Kaana inference failed (${code}) on ${attempts} attempt${attempts === 1 ? '' : 's'} before any output`,
+    message: `The connection to Oxy inference failed (${code}) on ${attempts} attempt${attempts === 1 ? '' : 's'} before any output`,
     retryable: true,
     reason: 'provider_unavailable',
     cause,
@@ -97,7 +97,7 @@ function transportExhausted(code: string, attempts: number, cause: unknown): Ali
 function conflictAfterRetry(attempts: number, cause: unknown): AliaError {
   return new AliaError({
     code: AliaErrorCode.PROVIDER_UNAVAILABLE,
-    message: `Kaana inference reported idempotency_conflict on attempt ${attempts}: the earlier attempt reached Kaana before the connection reset, so the request was not repeated under another key`,
+    message: `Oxy inference reported idempotency_conflict on attempt ${attempts}: the earlier attempt reached Oxy before the connection reset, so the request was not repeated under another key`,
     retryable: true,
     reason: 'provider_unavailable',
     cause,
@@ -125,7 +125,11 @@ export async function* withTransportRetry<T>(
       }
       return;
     } catch (cause) {
-      if (tried > 1 && cause instanceof KaanaError && cause.code === 'idempotency_conflict') {
+      if (
+        tried > 1 &&
+        cause instanceof OxyInferenceError &&
+        cause.code === 'idempotency_conflict'
+      ) {
         throw conflictAfterRetry(tried, cause);
       }
       const code = emitted || signal.aborted ? null : transientTransportCode(cause);
@@ -133,7 +137,7 @@ export async function* withTransportRetry<T>(
       if (tried > TRANSPORT_RETRIES) throw transportExhausted(code, tried, cause);
       log.v1.warn(
         { code, attempt: tried },
-        'Kaana inference connection failed before output; retrying',
+        'Oxy inference connection failed before output; retrying',
       );
       await delay(RETRY_DELAYS_MS[tried - 1] ?? 600, signal);
       if (signal.aborted) throw cause;

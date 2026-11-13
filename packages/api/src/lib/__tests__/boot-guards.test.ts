@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  OXY_IDENTITY_ALLOWED_ORIGINS,
-  OXY_IDENTITY_REQUIRED_ENV,
-} from '../inference/workload-identity-config.js';
-import { OXY_API_URL_ENV } from '../inference/workload-identity-config.js';
+  OXY_INFERENCE_ALLOWED_ORIGINS,
+  OXY_INFERENCE_REQUIRED_ENV,
+} from '../inference/oxy-inference.js';
+import { OXY_API_URL_ENV } from '../inference/oxy-inference-credential.js';
 
 /**
  * The boot refusals, asserted as behaviour — #139 workstreams 2 and 8.
@@ -41,8 +41,8 @@ import { OXY_API_URL_ENV } from '../inference/workload-identity-config.js';
  * refusal. A tenth variable added upstream now arrives covered instead.
  */
 const BOOTABLE_OXY_INFERENCE: Readonly<Record<string, string>> = {
-  ...Object.fromEntries(OXY_IDENTITY_REQUIRED_ENV.map((variable) => [variable, 'configured'])),
-  [OXY_API_URL_ENV]: OXY_IDENTITY_ALLOWED_ORIGINS[0],
+  ...Object.fromEntries(OXY_INFERENCE_REQUIRED_ENV.map((variable) => [variable, 'configured'])),
+  [OXY_API_URL_ENV]: OXY_INFERENCE_ALLOWED_ORIGINS[0],
 };
 
 const HEALTHY_ENV: Readonly<Record<string, string>> = {
@@ -225,7 +225,7 @@ describe('Oxy inference configuration is checked after the database and before t
     // Postgres ran FIRST and succeeded, so this is the second guard failing
     // rather than the first — the ordering claim, in one assertion.
     expect(trace[0]).toBe('info: Postgres connected');
-    expect(trace[1]).toContain('Kaana workload identity configuration is invalid');
+    expect(trace[1]).toContain('Oxy inference client configuration is invalid');
     expect(egressInstalls).toBe(0);
   });
 
@@ -248,12 +248,12 @@ describe('Oxy inference configuration is checked after the database and before t
   it('boots a task that attests its role and carries no credential pair', async () => {
     const { trace, exits, egressInstalls } = await run({
       ...HEALTHY_ENV,
-      OXY_API_URL: OXY_IDENTITY_ALLOWED_ORIGINS[0] as string,
+      OXY_API_URL: OXY_INFERENCE_ALLOWED_ORIGINS[0] as string,
       AWS_CONTAINER_CREDENTIALS_RELATIVE_URI: '/v2/credentials/9f0c',
     });
 
     expect(exits).toEqual([]);
-    expect(trace.join('\n')).not.toContain('Kaana workload identity configuration is invalid');
+    expect(trace.join('\n')).not.toContain('Oxy inference client configuration is invalid');
     expect(egressInstalls).toBe(1);
   });
 
@@ -273,7 +273,7 @@ describe('Oxy inference configuration is checked after the database and before t
   it('ignores customer keys and defers temporary workload provider resolution to mint', async () => {
     const attesting = await run({
       ...HEALTHY_ENV,
-      OXY_API_URL: OXY_IDENTITY_ALLOWED_ORIGINS[0] as string,
+      OXY_API_URL: OXY_INFERENCE_ALLOWED_ORIGINS[0] as string,
       AWS_CONTAINER_CREDENTIALS_RELATIVE_URI: '/v2/credentials/9f0c',
       OXY_SERVICE_API_KEY: 'oxy_dk_alia',
     });
@@ -281,7 +281,7 @@ describe('Oxy inference configuration is checked after the database and before t
 
     const checkout = await run({
       ...HEALTHY_ENV,
-      OXY_API_URL: OXY_IDENTITY_ALLOWED_ORIGINS[0] as string,
+      OXY_API_URL: OXY_INFERENCE_ALLOWED_ORIGINS[0] as string,
       OXY_SERVICE_API_KEY: 'oxy_dk_alia',
     });
     expect(checkout.exits).toEqual([]);
@@ -370,7 +370,7 @@ describe('the guards run in the order src/index.ts ran them', () => {
     );
 
     expect(seen[0]).toContain('DATABASE_URL is required');
-    expect(seen[1]).toContain('Kaana workload identity configuration is invalid');
+    expect(seen[1]).toContain('Oxy inference client configuration is invalid');
     expect(seen[2]).toContain('Kaana is the only hosted inference route');
 
     // And the fourth step is reached only when the three refusals pass.
