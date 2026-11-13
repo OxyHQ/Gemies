@@ -23,6 +23,8 @@ export async function prepareAgentReactionTurn(input: {
   allowedActorIds: readonly string[];
   signal?: AbortSignal;
 }) {
+  // Local identities run in their external daemon, never in this hosted tool pipeline (ADR 0036).
+  if (input.agent.identity.source === 'local') return undefined;
   const db = getDb();
   const targets = await listAgentReactionTargets(db, input.userId, input.conversationId);
   const scope = {
@@ -38,7 +40,8 @@ export async function prepareAgentReactionTurn(input: {
     const agent = await findAgentById(db, actorId);
     return (
       agent !== null &&
-      (await agentOpensOn(agent.oxyAccountId, input.surfaceApplicationId)) === 'reachable'
+      agent.identity.source === 'oxy' &&
+      (await agentOpensOn(agent, input.surfaceApplicationId)) === 'reachable'
     );
   };
   return createAgentReactionTurn(scope, {
