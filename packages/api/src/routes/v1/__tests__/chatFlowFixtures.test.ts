@@ -885,7 +885,7 @@ describe('fixture: app chat flow — streaming, direct user session, one server 
       'sse:comment(keep-alive)',
       'credits:reserve',
       'admission:person',
-      'sse:event:alia.agent_turn',
+      'sse:event:alia.turn_state',
       // Memory recall runs here — before the model call, and its result reaches
       // the system prompt (asserted separately below).
       // What the turn puts in the context window, once it is assembled and
@@ -1058,7 +1058,7 @@ describe('fixture: app chat flow — streaming, direct user session, one server 
     const named = res.raw
       .filter((frame) => frame.startsWith('event: '))
       .map((frame) => frame.slice(7, frame.indexOf('\n')));
-    expect(named).toEqual(['alia.agent_turn', 'alia.context', 'alia.tool_result', 'alia.title']);
+    expect(named).toEqual(['alia.turn_state', 'alia.context', 'alia.tool_result', 'alia.title']);
 
     // The generic half: every `data:` frame that is not the terminator carries
     // the OpenAI chunk envelope, and the model field is the CHOSEN MODEL — never
