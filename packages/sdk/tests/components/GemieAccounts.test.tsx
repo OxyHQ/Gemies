@@ -161,14 +161,24 @@ describe('linking an account', () => {
     expect(texts(tree)).toContain('Linking WhatsApp or Telegram is not available right now.');
   });
 
-  it('says why a link failed', async () => {
-    api.post.mockRejectedValue({
-      response: { status: 502, data: { error: 'Timed out waiting for QR' } },
+  it('says why a link failed, in the panel, and tries again', async () => {
+    api.post.mockRejectedValueOnce({
+      response: {
+        status: 503,
+        data: { error: 'Timed out waiting for QR', code: 'accounts_gateway_unavailable' },
+      },
     });
     const tree = await render();
     await act(async () => button(tree, 'Link a WhatsApp account')?.props.onPress());
     await settle();
-    expect(toast.error).toHaveBeenCalledWith('Could not link WhatsApp: Timed out waiting for QR');
+    expect(texts(tree)).toContain('Could not link WhatsApp: Timed out waiting for QR');
+
+    const retry = all(tree, 'Button').find((node) => node.props.children === 'Retry');
+    await act(async () => retry?.props.onPress());
+    await settle();
+    expect(api.post).toHaveBeenCalledTimes(2);
+    expect(all(tree, 'QRCode')).toHaveLength(1);
+    expect(texts(tree).some((text) => text.startsWith('Could not link'))).toBe(false);
   });
 
   it('closes the code and says so, once, when the account is connected', async () => {
@@ -199,6 +209,31 @@ describe('linking an account', () => {
     await act(async () => cancel?.props.onPress());
     await settle();
     expect(api.delete).toHaveBeenCalledWith('/agents/gemie-1/accounts/acc-1');
+  });
+});
+
+describe('when the API does not answer', () => {
+  it('says so with a retry, offers nothing else, and recovers when it answers', async () => {
+    const answer = api.get.getMockImplementation();
+    api.get.mockRejectedValue(new TypeError('Failed to fetch'));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <QueryClientProvider client={client}>
+          <GemieAccounts gemieId="gemie-1" name="Scout" />
+        </QueryClientProvider>,
+      );
+    });
+    await settle();
+    const tree = renderer!;
+    expect(texts(tree)).toContain('Could not load this. Try again.');
+    expect(button(tree, 'Link a WhatsApp account')).toBeUndefined();
+
+    api.get.mockImplementation(answer!);
+    const retry = all(tree, 'Button').find((node) => node.props.children === 'Retry');
+    await act(async () => retry?.props.onPress());
+    await settle();
+    expect(button(tree, 'Link a WhatsApp account')).toBeDefined();
   });
 });
 

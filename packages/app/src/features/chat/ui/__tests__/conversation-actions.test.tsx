@@ -38,6 +38,7 @@ vi.mock('@gemies/sdk/model', () => ({
   buildConversationMarkdown: (input: { title: string; assistantName?: string }) =>
     `# ${input.title} (${input.assistantName ?? 'Alia'})`,
   exportFilename: (title: string) => `${title}.md`,
+  ALIA_GEMIE_ID: 'alia-gemie-id',
 }));
 vi.mock('@gemies/sdk/runtime', () => ({
   useShareConversation: () => ({

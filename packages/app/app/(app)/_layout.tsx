@@ -48,7 +48,7 @@ const CHAT_ROUTES = new Set(['index', 'c/[id]/index', '[username]/index']);
  * and close): the layout puts the surface under them and no `ShellPageHeader` above, so the screen
  * has one header, not two.
  */
-const OWN_HEADER_ROUTES = new Set(['[username]/edit']);
+const OWN_HEADER_ROUTES = new Set(['[username]/edit', 'agents/edit/[id]']);
 
 /** The agent editor's panel width: Bloom's own multi-agent chat sets its editor at this order. */
 const EDITOR_PANEL_WIDTH = 380;

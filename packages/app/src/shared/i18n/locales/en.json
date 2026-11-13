@@ -1349,6 +1349,8 @@
       }
     },
     "editor": {
+      "close": "Close",
+      "lockedIdentity": "{{name}} is Oxy’s: who {{name}} is cannot be changed here. What you can do is link your own WhatsApp or Telegram, and {{name}} answers there for you.",
       "work": {
         "title": "Works on its own",
         "heartbeat": "Heartbeat",
@@ -2342,7 +2344,8 @@
       "removed": "{{platform}} removed",
       "removeFailed": "Could not remove it. Try again.",
       "cancel": "Cancel",
-      "saveFailed": "Could not save. Try again."
+      "saveFailed": "Could not save. Try again.",
+      "retry": "Retry"
     }
   }
 }

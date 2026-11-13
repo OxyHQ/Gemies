@@ -327,3 +327,46 @@ describe('a draft is not addressable at all', () => {
     expect(res.agent?.systemPrompt).toBe(PROMPT);
   });
 });
+
+describe('what a caller may do with a gemie, as its card says (ADR 0035)', () => {
+  /** Alia's row as 0135 seeds it: every person's own assistant, public, not listed, no account. */
+  const ALIA_ROW = {
+    ...AGENT_ROW,
+    oxyAccountId: 'pending-oxy-account:alia',
+    ownerOxyAccountId: null,
+    isPublished: false,
+    reach: 'person',
+  };
+
+  it('lets its editor edit it and manage their accounts on it', async () => {
+    actingAs('oxy-owner');
+    expect((await card()).agent?.viewer).toEqual({ mayEdit: true, mayManageAccounts: true });
+  });
+
+  it('lets somebody else do neither', async () => {
+    state.userId = 'oxy-stranger';
+    state.accessToken = 'token';
+    state.account = { kind: 'bot', relationship: 'none', callerMembership: null };
+    expect((await card()).agent?.viewer).toEqual({ mayEdit: false, mayManageAccounts: false });
+  });
+
+  it('opens Alia to every person for their own accounts, never for her identity', async () => {
+    repository.findAgentById.mockResolvedValue({ ...ALIA_ROW });
+    state.userId = 'oxy-person';
+    state.accessToken = 'token';
+    // Oxy knows no account for her yet: nobody acts as it.
+    state.account = null;
+
+    const res = await card();
+    expect(res.status).toBe(200);
+    expect(res.agent?.viewer).toEqual({ mayEdit: false, mayManageAccounts: true });
+    expect(res.raw).not.toContain(PROMPT);
+
+    const patch = await fetch(`${baseUrl}/agents/agent-1`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tagline: 'renamed by a person' }),
+    });
+    expect(patch.status).toBe(404);
+  });
+});

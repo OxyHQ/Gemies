@@ -15,15 +15,18 @@ import { View } from 'react-native';
  */
 export function AgentEditorLoadFailed({
   error,
+  notYours = false,
   onRetry,
   onBackToList,
 }: {
-  error: unknown;
+  error?: unknown;
+  /** The agent loaded, and the caller may neither edit it nor manage anything on it. */
+  notYours?: boolean;
   onRetry: () => void;
   onBackToList: () => void;
 }) {
   const { t } = useTranslation();
-  const notFound = errorStatus(error) === 404;
+  const notFound = notYours || errorStatus(error) === 404;
 
   return (
     <View className="flex-1 items-center justify-center gap-3 p-6">

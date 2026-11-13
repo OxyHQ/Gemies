@@ -71,6 +71,15 @@ vi.mock('@oxy.so/bloom/button-group', async () => {
   return { ButtonGroup: host('ButtonGroup'), ButtonGroupItem: host('ButtonGroupItem') };
 });
 // The cards below the details card are their own suite (`edit/__tests__/agent-editor-sections`).
+// The locked editor (identity read-only, accounts only) is drawn as a host element: which editor
+// opens is what the loader decides; what the locked one draws is its own suite.
+vi.mock('@/features/agents/ui/edit/locked-gemie-editor', async () => {
+  const ReactModule = await import('react');
+  return {
+    LockedGemieEditor: (props: Record<string, unknown>) =>
+      ReactModule.createElement('LockedGemieEditor', props),
+  };
+});
 vi.mock('@/features/agents/ui/edit/sections/agent-editor-sections', () => ({
   AgentEditorSections: () => null,
 }));

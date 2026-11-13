@@ -296,6 +296,15 @@ vi.mock('@oxy.so/bloom/agent-creator', async () => {
   };
 });
 // The cards below the details card are their own suite (`edit/__tests__/agent-editor-sections`).
+// The locked editor (identity read-only, accounts only) is drawn as a host element: which editor
+// opens is what the loader decides; what the locked one draws is its own suite.
+vi.mock('@/features/agents/ui/edit/locked-gemie-editor', async () => {
+  const ReactModule = await import('react');
+  return {
+    LockedGemieEditor: (props: Record<string, unknown>) =>
+      ReactModule.createElement('LockedGemieEditor', props),
+  };
+});
 vi.mock('@/features/agents/ui/edit/sections/agent-editor-sections', () => ({
   AgentEditorSections: () => null,
 }));
@@ -573,5 +582,39 @@ describe('when the route fails for any other reason', () => {
 
     expect(agentRequests()).toBe(askedBeforeRetry + 1);
     expect(editorIsOpen(screen.root)).toBe(true);
+  });
+});
+
+describe('an agent the caller may not change', () => {
+  it('opens the locked editor when they may manage their accounts on it (Alia)', async () => {
+    getRequest.mockImplementation(async (url: string) =>
+      url === AGENT_URL
+        ? {
+            data: {
+              agent: { ...agentFixture(), viewer: { mayEdit: false, mayManageAccounts: true } },
+            },
+          }
+        : { data: {} },
+    );
+    const { renderer: tree } = await renderScreen();
+    await letTimePass(1);
+    expect(tree.root.findAll((node) => isHost(node, 'LockedGemieEditor'))).toHaveLength(1);
+    expect(editorIsOpen(tree.root)).toBe(false);
+  });
+
+  it('draws no fields that would save nothing when they may do neither', async () => {
+    getRequest.mockImplementation(async (url: string) =>
+      url === AGENT_URL
+        ? {
+            data: {
+              agent: { ...agentFixture(), viewer: { mayEdit: false, mayManageAccounts: false } },
+            },
+          }
+        : { data: {} },
+    );
+    const { renderer: tree } = await renderScreen();
+    await letTimePass(1);
+    expect(editorIsOpen(tree.root)).toBe(false);
+    expect(texts(tree.root)).toContain('agents.notFound');
   });
 });

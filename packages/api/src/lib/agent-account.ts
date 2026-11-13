@@ -327,12 +327,23 @@ export async function loadAgentForActor(
 }
 
 /**
- * The gemie whose connected accounts a caller may link and manage (ADR 0035), or the reason not.
- *
- * Whoever may act as the gemie, which is {@link loadAgentForActor} — with one reading of "act as"
- * that Oxy itself makes: a gemie with `reach = 'person'` (Alia) is the PERSON's own assistant, and
+ * Whether a gemie is every person's own assistant (Alia): `reach = 'person'`, public and active.
  * Oxy's lane for her is the person's own (`lib/gemie-oxy-actor.ts`), so every person may link their
- * own accounts to her when she is public and active. Their accounts on her are theirs alone: every
+ * OWN accounts to her, while her identity stays Oxy's: nobody acts as her account, so no person may
+ * edit her (`loadAgentForActor` refuses, and `PATCH /agents/:id` with it).
+ */
+export function isPersonsOwnAssistant(agent: {
+  readonly reach: string;
+  readonly access: string;
+  readonly status: string;
+}): boolean {
+  return agent.reach === 'person' && agent.access === 'public' && agent.status === 'active';
+}
+
+/**
+ * The gemie whose connected accounts a caller may link and manage (ADR 0035), or the reason not:
+ * whoever may act as the gemie ({@link loadAgentForActor}), and on every person's own assistant
+ * ({@link isPersonsOwnAssistant}) every person. Their accounts on a gemie are theirs alone: every
  * read of `connected_accounts` is scoped to the person as well as the gemie.
  */
 export async function loadAgentForAccounts(
@@ -341,9 +352,7 @@ export async function loadAgentForAccounts(
 ): Promise<AgentForActor> {
   const agent = await findAgentById(db, params.agentId);
   if (agent === null) return { ok: false, refusal: 'agent_not_found' };
-  if (agent.reach === 'person' && agent.access === 'public' && agent.status === 'active') {
-    return { ok: true, agent };
-  }
+  if (isPersonsOwnAssistant(agent)) return { ok: true, agent };
   return loadAgentForActor(db, { ...params, cache: false });
 }
 

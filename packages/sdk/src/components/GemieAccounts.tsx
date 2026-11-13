@@ -330,11 +330,16 @@ export interface GemieAccountsProps {
  * its own turns can read or send through them. Only what this deployment can link is offered.
  */
 export function GemieAccounts({ gemieId, name, t = englishCopy }: GemieAccountsProps) {
-  const { data, isPending, isError } = useGemieAccounts(gemieId);
+  const { data, isPending, isError, isFetching, refetch } = useGemieAccounts(gemieId);
   const { link, remove } = useGemieAccountMutations(gemieId);
   const [linking, setLinking] = useState<{
     platform: GemieAccountPlatform;
     link: GemieAccountLink;
+  } | null>(null);
+  /** The last link that failed, said in the panel with a way to try again. */
+  const [linkFailure, setLinkFailure] = useState<{
+    platform: GemieAccountPlatform;
+    reason: string;
   } | null>(null);
   const linked = useCallback(() => setLinking(null), []);
 
@@ -350,15 +355,11 @@ export function GemieAccounts({ gemieId, name, t = englishCopy }: GemieAccountsP
   }
 
   const handleLink = async (platform: GemieAccountPlatform) => {
+    setLinkFailure(null);
     try {
       setLinking({ platform, link: await link.mutateAsync(platform) });
     } catch (error) {
-      toast.error(
-        t(`${K}.linkFailed`, {
-          platform: PLATFORM_LABELS[platform],
-          reason: errorMessage(error, t(`${K}.tryAgain`)),
-        }),
-      );
+      setLinkFailure({ platform, reason: errorMessage(error, t(`${K}.tryAgain`)) });
     }
   };
 
@@ -374,11 +375,39 @@ export function GemieAccounts({ gemieId, name, t = englishCopy }: GemieAccountsP
   );
   const platforms = data?.platforms ?? [];
 
+  /**
+   * Nothing could be read: the API did not answer (offline, or mid-rollout before it serves these
+   * routes). Said so, with a retry, and nothing else is offered until it answers. A later refresh
+   * that fails keeps what was already read.
+   */
+  if (isError && data === undefined) {
+    return (
+      <View>
+        <Row first>
+          <Text variant="body-2-regular" className="text-text-secondary">
+            {t(`${K}.loadFailed`)}
+          </Text>
+          <View className="flex-row">
+            <Button
+              size="sm"
+              appearance="outline"
+              tone="neutral"
+              loading={isFetching}
+              onPress={() => void refetch()}
+            >
+              {t(`${K}.retry`)}
+            </Button>
+          </View>
+        </Row>
+      </View>
+    );
+  }
+
   return (
     <View>
       <Row first>
         <Text variant="body-2-regular" className="text-text-secondary">
-          {isError ? t(`${K}.loadFailed`) : t(`${K}.description`, { name })}
+          {t(`${K}.description`, { name })}
         </Text>
       </Row>
       {accounts.map((account) => (
@@ -401,7 +430,7 @@ export function GemieAccounts({ gemieId, name, t = englishCopy }: GemieAccountsP
           onDone={linked}
           onCancel={handleCancel}
         />
-      ) : isError ? null : (
+      ) : (
         <Row>
           <Text variant="body-2-semibold">{t(`${K}.link`)}</Text>
           {platforms.length === 0 ? (
@@ -409,7 +438,7 @@ export function GemieAccounts({ gemieId, name, t = englishCopy }: GemieAccountsP
               {t(`${K}.unavailable`)}
             </Text>
           ) : (
-            <View className="flex-row gap-2">
+            <View className="flex-row flex-wrap gap-2">
               {platforms.map((platform) => (
                 <Button
                   key={platform}
@@ -426,6 +455,31 @@ export function GemieAccounts({ gemieId, name, t = englishCopy }: GemieAccountsP
               ))}
             </View>
           )}
+          {linkFailure ? (
+            <View className="gap-2">
+              <Text
+                variant="body-2-regular"
+                className="text-error-primary"
+                accessibilityRole="alert"
+              >
+                {t(`${K}.linkFailed`, {
+                  platform: PLATFORM_LABELS[linkFailure.platform],
+                  reason: linkFailure.reason,
+                })}
+              </Text>
+              <View className="flex-row">
+                <Button
+                  size="sm"
+                  appearance="outline"
+                  tone="neutral"
+                  disabled={link.isPending}
+                  onPress={() => handleLink(linkFailure.platform)}
+                >
+                  {t(`${K}.retry`)}
+                </Button>
+              </View>
+            </View>
+          ) : null}
         </Row>
       )}
     </View>

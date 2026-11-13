@@ -75,6 +75,12 @@ export interface Agent {
   author: string;
   /** The author's display name, resolved by the API from Oxy. */
   authorName: string | null;
+  /**
+   * What the caller may do with it, on the card `GET /agents/:id` answers (ADR 0035): change it
+   * (`mayEdit`), and manage their own connected accounts on it (`mayManageAccounts`, every person
+   * on Alia). Absent on lists and on a write's answer, which only an editor gets.
+   */
+  viewer?: { mayEdit: boolean; mayManageAccounts: boolean };
   category: string;
   tags: string[];
   rating: number;

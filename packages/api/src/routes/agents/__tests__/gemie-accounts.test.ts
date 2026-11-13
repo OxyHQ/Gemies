@@ -246,7 +246,7 @@ describe('linking an account', () => {
       platform: 'telegram',
     });
     expect(status).toBe(409);
-    expect(body.error).toContain('telegram');
+    expect(body.code).toBe('platform_unavailable');
     expect(state.create).not.toHaveBeenCalled();
   });
 
@@ -260,10 +260,26 @@ describe('linking an account', () => {
     const { status, body } = await call('POST', '/agents/persona-1/accounts', {
       platform: 'whatsapp',
     });
-    expect(status).toBe(502);
-    expect(body.error).toBe('Timed out waiting for QR');
+    // A 503 the panel can read, never a 502 a CDN serves without CORS headers.
+    expect(status).toBe(503);
+    expect(body).toEqual({
+      error: 'Timed out waiting for QR',
+      code: 'accounts_gateway_unavailable',
+    });
     expect(state.revokeTask).toHaveBeenCalledWith('new-task');
     expect(state.remove).toHaveBeenCalledWith({}, 'new-account');
+  });
+});
+
+describe('a gateway that cannot be reached, or speaks an older contract', () => {
+  it('offers nothing to link when the gateway predates the contract (no /accounts/platforms)', async () => {
+    state.gateway.delete('GET /accounts/platforms');
+    const { body } = await call('GET', '/agents/persona-1/accounts');
+    expect(body.platforms).toEqual([]);
+    expect(
+      (await call('POST', '/agents/persona-1/accounts', { platform: 'whatsapp' })).status,
+    ).toBe(409);
+    expect(state.create).not.toHaveBeenCalled();
   });
 });
 

@@ -32,35 +32,47 @@ import { integrationsFetch } from './integrations-client.js';
 import { log } from './logger.js';
 import { createOxyTask, revokeOxyTask } from './oxy-task-authority.js';
 
-/** A gateway call that did not answer what the contract says. */
+/**
+ * A gateway call that did not answer what the contract says: it could not be reached
+ * (`status` 0), or it answered with an error (`status` is its own). `message` is what it said, or
+ * what happened, in words a person can read.
+ */
 export class GatewayError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly path: string,
   ) {
     super(message);
   }
 }
 
-/** Call the gateway as `personAccountId` and read its JSON answer, or throw what it said. */
+/** Call the gateway as `personAccountId` and read its JSON answer, or throw a `GatewayError`. */
 async function gateway<T>(
   personAccountId: string,
   path: string,
   init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<T> {
   const { timeoutMs = 15_000, ...rest } = init;
-  const response = await integrationsFetch(personAccountId, path, {
-    ...rest,
-    headers: { 'Content-Type': 'application/json', ...rest.headers },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  let response: Response;
+  try {
+    response = await integrationsFetch(personAccountId, path, {
+      ...rest,
+      headers: { 'Content-Type': 'application/json', ...rest.headers },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err: unknown) {
+    log.channels.warn({ err, path }, 'The accounts gateway could not be reached');
+    throw new GatewayError(0, 'The messaging service could not be reached', path);
+  }
   const body: unknown = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) {
-    const error =
+    const said =
       body && typeof body === 'object' && 'error' in body && typeof body.error === 'string'
         ? body.error
-        : `The ${path.split('/')[2] ?? 'account'} gateway answered ${response.status}`;
-    throw new GatewayError(response.status, error);
+        : `The messaging service answered ${response.status}`;
+    log.channels.warn({ status: response.status, path, said }, 'The accounts gateway refused');
+    throw new GatewayError(response.status, said, path);
   }
   return body as T;
 }
@@ -76,6 +88,10 @@ export function accountPlatformOf(value: unknown): GemieAccountPlatform | null {
 /**
  * The platforms this deployment can link now: the gateways the integrations service runs. None
  * when it is not configured or cannot be asked, so nothing is offered that would fail.
+ *
+ * It is also the handshake with the gateway's version: a gateway older than this contract has no
+ * `/accounts/platforms`, so an API rolled out ahead of its integrations service offers nothing to
+ * link until the gateway it calls speaks the same contract.
  */
 export async function availablePlatforms(personAccountId: string): Promise<GemieAccountPlatform[]> {
   if (!process.env.INTEGRATIONS_URL) return [];
@@ -86,8 +102,8 @@ export async function availablePlatforms(personAccountId: string): Promise<Gemie
       { timeoutMs: 5_000 },
     );
     return GEMIE_ACCOUNT_PLATFORMS.filter((platform) => platforms.includes(platform));
-  } catch (err: unknown) {
-    log.channels.warn({ err }, 'Could not read the linkable platforms');
+  } catch {
+    // `gateway` logged what happened; nothing can be linked until it answers.
     return [];
   }
 }
@@ -118,8 +134,8 @@ export async function syncAccountSession(
     live = await gateway<GemieAccountSession>(personAccountId, `${sessionPath(account)}/status`, {
       timeoutMs: 5_000,
     });
-  } catch (err: unknown) {
-    log.channels.warn({ err, accountId: account.id }, 'Could not read a connected account session');
+  } catch {
+    // `gateway` logged what happened; the stored row answers.
     return account;
   }
   const moved =
@@ -242,8 +258,8 @@ export async function endAccountSession(
   if (!account.sessionId || !process.env.INTEGRATIONS_URL) return;
   try {
     await gateway<null>(personAccountId, sessionPath(account), { method: 'DELETE' });
-  } catch (err: unknown) {
-    log.channels.warn({ err, accountId: account.id }, 'Could not end a connected account session');
+  } catch {
+    // `gateway` logged what happened; the account is removed here regardless.
   }
 }
 

@@ -1,4 +1,5 @@
 import { agentDisplayName } from '@/features/agents/model/identity';
+import { ALIA_GEMIE_ID } from '@gemies/sdk/model';
 import { useAnswerShare } from '@/features/agents/runtime/use-agent-detail-actions';
 import { useSetAgentStatus } from '@/features/agents/runtime/use-agent-thread-actions';
 import { useDeleteAgent } from '@/features/agents/runtime/use-agents';
@@ -205,6 +206,25 @@ export const GemieRowActions = React.memo(function GemieRowActions({
             {t('agents.delete')}
           </DropdownMenuItem>
         ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+});
+
+/**
+ * Alia's row's ⋯ menu: her editor, which opens with her identity locked and the person's own
+ * connected accounts on her to manage (ADR 0035). She has no page, computer, space or delete here.
+ */
+export const AliaRowActions = React.memo(function AliaRowActions() {
+  const { t } = useTranslation();
+  const openAgentEditor = useOpenAgentEditor();
+  return (
+    <DropdownMenu>
+      <MoreTrigger label={t('agents.options', { name: 'Alia' })} />
+      <DropdownMenuContent minWidth={200}>
+        <DropdownMenuItem onPress={() => openAgentEditor(ALIA_GEMIE_ID)}>
+          {t('agents.edit')}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

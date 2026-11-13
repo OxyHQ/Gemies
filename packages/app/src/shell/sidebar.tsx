@@ -7,7 +7,7 @@ import {
 } from '@/features/spaces/model/space-rows';
 import { FolderRowsSkeleton } from '@/shared/ui/skeletons/folder-rows-skeleton';
 import { useSidebarSpaces } from '@/shell/use-sidebar-spaces';
-import { GemieRowActions, useGemieRowHandlers } from '@/shell/sidebar-gemie-menu';
+import { AliaRowActions, GemieRowActions, useGemieRowHandlers } from '@/shell/sidebar-gemie-menu';
 import { GroupPickerDialog } from '@/features/agents/ui/group-picker-dialog';
 import { InviteDialog } from '@/features/onboarding/ui/invite-dialog';
 import {
@@ -584,6 +584,8 @@ function useSidebarProps() {
               label: 'Alia',
               leading: <GemieAvatar size={AGENT_ROW_AVATAR} portrait />,
               description: t('gemies.aliaTagline'),
+              // Her editor: identity locked, the person's own accounts on her (`sidebar-gemie-menu.tsx`).
+              actions: isAuthenticated ? <AliaRowActions /> : undefined,
             },
           ]
         : [];

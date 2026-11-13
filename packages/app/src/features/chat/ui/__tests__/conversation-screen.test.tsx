@@ -50,6 +50,7 @@ vi.mock('@/shared/ui/page-chrome', async () => {
   };
 });
 vi.mock('@gemies/sdk/model', () => ({
+  ALIA_GEMIE_ID: 'alia-gemie-id',
   // The real rule, kept small: a level is sent as itself, a connected device model too.
   resolveModeSelection: (stored: string | null | undefined, ids: string[] | undefined) => {
     const ok =
@@ -259,7 +260,7 @@ describe('the breadcrumb', () => {
     expect(header.props).toHaveProperty('actions');
   });
 
-  it('opens the agent’s editor panel from the header avatar, and leaves Alia’s to wave', () => {
+  it('opens the lead’s editor from the header avatar: an agent’s, Alia’s on her gemie, no group’s', () => {
     const participants = { lead: { id: 'a1', name: 'Atlas' }, joined: [] };
     mount({ conversationId: 'c1', agentId: 'a1', agentName: 'Atlas' });
     const header = content().chrome({ participants, hasMessages: true })
@@ -270,7 +271,14 @@ describe('the breadcrumb', () => {
     mount({ conversationId: 'c1' });
     const alia = content().chrome({ participants, hasMessages: true })
       .header as React.ReactElement<{ title: React.ReactElement<{ onPress?: () => void }> }>;
-    expect(alia.props.title.props.onPress).toBeUndefined();
+    alia.props.title.props.onPress?.();
+    // Her identity locked, the person's own accounts on her (ADR 0035).
+    expect(openAgentEditor).toHaveBeenLastCalledWith('alia-gemie-id');
+
+    mount({ conversationId: 'c1', group: [{ id: 'a1', name: 'Atlas' }] as never });
+    const room = content().chrome({ participants, hasMessages: true })
+      .header as React.ReactElement<{ title: React.ReactElement<{ onPress?: () => void }> }>;
+    expect(room.props.title.props.onPress).toBeUndefined();
   });
 
   it('is drawn at once while the route resolves the conversation: its header, the chat told to wait', () => {

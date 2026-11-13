@@ -1,5 +1,13 @@
 # @gemies/sdk
 
+## 2.0.1
+
+- **`GemieAccounts` says when the API does not answer**, with a Retry (`gemie.accounts.retry`), and
+  offers nothing to link until it does. It used to show a line of text and no way to try again —
+  what a person saw while the API was rolling out a release that served the accounts routes.
+- **A link that fails is said in the panel**, with the API's reason and a Retry, instead of a toast
+  that was gone before it could be read.
+
 ## 2.0.0
 
 - **Lighter chat on web: the chart cards come from their own Bloom entries.** `ChartRenderer` and

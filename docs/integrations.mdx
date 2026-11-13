@@ -287,6 +287,19 @@ gemie's turns for that person can use it.
 - **Tools.** `listAccountChats`, `readAccountMessages` and `sendAccountMessage`
   (`lib/tools/accounts.ts`), offered only when the turn's gemie has a connected account of the
   person, with the platform limited to those it has.
+- **Alia's editor.** `GET /agents/:id` says what the caller may do (`viewer.mayEdit`,
+  `viewer.mayManageAccounts`). Every person may manage their own accounts on Alia
+  (`isPersonsOwnAssistant`), and nobody but Oxy may change who she is (her account has no
+  act-as holder, so `PATCH /agents/:id` refuses). The Gemies app opens her editor from her sidebar
+  row and her chat's header with her identity as text and only the accounts card.
+- **Failures the panel can read.** A gateway that cannot be reached or refuses answers
+  `503 { error, code: 'accounts_gateway_unavailable' }` (never a `502`, which the CDN serves without
+  CORS headers), a platform this deployment does not run `409 platform_unavailable`; the panel
+  shows either with a Retry.
+- **Order of a release.** The web app deploys only after the API's release of the same commit
+  (`deploy-frontends.yml` runs on `Deploy to AWS`). The API and the integrations service deploy
+  independently: `GET /accounts/platforms` is the handshake, so an API newer than its gateway
+  offers nothing to link until the gateway speaks the same contract.
 - **Routes**, all under the gemie and for whoever may act as it (every person, for Alia):
   `GET|POST /agents/:id/accounts`, `PATCH /agents/:id/accounts/:accountId` (who it answers),
   `GET /agents/:id/accounts/:accountId/qr|chats`, `POST /agents/:id/accounts/:accountId/reauthorize`,
