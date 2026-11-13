@@ -37,7 +37,10 @@ import {
   parseHostAction,
 } from './stream-events';
 import { hasUsableStreamOutput, type StreamOutputEvidence } from './stream-outcome';
+import { applyMessageReaction, readAgentReactionResult } from './message-reactions';
+import { updateReactionCaches } from './reaction-cache';
 import { failureDetail, readGemieMeta, type FailedTurn } from './turn-failure';
+
 import type {
   AgentRun,
   Conversation,
@@ -446,7 +449,7 @@ export function useConversationStream({
       const settleError = (): SendOutcome => {
         // A room stores the person's message before selecting or running a member.
         // A later credit/gate refusal cannot roll that stored question back locally.
-        if (isGroupTurn) return keepFailedTurn(false);
+        if (isGroupTurn || conversationStored || reactionCommitted) return keepFailedTurn(false);
         if (!hasUsableStreamOutput(outputEvidence)) return rollback();
         settleAssistant('failed');
         return 'sent';
@@ -465,6 +468,16 @@ export function useConversationStream({
       // A room can deliberately remain quiet. Only its server frame establishes this,
       // never a lack of output or an agent's prose.
       let isGroupTurn = false;
+      let reactionCommitted = false;
+      let conversationStored = false;
+      let serverReactionOnly = false;
+      let activeAgentTurnId: string | undefined;
+      // A default gemie is resolved by the server. Its admitted identity is bound
+      // once for this turn, with the same scope checks as an explicit actor.
+      let activeAgentActorId = typeof agentId === 'string' && agentId ? agentId : undefined;
+      let completedReactionOnly = false;
+      let hasOtherToolActivity = false;
+      const pendingReactionCalls = new Set<string>();
 
       /**
        * Keep the person's turn, and hang the failure on it.
@@ -556,6 +569,30 @@ export function useConversationStream({
       const nextAgentMessageId = (): string => agentMessageId(assistantMessage.id, agentAnswers++);
       /** Each consultation of this turn, by `consultId`: the message its agent writes into. */
       const consults = new Map<string, string>();
+      const consultActors = new Map<string, string>();
+
+      const applyReactionResult = (
+        name: unknown,
+        output: unknown,
+        actor: string | undefined,
+        directToolCallId?: string,
+      ): void => {
+        const reaction = readAgentReactionResult(name, output, conversationId, actor);
+        if (!reaction) {
+          if (directToolCallId) hasOtherToolActivity = true;
+          return;
+        }
+        reactionCommitted = true;
+        if (directToolCallId) pendingReactionCalls.delete(directToolCallId);
+        updateReactionCaches(queryClient, reaction);
+        setMessages((prev) =>
+          applyMessageReaction(prev, reaction).map((entry) => {
+            if (entry.id !== userMessage.id || entry.unsaved !== true) return entry;
+            const { unsaved: _unsaved, ...stored } = entry;
+            return stored;
+          }),
+        );
+      };
       /** Whether `id` names a message this turn wrote: the question, the reply, an agent's answer. */
       const isThisTurn = (id: string): boolean =>
         id === userMessage.id ||
@@ -584,7 +621,16 @@ export function useConversationStream({
           }
           // A turn that completed is one the server has stored, under these ids.
           const stored = outcome === 'completed';
-          return prev.map((m) => {
+          const lead = prev.find((m) => m.id === assistantMessage.id);
+          const visible =
+            stored &&
+            completedReactionOnly &&
+            lead &&
+            messageWords(lead).trim() === '' &&
+            outputEvidence.durableArtifactCount === 0
+              ? prev.filter((m) => m.id !== assistantMessage.id)
+              : prev;
+          return visible.map((m) => {
             // A consultation still open when the turn ends ends with it.
             const settles =
               m.id === assistantMessage.id ||
@@ -605,6 +651,7 @@ export function useConversationStream({
           if (consults.has(event.consultId) || roomRef.current.discarded.has(event.consultId))
             return;
           const id = nextAgentMessageId();
+          consultActors.set(event.consultId, event.agent.id);
           consults.set(event.consultId, id);
           // The room's socket may have drawn this member typing already: that is its message.
           const adopted = claimConsult(roomRef.current, event.consultId, id);
@@ -653,6 +700,13 @@ export function useConversationStream({
         }
         if (event.type === 'tool') {
           if (event.phase === 'call') outputEvidence.toolInvocationCount += 1;
+          if (event.phase === 'result')
+            applyReactionResult(
+              event.name,
+              event.output,
+              consultActors.get(event.consultId),
+              undefined,
+            );
           setMessages((prev) =>
             prev.map((m) => {
               if (m.id !== id) return m;
@@ -675,6 +729,21 @@ export function useConversationStream({
         }
         // The end: what was streamed lands first, then the agent's final words, if it sent them.
         flushPendingUpdates();
+        if (
+          event.status === 'completed' &&
+          event.reactionOnly === true &&
+          event.messageId === undefined &&
+          !event.content
+        ) {
+          setMessages((prev) =>
+            applyRoomEvent(prev, roomRef.current, conversationId ?? '', {
+              conversationId: conversationId ?? '',
+              event: 'alia.agent_end',
+              data: { consultId: event.consultId, status: 'completed', reactionOnly: true },
+            }),
+          );
+          return;
+        }
         if (event.errorCode === ROOM_CONTINUES) {
           // The request is over but the member is still speaking: the room's socket carries it on.
           // With no socket to carry it, it stops here, unfinished but not failed.
@@ -933,6 +1002,8 @@ export function useConversationStream({
         let lastOutputAt = 0;
         /** The server closed the turn: `[DONE]`, or a chunk that carries a finish reason. */
         let sawTerminal = false;
+        let sawCleanTerminal = false;
+        let sawAbnormalFinish = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -947,7 +1018,17 @@ export function useConversationStream({
             if (syntheticTail !== null) {
               return keepFailedTurn(syntheticTail.retryable, syntheticTail.detail);
             }
-            if (!hasUsableStreamOutput(outputEvidence) && !(isGroupTurn && sawTerminal)) {
+            const reactionOnlyCompletion =
+              serverReactionOnly &&
+              sawCleanTerminal &&
+              !sawAbnormalFinish &&
+              !hasOtherToolActivity &&
+              pendingReactionCalls.size === 0;
+            if (
+              !hasUsableStreamOutput(outputEvidence) &&
+              !(isGroupTurn && sawTerminal) &&
+              !reactionOnlyCompletion
+            ) {
               setError(new Error('No response received from AI'));
               return keepFailedTurn(true);
             }
@@ -958,6 +1039,17 @@ export function useConversationStream({
               setError(new Error('The response ended before it was complete'));
               return keepFailedTurn(true);
             }
+            if (
+              serverReactionOnly &&
+              replyText.trim() === '' &&
+              outputEvidence.agentOutputChars === 0 &&
+              outputEvidence.durableArtifactCount === 0 &&
+              !reactionOnlyCompletion
+            ) {
+              setError(new Error('The reaction response did not complete cleanly'));
+              return keepFailedTurn(true);
+            }
+            completedReactionOnly = reactionOnlyCompletion;
             break;
           }
 
@@ -972,6 +1064,7 @@ export function useConversationStream({
             // Skip [DONE] marker
             if (data === '[DONE]') {
               sawTerminal = true;
+              sawCleanTerminal = true;
               continue;
             }
 
@@ -1008,6 +1101,7 @@ export function useConversationStream({
                   case 'alia.tool_result': {
                     const { tool_call_id, name, output } = parsed;
                     if (tool_call_id) {
+                      applyReactionResult(name, output, activeAgentActorId, tool_call_id);
                       setMessages((prev) => {
                         const updated = [...prev];
                         const lastMessage = updated[updated.length - 1];
@@ -1055,6 +1149,7 @@ export function useConversationStream({
                     continue;
                   }
                   case 'alia.host_action': {
+                    hasOtherToolActivity = true;
                     // Performed here, by the client that declared it, once; its outcome rides
                     // the next request. The stream does not wait for it.
                     const action = parseHostAction(parsed);
@@ -1176,6 +1271,35 @@ export function useConversationStream({
                     );
                     continue;
                   }
+                  case 'alia.turn_state': {
+                    if (
+                      parsed.eventVersion === 1 &&
+                      typeof parsed.turnId === 'string' &&
+                      parsed.turnId &&
+                      conversationId !== undefined &&
+                      parsed.conversationId === conversationId &&
+                      typeof parsed.agentId === 'string' &&
+                      parsed.agentId.length > 0 &&
+                      (activeAgentActorId === undefined || parsed.agentId === activeAgentActorId) &&
+                      (activeAgentTurnId === undefined || activeAgentTurnId === parsed.turnId)
+                    ) {
+                      activeAgentTurnId = parsed.turnId;
+                      activeAgentActorId = parsed.agentId;
+                      if (parsed.conversationStored === true) {
+                        conversationStored = true;
+                        setMessages((prev) =>
+                          prev.map((entry) => {
+                            if (entry.id !== userMessage.id || entry.unsaved !== true) return entry;
+                            const { unsaved: _unsaved, ...stored } = entry;
+                            return stored;
+                          }),
+                        );
+                      }
+                      if (parsed.reactionOnly === true && parsed.conversationStored === true)
+                        serverReactionOnly = true;
+                    }
+                    continue;
+                  }
                   case 'alia.agent_turn': {
                     if (parsed.turnId) {
                       const run = {
@@ -1288,6 +1412,13 @@ export function useConversationStream({
               const choice = parsed.choices?.[0];
               if (!choice) continue;
               if (choice.finish_reason) sawTerminal = true;
+              if (choice.finish_reason === 'stop') sawCleanTerminal = true;
+              if (
+                choice.finish_reason &&
+                choice.finish_reason !== 'stop' &&
+                choice.finish_reason !== 'tool_calls'
+              )
+                sawAbnormalFinish = true;
 
               const delta = choice.delta;
               if (!delta) continue;
@@ -1334,6 +1465,8 @@ export function useConversationStream({
                   const toolCallId = tc.id;
                   const toolName = tc.function?.name;
                   if (!toolCallId || !toolName) continue;
+                  if (toolName === 'react_to_message') pendingReactionCalls.add(toolCallId);
+                  else hasOtherToolActivity = true;
                   outputEvidence.toolInvocationCount += 1;
                   // A question card is the turn's output, even with no sentence before it.
                   if (toolName === ASK_USER_QUESTION_TOOL) outputEvidence.durableArtifactCount += 1;
@@ -1380,6 +1513,7 @@ export function useConversationStream({
               if (delta.tool_result) {
                 const { tool_call_id, name, output } = delta.tool_result;
                 if (tool_call_id) {
+                  applyReactionResult(name, output, activeAgentActorId, tool_call_id);
                   setMessages((prev) => {
                     const updated = [...prev];
                     const lastMessage = updated[updated.length - 1];
