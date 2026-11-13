@@ -55,7 +55,7 @@ export function useAliaHost(): GemieRuntimeHost {
       onTurnStart: () => useStore.getState().setBottomChatHeightHandler(true),
       onOutput: () => haptic(),
       onUsage: (usage: GemieUsageFrame) => {
-        queryClient.setQueryData<CreditsInfo>(queryKeys.credits.info, (old) =>
+        queryClient.setQueriesData<CreditsInfo>({ queryKey: queryKeys.credits.info }, (old) =>
           old ? { ...old, credits: usage.credits_remaining ?? old.credits } : old,
         );
         // The balance is set from the frame; the rest (the usage window) is refetched.

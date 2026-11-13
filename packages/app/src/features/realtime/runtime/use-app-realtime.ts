@@ -65,13 +65,15 @@ export function useAppRealtime(): void {
   // The balance, as the server settled it; the rest of the panel (the usage window) on focus.
   useRealtimeEvent('credits', (frame) => {
     const { credits } = frame.data as RealtimeData['credits'];
+    // The query is keyed by account and session under `credits.info`: every one of them is this
+    // account's.
     if (typeof credits === 'number') {
-      queryClient.setQueryData<CreditsInfo>(queryKeys.credits.info, (old) =>
+      queryClient.setQueriesData<CreditsInfo>({ queryKey: queryKeys.credits.info }, (old) =>
         old ? { ...old, credits } : old,
       );
       return;
     }
-    void queryClient.invalidateQueries({ queryKey: queryKeys.credits.info, exact: true });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.credits.info });
   });
 
   useRealtimeEvent('notification', () => {
