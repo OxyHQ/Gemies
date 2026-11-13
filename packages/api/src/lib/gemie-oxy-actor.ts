@@ -52,8 +52,9 @@ export class GemieWithoutOxyAccountError extends Error {
 
 /**
  * The account a gemie acts as inside Alia's own runtime (its tools, its memory, its follow-ups). A
- * `local` gemie never runs there — its turns are its daemon's (ADR 0030) and its gates refuse every
- * background lane — so arriving here with one is a fault, thrown rather than acted on as nobody.
+ * `local` gemie never runs there — its turns are its daemon's (ADR 0030), its gates refuse every
+ * background lane, and its tool lane (ADR 0039) builds nothing that acts as an account — so arriving
+ * here with one is a fault, thrown rather than acted on as nobody.
  */
 export function runtimeGemieAccountId(gemie: { readonly identity: StoredAgentIdentity }): string {
   const accountId = gemieOxyAccountId(gemie);

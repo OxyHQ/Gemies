@@ -770,7 +770,7 @@ describe('a gemie with no Oxy account', () => {
     });
   });
 
-  it('saves its name and colour to its row, and offers no handle or runtime cards', async () => {
+  it('saves its name and colour to its row, and offers no handle; its cards are only what needs no account', async () => {
     const { renderer } = await renderEditor();
     const creator = renderer.root.findAllByType(
       'AgentCreator' as unknown as React.ComponentType,
@@ -780,7 +780,8 @@ describe('a gemie with no Oxy account', () => {
       sections: unknown;
       onChange: (next: Record<string, unknown>) => void;
     };
-    expect(props.sections).toBeUndefined();
+    // The cards are told it has no account, and draw only the connected accounts it may use (ADR 0039).
+    expect((props.sections as { props: { hasAccount: boolean } }).props.hasAccount).toBe(false);
     expect(
       renderer.root.findAllByType('AgentCreatorField' as unknown as React.ComponentType),
     ).toHaveLength(0);

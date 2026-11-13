@@ -185,6 +185,7 @@ credential, authorise it ([ADR 0038](./adr/0038-external-agents-connect-with-the
 | `GET /agents/external` | The person's external agents with `online` presence (any instance, through Redis). `GET /agents/me` also marks them: `external: { cli, online }`. |
 | `DELETE /agents/external/:agentId` | Revoke: the link dies with its credential, the daemon is disconnected and the agent is deleted. |
 | `WS /ws/external-agent` | The daemon's socket. First frame `{ type: 'auth', agentId, credential }`; then `turn` frames down and `delta` / `end` / `error` frames back. Refusals: `unknown_agent` (no live link: the daemon forgets it), `invalid_credential` (another credential replaced it). A link paired before ADR 0038 still takes its owner's Oxy session as `token` until it is reconnected. |
+| `POST /mcp/agents/:agentId` | **The agent's credential as `Authorization: Bearer`.** Its gemie's granted tools as a remote MCP server (Streamable HTTP, stateless, JSON responses): `initialize`, `tools/list`, `tools/call`. Built by the one assembler for the owner, with no Oxy session and no credit reservation; every call is governed (R3 never runs) and recorded in `external_agent_tool_calls`. 401 for any other credential or a revoked agent; 405 for GET; 429 above 120 requests a minute per agent ([ADR 0039](./adr/0039-external-agents-reach-their-tools-over-mcp.md)). |
 
 ### Structured automations
 

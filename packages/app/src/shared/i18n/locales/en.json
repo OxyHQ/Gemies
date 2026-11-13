@@ -234,7 +234,7 @@
     "connections": {
       "externalAgents": {
         "title": "Connect an external Gemie",
-        "description": "Use Claude Code, Codex or OpenCode on your own computer as one of your Gemies. They answer with your own subscription, and your other Gemies can talk to them.",
+        "description": "Use Claude Code, Codex or OpenCode on your own computer as one of your Gemies. They answer with your own subscription, your other Gemies can talk to them, and in each one's editor you choose which of your connected accounts it may use as its tools.",
         "createLabel": "New connection",
         "createHint": "Creates a single-use code and copies one text to paste into your coding agent. It signs in to nothing: the code is enough.",
         "create": "Create code",

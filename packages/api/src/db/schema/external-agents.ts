@@ -5,10 +5,10 @@
  * Two small tables and nothing on `agents`: an external agent is an ordinary agent row plus a link
  * row, so the hot `agents` table gains no column, no CHECK and no migration lock.
  */
-import { index, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { index, integer, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
 import { createdAt, timestamptz } from '@oxy.so/db';
 import { checkOneOf } from './columns';
-import { EXTERNAL_AGENT_CLIS } from '../../domain/external-agent';
+import { EXTERNAL_AGENT_CLIS, EXTERNAL_TOOL_CALL_OUTCOMES } from '../../domain/external-agent';
 
 /**
  * A single-use pairing code, minted in the app by a signed-in person and redeemed by the daemon with
@@ -67,5 +67,33 @@ export const externalAgentLinks = pgTable(
   (t) => [
     index('external_agent_links_owner_idx').on(t.ownerOxyUserId),
     checkOneOf('external_agent_links_cli_check', t.cli, EXTERNAL_AGENT_CLIS),
+  ],
+);
+
+/**
+ * One call an external agent made to its tools over MCP (ADR 0039): which tool, the risk the
+ * governance gave it, what came of it and how long it took. The audit trail of a lane no chat turn
+ * records; its arguments and results are not kept, since they may hold the person's data.
+ * Swept after 90 days (`db/expiryTargets.ts`).
+ */
+export const externalAgentToolCalls = pgTable(
+  'external_agent_tool_calls',
+  {
+    id: text().primaryKey(),
+    agentId: text().notNull(),
+    ownerOxyUserId: text().notNull(),
+    toolName: text().notNull(),
+    riskLevel: text({ enum: ['R0', 'R1', 'R2', 'R3'] }).notNull(),
+    outcome: text({
+      enum: EXTERNAL_TOOL_CALL_OUTCOMES as unknown as [string, ...string[]],
+    }).notNull(),
+    durationMs: integer().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('external_agent_tool_calls_agent_idx').on(t.agentId, t.createdAt),
+    index('external_agent_tool_calls_created_idx').on(t.createdAt),
+    checkOneOf('external_agent_tool_calls_risk_check', t.riskLevel, ['R0', 'R1', 'R2', 'R3']),
+    checkOneOf('external_agent_tool_calls_outcome_check', t.outcome, EXTERNAL_TOOL_CALL_OUTCOMES),
   ],
 );

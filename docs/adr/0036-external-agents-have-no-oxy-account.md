@@ -4,6 +4,8 @@ Status: Accepted (2026-11-13, the owner's decision: an external agent must stay 
 not get an Oxy account — adding Claude, Codex or OpenCode for a while is not creating an account).
 Supersedes the "usual Oxy `bot` account" of [ADR 0030](./0030-external-agents.md) §3 and the
 surviving bot account of [ADR 0032](./0032-external-agents-resume-sessions-and-leave-with-their-link.md) §2.
+Its §6 and §7 are amended by [ADR 0039](./0039-external-agents-reach-their-tools-over-mcp.md): its
+granted tools reach it over MCP, and its editor shows the connected accounts it may use.
 Date: 2026-11-13.
 
 ## Context

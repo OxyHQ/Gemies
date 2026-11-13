@@ -101,7 +101,7 @@ import {
   type CapabilityGrantSet,
   type InstancedToolSource,
 } from '../domain/capability-grants.js';
-import { oxyActorFor, runtimeGemieAccountId } from './gemie-oxy-actor.js';
+import { gemieOxyAccountId, oxyActorFor } from './gemie-oxy-actor.js';
 import type { DeviceInfo } from './tools/device-info.js';
 import {
   applyRuntimePolicy,
@@ -602,11 +602,14 @@ export class ToolPipeline {
        * rides with it: a thread is a (person, gemie) pair of a gemie that keeps
        * its own memory, and the gemie is closed over, never offered to the model.
        */
-      if (grants.allows('memory') && agent.memoryStore === 'gemie') {
+      // Its journal names the gemie's own account, so a gemie with none (an external agent, ADR
+      // 0036) has no memory of Gemies': it keeps its own, in its CLI.
+      const memoryActor = gemieOxyAccountId(agent);
+      if (grants.allows('memory') && agent.memoryStore === 'gemie' && memoryActor !== null) {
         aliaTools.memory = buildAgentMemoryTool({
           oxyUserId: userId,
           agentId: agent._id,
-          actorOxyAccountId: runtimeGemieAccountId(agent),
+          actorOxyAccountId: memoryActor,
         });
         aliaTools.searchThread = createSearchThreadTool(userId, agent._id);
       }

@@ -1121,6 +1121,13 @@
       "when": 1794581017612,
       "tag": "0159_connector_catalogue_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1794582324571,
+      "tag": "0160_external_agent_tool_calls",
+      "breakpoints": true
     }
   ]
 }

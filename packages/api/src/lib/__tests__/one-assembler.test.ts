@@ -137,6 +137,8 @@ const ALLOWED: Readonly<Record<string, string>> = {
     'SOURCE: ONE tool (`consultAgent`), whose reach is `canReachAgent` narrowed by the grant. Merges nothing.',
   'packages/api/src/lib/tools/agent-turn.ts':
     "FILTER of one set: cuts the assembler's tools for a consultation of Alia down to the ones that only answer (`aliaConsultTools`). Gathers from nowhere and adds nothing.",
+  'packages/api/src/lib/external-agents/tool-server.ts':
+    "FILTER of one set: serves an external agent the assembler's tools for its owner (ADR 0039), without the `loadTools` loader an MCP client has no use for. Gathers from nowhere and adds nothing.",
   'packages/api/src/lib/host-tools.ts':
     "SOURCE: one origin (the embedding app's declared UI effects for this request). Merges nothing.",
   'packages/api/src/lib/agent/actions.ts':

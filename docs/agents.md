@@ -50,7 +50,7 @@ no account.
   (`lib/agent-account.ts`); it is never published or public (`agents_local_identity_check`).
 - **Customisable.** Its owner renames and recolours it in the same editor (`PATCH /agents/:id`
   `name`, `color`), and changes its character as for any gemie.
-- **Nothing that needs an account.** No mailbox, connected accounts, event subscriptions,
+- **Nothing that needs an account.** No mailbox, its own connected accounts, event subscriptions,
   heartbeat, background sessions, automations or Oxy tasks: each gate asks `gemieOxyAccountId`
   (`lib/gemie-oxy-actor.ts`), and Gemies' own runtime, which it never enters, refuses it
   (`runtimeGemieAccountId`).
@@ -58,6 +58,10 @@ no account.
   daemon redeems the single-use code with no session and keeps the agent's own credential
   (`gxa_…`, stored hashed on `external_agent_links`), which opens `/ws/external-agent` for that agent
   only. Removing the agent kills it; **Reconnect** in Settings replaces it.
+- **Its tools over MCP (ADR 0039).** `POST /mcp/agents/:id`, opened by that credential, serves
+  what `ToolPipeline.forUser` builds for its owner from its grants (connected accounts, the web…),
+  without Oxy apps, hosted inference or a memory of Gemies'. The daemon hands it to each run of
+  the CLI as the MCP server `gemies`; its editor shows the connected accounts it may use.
 
 ### An app's agent is an ordinary agent (ADR 0020)
 
