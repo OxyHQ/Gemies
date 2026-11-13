@@ -101,6 +101,19 @@ export const bots = pgTable(
      * the bot goes.
      */
     oxyTaskId: text(),
+    /**
+     * A gemie bot's profile (name, description, picture) follows its gemie by itself (ADR 0037):
+     * `profile_dirty_at` is when the gemie last changed and the bot does not show it yet (null when
+     * it does), `profile_sync_after` when the next attempt may run (a short debounce that
+     * coalesces an editor's autosaves, a backoff after a failure, Telegram's own `retry_after`),
+     * `profile_sync_error` the last failure the editor shows, and `profile_photo_key` the look and
+     * colour the bot's photo was last drawn from, so a photo is uploaded only when it changed.
+     */
+    profileDirtyAt: timestamptz(),
+    profileSyncAfter: timestamptz(),
+    profileSyncAttempts: integer().notNull().default(0),
+    profileSyncError: text(),
+    profilePhotoKey: text(),
     defaultModel: text(),
     totalUsers: integer().notNull().default(0),
     totalMessages: integer().notNull().default(0),
@@ -116,6 +129,10 @@ export const bots = pgTable(
       .on(t.agentId, t.platform)
       .where(sql`${t.agentId} is not null and ${t.userId} is not null`),
     index('bots_user_id_idx').on(t.userId).where(sql`${t.userId} is not null`),
+    // The profile sync's lookup: only bots whose profile is behind their gemie.
+    index('bots_profile_due_idx')
+      .on(t.profileSyncAfter)
+      .where(sql`${t.profileDirtyAt} is not null`),
     checkOneOf('bots_status_check', t.status, BOT_STATUSES),
     checkOneOf('bots_group_replies_check', t.groupReplies, BOT_GROUP_REPLIES),
   ],

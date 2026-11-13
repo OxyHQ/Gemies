@@ -450,7 +450,15 @@ Telegram runs on its official Bot API only, in one layer in `packages/integratio
 - **The shared bot** (`TELEGRAM_BOT_TOKEN`) carries Telegram Business: a person's own Telegram as
   one of their [connected accounts](#connected-accounts), granted to their gemies.
 - **A gemie's own bot** is a card of the gemie's editor (`/agents/:id/telegram-bot`): the owner
-  pastes a @BotFather token, and the bot takes the gemie's name, description, tagline and picture.
+  pastes a @BotFather token, and the bot shows the gemie's name, description, tagline and picture,
+  and follows them by itself: the edit that changes one marks the bot behind
+  (`lib/gemie-telegram-bot-profile.ts`), and after a short debounce (an editor's autosaves become one
+  update) the API gives the bot the new profile through the integrations process. Only the parts
+  that changed are set, the photo only when the look or the colour changed (Telegram rate-limits
+  profile updates), drawn on the server with Bloom's `renderAgentAvatarPicture` (the character in its
+  colour, on a much lighter tint of it, centred for the circular crop) and rasterized on the service's
+  Chromium. A failure is kept for the editor, which shows it with a retry, and retried with a backoff
+  or after Telegram's `retry_after`; the run reaper's minute sweep picks up what a dying instance left.
   The API keeps the bot and its encrypted token (`bots`) and runs every turn
   (`POST /channel-bots/telegram/:botId/messages`); the integrations process reads the bots it
   speaks as (`GET /channel-bots/telegram`). A private chat is always answered; a group only when the

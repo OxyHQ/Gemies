@@ -207,6 +207,7 @@ async function gemieBot(
     oxyTaskId: null,
     totalMessages: 0,
     lastMessageAt: null,
+    profileSyncError: null,
     createdAt: new Date(),
   };
 }

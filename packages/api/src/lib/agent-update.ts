@@ -29,8 +29,10 @@ import {
   refusalMessage,
   refusalStatus,
   setAgentAccountCharacter,
+  setAgentAccountColor,
   setAgentAccountName,
 } from './agent-account.js';
+import { gemieProfileChanged } from './gemie-telegram-bot-profile.js';
 import { attachAgentIdentity } from './agent-identity.js';
 import { log } from './logger.js';
 import { publishGemieChanged } from './realtime/account.js';
@@ -67,13 +69,13 @@ export type AgentEdit = Omit<UpdateAgentInput, 'skillIds' | 'libraryFileIds'> & 
 };
 
 /**
- * Who the gemie is: written where its identity lives. An `oxy` gemie's name is its account's,
- * renamed at Oxy (its colour too, which the editor writes there itself); a `local` gemie keeps
- * both on its row.
+ * Who the gemie is: written where its identity lives. An `oxy` gemie's name and colour are its
+ * account's, written at Oxy as the caller (so Oxy's own checks apply); a `local` gemie keeps both
+ * on its row. Here, not in the editor, so everything that mirrors the gemie (its Telegram bot)
+ * follows every change from the one place it is made.
  */
 export interface AgentIdentityEdit {
   name?: string;
-  /** A `local` gemie's colour; an `oxy` gemie's is its account's. */
   color?: string;
 }
 
@@ -109,9 +111,6 @@ export async function applyAgentEdit(params: {
       return { ok: false, status: 400, error: LOCAL_GEMIE_IS_PRIVATE };
     }
   } else {
-    if (identity?.color !== undefined) {
-      return { ok: false, status: 400, error: 'This gemie’s colour is its Oxy account’s' };
-    }
     // The look lives on the Oxy account too, and every other app draws it from there: change it
     // there first, so a refusal leaves the agent as it was.
     if (edit.character !== undefined) {
@@ -124,6 +123,19 @@ export async function applyAgentEdit(params: {
       } catch (error: unknown) {
         log.agents.warn({ err: error, agentId }, 'Oxy refused the look');
         return { ok: false, status: 502, error: 'Could not set the agent’s look on its account' };
+      }
+    }
+
+    if (identity?.color !== undefined) {
+      try {
+        await setAgentAccountColor({
+          accessToken,
+          oxyAccountId: stored.oxyAccountId,
+          color: identity.color,
+        });
+      } catch (error: unknown) {
+        log.agents.warn({ err: error, agentId }, 'Oxy refused the colour');
+        return { ok: false, status: 502, error: 'Could not set the agent’s colour on its account' };
       }
     }
 
@@ -152,6 +164,17 @@ export async function applyAgentEdit(params: {
   });
   if (!agent) return { ok: false, status: 404, error: 'Agent not found' };
   void publishGemieChanged(userId, agentId, 'updated');
+  // What its own Telegram bot shows of it (ADR 0037): the bot follows, by itself.
+  if (
+    identity?.name !== undefined ||
+    identity?.color !== undefined ||
+    edit.tagline !== undefined ||
+    edit.description !== undefined ||
+    edit.character !== undefined
+  ) {
+    // Best effort and never the edit's failure: it logs its own, and nothing escapes it.
+    void gemieProfileChanged(agentId).catch(() => undefined);
+  }
   return { ok: true, agent };
 }
 

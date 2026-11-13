@@ -159,6 +159,7 @@ function bot(over: Partial<GemieBotRow> = {}): GemieBotRow {
     oxyTaskId: 'bot-task',
     totalMessages: 0,
     lastMessageAt: null,
+    profileSyncError: null,
     createdAt: new Date(),
     ...over,
   };

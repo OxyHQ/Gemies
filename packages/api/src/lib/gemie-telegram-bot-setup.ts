@@ -4,7 +4,6 @@
  * the body of each internal call, because this service keeps it (`bots.bot_token`, encrypted).
  */
 
-import type { AgentRecord } from '../db/agents/agentRepository.js';
 import { getDb } from '../db/index.js';
 import {
   deleteGemieBot,
@@ -12,7 +11,6 @@ import {
   findGemieBotToken,
 } from '../db/integrations/gemieBotRepository.js';
 import { botChatOf } from '../domain/gemie-bot-person.js';
-import { agentPromptName, attachAgentIdentity } from './agent-identity.js';
 import { integrationsServiceFetch } from './integrations-client.js';
 import { log } from './logger.js';
 import { revokeReleasedTask } from './oxy-task-authority.js';
@@ -28,12 +26,24 @@ export class TelegramBotSetupError extends Error {
   }
 }
 
-/** What the bot shows of the gemie. */
+/**
+ * What the bot shows of the gemie. `photo` is what its picture is drawn from (the integrations
+ * process draws it, with Bloom's `renderAgentAvatarPicture`); `null` leaves the photo as it is.
+ */
 export interface TelegramBotProfile {
   name: string;
   description: string;
   shortDescription: string;
-  photoJpegBase64?: string | null;
+  photo: { character: unknown; color: string | null } | null;
+}
+
+/** What Telegram took, part by part, and when it asked to be left alone for a while. */
+export interface TelegramBotProfileResult {
+  profile: { name: boolean; description: boolean; photo: boolean };
+  /** Seconds, from Telegram's `retry_after`, when it rate-limited the update. */
+  retryAfter?: number;
+  /** What Telegram said, when a part failed. */
+  error?: string;
 }
 
 export interface TelegramBotSetup {
@@ -42,7 +52,6 @@ export interface TelegramBotSetup {
   name: string;
   canJoinGroups: boolean;
   canReadAllGroupMessages: boolean;
-  profile: { name: boolean; description: boolean; photo: boolean };
 }
 
 export interface TelegramBotLiveStatus {
@@ -86,26 +95,13 @@ async function call<T>(path: string, body: Record<string, unknown>): Promise<T> 
   return answer as T;
 }
 
-/** The gemie's name, description and tagline, as its bot shows them. */
-export async function telegramProfileOf(
-  agent: AgentRecord,
-  photoJpegBase64?: string | null,
-): Promise<TelegramBotProfile> {
-  const identity = await attachAgentIdentity(agent);
-  return {
-    name: agentPromptName(identity),
-    description: agent.description || agent.tagline,
-    shortDescription: agent.tagline || agent.description,
-    photoJpegBase64: photoJpegBase64 ?? null,
-  };
-}
-
-export function setUpTelegramBot(token: string, profile: TelegramBotProfile) {
-  return call<TelegramBotSetup>('/setup', { token, profile });
+/** Check the token and point the bot's webhook here. Its profile follows (`gemie-telegram-bot-profile.ts`). */
+export function setUpTelegramBot(token: string) {
+  return call<TelegramBotSetup>('/setup', { token });
 }
 
 export function updateTelegramBotProfile(token: string, profile: TelegramBotProfile) {
-  return call<{ profile: TelegramBotSetup['profile'] }>('/profile', { token, profile });
+  return call<TelegramBotProfileResult>('/profile', { token, profile });
 }
 
 export function readTelegramBotStatus(token: string) {

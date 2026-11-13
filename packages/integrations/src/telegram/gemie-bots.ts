@@ -15,6 +15,7 @@ import { answerThroughChat } from '../shared/chat-handler';
 import { createLogger } from '../shared/logger';
 import { BotApi, TelegramApiError, looksLikeBotToken } from './bot-api';
 import { GEMIE_BOT_UPDATES, registerWebhook } from './bots';
+import { renderBotPhoto } from './bot-photo';
 import { sendText, whileTyping } from './send';
 import type { TelegramMessage, TelegramUpdate } from './types';
 import { webhookUrl } from './webhook';
@@ -146,13 +147,16 @@ export async function handleGemieBotUpdate(bot: GemieBot, update: TelegramUpdate
   });
 }
 
-/** What a bot shows of the gemie: its name, its description and its picture. */
+/**
+ * What a bot shows of the gemie: its name, its description and tagline, and what its photo is
+ * drawn from (`null` leaves the photo as it is: the API sends it only when the look or the colour
+ * changed).
+ */
 interface BotProfile {
   name: string;
   description: string;
   shortDescription: string;
-  /** A JPEG of the gemie's avatar, base64. Telegram accepts only JPEG for a static photo. */
-  photoJpegBase64?: string | null;
+  photo: { character: unknown; color: string | null } | null;
 }
 
 /** Fit a string within Telegram's limit for the field. */
@@ -160,35 +164,60 @@ const clip = (value: string, max: number) =>
   value.length <= max ? value : `${value.slice(0, max - 1).trimEnd()}…`;
 
 /**
- * Give the bot the gemie's profile. Each part is tried on its own and reported, so a picture
- * Telegram refuses still leaves the name and description set.
+ * Give the bot the gemie's profile. A part already as wanted is not set again, because Telegram
+ * rate-limits profile updates; each part is tried on its own, so a refused picture still leaves the
+ * name and description set. A rate limit stops the rest and says when to come back.
  */
 async function applyProfile(api: BotApi, profile: BotProfile) {
   const result = { name: false, description: false, photo: false };
+  let retryAfter: number | undefined;
+  let error: string | undefined;
   const attempt = async (part: keyof typeof result, run: () => Promise<unknown>) => {
+    if (retryAfter !== undefined) return;
     try {
       await run();
       result[part] = true;
-    } catch (error: unknown) {
-      logger.warn(`Bot ${api.botId}: setting its ${part} failed:`, error);
+    } catch (failure: unknown) {
+      logger.warn(`Bot ${api.botId}: setting its ${part} failed:`, failure);
+      if (failure instanceof TelegramApiError) {
+        error = failure.description;
+        if (failure.retryAfter !== undefined) retryAfter = failure.retryAfter;
+      } else {
+        error = failure instanceof Error ? failure.message : String(failure);
+      }
     }
   };
-  await attempt('name', () => api.call('setMyName', { name: clip(profile.name, 64) }));
-  await attempt('description', async () => {
-    await api.call('setMyDescription', { description: clip(profile.description, 512) });
-    await api.call('setMyShortDescription', {
-      short_description: clip(profile.shortDescription, 120),
-    });
+  const name = clip(profile.name, 64);
+  const description = clip(profile.description, 512);
+  const shortDescription = clip(profile.shortDescription, 120);
+  await attempt('name', async () => {
+    const current = await api.call<{ name: string }>('getMyName');
+    if (current.name !== name) await api.call('setMyName', { name });
   });
-  if (profile.photoJpegBase64) {
-    const bytes = Buffer.from(profile.photoJpegBase64, 'base64');
-    await attempt('photo', () =>
-      api.upload('setMyProfilePhoto', { photo: { type: 'static', photo: 'attach://avatar' } }, [
-        { field: 'avatar', filename: 'avatar.jpg', contentType: 'image/jpeg', bytes },
-      ]),
-    );
+  await attempt('description', async () => {
+    const current = await api.call<{ description: string }>('getMyDescription');
+    if (current.description !== description) await api.call('setMyDescription', { description });
+    const short = await api.call<{ short_description: string }>('getMyShortDescription');
+    if (short.short_description !== shortDescription) {
+      await api.call('setMyShortDescription', { short_description: shortDescription });
+    }
+  });
+  const photo = profile.photo;
+  if (photo) {
+    await attempt('photo', async () => {
+      const bytes = await renderBotPhoto(photo.character, photo.color);
+      await api.upload(
+        'setMyProfilePhoto',
+        { photo: { type: 'static', photo: 'attach://avatar' } },
+        [{ field: 'avatar', filename: 'avatar.jpg', contentType: 'image/jpeg', bytes }],
+      );
+    });
   }
-  return result;
+  return {
+    profile: result,
+    ...(retryAfter === undefined ? {} : { retryAfter }),
+    ...(error ? { error } : {}),
+  };
 }
 
 /** The token a management call names, or an answer already sent. */
@@ -221,7 +250,7 @@ function answerTelegramError(res: Response, error: unknown, what: string) {
 export function gemieBotsRouter(): Router {
   const router = Router();
 
-  // Check the token, give the bot the gemie's profile and point its webhook here.
+  // Check the token and point the bot's webhook here. Its profile follows (`/profile`).
   router.post('/setup', async (req, res) => {
     const api = tokenOf(req, res);
     if (!api) return;
@@ -230,7 +259,6 @@ export function gemieBotsRouter(): Router {
       if (!me.username) {
         return res.status(400).json({ error: 'This bot has no username', code: 'invalid_token' });
       }
-      const profile = await applyProfile(api, req.body.profile as BotProfile);
       await registerWebhook(api, GEMIE_BOT_UPDATES);
       known.set(api.botId, { api, username: me.username });
       res.json({
@@ -239,20 +267,19 @@ export function gemieBotsRouter(): Router {
         name: me.first_name,
         canJoinGroups: me.can_join_groups ?? false,
         canReadAllGroupMessages: me.can_read_all_group_messages ?? false,
-        profile,
       });
     } catch (error: unknown) {
       answerTelegramError(res, error, 'Setting a gemie bot up');
     }
   });
 
-  // Give the bot the gemie's profile again (after the gemie changed).
+  // Give the bot the gemie's profile (the gemie changed). What Telegram took, part by part.
   router.post('/profile', async (req, res) => {
     const api = tokenOf(req, res);
     if (!api) return;
     try {
       await api.getMe();
-      res.json({ profile: await applyProfile(api, req.body.profile as BotProfile) });
+      res.json(await applyProfile(api, req.body.profile as BotProfile));
     } catch (error: unknown) {
       answerTelegramError(res, error, 'Updating a gemie bot profile');
     }

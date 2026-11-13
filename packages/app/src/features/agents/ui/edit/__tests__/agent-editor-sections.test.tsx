@@ -583,6 +583,7 @@ describe('its own Telegram bot (ADR 0037)', () => {
     callerPays: true,
     totalMessages: 3,
     lastMessageAt: null,
+    profileSyncError: null as string | null,
     live: {
       username: 'scout_bot',
       name: 'Scout',
@@ -608,9 +609,7 @@ describe('its own Telegram bot (ADR 0037)', () => {
   });
 
   it('connects a pasted @BotFather token, with the person’s say on who pays', async () => {
-    api.put.mockResolvedValueOnce({
-      data: { bot, profile: { name: true, description: true, photo: true } },
-    });
+    api.put.mockResolvedValueOnce({ data: { bot } });
     const tree = await render();
     await act(async () => all(tree, 'TextFieldInput')[0]?.props.onChangeText(TOKEN));
     await act(async () =>
@@ -621,8 +620,6 @@ describe('its own Telegram bot (ADR 0037)', () => {
     expect(api.put).toHaveBeenCalledWith('/agents/agent-1/telegram-bot', {
       token: TOKEN,
       ownerPaysAgentTurns: false,
-      // The off-screen avatar cannot be read here; the bot then keeps its own picture.
-      photoJpegBase64: null,
     });
     expect(toast.success).toHaveBeenCalledWith('Scout answers on Telegram now.');
   });
@@ -645,27 +642,38 @@ describe('its own Telegram bot (ADR 0037)', () => {
     expect(api.delete).toHaveBeenCalledWith('/agents/agent-1/telegram-bot');
   });
 
-  it('says when Telegram cannot deliver, with its reason, and takes the gemie’s profile again', async () => {
+  it('says when Telegram cannot deliver, with its reason', async () => {
     telegramBot = {
       bot: { ...bot, live: { ...bot.live, webhook: 'failing', webhookError: '502 Bad Gateway' } },
       available: true,
     };
-    api.patch.mockReset().mockResolvedValue({
-      data: { bot, profile: { name: true, description: true, photo: true } },
-    });
     const tree = await render();
     expect(all(tree, 'Badge')[0]?.props).toMatchObject({ content: 'Error', color: 'error' });
     const notice = all(tree, 'Admonition').find((node) => node.props.type === 'error');
     expect(String(notice?.props.children)).toContain('502 Bad Gateway');
+  });
 
-    await act(async () => button(tree, 'Sync profile')?.props.onPress());
+  it('follows the gemie by itself: no sync control, only a failure with a retry', async () => {
+    telegramBot = { bot, available: true };
+    let tree = await render();
+    expect(button(tree, 'Sync')).toBeUndefined();
+    expect(button(tree, 'Try again now')).toBeUndefined();
+    act(() => tree.unmount());
+
+    telegramBot = {
+      bot: { ...bot, profileSyncError: 'Too Many Requests: retry after 30' },
+      available: true,
+    };
+    api.patch.mockReset().mockResolvedValue({ data: { bot } });
+    tree = await render();
+    const notice = all(tree, 'Admonition').find((node) =>
+      String(node.props.children).includes('Too Many Requests'),
+    );
+    expect(String(notice?.props.children)).toContain('It keeps trying by itself');
+    await act(async () => button(tree, 'Try again now')?.props.onPress());
     await settle();
     expect(api.patch).toHaveBeenCalledWith('/agents/agent-1/telegram-bot', {
-      syncProfile: true,
-      photoJpegBase64: null,
+      retryProfileSync: true,
     });
-    expect(toast.success).toHaveBeenCalledWith(
-      'The bot shows Scout’s name, description and picture.',
-    );
   });
 });

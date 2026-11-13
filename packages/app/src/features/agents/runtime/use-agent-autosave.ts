@@ -222,8 +222,8 @@ export function useAgentDraftAutosave(agent: Agent) {
 }
 
 /**
- * The bot account's half: the NAME, the HANDLE and the COLOUR, saved to Oxy — or, for a gemie with
- * no Oxy account, the name and the colour saved to its row through `PATCH /agents/:id`.
+ * The bot account's half: the NAME and the COLOUR through `PATCH /agents/:id` (the API writes them
+ * to the Oxy account, or to the row of a gemie with no account), and the HANDLE to Oxy.
  *
  * Two writes, two services — not one call that fans out, because a failed
  * rename must not take the tagline with it and a failed tagline must not roll
@@ -307,26 +307,23 @@ export function useAgentIdentityAutosave(agent: Agent) {
       }
 
       try {
-        if (agent.identity.source === 'local') {
-          // No account: its name and colour are its row's, and it has no handle.
-          await updateAgent.mutateAsync({
-            id: agent._id,
-            updates: { name: next.name, ...(colorChanged && { color: next.color }) },
-          });
-        } else {
-          await oxyServices.accounts.update(agent.identity.oxyAccountId, {
-            name: { displayName: next.name },
-            // Only when it actually changed: `username` is globally unique, and
-            // re-sending the current one on every keystroke of the NAME field
-            // would ask Oxy to re-check a handle nobody touched.
-            ...(handleChanged && { username: trimmed }),
-            // Only when it changed, like the handle: Oxy weighs a colour against the presets the
-            // account may wear when it is set, and re-sending the same one asks for nothing.
-            ...(colorChanged && { color: next.color }),
-          });
+        // The name and the colour go through the API, which writes them where they live (the
+        // account at Oxy, as this person, or a `local` gemie's row) and has everything that mirrors
+        // the gemie follow (its own Telegram bot, ADR 0037). Only a changed colour is sent: Oxy
+        // weighs a colour against the presets the account may wear when it is set.
+        await updateAgent.mutateAsync({
+          id: agent._id,
+          updates: { name: next.name, ...(colorChanged && { color: next.color }) },
+        });
+        // Saved: a handle refused below must not put the colour back.
+        if (colorChanged) savedColor.current = next.color;
+        if (agent.identity.source === 'oxy' && handleChanged) {
+          // The handle is the account's alone (a `local` gemie has none), and only when it
+          // changed: `username` is globally unique, and re-sending the current one on every
+          // keystroke of the NAME field would ask Oxy to re-check a handle nobody touched.
+          await oxyServices.accounts.update(agent.identity.oxyAccountId, { username: trimmed });
         }
         savedHandle.current = trimmed;
-        if (colorChanged) savedColor.current = next.color;
         // The name, the handle and the colour are the account's: everything that shows them (the
         // sidebar's list, the open chat's header through the SDK's profile) reads them again.
         void Promise.all([

@@ -122,7 +122,6 @@ vi.mock('../../../lib/integrations-client.js', () => ({
         name: 'Viajes',
         canJoinGroups: true,
         canReadAllGroupMessages: false,
-        profile: { name: true, description: true, photo: true },
       },
       '/telegram/bots/status': {
         username: 'viajes_bot',
@@ -133,12 +132,13 @@ vi.mock('../../../lib/integrations-client.js', () => ({
         webhookError: null,
         pendingUpdates: 0,
       },
-      '/telegram/bots/profile': { profile: { name: true, description: true, photo: false } },
     };
     if (path === '/telegram/bots/teardown') return new Response(null, { status: 204 });
     return new Response(JSON.stringify(answers[path] ?? {}), { status: 200 });
   }),
 }));
+const sync = vi.hoisted(() => ({ now: vi.fn(async (_agentId: string) => {}) }));
+vi.mock('../../../lib/gemie-telegram-bot-profile.js', () => ({ syncGemieBotProfileNow: sync.now }));
 vi.mock('../../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   return { log: { channels: child, agents: child, general: child } };
@@ -197,7 +197,7 @@ describe('a gemie’s own Telegram bot', () => {
     expect(state.integrations).toEqual([]);
   });
 
-  it('connects with the gemie’s profile and keeps the token here, never in an answer', async () => {
+  it('connects, has its profile follow at once, and keeps the token here, never in an answer', async () => {
     expect(await call('GET', '/agents/gemie-1/telegram-bot')).toEqual({
       status: 200,
       body: { bot: null, available: true },
@@ -206,7 +206,6 @@ describe('a gemie’s own Telegram bot', () => {
     const connected = await call('PUT', '/agents/gemie-1/telegram-bot', {
       token: TOKEN,
       ownerPaysAgentTurns: true,
-      photoJpegBase64: 'AAAA',
     });
     expect(connected.status).toBe(201);
     expect(connected.body.bot).toMatchObject({
@@ -217,18 +216,9 @@ describe('a gemie’s own Telegram bot', () => {
       live: { webhook: 'ok' },
     });
     expect(JSON.stringify(connected.body)).not.toContain(TOKEN);
-    expect(state.integrations[0]).toEqual({
-      path: '/telegram/bots/setup',
-      body: {
-        token: TOKEN,
-        profile: {
-          name: 'Viajes',
-          description: GEMIE.description,
-          shortDescription: GEMIE.tagline,
-          photoJpegBase64: 'AAAA',
-        },
-      },
-    });
+    expect(state.integrations[0]).toEqual({ path: '/telegram/bots/setup', body: { token: TOKEN } });
+    // The bot takes the gemie's profile from the server, at once.
+    expect(sync.now).toHaveBeenCalledWith('gemie-1');
     expect(state.saved).toEqual([
       expect.objectContaining({
         agentId: 'gemie-1',
@@ -272,13 +262,18 @@ describe('a gemie’s own Telegram bot', () => {
     expect(
       (await call('PATCH', '/agents/gemie-1/telegram-bot', { ownerPaysAgentTurns: false })).status,
     ).toBe(403);
-    const patched = await call('PATCH', '/agents/gemie-1/telegram-bot', {
-      groupReplies: 'never',
-      syncProfile: true,
-    });
+    const patched = await call('PATCH', '/agents/gemie-1/telegram-bot', { groupReplies: 'never' });
     expect(patched.status).toBe(200);
     expect(patched.body.bot.groupReplies).toBe('never');
-    expect(patched.body.profile).toEqual({ name: true, description: true, photo: false });
+    // The one manual control left: a retry after the editor showed a failure.
+    sync.now.mockClear();
+    const retried = await call('PATCH', '/agents/gemie-1/telegram-bot', { retryProfileSync: true });
+    expect(retried.status).toBe(200);
+    expect(sync.now).toHaveBeenCalledWith('gemie-1');
+    // There is no manual "sync profile" any more.
+    expect(
+      (await call('PATCH', '/agents/gemie-1/telegram-bot', { syncProfile: true })).status,
+    ).toBe(400);
   });
 
   it('stops the bot’s webhook when it is removed', async () => {
