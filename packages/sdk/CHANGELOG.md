@@ -1,5 +1,17 @@
 # @gemies/sdk
 
+## 2.0.0
+
+- **Lighter chat on web: the chart cards come from their own Bloom entries.** `ChartRenderer` and
+  `ToolResultCard` import `@oxy.so/bloom/chart-cards/bar-list` and `/line` instead of the
+  `chart-cards` root, which is every chart Bloom draws. Measured in the Gemies web export, the
+  first paint of `/` carries 50,210 B of chart code instead of 188,724 B. Both entries exist in
+  every Bloom the peer range admits (`>=17.41.0`), so nothing changes for a consumer.
+- **Breaking: `@gemies/sdk/metro` is gone.** `withGemieGranularCharts` redirected those same two
+  imports at resolution time, for apps whose Bloom did not yet ship the chart entries; now the
+  SDK imports them itself, so a consumer that wrapped its Metro config with it removes the
+  wrapper and changes nothing else. No app used it.
+
 ## 1.1.0
 
 - **New entry `@gemies/sdk/accounts`** (Gemies ADR 0035): `GemieAccounts`, the panel that links a

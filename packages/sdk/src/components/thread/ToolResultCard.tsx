@@ -18,7 +18,7 @@ import { useGemieRuntime } from '../../runtime/config';
 import { AiChatMessageLine } from '@oxy.so/bloom/ai-chat';
 import { Badge } from '@oxy.so/bloom/badge';
 import { Card, CardBody, CardHeader } from '@oxy.so/bloom/card';
-import { LineChartCard } from '@oxy.so/bloom/chart-cards';
+import { LineChartCard } from '@oxy.so/bloom/chart-cards/line';
 import { IconCircle } from '@oxy.so/bloom/icon-circle';
 import { RiArrowRightSLine } from '@oxy.so/bloom/icons/RiArrowRightSLine';
 import { RiCalendarScheduleLine } from '@oxy.so/bloom/icons/RiCalendarScheduleLine';

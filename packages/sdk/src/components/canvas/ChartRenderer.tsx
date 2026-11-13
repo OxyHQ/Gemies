@@ -1,5 +1,7 @@
 import { useLabels } from '../../lib/labels';
-import { BarListCard, LineChartCard } from '@oxy.so/bloom/chart-cards';
+// The two cards by subpath: the `chart-cards` root is every chart Bloom draws (~190 KB on web).
+import { BarListCard } from '@oxy.so/bloom/chart-cards/bar-list';
+import { LineChartCard } from '@oxy.so/bloom/chart-cards/line';
 import { formatNumber } from '@oxy.so/bloom/locale';
 
 interface ChartData {
