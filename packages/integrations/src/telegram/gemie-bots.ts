@@ -9,7 +9,9 @@
  */
 
 import { Router, type Request, type Response } from 'express';
+import type { GemieTelegramBotSend } from '@gemies/server/internal';
 import { APIClient, type TelegramBotMessage } from '../shared/api-client';
+import { answerThroughChat } from '../shared/chat-handler';
 import { createLogger } from '../shared/logger';
 import { BotApi, TelegramApiError, looksLikeBotToken } from './bot-api';
 import { GEMIE_BOT_UPDATES, registerWebhook } from './bots';
@@ -106,19 +108,42 @@ export async function handleGemieBotUpdate(bot: GemieBot, update: TelegramUpdate
       id: String(message.from.id),
       username: message.from.username ?? null,
       name: [message.from.first_name, message.from.last_name].filter(Boolean).join(' '),
+      languageCode: message.from.language_code ?? null,
     },
     text,
     mentionsBot: addressed,
   };
-  const answer = await whileTyping(bot.api, { chatId }, () =>
-    apiClient.answerTelegramBotMessage(bot.api.botId, question),
-  );
-  if (!answer.reply) return;
-  await sendText(
-    bot.api,
-    { chatId, replyToMessageId: chatKind === 'group' ? message.message_id : undefined },
-    answer.reply,
-  );
+  const target = {
+    chatId,
+    replyToMessageId: chatKind === 'group' ? message.message_id : undefined,
+  };
+  await whileTyping(bot.api, { chatId }, async () => {
+    const answer = await apiClient.answerTelegramBotMessage(bot.api.botId, question);
+    if (answer.personTurn) {
+      // The bot's person, from the Telegram they linked: their own turn, as in the app (ADR 0037
+      // amendment), run as the identity the API verifies again from the bot and the sender.
+      await answerThroughChat(
+        {
+          platform: 'telegram',
+          identity: { kind: 'gemie_bot', botId: bot.api.botId, platformUserId: question.from.id },
+          conversationId: answer.personTurn.conversationId,
+          messageText: text,
+          sendResponse: async (reply) => {
+            await sendText(bot.api, target, reply);
+          },
+          charLimit: 3500,
+          platformContext:
+            'You are in your own Telegram bot, in a private chat with the person themselves.',
+        },
+        apiClient,
+      ).catch(async (error: unknown) => {
+        logger.error(`Bot ${bot.api.botId}: the person's turn failed:`, error);
+        await sendText(bot.api, target, 'Sorry, something went wrong. Please try again.');
+      });
+      return;
+    }
+    if (answer.reply) await sendText(bot.api, target, answer.reply);
+  });
 }
 
 /** What a bot shows of the gemie: its name, its description and its picture. */
@@ -254,6 +279,27 @@ export function gemieBotsRouter(): Router {
       });
     } catch (error: unknown) {
       answerTelegramError(res, error, 'Reading a gemie bot');
+    }
+  });
+
+  // The gemie writes first in one of its chats: a scheduled result, a follow-up (ADR 0037 amendment).
+  router.post('/send', async (req, res) => {
+    const api = tokenOf(req, res);
+    if (!api) return;
+    const { chatId, text } = req.body as Partial<GemieTelegramBotSend>;
+    if (
+      typeof chatId !== 'string' ||
+      !/^-?\d{1,20}$/.test(chatId) ||
+      typeof text !== 'string' ||
+      !text.trim()
+    ) {
+      return res.status(400).json({ error: 'A chat and a text are required' });
+    }
+    try {
+      await sendText(api, { chatId }, text);
+      res.status(204).end();
+    } catch (error: unknown) {
+      answerTelegramError(res, error, 'Writing in a gemie bot chat');
     }
   });
 

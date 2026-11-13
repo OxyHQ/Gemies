@@ -1,12 +1,18 @@
 import type { ChannelId } from '../lib/channels/types.js';
 
 export interface VerifiedChannelContext {
-  kind: 'bot' | 'account';
+  /**
+   * `bot`: a person linked to a system bot (Discord). `account`: a message that arrived on a
+   * person's connected account, from one of their contacts (ADR 0035). `gemie_bot`: the person who
+   * connected a gemie's own Telegram bot, writing in private from the Telegram account they linked
+   * to it (ADR 0037, amendment) — the person themselves, present in the turn.
+   */
+  kind: 'bot' | 'account' | 'gemie_bot';
   accountId: string;
   /**
-   * The gemie that answers a connected account (`kind: 'account'`, ADR 0035 as amended): it runs
-   * every turn that arrives on the account, and `null` means no gemie answers it, so none runs.
-   * Absent for a bot link, whose turns go to the default gemie.
+   * The gemie that runs the turn: a connected account's answering gemie (`account`, ADR 0035 as
+   * amended; `null` when none answers it, so none runs), or the gemie whose bot it is
+   * (`gemie_bot`). Absent for a system bot link, whose turns go to the default gemie.
    */
   gemieId?: string | null;
   platform: string;

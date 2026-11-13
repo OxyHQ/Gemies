@@ -151,6 +151,19 @@ export interface ForUserOptions {
    */
   actsForPerson: boolean;
   /**
+   * The person themselves is in this turn, with their authority: their own session, or a channel
+   * that verified it is them and holds the authority they granted (a gemie bot's person, ADR 0037
+   * amendment). What only the person may ask for — creating a scheduled task — is offered then,
+   * wherever the turn came from. Defaults to `isDirectSession`; an autonomous run, a trigger and a
+   * contact writing to a connected account are not the person.
+   */
+  personPresent?: boolean;
+  /**
+   * The conversation this turn is in: a task it creates delivers each result there, so a task asked
+   * for on Telegram answers on Telegram (`automation-create.ts`).
+   */
+  conversationId?: string;
+  /**
    * The authenticated person present in this turn, when it is not `userId`.
    *
    * An agent's Oxy tools reach its OWNER's apps (the requester Oxy is told is
@@ -413,6 +426,8 @@ export class ToolPipeline {
       accessToken,
       isDirectSession,
       actsForPerson,
+      personPresent = isDirectSession,
+      conversationId,
       requesterAccountId = opts.userId,
       surfaceApplicationId = null,
       nested = false,
@@ -623,10 +638,12 @@ export class ToolPipeline {
         await buildSendTelegramTool(accountScope, runId),
         await buildAccountTools(accountScope),
       );
-      if (grants.allows('automation') && !nested) {
-        if (isDirectSession) {
-          aliaTools.createAutomation = createAutomationTool(userId, accessToken, agent);
-        }
+      // The person asks for it, so only with them present: their session, or a channel that
+      // verified it is them (its standing task is their authority, `createStructuredAutomation`).
+      if (grants.allows('automation') && !nested && personPresent) {
+        aliaTools.createAutomation = createAutomationTool(userId, accessToken, agent, {
+          ...(conversationId ? { conversationId } : {}),
+        });
       }
       // `web`, not a family of its own: what it does is read the open web, and
       // it is withheld from an unreserved turn for the reason `isLocalRuntime`

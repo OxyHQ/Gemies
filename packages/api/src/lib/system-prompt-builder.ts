@@ -89,6 +89,13 @@ export interface SystemPromptOptions {
   clientContext?: string;
   /** Whether this is a direct user session (not API key) */
   isDirectUserSession: boolean;
+  /**
+   * The person themselves is in the turn, with their authority (`ChatRequestContext.personPresent`):
+   * their own session, or a channel that verified it is them. What is about the person — their
+   * answer settings, writing style, and their gemie's memory of them — reaches the prompt of such a
+   * turn. Defaults to `isDirectUserSession`.
+   */
+  personPresent?: boolean;
   /** User ID (OxyHQ) */
   userId?: string;
   /** User's access token (for Oxy service context) */
@@ -188,6 +195,7 @@ export class SystemPromptBuilder {
       model,
       clientContext,
       isDirectUserSession,
+      personPresent = isDirectUserSession,
       userId,
       accessToken,
       oxyUser,
@@ -326,9 +334,9 @@ export class SystemPromptBuilder {
       if (oxyServiceCtx) systemMessage += oxyServiceCtx;
     }
 
-    // 9. The answer settings the person chose in Alia (direct sessions only). Settings, not
+    // 9. The answer settings the person chose in Alia (their own turns only). Settings, not
     // memories: what Alia remembers about them is Nilo's, recalled by the model.
-    if (mayReadAliaMemory && userMemory?.preferences && isDirectUserSession) {
+    if (mayReadAliaMemory && userMemory?.preferences && personPresent) {
       const { tone, responseLength } = userMemory.preferences;
       const chosen = [
         tone ? `tone: ${tone}` : '',
@@ -342,7 +350,7 @@ export class SystemPromptBuilder {
     /**
      * 9b. The person's learned writing style.
      *
-     * Gated exactly as the memory above is — a direct session, and Alia only
+     * Gated exactly as the memory above is — the person present, and Alia only
      * (an agent keeps its own memory) — because it IS memory: something learned
      * about a person from their own messages. A developer key or a product
      * service token acting for somebody never receives it, for the same reason
@@ -359,7 +367,7 @@ export class SystemPromptBuilder {
      */
     if (
       mayReadAliaMemory &&
-      isDirectUserSession &&
+      personPresent &&
       userMemory &&
       userMemory.settings?.recallEnabled !== false
     ) {
@@ -368,7 +376,7 @@ export class SystemPromptBuilder {
     }
 
     // The agent's OWN memory of this person, under the same grant as the rest.
-    if (mayReadAgentMemory && userId && isDirectUserSession) {
+    if (mayReadAgentMemory && userId && personPresent) {
       systemMessage += await agentMemoryPromptSection(userId, linkedAgent._id);
     }
 

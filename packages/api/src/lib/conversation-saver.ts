@@ -306,6 +306,8 @@ export async function appendConversationMessages(params: {
   /** The gemie of the call, which a conversation it creates belongs to. */
   readonly agentId: string;
   readonly titleOnInsert: string;
+  /** Where a conversation it creates comes from; `app` unless said. */
+  readonly source?: ConversationSource;
 }): Promise<void> {
   const { userId, conversationId, messages } = params;
   if (messages.length === 0) return;
@@ -315,7 +317,7 @@ export async function appendConversationMessages(params: {
     conversationId,
     ...(last ? { lastMessage: last.content.slice(0, 100) } : {}),
     titleOnInsert: params.titleOnInsert,
-    source: 'app',
+    source: params.source ?? 'app',
     agentId: params.agentId,
   });
   for (let attempt = 1; ; attempt++) {

@@ -193,7 +193,7 @@ describe('the queue label', () => {
     ];
 
     const outcome = await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 't',
@@ -220,7 +220,7 @@ describe('the queue label', () => {
     oxyIdentity.users = [];
 
     const outcome = await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 't',
@@ -241,7 +241,7 @@ describe('startAgentSession', () => {
     const agent = await seedAgent(15);
 
     const outcome = await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'do the thing',
@@ -281,7 +281,7 @@ describe('startAgentSession', () => {
     const agent = await seedAgent(15);
 
     await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'chosen',
@@ -300,7 +300,7 @@ describe('startAgentSession', () => {
     const agent = await seedAgent(15);
 
     await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'routed',
@@ -319,7 +319,7 @@ describe('startAgentSession', () => {
     const agent = await seedAgent(15);
 
     const outcome = await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'too expensive',
@@ -337,7 +337,7 @@ describe('startAgentSession', () => {
     vi.mocked(enqueueAgentSession).mockRejectedValueOnce(new Error('redis is gone'));
 
     const outcome = await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'never queued',
@@ -363,7 +363,7 @@ describe('startAgentSession', () => {
     const agent = await seedAgent(15);
 
     const outcome = await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'unwritable',
@@ -392,7 +392,7 @@ describe('startAgentSession', () => {
     vi.mocked(enqueueAgentSession).mockRejectedValueOnce(new Error('redis is gone'));
 
     await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'never queued',
@@ -416,7 +416,7 @@ describe('startAgentSession', () => {
     vi.mocked(enqueueAgentSession).mockRejectedValueOnce(new Error('redis is gone'));
 
     await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'never queued',
@@ -439,7 +439,7 @@ describe('reclaimOrphanedAgentSessions', () => {
     const userId = await account(100, 0);
     const agent = await seedAgent(15);
     const outcome = await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'stranded',
@@ -471,7 +471,7 @@ describe('reclaimOrphanedAgentSessions', () => {
     const userId = await account(100, 0);
     const agent = await seedAgent(15);
     await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'stranded',
@@ -491,7 +491,7 @@ describe('reclaimOrphanedAgentSessions', () => {
     const userId = await account(100, 0);
     const agent = await seedAgent(15);
     await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'just queued',
@@ -546,7 +546,7 @@ describe('the reclaim sweep and a late worker cannot both settle', () => {
     const userId = await account(100, 0);
     const agent = await seedAgent(15);
     const outcome = await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'stranded',
@@ -566,7 +566,7 @@ describe('the reclaim sweep and a late worker cannot both settle', () => {
     const userId = await account(100, 0);
     const agent = await seedAgent(15);
     const outcome = await startAgentSession({
-      requesterToken: 'real-requester',
+      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'stranded',

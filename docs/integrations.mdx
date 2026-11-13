@@ -457,6 +457,25 @@ Telegram runs on its official Bot API only, in one layer in `packages/integratio
   bot is mentioned, named in a command or replied to (`group_replies`), and in privacy mode a bot
   sees only replies and commands. Each chat is one of the gemie's conversations. The gemie's
   balance pays first, then the person who connected the bot if they allowed it.
+- **The bot recognises its person** (ADR 0037, amendment). In the editor, the person who connected
+  the bot taps *Link my Telegram* (`POST /agents/:id/telegram-bot/link`): it mints, with their
+  session, a durable Oxy task in which they are the effective account and the gemie the actor
+  (`bots.oxy_task_id`), and opens `t.me/<bot>?start=<code>`. Telegram sends `/start <code>`; the
+  API redeems the one-time code (stored only as a hash, 15 minutes) for the Telegram account that
+  sent it (`bots.linked_telegram_user_id`). From then on their **private** messages from that
+  account answer `personTurn`, and the integrations process runs them through `/alia/chat` as the
+  verified `gemie_bot` channel identity (`x-alia-channel-bot` + `x-alia-platform-user`, resolved
+  again by `middleware/channel-auth.ts`): the same turn as in the app — their Oxy apps such as
+  Inbox, the gemie's granted accounts and connectors, its memory of them, skills, the session
+  runtime (`scheduleFollowUp`, `continueInBackground`, browser, computer), `createAutomation`,
+  billed to them. Everyone else, and the person in a group, is a third party: the gemie's public
+  tools only, run in the API with nobody's authority, and the prompt says how the person links.
+  Unlinking (`DELETE …/link`) or removing the bot revokes the task.
+- **The gemie writes back in the chat.** Whatever the gemie posts on its own into one of its bot's
+  conversations (`postAgentMessage`: a follow-up's result, a scheduled task's result, a check-in)
+  is also sent there as the bot (`POST /telegram/bots/send` of the integrations process). A task
+  created in a conversation delivers each result to it (`inputs.deliverTo`, set by the server from
+  the turn), so a reminder asked on Telegram arrives on Telegram.
 
 ## Structured Automations
 

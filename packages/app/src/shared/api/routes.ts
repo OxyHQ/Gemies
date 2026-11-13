@@ -75,6 +75,7 @@ export const API_ROUTES = {
     inbox: (id: string) => `/agents/${id}/inbox`,
     /** The gemie's own Telegram bot (ADR 0037). */
     telegramBot: (id: string) => `/agents/${id}/telegram-bot`,
+    telegramBotLink: (id: string) => `/agents/${id}/telegram-bot/link`,
     activityGrid: (id: string) => `/agents/${id}/activity-grid`,
     status: (id: string) => `/agents/${id}/status`,
     reviews: (id: string) => `/agents/${id}/reviews`,

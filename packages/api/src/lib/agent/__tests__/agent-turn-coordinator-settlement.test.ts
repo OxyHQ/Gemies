@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const events: string[] = [];
-const createAgentSession = vi.fn(async () => ({ _id: 'session-1', id: 'session-1' }));
+const createAgentSession = vi.fn(async (_tx: unknown, _input: Record<string, unknown>) => ({
+  _id: 'session-1',
+  id: 'session-1',
+}));
 const updateAgentSession = vi.fn(async (_db: unknown, _id: string, patch: { status?: string }) => {
   if (patch.status) events.push(`status:${patch.status}`);
 });
@@ -54,13 +57,13 @@ describe('agent turn settlement', () => {
   it('exposes scheduling in an authenticated chat without exposing unsolicited messaging', async () => {
     createAgentSession.mockResolvedValueOnce({ _id: 'session-1', id: 'session-1' });
     const turn = await AgentTurnCoordinator.begin({
+      authority: { requesterToken: 'live-token' },
       agent: {
         _id: 'agent-1',
         identity: { source: 'oxy', oxyAccountId: 'bot-1' },
         maxConcurrentThreads: 3,
       } as never,
       oxyUserId: 'user-1',
-      requesterToken: 'live-token',
       conversationId: 'conversation-1',
       task: 'Salúdame en 5 minutos',
     });
@@ -75,7 +78,7 @@ describe('agent turn settlement', () => {
       agentAccountId: 'bot-1',
       ownerAccountId: 'user-1',
       sourceSessionId: 'session-1',
-      requesterToken: 'live-token',
+      authority: { requesterToken: 'live-token' },
       at,
       note: 'Saluda al usuario',
       now,
@@ -83,8 +86,37 @@ describe('agent turn settlement', () => {
     });
   });
 
+  it('schedules from a channel turn of the person under the standing task they granted (ADR 0037)', async () => {
+    createAgentSession.mockResolvedValueOnce({ _id: 'session-2', id: 'session-2' });
+    const turn = await AgentTurnCoordinator.begin({
+      authority: { oxyTaskId: 'bot-task' },
+      agent: {
+        _id: 'agent-1',
+        identity: { source: 'oxy', oxyAccountId: 'bot-1' },
+        maxConcurrentThreads: 3,
+      } as never,
+      oxyUserId: 'user-1',
+      conversationId: 'telegram:8988966019:570038640',
+      task: 'Mándame un mensaje en 1 minuto con el tiempo de mañana en Barcelona',
+    });
+    // The session runs under the task, as it is: no bearer, nothing minted.
+    expect(createAgentSession.mock.calls.at(-1)?.[1]).toMatchObject({ oxyTaskId: 'bot-task' });
+    const now = new Date();
+    const at = new Date(now.getTime() + 60_000);
+    expect(await turn.runtime.scheduleFollowUp?.(at, 'El tiempo de mañana', now, 'call-2')).toBe(
+      'Scheduled.',
+    );
+    expect(scheduleChatFollowUp).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sourceSessionId: 'session-2',
+        authority: { oxyTaskId: 'bot-task' },
+      }),
+    );
+  });
+
   it('releases admission as its last step, with nothing slow after the flush', async () => {
     const turn = await AgentTurnCoordinator.begin({
+      authority: { requesterToken: 'requester' },
       agent: { _id: 'agent-1', maxConcurrentThreads: 1 } as never,
       oxyUserId: 'user-1',
       conversationId: 'conversation-1',
@@ -100,6 +132,7 @@ describe('agent turn settlement', () => {
 
   it('settles only once when two completion paths race', async () => {
     const turn = await AgentTurnCoordinator.begin({
+      authority: { requesterToken: 'requester' },
       agent: { _id: 'agent-1', maxConcurrentThreads: 1 } as never,
       oxyUserId: 'user-1',
       task: 'continue',
@@ -113,6 +146,7 @@ describe('agent turn settlement', () => {
 
   it('hands long work to a durable background run of the same agent, admitted per person', async () => {
     const turn = await AgentTurnCoordinator.begin({
+      authority: { requesterToken: 'requester' },
       agent: { _id: 'agent-1', maxConcurrentThreads: 3 } as never,
       oxyUserId: 'user-1',
       task: 'continue',
@@ -139,6 +173,7 @@ describe('agent turn settlement', () => {
       creditsNeeded: 15,
     } as never);
     const turn = await AgentTurnCoordinator.begin({
+      authority: { requesterToken: 'requester' },
       agent: { _id: 'agent-1', maxConcurrentThreads: 3 } as never,
       oxyUserId: 'user-1',
       task: 'continue',

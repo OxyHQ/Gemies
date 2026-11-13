@@ -25,7 +25,6 @@ import type {
   TelegramBusinessMessagesDeleted,
   TelegramMessage,
   TelegramUpdate,
-  TelegramUser,
 } from '../types';
 import {
   claimLinkCode,
@@ -91,7 +90,7 @@ function copyFor(user: { language_code?: string } | undefined) {
 async function onOwnChatMessage(api: BotApi, username: string, message: TelegramMessage) {
   const from = message.from;
   if (!from || from.is_bot || message.chat.type !== 'private') return;
-  const copy = copyFor(from as TelegramUser & { language_code?: string });
+  const copy = copyFor(from);
   const reply = (text: string) => sendText(api, { chatId: String(message.chat.id) }, text);
   const start = /^\/start(?:@\w+)?(?:\s+(\S+))?/.exec(message.text ?? '');
   const code = start?.[1];
@@ -130,7 +129,7 @@ async function onConnection(api: BotApi, connection: TelegramBusinessConnection)
     await sendText(
       api,
       { chatId: String(connection.user_chat_id) },
-      copyFor(connection.user as TelegramUser & { language_code?: string }).unlinked,
+      copyFor(connection.user).unlinked,
     ).catch((error: unknown) =>
       logger.warn('Could not tell a person how to finish linking:', error),
     );

@@ -5,6 +5,7 @@ const fixture = vi.hoisted(() => ({
   bot: vi.fn(),
   link: vi.fn(),
   connection: vi.fn(),
+  gemieBot: vi.fn(),
 }));
 vi.mock('../../lib/oxy.js', () => ({
   oxy: {
@@ -27,6 +28,9 @@ vi.mock('../../db/integrations/botRepository.js', () => ({
 }));
 vi.mock('../../db/integrations/connectedAccountRepository.js', () => ({
   findConnectedAccountBySession: fixture.connection,
+}));
+vi.mock('../../db/integrations/gemieBotRepository.js', () => ({
+  findActiveGemieBotByTelegramId: fixture.gemieBot,
 }));
 import { authenticateChannelAccount, authenticateChannelBot } from '../channel-auth.js';
 const ACCOUNT = '0192f3a4-b5c6-7d8e-9f01-23456789abcd';
@@ -65,6 +69,70 @@ beforeEach(() => {
     answeringAgentId: 'gemie-of-the-account',
     oxyTaskState: 'active',
     oxyTaskId: 'task',
+  });
+  fixture.gemieBot.mockResolvedValue({
+    id: 'bot-row',
+    botId: '8988966019',
+    agentId: 'eusebio',
+    userId: ACCOUNT,
+    linkedTelegramUserId: '570038640',
+    oxyTaskId: 'bot-task',
+  });
+});
+describe('a gemie bot’s person (ADR 0037, amendment)', () => {
+  const headers = (platformUser: string, extra: Record<string, string> = {}) => ({
+    'x-alia-channel': 'telegram',
+    'x-alia-channel-bot': '8988966019',
+    'x-alia-platform-user': platformUser,
+    ...extra,
+  });
+  it('is the account that connected the bot, with its gemie and the task they granted', async () => {
+    const { req, next } = await invoke(headers('570038640'));
+    expect(next).toHaveBeenCalledOnce();
+    expect(req.channelContext).toEqual({
+      kind: 'gemie_bot',
+      accountId: ACCOUNT,
+      gemieId: 'eusebio',
+      platform: 'telegram',
+      identityId: 'bot-row',
+      taskId: 'bot-task',
+    });
+    expect(req.user).toBeUndefined();
+    expect(req.accessToken).toBeUndefined();
+    expect(fixture.gemieBot).toHaveBeenCalledWith({}, '8988966019');
+  });
+  it('is nobody for any other Telegram account on the bot', async () => {
+    const { res, next } = await invoke(headers('999'));
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+  it('is nobody before the link, or once its authority is gone', async () => {
+    for (const bot of [
+      { linkedTelegramUserId: null, oxyTaskId: 'bot-task' },
+      { linkedTelegramUserId: '570038640', oxyTaskId: null },
+    ]) {
+      fixture.gemieBot.mockResolvedValueOnce({
+        id: 'bot-row',
+        agentId: 'eusebio',
+        userId: ACCOUNT,
+        ...bot,
+      });
+      const { res, next } = await invoke(headers('570038640'));
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+    }
+  });
+  it('refuses a bot named beside a connected-account session, or with no sender', async () => {
+    const extras: Array<Record<string, string>> = [
+      { 'x-alia-channel-session': 'session' },
+      { 'x-alia-platform-user': '' },
+    ];
+    for (const extra of extras) {
+      const { res, next } = await invoke(headers('570038640', extra));
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+    }
+    expect(fixture.gemieBot).not.toHaveBeenCalled();
   });
 });
 describe('channel workload identity', () => {

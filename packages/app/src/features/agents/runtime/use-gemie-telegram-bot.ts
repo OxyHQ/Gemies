@@ -33,6 +33,11 @@ export interface GemieTelegramBot {
   ownerPaysAgentTurns: boolean;
   /** Whether the caller connected it, and so alone decides whether their credits pay for it. */
   callerPays: boolean;
+  /**
+   * Whether the person who connected it linked their own Telegram: the gemie then recognises them in
+   * their private chat with the bot, with their apps, accounts, memory and tasks, as in the app.
+   */
+  personLinked: boolean;
   totalMessages: number;
   lastMessageAt: string | null;
   live: TelegramBotLive | null;
@@ -112,5 +117,26 @@ export function useGemieTelegramBotMutations(gemieId: string) {
     onSuccess: () => store(null),
   });
 
-  return { connect, update, remove };
+  /** A one-time link that, opened in Telegram, tells the bot which Telegram account is the caller's. */
+  const link = useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.post<{ url: string; expiresAt: string }>(
+        API_ROUTES.agents.telegramBotLink(gemieId),
+        {},
+      );
+      return data;
+    },
+  });
+
+  const unlink = useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.delete<{ bot: GemieTelegramBot }>(
+        API_ROUTES.agents.telegramBotLink(gemieId),
+      );
+      return data;
+    },
+    onSuccess: (data) => store(data.bot),
+  });
+
+  return { connect, update, remove, link, unlink };
 }

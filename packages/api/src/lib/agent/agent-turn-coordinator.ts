@@ -17,6 +17,13 @@ import { log } from '../logger.js';
 import { runtimeGemieAccountId } from '../gemie-oxy-actor.js';
 import { scheduleChatFollowUp } from './chat-follow-ups.js';
 
+/**
+ * The authority of the person present in a turn: their bearer, from which an Oxy task is minted
+ * when durable work needs one, or a standing task they already granted the gemie (a gemie bot's
+ * person, ADR 0037 amendment), which durable work borrows as it is.
+ */
+export type PresentAuthority = { requesterToken: string } | { oxyTaskId: string };
+
 export interface CoordinatedAgentTurn {
   id: string;
   runtime: AgentRuntimeContext;
@@ -28,10 +35,11 @@ export class AgentTurnCoordinator {
   static async begin(input: {
     agent: HydratedAgent;
     oxyUserId: string;
-    requesterToken?: string;
+    authority: PresentAuthority;
     conversationId?: string;
     task: string;
   }): Promise<CoordinatedAgentTurn> {
+    const standingTaskId = 'oxyTaskId' in input.authority ? input.authority.oxyTaskId : undefined;
     const conversation = input.conversationId
       ? await findConversation(getDb(), input.oxyUserId, input.conversationId)
       : undefined;
@@ -51,6 +59,8 @@ export class AgentTurnCoordinator {
           chatLeaseExpiresAt: new Date(Date.now() + 120_000),
           threadId: conversation?.agentThreadId ?? undefined,
           conversationId: input.conversationId,
+          // A standing task is the turn's authority as it is; never retired with the session.
+          ...(standingTaskId ? { oxyTaskId: standingTaskId } : {}),
         }),
     );
     if (!admission.admitted) throw new Error('Agent concurrency limit reached');
@@ -77,7 +87,7 @@ export class AgentTurnCoordinator {
       onComplete: (result) => {
         completedResult = result;
       },
-      ...(input.requesterToken && input.conversationId
+      ...(input.conversationId
         ? {
             scheduleFollowUp: (at: Date, note: string, now: Date, toolCallId: string) =>
               scheduleChatFollowUp({
@@ -85,7 +95,7 @@ export class AgentTurnCoordinator {
                 agentAccountId: runtimeGemieAccountId(input.agent),
                 ownerAccountId: input.oxyUserId,
                 sourceSessionId: session.id,
-                requesterToken: input.requesterToken!,
+                authority: input.authority,
                 at,
                 note,
                 now,
@@ -107,7 +117,7 @@ export class AgentTurnCoordinator {
             startAgentSession({
               agent: input.agent,
               userId: input.oxyUserId,
-              requesterToken: input.requesterToken,
+              authority: input.authority,
               task: task.slice(0, 2000),
               origin: 'delegation',
               ...(conversation?.agentThreadId ? { threadId: conversation.agentThreadId } : {}),

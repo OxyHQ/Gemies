@@ -22,6 +22,8 @@ export interface GemieTelegramBotMessage {
     readonly id: string;
     readonly username: string | null;
     readonly name: string;
+    /** Telegram's IETF language tag for the sender, when it sends one. */
+    readonly languageCode?: string | null;
   };
   /** The text, without the bot's @handle. */
   readonly text: string;
@@ -29,7 +31,21 @@ export interface GemieTelegramBotMessage {
   readonly mentionsBot: boolean;
 }
 
-/** The API's answer: what the gemie says, or `null` when it does not answer. */
+/**
+ * The API's answer: what the gemie says, or `null` when it does not answer.
+ *
+ * `personTurn` instead of a reply: the person who connected the bot wrote, in private, from the
+ * Telegram account they linked to it. Their turn is theirs, run like any of their turns in the app
+ * (`POST /alia/chat` as the `gemie_bot` channel identity) in this conversation.
+ */
 export interface GemieTelegramBotAnswer {
   readonly reply: string | null;
+  readonly personTurn?: { readonly conversationId: string };
+}
+
+/** `POST /telegram/bots/send` of the integrations process: the gemie writes first, in a chat of its bot. */
+export interface GemieTelegramBotSend {
+  readonly token: string;
+  readonly chatId: string;
+  readonly text: string;
 }

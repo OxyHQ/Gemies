@@ -85,6 +85,22 @@ export const bots = pgTable(
       .$type<BotGroupReplies>()
       .notNull()
       .default('mentions'),
+    /**
+     * A gemie bot's person (`user_id`), as Telegram knows them: the Telegram account they proved is
+     * theirs with a one-time link from the gemie's editor (`/start <code>`). Only a message from it,
+     * in private, is their turn; anybody else on the bot is a third party (ADR 0037, amendment).
+     */
+    linkedTelegramUserId: text(),
+    /** That link's one-time code, hashed (sha256), and when it stops working. */
+    linkCodeHash: text(),
+    linkCodeExpiresAt: timestamptz(),
+    /**
+     * The durable Oxy task `user_id` granted the gemie for their own turns on the bot: they are its
+     * effective account and the gemie its actor, minted with their session when they link it
+     * (the same authority a connected account and scheduled work hold). Revoked when the link or
+     * the bot goes.
+     */
+    oxyTaskId: text(),
     defaultModel: text(),
     totalUsers: integer().notNull().default(0),
     totalMessages: integer().notNull().default(0),

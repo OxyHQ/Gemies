@@ -7,12 +7,38 @@ import type { Server } from 'node:http';
 import express from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const asked = vi.hoisted(() => ({ messages: [] as unknown[], reply: 'Hello from the gemie' }));
+const asked = vi.hoisted(() => ({
+  messages: [] as unknown[],
+  reply: 'Hello from the gemie',
+  personTurn: null as null | { conversationId: string },
+  chats: [] as Array<{ identity: unknown; messages: unknown[]; conversationId?: string }>,
+}));
 vi.mock('../../shared/api-client', () => ({
   APIClient: class {
     async answerTelegramBotMessage(_botId: string, message: unknown) {
       asked.messages.push(message);
-      return { reply: asked.reply };
+      return asked.personTurn
+        ? { reply: null, personTurn: asked.personTurn }
+        : { reply: asked.reply };
+    }
+    async getConversation() {
+      return {
+        messages: [
+          { role: 'user', content: 'Hey' },
+          { role: 'assistant', content: 'Hey Nate' },
+        ],
+      };
+    }
+    async requestModel() {
+      return undefined;
+    }
+    async chatCompletion(
+      identity: unknown,
+      messages: unknown[],
+      options: { conversationId?: string },
+    ) {
+      asked.chats.push({ identity, messages, conversationId: options.conversationId });
+      return { content: 'Tienes 3 correos nuevos.', finishReason: 'stop' };
     }
   },
 }));
@@ -155,6 +181,41 @@ describe('a gemie bot’s update', () => {
       chat_id: '-100',
       reply_parameters: { message_id: 10, allow_sending_without_reply: true },
     });
+  });
+
+  it('runs its person’s turn through the chat route as them, in its conversation (ADR 0037)', async () => {
+    asked.personTurn = { conversationId: `telegram:${BOT_ID}:570038640` };
+    asked.chats.length = 0;
+    try {
+      await handleGemieBotUpdate(gemieBot, {
+        update_id: 5,
+        message: message({
+          chat: { id: 570038640, type: 'private' },
+          from: { id: 570038640, is_bot: false, first_name: 'Nate', language_code: 'es' },
+          text: '¿Qué hay en mi email?',
+        }),
+      });
+      expect(asked.messages.at(-1)).toMatchObject({
+        from: { id: '570038640', languageCode: 'es' },
+      });
+      expect(asked.chats).toEqual([
+        {
+          // The API verifies it again from the bot and the sender, never from anything else.
+          identity: { kind: 'gemie_bot', botId: BOT_ID, platformUserId: '570038640' },
+          conversationId: `telegram:${BOT_ID}:570038640`,
+          messages: [
+            expect.objectContaining({ role: 'system' }),
+            { role: 'user', content: 'Hey' },
+            { role: 'assistant', content: 'Hey Nate' },
+            { role: 'user', content: '¿Qué hay en mi email?' },
+          ],
+        },
+      ]);
+      expect(sends.at(-1)).toMatchObject({ chat_id: '570038640' });
+      expect(String(sends.at(-1)?.text)).toContain('Tienes 3 correos nuevos.');
+    } finally {
+      asked.personTurn = null;
+    }
   });
 
   it('says nothing when the gemie does not answer', async () => {
