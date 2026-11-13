@@ -51,10 +51,17 @@ export function useAgentActivity(
         // Socket updates still provide live progress; hydration is best-effort.
       });
 
+    // The API's own token, refreshed when due (the session's base token is not, for this origin).
+    const linked = oxyServices.createLinkedClient({ baseURL: apiUrl });
     const socket = io(apiUrl, {
       transports: ['websocket'],
-      // The function form reads a fresh token on every (re)connect, so it survives rotation.
-      auth: (cb) => cb({ token: oxyServices.session.accessToken }),
+      // The function form asks for a token on every (re)connect, so it survives rotation.
+      auth: (cb) => {
+        linked.getAccessToken(apiUrl).then(
+          (token) => cb({ token }),
+          () => cb({}),
+        );
+      },
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
@@ -73,6 +80,7 @@ export function useAgentActivity(
     return () => {
       cancelled = true;
       socket.disconnect();
+      linked.dispose();
     };
   }, [sessionId, agentId, handleEvent, api, apiUrl, oxyServices]);
 

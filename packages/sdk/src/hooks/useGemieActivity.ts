@@ -24,7 +24,15 @@ export function useGemieActivity(options: UseGemieActivityOptions = {}): GemieAv
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    return acquireActivitySocket(apiUrl, () => oxyServices.session.accessToken);
+    // The API's own token, refreshed by core when it is due, as every other request gets it. The
+    // session's base `accessToken` is not refreshed for this origin: once it expired, the server
+    // refused every handshake and the socket retried forever.
+    const linked = oxyServices.createLinkedClient({ baseURL: apiUrl });
+    const release = acquireActivitySocket(apiUrl, () => linked.getAccessToken(apiUrl));
+    return () => {
+      release();
+      linked.dispose();
+    };
   }, [apiUrl, isAuthenticated, oxyServices]);
 
   return useGemieActivityStore(selectGemieActivity);

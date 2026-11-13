@@ -2,8 +2,8 @@ import apiClient from '@/shared/api/client';
 import { API_ROUTES } from '@/shared/api/routes';
 import { queryKeys } from '@/shared/api/query-keys';
 import { useOxy } from '@oxy.so/services/ui/client';
-import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useState } from 'react';
 
 type ExternalCli = 'claude' | 'codex' | 'opencode';
 
@@ -24,38 +24,28 @@ export interface PairingInvite {
   prompt: string;
 }
 
-/** The list is re-read while the section is open, so "Connected" shows without a refresh. */
-const REFRESH_MS = 6000;
+const EMPTY: ExternalAgent[] = [];
 
 export function useExternalAgents(locale: string) {
   const { isAuthenticated } = useOxy();
   const queryClient = useQueryClient();
-  const [agents, setAgents] = useState<ExternalAgent[]>([]);
-  const [loading, setLoading] = useState(true);
   const [invite, setInvite] = useState<PairingInvite | null>(null);
-
-  const refresh = useCallback(async () => {
-    if (!isAuthenticated) {
-      setLoading(false);
-      return;
-    }
-    try {
-      const response = await apiClient.get<{ agents: ExternalAgent[] }>(
-        API_ROUTES.agents.external.list,
-      );
-      setAgents(response.data.agents ?? []);
-    } catch {
-      // Keep what is on screen; the next tick tries again.
-    } finally {
-      setLoading(false);
-    }
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    void refresh();
-    const timer = setInterval(() => void refresh(), REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [refresh]);
+  /**
+   * Read when the section opens and when the tab comes back, never on a timer: it polled every 6 s
+   * while open. Pairing shows "Connected" through the same seam realtime will use, an
+   * `external-agents:presence` socket event invalidating `queryKeys.agents.external`; until then
+   * the section's own actions (pair, remove) and focus refresh it.
+   */
+  const query = useQuery({
+    queryKey: queryKeys.agents.external,
+    enabled: isAuthenticated,
+    refetchOnWindowFocus: true,
+    queryFn: async () =>
+      (await apiClient.get<{ agents: ExternalAgent[] }>(API_ROUTES.agents.external.list)).data
+        .agents ?? [],
+  });
+  const agents = query.data ?? EMPTY;
+  const loading = isAuthenticated && query.isPending && !query.isError;
 
   /** Mints a code. Throws when the server refuses (the caller shows the toast). */
   const createInvite = useCallback(async () => {
@@ -69,7 +59,9 @@ export function useExternalAgents(locale: string) {
   const remove = useCallback(
     async (agentId: string) => {
       await apiClient.delete(API_ROUTES.agents.external.remove(agentId));
-      setAgents((current) => current.filter((agent) => agent.agentId !== agentId));
+      queryClient.setQueryData<ExternalAgent[]>(queryKeys.agents.external, (current) =>
+        (current ?? []).filter((agent) => agent.agentId !== agentId),
+      );
       // The agent leaves the sidebar's list too.
       await queryClient.invalidateQueries({ queryKey: queryKeys.agents.mine });
     },
