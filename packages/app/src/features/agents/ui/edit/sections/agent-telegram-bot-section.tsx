@@ -7,6 +7,7 @@ import {
 import { EditorSelect } from '@/features/agents/ui/edit/sections/editor-select';
 import { useGemieAvatarPhoto } from '@/features/agents/ui/edit/sections/gemie-avatar-photo';
 import { errorMessage } from '@/shared/api/error-utils';
+import { queryKeys } from '@/shared/api/query-keys';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { SettingsSkeletonRows } from '@/shared/ui/skeletons';
 import { readAgentCharacter } from '@gemies/sdk';
@@ -24,6 +25,7 @@ import { Switch } from '@oxy.so/bloom/switch';
 import { TextFieldInput } from '@oxy.so/bloom/text-field';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
+import { useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
 import { Linking, View } from 'react-native';
 
@@ -310,8 +312,28 @@ function ConnectedBot({
   capturePhoto: () => Promise<string | null>;
 }) {
   const { t } = useTranslation();
-  const { update, remove } = useGemieTelegramBotMutations(gemieId);
+  const { update, remove, link, unlink } = useGemieTelegramBotMutations(gemieId);
+  const queryClient = useQueryClient();
   const username = bot.live?.username ?? bot.username;
+
+  const handleLink = async () => {
+    try {
+      const { url } = await link.mutateAsync();
+      await Linking.openURL(url);
+      toast.success(t(`${K}.linkOpened`, { name }));
+    } catch (error) {
+      toast.error(t(`${K}.linkFailed`, { reason: errorMessage(error, t(`${K}.tryAgain`)) }));
+    }
+  };
+
+  const handleUnlink = async () => {
+    try {
+      await unlink.mutateAsync();
+      toast.success(t(`${K}.unlinked`, { name }));
+    } catch (error) {
+      toast.error(t(`${K}.linkFailed`, { reason: errorMessage(error, t(`${K}.tryAgain`)) }));
+    }
+  };
 
   const save = async (patch: Parameters<typeof update.mutateAsync>[0]) => {
     try {
@@ -400,6 +422,41 @@ function ConnectedBot({
             {t(`${K}.privacy`, { username: username ?? '' })}
           </Admonition>
         </View>
+      ) : null}
+      {bot.callerPays ? (
+        <SettingRow
+          title={t(`${K}.personTitle`)}
+          hint={t(bot.personLinked ? `${K}.personHintLinked` : `${K}.personHint`, { name })}
+        >
+          {bot.personLinked ? (
+            <Button
+              size="sm"
+              appearance="outline"
+              tone="neutral"
+              loading={unlink.isPending}
+              disabled={unlink.isPending}
+              onPress={handleUnlink}
+            >
+              {t(`${K}.unlinkMine`)}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              leadingIcon={RiExternalLinkLine}
+              loading={link.isPending}
+              disabled={link.isPending}
+              onPress={async () => {
+                await handleLink();
+                // Linking finishes in Telegram: read the bot again when the person comes back.
+                void queryClient.invalidateQueries({
+                  queryKey: queryKeys.agents.telegramBot(gemieId),
+                });
+              }}
+            >
+              {t(`${K}.linkMine`)}
+            </Button>
+          )}
+        </SettingRow>
       ) : null}
       {bot.callerPays ? (
         <SettingRow title={t(`${K}.paysTitle`)} hint={t(`${K}.paysHint`, { name })}>

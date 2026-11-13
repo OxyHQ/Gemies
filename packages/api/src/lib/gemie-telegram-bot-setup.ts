@@ -6,10 +6,16 @@
 
 import type { AgentRecord } from '../db/agents/agentRepository.js';
 import { getDb } from '../db/index.js';
-import { deleteGemieBot, findGemieBotToken } from '../db/integrations/gemieBotRepository.js';
+import {
+  deleteGemieBot,
+  findActiveGemieBotTokenByTelegramId,
+  findGemieBotToken,
+} from '../db/integrations/gemieBotRepository.js';
+import { botChatOf } from '../domain/gemie-bot-person.js';
 import { agentPromptName, attachAgentIdentity } from './agent-identity.js';
 import { integrationsServiceFetch } from './integrations-client.js';
 import { log } from './logger.js';
+import { revokeReleasedTask } from './oxy-task-authority.js';
 
 /** A setup call that did not succeed: the token is wrong, or Telegram or the service failed. */
 export class TelegramBotSetupError extends Error {
@@ -115,10 +121,30 @@ export async function tearDownTelegramBot(token: string): Promise<void> {
   }
 }
 
-/** Before a gemie is deleted: stop its bot and forget it. */
+/**
+ * A message the gemie posted on its own into one of its bot's conversations (a scheduled result, a
+ * follow-up, a check-in) reaches that Telegram chat too: the chat IS the conversation (ADR 0037,
+ * amendment). Only the bot of the gemie that wrote it; nothing for any other conversation.
+ */
+export async function relayToGemieBotChat(input: {
+  agentId: string;
+  conversationId: string;
+  text: string;
+}): Promise<void> {
+  const chat = botChatOf(input.conversationId);
+  if (!chat) return;
+  const bot = await findActiveGemieBotTokenByTelegramId(getDb(), chat.botId);
+  if (!bot || bot.agentId !== input.agentId) return;
+  await call<null>('/send', { token: bot.token, chatId: chat.chatId, text: input.text });
+}
+
+/**
+ * Before a gemie is deleted, or when its bot is removed: stop its bot and forget it, with the
+ * authority its person's link held.
+ */
 export async function releaseGemieTelegramBot(agentId: string): Promise<void> {
   const db = getDb();
   const token = await findGemieBotToken(db, agentId);
   if (token) await tearDownTelegramBot(token);
-  await deleteGemieBot(db, agentId);
+  await revokeReleasedTask(await deleteGemieBot(db, agentId));
 }

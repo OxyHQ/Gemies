@@ -20,10 +20,14 @@ export function isGemiesWorkload(
   );
 }
 export const GEMIES_CHANNEL_SESSION_HEADER = 'x-alia-channel-session';
+/** A gemie's own Telegram bot, by Telegram's id for it, beside the platform user who wrote (ADR 0037). */
+export const GEMIES_CHANNEL_BOT_HEADER = 'x-alia-channel-bot';
 
 export type GemieChannelIdentity =
   | { kind: 'bot'; platformUserId: string }
-  | { kind: 'account'; sessionId: string };
+  | { kind: 'account'; sessionId: string }
+  /** The person who connected a gemie's bot, writing from the Telegram account they linked to it. */
+  | { kind: 'gemie_bot'; botId: string; platformUserId: string };
 
 export * from './accounts.js';
 export * from './telegram-bots.js';

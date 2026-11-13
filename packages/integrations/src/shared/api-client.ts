@@ -1,4 +1,5 @@
 import {
+  GEMIES_CHANNEL_BOT_HEADER,
   GEMIES_CHANNEL_HEADER,
   GEMIES_PLATFORM_USER_HEADER,
   GEMIES_CHANNEL_SESSION_HEADER,
@@ -82,9 +83,10 @@ export class APIClient {
   private accountHeaders(identity: GemieChannelIdentity): Record<string, string> {
     return {
       ...this.authHeaders,
-      ...(identity.kind === 'bot'
-        ? { [GEMIES_PLATFORM_USER_HEADER]: identity.platformUserId }
-        : { [GEMIES_CHANNEL_SESSION_HEADER]: identity.sessionId }),
+      ...(identity.kind === 'account'
+        ? { [GEMIES_CHANNEL_SESSION_HEADER]: identity.sessionId }
+        : { [GEMIES_PLATFORM_USER_HEADER]: identity.platformUserId }),
+      ...(identity.kind === 'gemie_bot' ? { [GEMIES_CHANNEL_BOT_HEADER]: identity.botId } : {}),
     };
   }
 
@@ -202,9 +204,12 @@ export class APIClient {
     conversationId: string,
   ): Promise<Conversation | null> {
     try {
-      const response = await this.client.get(`/conversations/${conversationId}`, {
-        headers: this.accountHeaders(identity),
-      });
+      const response = await this.client.get(
+        `/conversations/${encodeURIComponent(conversationId)}`,
+        {
+          headers: this.accountHeaders(identity),
+        },
+      );
       return response.data;
     } catch (error: unknown) {
       if (errorStatus(error) === 404) return null;

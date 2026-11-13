@@ -44,6 +44,7 @@ import { log } from '../logger.js';
 import { checkInRefusal, type CheckInRefusal } from './outreach-budget.js';
 import { sendNotification } from '../notification-service.js';
 import { publishConversation } from '../realtime/conversations.js';
+import { relayToGemieBotChat } from '../gemie-telegram-bot-setup.js';
 
 export { CHECK_IN_DAILY_LIMIT, UNANSWERED_CHECK_IN_LIMIT } from './outreach-budget.js';
 
@@ -199,6 +200,14 @@ export async function postAgentMessage(input: AgentOutreachInput): Promise<Agent
   void publishConversation(input.oxyUserId, conversation.conversationId, {
     appendedFromSeq: written.seq,
   });
+  // A conversation that is a Telegram chat of the gemie's own bot gets it there too.
+  await relayToGemieBotChat({
+    agentId: agent._id,
+    conversationId: conversation.conversationId,
+    text: content,
+  }).catch((err: unknown) =>
+    log.agents.warn({ err, agentId: agent._id }, 'Could not relay an agent message to Telegram'),
+  );
 
   await sendNotification({
     userId: input.oxyUserId,

@@ -5,6 +5,7 @@ import {
   GEMIES_CHANNEL_HEADER,
   GEMIES_PLATFORM_USER_HEADER,
   GEMIES_CHANNEL_SESSION_HEADER,
+  GEMIES_CHANNEL_BOT_HEADER,
   isGemiesWorkload,
 } from '@gemies/server/internal';
 import { isLiveEntityId } from '@oxy.so/db';
@@ -12,6 +13,8 @@ import { oxy } from '../lib/oxy.js';
 import { getDb } from '../db/index.js';
 import { findSystemBot, findBotUser } from '../db/integrations/botRepository.js';
 import { findConnectedAccountBySession } from '../db/integrations/connectedAccountRepository.js';
+import { findActiveGemieBotByTelegramId } from '../db/integrations/gemieBotRepository.js';
+import { isPersonTurn } from '../domain/gemie-bot-person.js';
 import type { ChannelId } from '../lib/channels/types.js';
 
 export function channelAccountOf(req: Request): string | undefined {
@@ -96,12 +99,46 @@ async function resolveChannelAccount(
     const platform = req.headers[GEMIES_CHANNEL_HEADER];
     const platformUserId = req.headers[GEMIES_PLATFORM_USER_HEADER];
     const sessionId = req.headers[GEMIES_CHANNEL_SESSION_HEADER];
-    if (typeof platform !== 'string' || (platformUserId !== undefined && sessionId !== undefined)) {
+    const gemieBotId = req.headers[GEMIES_CHANNEL_BOT_HEADER];
+    if (
+      typeof platform !== 'string' ||
+      (platformUserId !== undefined && sessionId !== undefined) ||
+      (gemieBotId !== undefined && (sessionId !== undefined || platformUserId === undefined))
+    ) {
       res.status(401).json({ error: 'Channel context required' });
       return;
     }
     let context: VerifiedChannelContext | undefined;
-    if (platform === 'discord' && typeof platformUserId === 'string' && platformUserId.length > 0) {
+    if (
+      platform === 'telegram' &&
+      typeof gemieBotId === 'string' &&
+      gemieBotId.length > 0 &&
+      typeof platformUserId === 'string' &&
+      platformUserId.length > 0
+    ) {
+      // A gemie bot's person, only from the Telegram account they proved is theirs, in private
+      // (the integrations process asks only after the API said `personTurn`), and only with the
+      // authority they granted the gemie there. Anybody else on the bot is never an account here.
+      const bot = await findActiveGemieBotByTelegramId(getDb(), gemieBotId);
+      if (
+        bot?.oxyTaskId &&
+        isLiveEntityId(bot.userId) &&
+        isPersonTurn(bot, { chatKind: 'direct', from: { id: platformUserId } })
+      ) {
+        context = {
+          kind: 'gemie_bot',
+          accountId: bot.userId,
+          gemieId: bot.agentId,
+          platform,
+          identityId: bot.id,
+          taskId: bot.oxyTaskId,
+        };
+      }
+    } else if (
+      platform === 'discord' &&
+      typeof platformUserId === 'string' &&
+      platformUserId.length > 0
+    ) {
       const bot = await findSystemBot(getDb(), platform);
       const link =
         bot?.status === 'active' ? await findBotUser(getDb(), bot.id, platformUserId) : null;

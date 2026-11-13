@@ -8,6 +8,7 @@ import {
 import { getErrorMessage } from '../errors/index.js';
 import { log } from '../logger.js';
 import type { AgentTaskAuthority } from '../../domain/agent.js';
+import { withDelivery } from '../automation-delivery.js';
 
 /**
  * Create a normalized automation through the same domain service as HTTP.
@@ -21,6 +22,8 @@ export function createAutomationTool(
   userId: string,
   accessToken: string | undefined,
   gemie: { readonly _id: string; readonly taskAuthority: AgentTaskAuthority },
+  /** The conversation the task is asked for in: its results are delivered there. */
+  origin: { readonly conversationId?: string } = {},
 ) {
   const agentId = gemie.taskAuthority === 'session' ? gemie._id : undefined;
   const schema = agentId
@@ -52,7 +55,10 @@ export function createAutomationTool(
         const created = await createStructuredAutomation({
           ownerAccountId: userId,
           accessToken,
-          definition: validated.data,
+          definition: {
+            ...validated.data,
+            inputs: withDelivery(validated.data.inputs, origin.conversationId),
+          },
         });
         return {
           success: true,

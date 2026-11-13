@@ -230,11 +230,18 @@ Telegram's `secret_token`, stores the update and answers; its status is Telegram
 `GET` (the bot, or `null`, with Telegram's live view of it), `PUT { token, ownerPaysAgentTurns,
 photoJpegBase64? }` (connect or replace; the bot takes the gemie's name, description and
 picture), `PATCH { groupReplies?, ownerPaysAgentTurns?, syncProfile?, photoJpegBase64? }`
-(`ownerPaysAgentTurns` only by the person who connected it) and `DELETE`.
+(`ownerPaysAgentTurns` only by the person who connected it) and `DELETE`. Its `personLinked` says
+whether that person linked their own Telegram to it.
+
+**`/agents/:id/telegram-bot/link`** — only for the person who connected the bot (ADR 0037,
+amendment): `POST` mints the Oxy task they grant the gemie for their own turns there and answers
+`{ url, expiresAt }`, a one-time `t.me/<bot>?start=<code>` link (15 minutes) that binds the Telegram
+account that opens it; `DELETE` unlinks it and revokes the task.
 
 **`/channel-bots/telegram`** and **`POST /channel-accounts/session`** — called by the integrations
-workload only: the gemies' bots it speaks as and a bot's turn, and a connected account's session
-that moved.
+workload only: the gemies' bots it speaks as and a bot's turn (`{ reply }`, or `personTurn` when the
+bot's person wrote, which it runs through `/alia/chat` as the `gemie_bot` channel identity), and a
+connected account's session that moved.
 
 **`POST /internal/trigger`** — autonomous processing for internal Oxy services
 (`routes/internal.ts:123`). Oxy service tokens only, user delegation via the

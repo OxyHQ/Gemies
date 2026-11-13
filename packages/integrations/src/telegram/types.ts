@@ -9,6 +9,8 @@ export interface TelegramUser {
   first_name: string;
   last_name?: string;
   username?: string;
+  /** The user's IETF language tag, when Telegram sends one. */
+  language_code?: string;
 }
 
 /** `getMe`: the bot itself, with what only `getMe` reports. */

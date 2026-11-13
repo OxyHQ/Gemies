@@ -203,6 +203,8 @@ async function gemieBot(
     status: 'active',
     groupReplies: 'mentions',
     ownerPaysAgentTurns: opts.ownerPaysAgentTurns ?? true,
+    linkedTelegramUserId: null,
+    oxyTaskId: null,
     totalMessages: 0,
     lastMessageAt: null,
     createdAt: new Date(),
@@ -335,7 +337,7 @@ describe("a gemie’s own Telegram bot — who pays for the gemie's turn", () =>
     const agentAccountId = await account(0, 0);
     vi.mocked(generateText).mockClear();
 
-    const text = await answerGemieTelegramMessage(
+    const { reply: text } = await answerGemieTelegramMessage(
       await gemieBot(ownerId, { agentAccountId, ownerPaysAgentTurns: false }),
       botMessage,
     );
@@ -352,7 +354,7 @@ describe("a gemie’s own Telegram bot — who pays for the gemie's turn", () =>
     const ownerId = await account(0, 0);
     vi.mocked(generateText).mockClear();
 
-    const text = await answerGemieTelegramMessage(
+    const { reply: text } = await answerGemieTelegramMessage(
       await gemieBot(ownerId, { ownerPaysAgentTurns: true }),
       botMessage,
     );

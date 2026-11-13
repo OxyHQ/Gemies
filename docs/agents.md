@@ -202,7 +202,8 @@ carries exactly one account (`lib/agent/turn-funding.ts`).
 - **Somebody present asked for it — they pay.** A hire (`session-handoff.ts`)
   is paid by the person hiring; an agent asked inside another turn
   (`tools/agent-turn.ts`) is paid by whoever funds that outer turn.
-- **Nobody present asked — the gemie's own Telegram bot** (ADR 0037). `reserveAgentTurn`
+- **Nobody present asked — a third party on the gemie's own Telegram bot** (ADR 0037). Its
+  person's own private chat is their turn and they pay, as in the app (amendment). `reserveAgentTurn`
   tries the gemie's own account first, then the person who connected the bot, but only if they
   turned on "Pay for its answers with my credits" (`bots.owner_pays_agent_turns`, writable only by
   them through `PATCH /agents/:id/telegram-bot`). Otherwise the bot tells the person it is not

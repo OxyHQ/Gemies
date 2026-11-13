@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createOxyTask, revokeOxyTask } from '../oxy-task-authority.js';
+import type { PresentAuthority } from './agent-turn-coordinator.js';
 import { reserveBackgroundProductCredits } from '../product-credit-access';
 /**
  * Handing an agent session to a worker without losing the caller's credits, and
@@ -141,7 +142,11 @@ export async function startAgentSession(input: {
   readonly agent: HirableAgent;
   readonly userId: string;
   readonly task: string;
-  readonly requesterToken?: string;
+  /**
+   * The present person's authority: their bearer, from which the run's own Oxy task is minted, or
+   * a standing task they granted the gemie (ADR 0037 amendment), which the run borrows as it is.
+   */
+  readonly authority?: PresentAuthority;
   readonly origin: AgentSessionOrigin;
   readonly depth?: number;
   /**
@@ -197,22 +202,25 @@ export async function startAgentSession(input: {
   }
 
   let sessionId: string | null = null;
+  /** A task minted here, and so revoked here if the handoff fails; never a borrowed standing one. */
   let oxyTaskId: string | null = null;
   try {
-    if (!input.requesterToken)
-      throw new Error('Starting background work requires its original requester');
+    const authority = input.authority;
+    if (!authority) throw new Error('Starting background work requires its original requester');
     const newSessionId = randomUUID();
-    oxyTaskId = await createOxyTask({
-      accessToken: input.requesterToken,
-      effectiveAccountId: userId,
-      actorAccountId,
-      origin: { kind: 'goal', id: input.goalId ?? newSessionId },
-    });
+    if ('requesterToken' in authority) {
+      oxyTaskId = await createOxyTask({
+        accessToken: authority.requesterToken,
+        effectiveAccountId: userId,
+        actorAccountId,
+        origin: { kind: 'goal', id: input.goalId ?? newSessionId },
+      });
+    }
     const session = await createAgentSession(getDb(), {
       id: newSessionId,
       agentId: agent._id,
       oxyUserId: userId,
-      oxyTaskId,
+      oxyTaskId: oxyTaskId ?? ('oxyTaskId' in authority ? authority.oxyTaskId : undefined),
       task,
       status: 'queued',
       depth: input.depth ?? 0,

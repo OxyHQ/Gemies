@@ -1,6 +1,7 @@
-import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
 import { getDb } from '../db/index.js';
 import { agentSessions } from '../db/schema/agent-sessions.js';
+import { agentWorkRevocations } from '../db/schema/agent-work.js';
 import { log } from './logger.js';
 /** Durable own-task authority binds the requester once; workers store only its id. */
 import { oxy } from './oxy.js';
@@ -48,6 +49,42 @@ export async function revokeOxyTask(taskId: string): Promise<void> {
   await agency().revokeTask(taskId);
 }
 
+/**
+ * Whether a task is a STANDING one: held by a binding that outlives any session run under it — a
+ * gemie's work authority, a connected account, a system bot's link, or a gemie bot's person
+ * (ADR 0037, amendment). Sessions borrow these (a channel turn, the follow-up it scheduled); ending
+ * a session never revokes them, only removing the binding does.
+ */
+export function heldByStandingBinding(taskId: SQL | string): SQL {
+  return sql`(exists (select 1 from agent_work_authorities a where a.oxy_task_id = ${taskId})
+    or exists (select 1 from connected_accounts c where c.oxy_task_id = ${taskId})
+    or exists (select 1 from bot_users u where u.oxy_task_id = ${taskId})
+    or exists (select 1 from bots b where b.oxy_task_id = ${taskId}))`;
+}
+
+/** Revoke a session's own task, unless a standing binding holds it. */
+export async function revokeSessionTask(taskId: string): Promise<void> {
+  const rows = await getDb().execute<{ held: boolean }>(
+    sql`select ${heldByStandingBinding(taskId)} as held`,
+  );
+  if (rows[0]?.held) return;
+  await revokeOxyTask(taskId);
+}
+
+/**
+ * Revoke a task a binding released, now or, when Oxy cannot be reached, from the durable outbox
+ * the work dispatcher drains (`agent_work_revocations`).
+ */
+export async function revokeReleasedTask(taskId: string | null): Promise<void> {
+  if (!taskId) return;
+  try {
+    await revokeOxyTask(taskId);
+  } catch (err: unknown) {
+    log.agents.warn({ err }, 'A released Oxy task will be revoked later');
+    await getDb().insert(agentWorkRevocations).values({ oxyTaskId: taskId }).onConflictDoNothing();
+  }
+}
+
 /** Terminal roots retry retirement durably; child completion never revokes its parent. */
 export async function retireFinishedOxyTasks(): Promise<void> {
   const rows = await getDb()
@@ -58,7 +95,7 @@ export async function retireFinishedOxyTasks(): Promise<void> {
         isNotNull(agentSessions.oxyTaskId),
         isNull(agentSessions.oxyTaskRetiredAt),
         isNull(agentSessions.parentSessionId),
-        sql`not exists (select 1 from agent_work_authorities a where a.oxy_task_id = ${agentSessions.oxyTaskId})`,
+        sql`not ${heldByStandingBinding(sql`${agentSessions.oxyTaskId}`)}`,
         sql`not exists (select 1 from agent_work_items w where w.oxy_task_id = ${agentSessions.oxyTaskId} and w.status in ('pending', 'running'))`,
         inArray(agentSessions.status, ['completed', 'cancelled', 'failed']),
       ),

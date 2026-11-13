@@ -4,13 +4,15 @@ import { getDb } from '../../db/index.js';
 import { agentSessions } from '../../db/schema/agent-sessions.js';
 import { createOxyTask } from '../oxy-task-authority.js';
 import { followUpReceipt, followUpRefusal, scheduleAgentFollowUp } from './follow-ups.js';
+import type { PresentAuthority } from './agent-turn-coordinator.js';
 
 export async function scheduleChatFollowUp(input: {
   agentId: string;
   agentAccountId: string;
   ownerAccountId: string;
   sourceSessionId: string;
-  requesterToken: string;
+  /** The present person's: a bearer to mint the task from, or the standing task the turn ran under. */
+  authority: PresentAuthority;
   at: Date;
   note: string;
   now: Date;
@@ -35,12 +37,14 @@ export async function scheduleChatFollowUp(input: {
 
   const taskId =
     source.oxyTaskId ??
-    (await createOxyTask({
-      accessToken: input.requesterToken,
-      effectiveAccountId: input.ownerAccountId,
-      actorAccountId: input.agentAccountId,
-      origin: { kind: 'goal', id: source.id },
-    }));
+    ('oxyTaskId' in input.authority
+      ? input.authority.oxyTaskId
+      : await createOxyTask({
+          accessToken: input.authority.requesterToken,
+          effectiveAccountId: input.ownerAccountId,
+          actorAccountId: input.agentAccountId,
+          origin: { kind: 'goal', id: source.id },
+        }));
   try {
     return followUpReceipt(
       await scheduleAgentFollowUp({
@@ -57,7 +61,7 @@ export async function scheduleChatFollowUp(input: {
   } finally {
     // Concurrent calls may mint two tasks. Binding and scheduling commit together;
     // only the unused task enters the durable revocation outbox, even after a lost response.
-    if (!source.oxyTaskId)
+    if (!source.oxyTaskId && 'requesterToken' in input.authority)
       await getDb().execute(sql`
       insert into agent_work_revocations (oxy_task_id)
       select ${taskId} where not exists

@@ -17,6 +17,16 @@ vi.mock('../../agent-availability', () => ({ agentOpensOn: async () => 'reachabl
 vi.mock('../../oxy-task-authority', () => ({
   createOxyTask: vi.fn(async () => randomUUID()),
   revokeOxyTask: vi.fn(async () => {}),
+  revokeReleasedTask: vi.fn(async () => {}),
+  revokeSessionTask: vi.fn(async () => {}),
+}));
+/** What the integrations process was asked to send in Telegram. */
+const telegram = vi.hoisted(() => [] as Array<{ path: string; body: Record<string, unknown> }>);
+vi.mock('../../integrations-client', () => ({
+  integrationsServiceFetch: vi.fn(async (path: string, init: RequestInit) => {
+    telegram.push({ path, body: JSON.parse(String(init.body)) });
+    return new Response(null, { status: 204 });
+  }),
 }));
 vi.mock('../../agent-identity', () => ({
   attachAgentIdentity: async (agent: object) => ({
@@ -73,6 +83,7 @@ import * as outreach from '../agent-outreach';
 import { sendNotification } from '../../notification-service';
 import { addAgentFollowUp } from '../../../db/agents/agentWorkRepository';
 import { runtimeGemieAccountId } from '../../gemie-oxy-actor.js';
+import { saveGemieBot, setGemieBotLinkCode } from '../../../db/integrations/gemieBotRepository';
 
 let db: ApiDatabase;
 beforeAll(() => {
@@ -156,7 +167,7 @@ it('concurrent chat scheduling binds one authority and queues only the unused pr
     agentAccountId: runtimeGemieAccountId(agent),
     ownerAccountId: owner,
     sourceSessionId: source.id,
-    requesterToken: 'live-requester',
+    authority: { requesterToken: 'live-requester' },
     now,
     at: new Date(now.getTime() + 300_000),
     note: 'Say hello',
@@ -228,7 +239,7 @@ async function scheduledChat() {
   const turn = await AgentTurnCoordinator.begin({
     agent: await attachAgentIdentity(agent),
     oxyUserId: owner,
-    requesterToken: 'live-requester-token',
+    authority: { requesterToken: 'live-requester-token' },
     conversationId,
     task: 'Salúdame en 5 minutos',
   });
@@ -374,7 +385,7 @@ it('refuses a scheduling call for a different requester before minting authority
       agentAccountId: runtimeGemieAccountId(agent),
       ownerAccountId: randomUUID(),
       sourceSessionId: work.sourceSessionId!,
-      requesterToken: 'other-requester',
+      authority: { requesterToken: 'other-requester' },
       now,
       at: new Date(now.getTime() + 300_000),
       note: 'Wrong requester',
@@ -525,4 +536,90 @@ it('turning off attention preserves an explicitly requested continuation', async
   expect(rows.find((row) => row.id === id)?.status).toBe('cancelled');
   expect(rows.find((row) => row.id === explicitId)?.status).toBe('pending');
   await stopAgentWork(agent.id);
+});
+
+it('a one-minute reminder asked on the gemie’s Telegram bot arrives in that Telegram chat (ADR 0037)', async () => {
+  vi.stubEnv('TOKEN_ENCRYPTION_KEY', 'ab'.repeat(32));
+  const { owner, agent, id } = await seed();
+  await db.delete(agentWorkItems).where(eq(agentWorkItems.id, id));
+  await db.delete(agentWorkAuthorities).where(eq(agentWorkAuthorities.agentId, agent.id));
+  // The gemie's own bot, with its person linked and the authority they granted it there.
+  const botId = String(8_000_000_000 + Math.floor(Math.random() * 1_000_000_000));
+  await saveGemieBot(db, {
+    agentId: agent.id,
+    userId: owner,
+    botId,
+    name: 'Eusebio',
+    username: 'EusebioOxyBot',
+    botToken: `${botId}:TOKEN`,
+    ownerPaysAgentTurns: true,
+  });
+  const botTask = randomUUID();
+  await setGemieBotLinkCode(db, {
+    agentId: agent.id,
+    userId: owner,
+    codeHash: 'h',
+    expiresAt: new Date(Date.now() + 60_000),
+    oxyTaskId: botTask,
+  });
+  const chatId = '570038640';
+  const conversationId = `telegram:${botId}:${chatId}`;
+  await createConversation(db, {
+    oxyUserId: owner,
+    agentId: agent.id,
+    conversationId,
+    title: 'Telegram · Nate',
+    source: 'telegram',
+  });
+  vi.mocked(createOxyTask).mockClear();
+  telegram.length = 0;
+
+  // The person's turn on Telegram, as the chat route opens it: their standing task, no bearer.
+  const turn = await AgentTurnCoordinator.begin({
+    agent: await attachAgentIdentity(agent),
+    oxyUserId: owner,
+    authority: { oxyTaskId: botTask },
+    conversationId,
+    task: 'Mándame un mensaje en 1 minuto diciéndome el clima para mañana en Barcelona',
+  });
+  const tools = buildRuntimeTools({ ...turn.runtime, computer: null }, readCapabilityGrants([]));
+  expect(
+    await tools.scheduleFollowUp.execute?.(
+      { delaySeconds: 60, note: 'El clima de mañana en Barcelona' },
+      { toolCallId: 'schedule', messages: [] },
+    ),
+  ).toMatch(/^Scheduled for /);
+  await turn.complete('Te escribo en un minuto.');
+  // Nothing minted: the work runs under the authority the person granted on the bot.
+  expect(createOxyTask).not.toHaveBeenCalled();
+  const [work] = await db.select().from(agentWorkItems).where(eq(agentWorkItems.agentId, agent.id));
+  expect(work).toMatchObject({ oxyTaskId: botTask, deliveryMode: 'requested' });
+
+  // A minute later, with nobody present.
+  await dispatchAgentWork(work.dueAt);
+  const [running] = await db.select().from(agentWorkItems).where(eq(agentWorkItems.id, work.id));
+  const session = await sessions.findAgentSessionById(db, running.sessionId!);
+  expect(session).toMatchObject({ conversationId, oxyTaskId: botTask });
+  await sessions.updateAgentSession(db, running.sessionId!, {
+    status: 'completed',
+    result: 'Mañana en Barcelona: 18 °C y sol.',
+  });
+  await deliverAgentWorkResult(work.id);
+
+  // In Gemies, in the same conversation…
+  const delivered = await db
+    .select()
+    .from(messages)
+    .where(eq(messages.conversationId, conversationId));
+  expect(delivered.map((message) => message.content)).toEqual([
+    'Mañana en Barcelona: 18 °C y sol.',
+  ]);
+  // …and in that Telegram chat, as the bot.
+  expect(telegram).toEqual([
+    {
+      path: '/telegram/bots/send',
+      body: { token: `${botId}:TOKEN`, chatId, text: 'Mañana en Barcelona: 18 °C y sol.' },
+    },
+  ]);
+  vi.unstubAllEnvs();
 });

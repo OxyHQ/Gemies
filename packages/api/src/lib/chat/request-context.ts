@@ -160,6 +160,14 @@ export interface ChatRequestContext {
   mcpServerId: string | null | undefined;
   includeUsage: boolean;
   isDirectUserSession: boolean;
+  /**
+   * The person themselves is in this turn, with their authority: their own session, or a channel
+   * that verified it is them (a gemie bot's person, ADR 0037 amendment). Such a turn reads what a
+   * person's turn reads (their gemie's memory of them, their answer settings) and runs the gemie's
+   * session runtime, wherever it came from. A developer key, a product service and a contact
+   * writing to the person's connected account are not the person.
+   */
+  personPresent: boolean;
   /** What the caller asked for (`body.model`), or the default it resolved to. */
   requestedModel: string;
   /** The surface whose prompt the turn speaks with (`body.surface`). */
@@ -480,12 +488,15 @@ export async function buildChatRequestContext(
    */
   let requestedAgentId: string | undefined;
   /**
-   * A connected account's turn is its answering gemie's (ADR 0035): the person's choice names it, a
-   * request cannot name another, and it is authorised as unattended work, with no bearer
-   * (`resolveTurnGemie`). `null` is an account no gemie answers, whose turn is refused.
+   * A channel turn that names its gemie runs it, and a request cannot name another: a connected
+   * account's answering gemie (ADR 0035; `null` is an account no gemie answers, whose turn is
+   * refused), or the gemie whose own bot it is (ADR 0037, amendment). Authorised as unattended
+   * work, with no bearer (`resolveTurnGemie`).
    */
   const channelGemieId =
-    req.channelContext?.kind === 'account' ? (req.channelContext.gemieId ?? null) : undefined;
+    req.channelContext?.kind === 'account' || req.channelContext?.kind === 'gemie_bot'
+      ? (req.channelContext.gemieId ?? null)
+      : undefined;
   if (body.agentId !== undefined) {
     if (
       typeof body.agentId !== 'string' ||
@@ -1210,6 +1221,9 @@ export async function buildChatRequestContext(
       mcpServerId,
       includeUsage,
       isDirectUserSession,
+      personPresent:
+        isDirectUserSession ||
+        (req.channelContext?.kind === 'gemie_bot' && req.channelContext.taskId !== undefined),
       requestedModel,
       surface,
       isLocalRuntime: localRuntime !== null,

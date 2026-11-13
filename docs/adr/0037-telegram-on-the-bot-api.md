@@ -93,3 +93,42 @@ of a gemie" is now an account the person connects once in Settings and grants to
 of which may answer it. Linking the same Telegram again leaves the earlier account `logged-out`;
 `sendTelegramMessage` reaches the person through a Telegram they granted the turn's gemie. A
 gemie's own bot (decision 5) is unchanged and stays the gemie's.
+
+## Amendment (2026-11-13): a gemie's bot recognises its person, whose turn there is theirs
+
+**Context.** In production the person who connected Eusebio's bot asked it, from their own Telegram,
+"¿qué hay en mi email?" and got "no tengo acceso a tu email"; asked for "un mensaje en 1 minuto", it
+said it could not schedule. Every bot turn ran as decision 5 said, as nobody: no person
+(`actsForPerson: false`, `requesterAccountId: null`), no Oxy task, no skills, no memory, no session
+runtime — eight public tools where the same turn in the app assembles hundreds (Inbox, its own
+mailbox, memory, accounts, browser, computer, scheduling). And nothing told the bot which Telegram
+account was its person's. The owner's requirement: a person's turn has exactly the same
+capabilities through any channel as in the app.
+
+**Decision.** Decision 5 is amended:
+
+1. **The bot recognises one person, the one who connected it** (`bots.user_id`: its chats are kept
+   for them and they alone consent to pay). They link their Telegram once from the editor: *Link my
+   Telegram* mints, with their session, a durable Oxy task in which they are the effective account
+   and the gemie the actor (`bots.oxy_task_id`: the same kind of standing authority a connected
+   account and scheduled work hold), and opens `t.me/<bot>?start=<code>`. The `/start <code>` that
+   Telegram then sends binds the Telegram account that sent it (`bots.linked_telegram_user_id`); the
+   code is one-time, 15 minutes, and stored only as a hash.
+2. **Their private messages from that account are their turns**, run through the same chat route
+   as the app (`/alia/chat`, as the verified `gemie_bot` channel identity): same tool assembly, same
+   prompt, memory and skills, same session runtime, same billing (theirs). The only tools that differ
+   are the ones whose precondition is the app itself: minting an agent needs a live bearer, and the
+   question/plan cards need a client that draws them (`channel-turn-parity.test.ts` names them).
+3. **Everybody else is a third party**, as decision 5 said: a stranger, an unlinked person, a link
+   whose task is gone, and the person in a group (where everybody reads the answer). Public tools
+   only; the prompt says how the person links, so the answer is never a bare "no access".
+4. **Durable work started there borrows the task as it is** (follow-ups, background runs,
+   scheduled tasks): ending a session never revokes a task a standing binding holds
+   (`heldByStandingBinding`); unlinking or removing the bot does.
+5. **The gemie writes back where it was asked.** A message it posts on its own into one of its bot's
+   conversations is sent to that Telegram chat too; a task created in a conversation delivers there.
+
+**Consequences.** Migration 0163 (pre) adds the four nullable `bots` columns. A connected account's
+turn (a contact writing to the person's WhatsApp or Telegram Business) is not the person and does
+not get the session runtime or task creation. The base prompt asks every gemie to say how to grant
+what is missing instead of "I have no access".

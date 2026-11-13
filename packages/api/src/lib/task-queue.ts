@@ -87,25 +87,46 @@ async function processAgentSession(data: AgentJobData): Promise<AgentJobResult> 
     // also notifies them; a finished run used to reach them only as a push
     // whose body was the first 500 characters, with nowhere to tap through to.
     // A child run (delegated, orchestrated) reports to its parent instead.
+    const inputs = await automationInputsOf(session?.automationRunId);
     if (
       session &&
       !session.parentSessionId &&
       !session.workItemId &&
-      !(await isAgentFollowUp(session.automationRunId))
+      !(await isAgentSelfStarted(inputs))
     ) {
       const { postAgentMessage } = await import('./agent/agent-outreach.js');
-      await postAgentMessage({
-        oxyUserId: userId,
-        agentId: session.agentId,
-        kind: 'result',
-        idempotencyKey: `session-result:${sessionId}`,
-        content: status === 'completed' ? result : `I couldn't finish this task. ${result}`,
-      });
+      const { deliveryConversationOf } = await import('./automation-delivery.js');
+      const post = (conversationId?: string) =>
+        postAgentMessage({
+          oxyUserId: userId,
+          agentId: session.agentId,
+          kind: 'result',
+          idempotencyKey: `session-result:${sessionId}`,
+          content: status === 'completed' ? result : `I couldn't finish this task. ${result}`,
+          ...(conversationId ? { conversationId } : {}),
+        });
+      // Where the task was asked for (a Telegram chat of the gemie's bot, an app conversation);
+      // the gemie's thread when it was asked nowhere, or that conversation is gone.
+      const asked = deliveryConversationOf(inputs);
+      const outcome = await post(asked);
+      if (asked && !outcome.posted && outcome.reason === 'conversation_not_found') await post();
     }
   } catch (notifErr) {
     log.agents.warn({ notifErr, sessionId }, 'Failed to deliver the run result');
   }
   return { sessionId, status, result };
+}
+
+/** The inputs of the task a run belongs to, or `null` for a run of no task. */
+async function automationInputsOf(
+  automationRunId: string | null | undefined,
+): Promise<Record<string, unknown> | null> {
+  if (!automationRunId) return null;
+  const { getDb } = await import('../db/index.js');
+  const { findAutomationInputsForRun } = await import(
+    '../db/automation/automationDefinitionRepository.js'
+  );
+  return findAutomationInputsForRun(getDb(), automationRunId);
 }
 
 /**
@@ -114,15 +135,10 @@ async function processAgentSession(data: AgentJobData): Promise<AgentJobResult> 
  * is not posted: the agent tells the person through the budgeted
  * `sendMessageToUser` if, and only if, it found something worth saying.
  */
-async function isAgentFollowUp(automationRunId: string | null | undefined): Promise<boolean> {
-  if (!automationRunId) return false;
-  const { getDb } = await import('../db/index.js');
-  const { findAutomationInputsForRun } = await import(
-    '../db/automation/automationDefinitionRepository.js'
-  );
+async function isAgentSelfStarted(inputs: Record<string, unknown> | null): Promise<boolean> {
+  if (typeof inputs?.origin !== 'string') return false;
   const { AGENT_SELF_STARTED_ORIGINS } = await import('./agent/follow-ups.js');
-  const inputs = await findAutomationInputsForRun(getDb(), automationRunId);
-  return typeof inputs?.origin === 'string' && AGENT_SELF_STARTED_ORIGINS.includes(inputs.origin);
+  return AGENT_SELF_STARTED_ORIGINS.includes(inputs.origin);
 }
 
 /**

@@ -38,13 +38,15 @@ const messageSchema = z
       id: z.string().min(1).max(40),
       username: z.string().max(64).nullable(),
       name: z.string().max(256),
+      languageCode: z.string().max(35).nullish(),
     }),
     text: z.string().min(1).max(16_384),
     mentionsBot: z.boolean(),
   })
   .strict();
 
-// POST /channel-bots/telegram/:botId/messages — the gemie's answer, or `null` for none.
+// POST /channel-bots/telegram/:botId/messages — the gemie's answer, `null` for none, or `personTurn`
+// when the bot's person wrote: theirs to run through `/alia/chat` (`lib/gemie-telegram-bot.ts`).
 router.post(
   '/telegram/:botId/messages',
   authenticateIntegrations,
@@ -54,8 +56,9 @@ router.post(
     const bot = await findActiveGemieBotByTelegramId(getDb(), req.params.botId).catch(() => null);
     if (!bot) return res.json({ reply: null } satisfies GemieTelegramBotAnswer);
     try {
-      const reply = await answerGemieTelegramMessage(bot, parsed.data);
-      res.json({ reply } satisfies GemieTelegramBotAnswer);
+      res.json(
+        (await answerGemieTelegramMessage(bot, parsed.data)) satisfies GemieTelegramBotAnswer,
+      );
     } catch (err: unknown) {
       // Said in the chat rather than retried: a turn half-run could otherwise answer twice.
       log.channels.error({ err, botId: bot.botId }, 'A gemie bot turn failed');

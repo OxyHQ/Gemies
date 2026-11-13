@@ -1,16 +1,12 @@
 /**
- * How a message that arrived on a connected account (WhatsApp, Telegram Business) is answered by
- * the account's gemie — shared by every account gateway.
- *
- * Each adapter extracts the platform-specific message data, then calls
- * handleIncomingMessage() with platform-agnostic params + callbacks.
- *
- * AI calls are routed through the main API's /alia/chat product runtime
- * so that adapters get the full system prompt, user memory, tools, etc.
+ * How a channel turn is answered: through the main API's `/alia/chat`, the same runtime as a turn
+ * in the app (its system prompt, memory, tools, authority and billing), as a verified channel
+ * identity. Shared by every account gateway (WhatsApp, Telegram Business: `handleIncomingMessage`)
+ * and by a gemie's own bot when its person writes (ADR 0037 amendment: `answerThroughChat`).
  */
 
 import { createHash } from 'node:crypto';
-import type { GemieAccountInbound } from '@gemies/server/internal';
+import type { GemieAccountInbound, GemieChannelIdentity } from '@gemies/server/internal';
 import type { APIClient } from './api-client';
 import { chunkText } from './utils';
 import { createLogger } from './logger';
@@ -35,15 +31,7 @@ export async function handleIncomingMessage(
   params: IncomingMessageParams,
   apiClient: APIClient,
 ): Promise<void> {
-  const {
-    platform,
-    messageText,
-    sendResponse,
-    setTyping,
-    charLimit = 4000,
-    platformContext = '',
-  } = params;
-
+  const { platform } = params;
   const logger = createLogger(`${platform}/Chat`);
 
   const identity = { kind: 'account' as const, sessionId: params.sessionId };
@@ -58,82 +46,104 @@ export async function handleIncomingMessage(
   if (!answer) return;
 
   try {
-    // Show typing
-    if (setTyping) {
-      try {
-        await setTyping(true);
-      } catch (error) {
-        // Typing indicator is best-effort; a failure must not interrupt the reply.
-        logger.debug('Failed to start typing indicator:', error);
-      }
-    }
-
     // Stable within this connected channel conversation; the API separately binds its owner.
     const conversationId = createHash('sha256')
       .update(JSON.stringify([platform, params.sessionId, params.inbound.chatId]))
       .digest('hex');
-
-    // Load conversation history (last 20 messages, user/assistant only)
-    let messages: Array<{ role: string; content: string }> = [];
-    try {
-      const conversation = await apiClient.getConversation(identity, conversationId);
-      if (conversation?.messages?.length) {
-        messages = conversation.messages
-          .filter((m) => m.role === 'user' || m.role === 'assistant')
-          .slice(-20)
-          .map((m) => ({
-            role: m.role,
-            content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-          }));
-      }
-    } catch (error) {
-      logger.error('Failed to load history:', error);
-    }
-
-    messages.push({ role: 'user', content: messageText });
-
-    // Platform instructions as first system message —
-    // the API extracts this as clientContext and merges it into the full system prompt
-    const apiMessages = [
-      {
-        role: 'system',
-        content: `The user is chatting via ${platform}. Be concise and friendly.${platformContext ? ' ' + platformContext : ''}`,
-      },
-      ...messages,
-    ];
-
-    // Route through the main API to get system prompt, memory, tools, etc.
-    const result = await apiClient.chatCompletion(identity, apiMessages, {
-      // Unset, or no longer in the catalogue, means the request names no
-      // model and the server's default applies. See `./catalogue.ts`.
-      model: await apiClient.requestModel(undefined),
-      conversationId,
-    });
-
-    const fullResponse = result.content;
-
-    // Send response (chunked)
-    if (fullResponse) {
-      const chunks = chunkText(fullResponse, charLimit);
-      for (const chunk of chunks) {
-        await sendResponse(chunk);
-      }
-    }
-
-    // Clear typing
-    if (setTyping) {
-      try {
-        await setTyping(false);
-      } catch (error) {
-        // Typing indicator is best-effort; a failure must not interrupt the reply.
-        logger.debug('Failed to clear typing indicator:', error);
-      }
-    }
-
-    // Conversation is auto-saved by the API when conversationId is provided
+    await answerThroughChat({ ...params, identity, conversationId }, apiClient);
   } catch (error: unknown) {
     // Nothing is said in the chat: it is the person's own account writing to one of their
     // contacts, and an apology from it would be a message the person never wrote.
     logger.error('Error:', error);
   }
+}
+
+export interface ChatTurnParams {
+  platform: string;
+  identity: GemieChannelIdentity;
+  /** The conversation the turn continues (and the API saves it to). */
+  conversationId: string;
+  messageText: string;
+  sendResponse: (text: string) => Promise<void>;
+  setTyping?: (typing: boolean) => Promise<void>;
+  /** Max chars per message (default 4000) */
+  charLimit?: number;
+  platformContext?: string;
+}
+
+/**
+ * Run one turn through `/alia/chat` as `identity`, in `conversationId`, and send the answer back.
+ * Throws when the turn fails: what to say about it is the caller's.
+ */
+export async function answerThroughChat(
+  params: ChatTurnParams,
+  apiClient: APIClient,
+): Promise<void> {
+  const {
+    platform,
+    identity,
+    conversationId,
+    messageText,
+    sendResponse,
+    setTyping,
+    charLimit = 4000,
+    platformContext = '',
+  } = params;
+  const logger = createLogger(`${platform}/Chat`);
+
+  if (setTyping) {
+    // Best-effort; a failure must not interrupt the reply.
+    await setTyping(true).catch((error) => logger.debug('Failed to start typing:', error));
+  }
+
+  /**
+   * The whole stored conversation, as the app sends it. The API's saver appends the new turn when
+   * this history is exactly what it holds, and otherwise rewrites the thread FROM it: a trimmed
+   * history (it was the last 20 messages) cut every longer thread down to its last 20 on the next
+   * turn.
+   */
+  let messages: Array<{ role: string; content: string }> = [];
+  try {
+    const conversation = await apiClient.getConversation(identity, conversationId);
+    if (conversation?.messages?.length) {
+      messages = conversation.messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({
+          role: m.role,
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        }));
+    }
+  } catch (error) {
+    logger.error('Failed to load history:', error);
+  }
+
+  messages.push({ role: 'user', content: messageText });
+
+  // Platform instructions as first system message —
+  // the API extracts this as clientContext and merges it into the full system prompt
+  const apiMessages = [
+    {
+      role: 'system',
+      content: `The user is chatting via ${platform}. Be concise and friendly.${platformContext ? ` ${platformContext}` : ''}`,
+    },
+    ...messages,
+  ];
+
+  const result = await apiClient.chatCompletion(identity, apiMessages, {
+    // Unset, or no longer in the catalogue, means the request names no
+    // model and the server's default applies. See `./catalogue.ts`.
+    model: await apiClient.requestModel(undefined),
+    conversationId,
+  });
+
+  if (result.content) {
+    for (const chunk of chunkText(result.content, charLimit)) {
+      await sendResponse(chunk);
+    }
+  }
+
+  if (setTyping) {
+    await setTyping(false).catch((error) => logger.debug('Failed to clear typing:', error));
+  }
+  // The conversation is saved by the API, since `conversationId` is given.
 }

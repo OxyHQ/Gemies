@@ -264,6 +264,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       mcpServerId,
       includeUsage,
       isDirectUserSession,
+      personPresent,
       requestedModel,
       clientContext,
       surface,
@@ -283,6 +284,21 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
     // (Alia) has no session. There is no client mode switch and, critically, no
     // second paid session launched beside this turn.
     const agentRuntimeEnabled = linkedAgent.taskAuthority === 'session';
+    /**
+     * The person in this turn, when they are present with their authority: their own session, or a
+     * channel that verified it is them and holds the authority they granted (a gemie bot's person,
+     * ADR 0037 amendment). Their turn is the same turn wherever it came from.
+     */
+    const presentPersonId = personPresent
+      ? (req.user?.id ?? req.channelContext?.accountId)
+      : undefined;
+    const presentAuthority = isDirectUserSession
+      ? req.accessToken
+        ? { requesterToken: req.accessToken }
+        : undefined
+      : req.channelContext?.taskId
+        ? { oxyTaskId: req.channelContext.taskId }
+        : undefined;
 
     // The correlation record for this turn, before the first branch below can
     // take a request somewhere else. `kaana` is null because Alia serves this
@@ -327,7 +343,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       }
     }
 
-    if (agentRuntimeEnabled && req.user?.id && isDirectUserSession) {
+    if (agentRuntimeEnabled && presentPersonId && presentAuthority) {
       const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
       const task =
         typeof lastUserMessage?.content === 'string'
@@ -346,9 +362,9 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
                 .join('\n')
             : 'Continue the agent thread';
       coordinatedTurn = await AgentTurnCoordinator.begin({
-        requesterToken: isDirectUserSession ? req.accessToken : undefined,
+        authority: presentAuthority,
         agent: linkedAgent,
-        oxyUserId: req.user.id,
+        oxyUserId: presentPersonId,
         conversationId,
         task,
       });
@@ -444,11 +460,14 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
             oxyTaskId: req.channelContext?.taskId,
             accessToken: req.accessToken,
             isDirectSession: isDirectUserSession,
+            personPresent,
             // A session acts for the person holding it; an API key does not.
             actsForPerson: isDirectUserSession || Boolean(req.channelContext?.taskId),
             // The app the person is in (ADR 0021), for `consultAgent` and `searchAgents`.
             surfaceApplicationId: ctx.surfaceApplicationId,
             requestId,
+            // Where a task this turn creates delivers what it finds (`automation-create.ts`).
+            ...(conversationId ? { conversationId } : {}),
             // The tools this conversation already used stay loaded (`lib/tool-budget.ts`).
             priorToolCalls: priorToolCallsOf(messages),
             // The tool definitions' share of the request is the model's (`request-budget.ts`).
@@ -515,7 +534,8 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       model: ctx.resolved.catalogue,
       clientContext,
       isDirectUserSession,
-      userId: req.user?.id,
+      personPresent,
+      userId: presentPersonId ?? req.user?.id,
       accessToken: req.accessToken,
       oxyUser,
       userMemory,
