@@ -32,7 +32,9 @@ export {
   useRealtimeTopic,
 } from '../realtime/react';
 export { useConversationActivity } from '../realtime/activity';
+export type { MessageReactionEntry } from './types';
 export { GemieApiError, useGemieApi } from './api';
+
 export {
   GEMIE_FEATURES,
   featureOffer,
