@@ -19,6 +19,8 @@ import { conversationExists } from '../db/chat/conversationRepository.js';
 import { messageExistsInConversation } from '../db/chat/messageRepository.js';
 
 export interface LifecycleContext {
+  /** An explicitly completed native reaction has no assistant text row. */
+  omitLeadReply?: boolean;
   userId?: string;
   conversationId?: string;
   /** The turn's gemie, which a conversation this turn creates belongs to. */
@@ -149,6 +151,7 @@ export async function saveConversationResult(
       assistantMessageId,
       toolInvocations,
       agentId,
+      ...(ctx.omitLeadReply ? { omitLeadReply: true } : {}),
       ...(originApp === undefined ? {} : { originApp }),
       channelSource,
     });

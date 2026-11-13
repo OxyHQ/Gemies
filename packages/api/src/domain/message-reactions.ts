@@ -9,6 +9,26 @@ export const MAX_REACTIONS_PER_MESSAGE = 6;
 /** The longest a reaction may be: a flag, a family or a skin-toned gesture is several code points. */
 const MAX_REACTION_LENGTH = 16;
 
+export interface AgentReactionEntry {
+  emoji: string;
+  author: { kind: 'agent'; id: string; name: string };
+}
+export type MessageReactionEntry =
+  | AgentReactionEntry
+  | { emoji: string; author: { kind: 'user'; id: string } };
+
+/** Human selection remains separate so old clients never toggle another author's emoji. */
+export function attributedReactions(
+  userId: string,
+  reactions: readonly string[],
+  agentReactions: readonly AgentReactionEntry[] = [],
+): MessageReactionEntry[] {
+  return [
+    ...reactions.map((emoji) => ({ emoji, author: { kind: 'user' as const, id: userId } })),
+    ...agentReactions,
+  ];
+}
+
 /**
  * One emoji: a keycap, a flag, or a pictograph with its tones, variation selector and tag sequence,
  * joined to the next by a zero-width joiner. Never a joiner, a tone or a selector on its own.

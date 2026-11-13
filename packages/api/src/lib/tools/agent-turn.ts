@@ -45,6 +45,11 @@ import { servedModelId, servedReferenceOf } from '../models/power-levels.js';
 import { isExternalAgent, runExternalAgentTurn } from '../external-agents/turn.js';
 import type { ToolInvocation } from '../../domain/conversation.js';
 import { CANVAS_TOOL } from './canvas.js';
+import {
+  reactionStepCalls,
+  type AgentReactionTurn,
+  type ReactionToolInvocation,
+} from '../chat/reactions/agent-tool.js';
 
 /** Bounded so one turn never holds a room, or a conversation between gemies, for long. */
 const AGENT_TIMEOUT_MS = 45_000;
@@ -86,6 +91,8 @@ export function aliaReadingTools(tools: ToolSet): ToolSet {
 }
 
 export interface AgentTurnResult {
+  /** A clean, durably completed contribution consisting only of the actor's reaction. */
+  reactionOnly?: boolean;
   response: string;
   tokensUsed: number;
   /** What the nested turn actually cost the payer, after settlement. */
@@ -161,6 +168,8 @@ export async function runAgentTurn(input: {
   room?: { readonly instructions: string; readonly observations: readonly AgentTurnMessage[] };
   /** A server-attributed observation can invite words, never tools or an inferred user task. */
   observation?: { readonly instructions: string; readonly content: string };
+  /** Native participation in an admitted conversation, never present on observation turns. */
+  conversationReaction?: AgentReactionTurn;
   /** A tighter limit than {@link AGENT_TIMEOUT_MS}, for a turn that shares a request's time. */
   timeoutMs?: number;
   /** Caller cancellation (for example, a newer substantive message or retracted feedback). */
@@ -245,8 +254,9 @@ export async function runAgentTurn(input: {
         isLocalRuntime: false,
         agent,
         ...(input.gemieChain ? { gemieChain: input.gemieChain } : {}),
-        // The person's assistant only reads here (see ALIA_READING_BUILTIN_TOOLS); connectors that
-        // act are not even fetched.
+        ...(input.conversationReaction ? { conversationReaction: input.conversationReaction } : {}),
+        // The person's assistant only reads here (see ALIA_READING_BUILTIN_TOOLS);
+        // connectors that act are not even fetched.
         ...(personAssistant
           ? {
               oxyAutonomy: 'read_only' as const,
@@ -311,12 +321,19 @@ export async function runAgentTurn(input: {
       messages: history,
       tools: agentTools,
       ...toolRouting,
-      stopWhen: stepBudget(AGENT_MAX_STEPS),
+      stopWhen: [
+        stepBudget(AGENT_MAX_STEPS),
+        ...(!input.observation && input.conversationReaction
+          ? [input.conversationReaction.stopWhen]
+          : []),
+      ],
     });
 
     let response = '';
     const canvas: ToolInvocation[] = [];
     const canvasArgs = new Map<string, unknown>();
+    const reactionCalls: ReactionToolInvocation[] = [];
+    let cleanFinish = false;
     const say = (text: string) => {
       response += text;
       observe(() => observer?.onTextDelta?.(text));
@@ -343,6 +360,7 @@ export async function runAgentTurn(input: {
             result: part.output,
           });
         }
+        reactionCalls.push({ toolName: part.toolName, state: 'result', result: part.output });
         observe(() =>
           observer?.onToolResult?.({
             toolCallId: part.toolCallId,
@@ -352,13 +370,40 @@ export async function runAgentTurn(input: {
         );
       } else if (part.type === 'error') {
         throw part.error;
+      } else if (part.type === 'tool-error') {
+        reactionCalls.push({ toolName: part.toolName, state: 'error' });
+      } else if (part.type === 'finish' && part.finishReason === 'error') {
+        throw new Error('Agent inference failed');
+      } else if (part.type === 'finish') {
+        cleanFinish = part.finishReason === 'stop' || part.finishReason === 'tool-calls';
       }
     }
 
     // A loop whose steps ran out on tool results owes an answer: one tools-disabled pass writes it.
-    const owed = owesAnswer(await result.steps)
-      ? streamText(owedAnswerRequest(turnConfig, [...history, ...(await result.response).messages]))
-      : null;
+    const steps = await result.steps;
+    const allReactionCalls = [
+      ...reactionStepCalls(steps),
+      ...reactionCalls.filter((call) => call.state === 'error'),
+    ];
+    if (
+      !cleanFinish &&
+      !response.trim() &&
+      !input.observation &&
+      input.conversationReaction?.canFinish(allReactionCalls)
+    ) {
+      throw new Error('Agent reaction inference did not finish cleanly');
+    }
+    const reactionFinished =
+      cleanFinish &&
+      !response.trim() &&
+      !input.observation &&
+      !!input.conversationReaction?.canFinish(allReactionCalls);
+    const owed =
+      !reactionFinished && owesAnswer(steps)
+        ? streamText(
+            owedAnswerRequest(turnConfig, [...history, ...(await result.response).messages]),
+          )
+        : null;
     if (owed) {
       for await (const part of owed.fullStream) {
         if (part.type === 'text-delta' && part.text) say(part.text);
@@ -408,7 +453,17 @@ export async function runAgentTurn(input: {
       );
     }
 
-    return { response, tokensUsed, creditsCharged, ...(canvas.length > 0 ? { canvas } : {}) };
+    const reactionOnly =
+      reactionFinished && input.conversationReaction
+        ? await input.conversationReaction.complete(response, allReactionCalls)
+        : false;
+    return {
+      response,
+      tokensUsed,
+      creditsCharged,
+      ...(canvas.length > 0 ? { canvas } : {}),
+      ...(reactionOnly ? { reactionOnly: true } : {}),
+    };
   } catch (error: unknown) {
     log.general.error(
       input.observation ? { agentId: agent._id } : { err: error, agentId: agent._id },

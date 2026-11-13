@@ -1,6 +1,11 @@
 /** The room selector has no tools and cannot act for any member. */
 import { generateObject } from 'ai';
-import { getAIModel, resolveUtilityModel, utilityOutputTokens } from '../../chat-core.js';
+import {
+  getAIModel,
+  resolveDefaultModel,
+  resolveUtilityModel,
+  utilityOutputTokens,
+} from '../../chat-core.js';
 import { reserveBackgroundProductCredits } from '../../product-credit-access.js';
 import { finalizeCredits, refundReservation } from '../../credits-manager.js';
 import { servedModelId, servedReferenceOf } from '../../models/power-levels.js';
@@ -10,31 +15,45 @@ import {
   REACTION_SELECTION_SYSTEM,
   ReactionDecisionSchema,
   reactionRoomDecision,
-  RoomDecisionSchema,
+  roomDecisionChoices,
+  roomChoiceSchema,
+  roomChoiceDecision,
   roomSelectionData,
   validateRoomDecision,
   type RoomDecision,
   type RoomSelectionInput,
 } from './decision.js';
 
+// Auto planning may reason within its token allowance; binary feedback remains a short utility job.
+const ROOM_SELECTION_TIMEOUT_MS = 30_000;
+const REACTION_SELECTION_TIMEOUT_MS = 10_000;
+// Planning leaves room for reasoning before its structured decision. Kaana's
+// workload policy must admit the full allowance rather than truncate reasoning.
+const ROOM_SELECTION_OUTPUT_TOKENS = 8_192;
+
 export async function selectRoomDecision(input: RoomSelectionInput): Promise<RoomDecision> {
-  const prompt = roomSelectionData(input);
-  const resolved = await resolveUtilityModel();
+  const choices = input.trigger ? undefined : roomDecisionChoices(input);
+  const schema = choices ? roomChoiceSchema(choices) : ReactionDecisionSchema;
+  const prompt = roomSelectionData(input, choices);
+  // Multi-member planning uses Kaana's capability-aware default; the fixed-recipient binary
+  // feedback decision remains a utility call. Structured output reaches Kaana unchanged.
+  const resolved = input.trigger ? await resolveUtilityModel() : resolveDefaultModel();
   const reservation = await reserveBackgroundProductCredits(input.userId);
   if (!reservation) throw new Error('Room selection requires credits');
   let settled = false;
   const started = Date.now();
   try {
+    const timeout = AbortSignal.timeout(
+      input.trigger ? REACTION_SELECTION_TIMEOUT_MS : ROOM_SELECTION_TIMEOUT_MS,
+    );
     const result = await generateObject({
       model: getAIModel(resolved, 'agent_run'),
-      schema: input.trigger ? ReactionDecisionSchema : RoomDecisionSchema,
+      schema,
       system: input.trigger ? REACTION_SELECTION_SYSTEM : ROOM_SELECTION_SYSTEM,
       prompt,
-      maxOutputTokens: utilityOutputTokens(512),
+      maxOutputTokens: input.trigger ? utilityOutputTokens(512) : ROOM_SELECTION_OUTPUT_TOKENS,
       maxRetries: 1,
-      abortSignal: input.signal
-        ? AbortSignal.any([input.signal, AbortSignal.timeout(10_000)])
-        : AbortSignal.timeout(10_000),
+      abortSignal: input.signal ? AbortSignal.any([input.signal, timeout]) : timeout,
     });
     const usage = result.usage;
     const { creditsCharged } = await finalizeCredits(
@@ -51,7 +70,9 @@ export async function selectRoomDecision(input: RoomSelectionInput): Promise<Roo
     );
     settled = true;
     const decision = validateRoomDecision(
-      input.trigger ? reactionRoomDecision(result.object, input.trigger) : result.object,
+      input.trigger
+        ? reactionRoomDecision(result.object, input.trigger)
+        : roomChoiceDecision(result.object, choices!),
       input,
     );
     log.agents.info(
