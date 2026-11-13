@@ -35,6 +35,10 @@ function useHeldConnection(apiUrl: string, enabled: boolean): RealtimeConnection
   const { oxyServices, user, canUsePrivateApi } = useOxy();
   const account = enabled && canUsePrivateApi ? (user?.id ?? null) : null;
   const [connection, setConnection] = useState<RealtimeConnection | null>(null);
+  // The connection is the account's: a new services object for the same account does not open
+  // another one (read when the connection is opened).
+  const servicesRef = useRef(oxyServices);
+  servicesRef.current = oxyServices;
 
   useEffect(() => {
     if (!account) {
@@ -42,7 +46,7 @@ function useHeldConnection(apiUrl: string, enabled: boolean): RealtimeConnection
       return;
     }
     // The API's own token, refreshed by Oxy when it is due — never a captured one.
-    const linked = oxyServices.createLinkedClient({ baseURL: apiUrl });
+    const linked = servicesRef.current.createLinkedClient({ baseURL: apiUrl });
     const held = acquireRealtime(apiUrl, account, () => linked.getAccessToken(apiUrl));
     setConnection(held.connection);
     return () => {
@@ -50,7 +54,7 @@ function useHeldConnection(apiUrl: string, enabled: boolean): RealtimeConnection
       linked.dispose();
       setConnection(null);
     };
-  }, [apiUrl, account, oxyServices]);
+  }, [apiUrl, account]);
 
   return connection;
 }

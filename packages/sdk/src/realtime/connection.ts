@@ -94,7 +94,8 @@ function open(url: string): Internal {
     transports: ['websocket'],
     auth: (cb) => {
       const source = [...tokens.values()].at(-1);
-      Promise.resolve(source ? source() : null).then(
+      // A source that throws is a handshake without a token, never a crash of the caller.
+      new Promise<string | null>((resolve) => resolve(source ? source() : null)).then(
         (token) => cb(token ? { token } : {}),
         () => cb({}),
       );

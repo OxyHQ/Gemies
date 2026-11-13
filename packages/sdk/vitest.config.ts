@@ -10,6 +10,7 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   test: {
+    setupFiles: ['./tests/support/inert-socket.ts'],
     server: {
       deps: {
         inline: [/@oxy\.so[\\/]bloom/, /react-native-css/],
