@@ -30,7 +30,7 @@ vi.mock('../../notification-service', () => ({ sendNotification: vi.fn(async () 
 vi.mock('../../../socket', () => ({
   getIO: () => null,
   emitAgentActivity: vi.fn(),
-  emitAliaActivity: vi.fn(),
+  emitLegacyAliaActivity: vi.fn(),
 }));
 vi.mock('../../task-queue', () => ({ enqueueAgentSession: vi.fn(async () => ({ queued: true })) }));
 vi.mock('../../user-credits-helpers', () => ({ getOrCreateUserCredits: async () => {} }));

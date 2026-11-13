@@ -58,6 +58,8 @@ import { runStream, type AgentMessage, type StreamRunnerState } from './stream-r
 import { runTextToolFallback } from './text-tool-fallback.js';
 import type { ToolRouting } from '../tool-budget.js';
 import { recordChatInferenceAttempt } from '../credit-reconciliation.js';
+import type { ActorActivity } from '../realtime/activity.js';
+import { publishConversation } from '../realtime/conversations.js';
 
 /** Terminal model-response errors that need no route-level substitution. */
 const TERMINAL_STREAM_ERRORS: Set<FailoverReason> = new Set([
@@ -108,6 +110,8 @@ export interface ProviderLoopParams {
   originApp?: string;
   /** The turn's tool-loop bounds (`turnStepBounds`); an ordinary chat turn's when absent. */
   stepBounds?: TurnStepBounds;
+  /** What the person's other surfaces show while the turn streams (`lib/realtime/activity.ts`). */
+  activity?: ActorActivity;
   /** The level, resolved once at the request boundary. */
   reasoningEffort: ReasoningEffort | null;
   convertedMessages: ModelMessage[];
@@ -439,6 +443,7 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
           state: streamState,
           idle: watchdog,
           ...(params.stepBounds === undefined ? {} : { stepBounds: params.stepBounds }),
+          ...(params.activity === undefined ? {} : { activity: params.activity }),
           onFirstChunk: () => {
             // Called on EVERY chunk, so the first one wins: time to FIRST token,
             // not time to the most recent one.
@@ -518,6 +523,7 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
                 `event: alia.title\ndata: ${JSON.stringify({ eventVersion: 1, title, conversationId })}\n\n`,
               );
               await updateConversationTitle(getDb(), req.user.id, conversationId, title);
+              void publishConversation(req.user.id, conversationId);
               // The title is a model summary of the user's own conversation.
               log.v1.info({ conversationId }, 'Auto-generated conversation title');
             }

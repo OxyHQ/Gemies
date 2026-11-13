@@ -1,13 +1,30 @@
-import { useEffect } from 'react';
-import { useOxy } from '@oxy.so/services/ui/client';
 import type { GemieAvatarState } from '../components/GemieAvatar';
 import { selectGemieActivity, useGemieActivityStore } from '../lib/activity-store';
-import { acquireActivitySocket } from '../lib/activity-socket';
 import { GEMIES_API_URL } from '../lib/origins';
+import type { ActorActivityEntry } from '../realtime/activity';
+import { useRealtimeActivityStore } from '../realtime/activity';
+import { useRealtimeActivityFeed } from '../realtime/react';
 
 export interface UseGemieActivityOptions {
-  /** The API the activity socket connects to. Defaults to the runtime's `apiUrl`. */
+  /** The API to hear from when no `GemieRuntimeProvider` is mounted. Defaults to Gemies's. */
   apiUrl?: string;
+}
+
+/** A tool in use is the avatar's `working`; the other states are its own. */
+const AVATAR_STATE: Record<ActorActivityEntry['state'], GemieAvatarState> = {
+  thinking: 'thinking',
+  writing: 'writing',
+  tool: 'working',
+};
+const RANK: Record<GemieAvatarState, number> = { idle: 0, writing: 1, thinking: 2, working: 3 };
+
+function busiestRemote(entries: Readonly<Record<string, ActorActivityEntry>>): GemieAvatarState {
+  let top: GemieAvatarState = 'idle';
+  for (const entry of Object.values(entries)) {
+    const state = AVATAR_STATE[entry.state];
+    if (RANK[state] > RANK[top]) top = state;
+  }
+  return top;
 }
 
 /**
@@ -15,25 +32,13 @@ export interface UseGemieActivityOptions {
  * avatar, a status dot. It is the busiest of:
  *
  * - a turn running in this app (`useConversationThread`, so every chat drives every button), and
- * - her runs for the signed-in person elsewhere, reported by the server over one shared socket
- *   (background work, another device), connected only while someone is signed in AND using this.
+ * - what the signed-in person's gemies are doing elsewhere (background work, another device), heard
+ *   as `activity` on the account's realtime connection: the runtime provider's, or one held here
+ *   while signed in when the button is drawn outside any.
  */
 export function useGemieActivity(options: UseGemieActivityOptions = {}): GemieAvatarState {
-  const { apiUrl = GEMIES_API_URL } = options;
-  const { oxyServices, isAuthenticated } = useOxy();
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    // The API's own token, refreshed by core when it is due, as every other request gets it. The
-    // session's base `accessToken` is not refreshed for this origin: once it expired, the server
-    // refused every handshake and the socket retried forever.
-    const linked = oxyServices.createLinkedClient({ baseURL: apiUrl });
-    const release = acquireActivitySocket(apiUrl, () => linked.getAccessToken(apiUrl));
-    return () => {
-      release();
-      linked.dispose();
-    };
-  }, [apiUrl, isAuthenticated, oxyServices]);
-
-  return useGemieActivityStore(selectGemieActivity);
+  useRealtimeActivityFeed(options.apiUrl ?? GEMIES_API_URL);
+  const local = useGemieActivityStore(selectGemieActivity);
+  const remote = useRealtimeActivityStore((s) => busiestRemote(s.entries));
+  return RANK[remote] > RANK[local] ? remote : local;
 }

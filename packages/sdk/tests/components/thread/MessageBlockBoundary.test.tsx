@@ -37,6 +37,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  *    and keeps rendering everything around it.
  */
 
+// The runtime provider holds the account's realtime connection; signed out here, it holds none.
+vi.mock('@oxy.so/services/ui/client', () => ({
+  useOxy: () => ({ user: null, canUsePrivateApi: false }),
+}));
 vi.mock('react-native', async () => {
   const ReactModule = await import('react');
   const host =

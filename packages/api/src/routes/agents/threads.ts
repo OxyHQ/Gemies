@@ -25,6 +25,7 @@ import { resolveModel } from '../../lib/chat-core.js';
 import { ModelNotFoundError } from '../../lib/models/errors.js';
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
+import { publishConversation } from '../../lib/realtime/conversations.js';
 
 const router = Router();
 const route =
@@ -124,6 +125,7 @@ router.post(
       agentId: agent._id,
       agentThreadId: thread.id,
     });
+    void publishConversation(req.user.id, conversation.conversationId);
     res.status(201).json({ thread, conversationId: conversation.conversationId });
   }),
 );

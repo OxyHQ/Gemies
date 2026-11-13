@@ -41,6 +41,8 @@ vi.mock('../../src/runtime/conversations', () => ({
     }),
   }),
   useDeleteConversation: () => ({ mutateAsync: vi.fn() }),
+  useReadConversation: () => async () => ({ messages: [] }),
+  useMarkConversationRead: () => () => undefined,
   useClearConversation: () => ({ mutateAsync: vi.fn() }),
 }));
 vi.mock('@oxy.so/services/ui/client', () => ({

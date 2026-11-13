@@ -932,7 +932,6 @@ export class VoiceCall {
           conversationId: start.conversationId,
           messageIds: batch.map((message) => message.id),
         });
-        this.env.announce(this.oxyUserId, start.conversationId, batch);
         if (titleNow) this.env.titleConversation(this.oxyUserId, start.conversationId, firstUser);
       })
       .catch((error: unknown) => {

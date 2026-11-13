@@ -413,6 +413,10 @@
     "earlier": "Anteriores",
     "collapse": "Contraer barra lateral",
     "expand": "Expandir barra lateral",
+    "activityThinking": "{{name}} está pensando…",
+    "activityWriting": "{{name}} está escribiendo…",
+    "activityTool": "{{name}} está trabajando…",
+    "unread": "{{count}} sin leer",
     "noAgentMessages": "Sin mensajes todavía",
     "create": {
       "chat": "Chat nuevo",
@@ -1229,7 +1233,6 @@
       "waiting": "Esperando actividad…",
       "reconnected": "Reconectado",
       "connectionLost": "Conexión perdida — reconectando…",
-      "connectionError": "Error de conexión — reintentando…",
       "unavailable": "El terminal no está disponible en este dispositivo."
     },
     "cannotReviewOwn": "No puedes reseñar tu propio Gemie",

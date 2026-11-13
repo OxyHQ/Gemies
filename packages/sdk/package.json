@@ -19,6 +19,7 @@
     "./csp": "./src/csp.ts",
     "./dictation": "./src/dictation.ts",
     "./model": "./src/runtime/model.ts",
+    "./realtime": "./src/realtime/index.ts",
     "./runtime": "./src/runtime/index.ts",
     "./text": "./src/text.ts",
     "./tools": "./src/tools.ts",

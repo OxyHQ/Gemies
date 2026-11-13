@@ -19,12 +19,12 @@ it('isolates credit reads by current subject/session and rejects an in-flight sw
   useCredits();
   const next = query.mock.calls.at(-1)!;
   expect(first[0]).not.toEqual(next[0]);
-  // Never polled: a turn's end, a purchase or the tab coming back refresh it.
+  // Never polled, nor re-read on focus: the account's realtime `credits` event keeps it.
   // This session's last balance stays in memory to be drawn meanwhile (never on disk).
-  expect(next[3]).toMatchObject({ enabled: true, refetchOnWindowFocus: true });
+  expect(next[3]).toMatchObject({ enabled: true, refetchOnWindowFocus: false });
   expect(next[3].gcTime).not.toBe(0);
   expect(next[3].refetchInterval).toBeUndefined();
-  expect(next[3].staleTime).toBeGreaterThanOrEqual(30_000);
+  expect(next[3].staleTime).toBe(Number.POSITIVE_INFINITY);
   get.mockResolvedValue({ data: { subjectAccountId: 'account-b', credits: 42 } });
   await expect(first[3].queryFn()).rejects.toThrow('account changed');
   await expect(next[3].queryFn()).resolves.toMatchObject({ credits: 42 });

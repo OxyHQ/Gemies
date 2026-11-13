@@ -31,7 +31,7 @@ bun run dev:api                                       # también dev:app, dev:in
 
 - Índice: [`docs/index.mdx`](./docs/index.mdx). Quién actúa: [`docs/actors.mdx`](./docs/actors.mdx). Decisiones vinculantes: [`docs/adr/`](./docs/adr).
 - Reglas completas con su porqué: [`docs/agent-rules.md`](./docs/agent-rules.md).
-- Chat/SSE: [`docs/chat-runtime.mdx`](./docs/chat-runtime.mdx). Agentes: [`docs/agents.md`](./docs/agents.md). Tareas: [`docs/proactive-intelligence.md`](./docs/proactive-intelligence.md). Memoria: [`docs/memory-system.md`](./docs/memory-system.md). Despliegue: [`docs/deployment.md`](./docs/deployment.md).
+- Chat/SSE: [`docs/chat-runtime.mdx`](./docs/chat-runtime.mdx). Tiempo real (un socket, eventos, escribiendo…): [`docs/realtime.mdx`](./docs/realtime.mdx). Agentes: [`docs/agents.md`](./docs/agents.md). Tareas: [`docs/proactive-intelligence.md`](./docs/proactive-intelligence.md). Memoria: [`docs/memory-system.md`](./docs/memory-system.md). Despliegue: [`docs/deployment.md`](./docs/deployment.md).
 - Autoridad del requester entre productos: [`docs/requester-authority.md`](./docs/requester-authority.md).
 
 ## Convenciones que difieren de lo habitual

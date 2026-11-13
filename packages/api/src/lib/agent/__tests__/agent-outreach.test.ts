@@ -10,7 +10,7 @@ const H = vi.hoisted(() => ({
   findLast: vi.fn(),
   insert: vi.fn(),
   notify: vi.fn(),
-  emit: vi.fn(),
+  publish: vi.fn(),
   receipt: vi.fn(),
 }));
 
@@ -44,7 +44,7 @@ vi.mock('../../agent-identity.js', () => ({
   agentPromptName: (agent: { name: string }) => agent.name,
 }));
 vi.mock('../../notification-service.js', () => ({ sendNotification: H.notify }));
-vi.mock('../../../socket.js', () => ({ getIO: () => ({ to: () => ({ emit: H.emit }) }) }));
+vi.mock('../../realtime/conversations.js', () => ({ publishConversation: H.publish }));
 vi.mock('../../logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   return { log: { agents: child } };
@@ -78,10 +78,8 @@ describe('an agent writing to a person first', () => {
     const [[, [row]]] = H.insert.mock.calls as [[unknown, Array<Record<string, unknown>>]];
     expect(row).toMatchObject({ role: 'assistant', content: 'Found it', seq: 4 });
     expect(String(row.clientMessageId)).toMatch(/^agent-push-/);
-    expect(H.emit).toHaveBeenCalledWith(
-      'conversation:message',
-      expect.objectContaining({ conversationId: 'conv-1' }),
-    );
+    // Every surface of the person hears it, with the message it gained.
+    expect(H.publish).toHaveBeenCalledWith('u', 'conv-1', { appendedFromSeq: 4 });
     expect(H.notify).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'u', conversationId: 'conv-1', type: 'proactive_insight' }),
     );

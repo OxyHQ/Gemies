@@ -25,6 +25,13 @@ export type {
 } from './config';
 export type { RoomEvent } from './room-events';
 export type { MessageReactionUpdate } from './message-reactions';
+export {
+  useGemieRealtime,
+  useRealtimeEvent,
+  useRealtimeReset,
+  useRealtimeTopic,
+} from '../realtime/react';
+export { useConversationActivity } from '../realtime/activity';
 export { GemieApiError, useGemieApi } from './api';
 export {
   GEMIE_FEATURES,
@@ -87,6 +94,7 @@ export {
   useConversations,
   useCreateConversation,
   useDeleteConversation,
+  useMarkConversationRead,
   usePrefetchConversation,
   useRenameConversation,
   useSaveConversation,

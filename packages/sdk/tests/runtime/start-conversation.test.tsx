@@ -11,6 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const created = vi.hoisted(() => ({ fail: false, calls: [] as unknown[] }));
+// The runtime provider holds the account's realtime connection; signed out here, it holds none.
+vi.mock('@oxy.so/services/ui/client', () => ({
+  useOxy: () => ({ user: null, canUsePrivateApi: false }),
+}));
 vi.mock('../../src/runtime/conversations', () => ({
   useCreateConversation: () => ({
     mutateAsync: async (params: unknown) => {

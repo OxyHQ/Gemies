@@ -37,6 +37,7 @@ An ADR records a decision that is **in force now**, the context that forced it, 
 | [0036](./0036-external-agents-have-no-oxy-account.md) | An external agent has no Oxy account; its identity is its own row | Accepted | 2026-11-13 |
 | [0038](./0038-external-agents-connect-with-their-own-credential.md) | An external agent connects with its own credential; the pairing code is the authorisation | Accepted | 2026-11-13 |
 | [0039](./0039-external-agents-reach-their-tools-over-mcp.md) | An external agent reaches its gemie's tools as an MCP server | Accepted | 2026-11-13 |
+| [0040](./0040-realtime-over-one-socket.md) | Realtime over one socket: an account log, typed frames, the turn on SSE | Accepted | 2026-11-13 |
 
 Companion document: [the compatibility window and sunset criteria](../migration/compatibility-window.md), which binds ADR 0002, ADR 0003 and ADR 0004 to measurable removal gates — for paths (a) and (c); path (b) left the window under ADR 0010.
 
@@ -94,5 +95,6 @@ ADR 0019 applies Oxy ADR 0043 to Alia: who owns each kind of stored bytes, how e
 - [0037 — Telegram runs on its official Bot API: a person's account through Telegram Business, and a gemie's own bot](./0037-telegram-on-the-bot-api.md).
 - [0038 — An external agent connects with its own credential; the pairing code is the authorisation](./0038-external-agents-connect-with-their-own-credential.md).
 - [0039 — An external agent reaches its gemie's tools as an MCP server](./0039-external-agents-reach-their-tools-over-mcp.md).
+- [0040 — Realtime over one socket: an account log, typed frames, the turn on SSE](./0040-realtime-over-one-socket.md).
 
 - [0033 — Durable autonomous work](./0033-durable-autonomous-work.md).

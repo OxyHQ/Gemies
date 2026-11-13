@@ -117,6 +117,11 @@ export interface Conversation {
   threadId?: string | null;
   /** The app the conversation started in, by its slug, or `null` for Alia's own surfaces. */
   app?: string | null;
+  /**
+   * Messages the person has not seen: what arrived while nobody watched (a gemie writing on its
+   * own, a group member answering in the background). The sidebar's badge; zeroed by reading it.
+   */
+  unreadCount?: number;
   createdAt: Date;
   updatedAt: Date;
   messages: Message[];

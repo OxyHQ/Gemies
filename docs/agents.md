@@ -779,7 +779,8 @@ confines to an app (ADR 0021). Every stage holds credits like a goal does.
 
 `lib/agent/agent-outreach.ts` posts an assistant message INTO the person's
 conversation with the agent (appended with the next `seq`, marked with a
-`agent-push-` client id), emits `conversation:message` on `user:<id>` and sends
+`agent-push-` client id, counted unread), publishes it on the person's realtime
+connection (a `conversation` frame with the message, [Realtime](./realtime.mdx)) and sends
 a notification that opens `/@handle`.
 
 - `result`: a finished top-level background run (goal, scheduled task) is

@@ -17,6 +17,7 @@ import {
 import { shouldAnswer } from '../lib/connected-accounts.js';
 import { log } from '../lib/logger.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { publishConnectionsChanged } from '../lib/realtime/account.js';
 
 const router = Router();
 
@@ -75,7 +76,9 @@ router.post('/session', authenticateToken, async (req: Request, res: Response) =
   const parsed = sessionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid session' });
   try {
-    await setConnectedAccountSessionState(getDb(), context.identityId, parsed.data);
+    const account = await setConnectedAccountSessionState(getDb(), context.identityId, parsed.data);
+    // The panel showing it follows at once: a WhatsApp code that was scanned, a session that ended.
+    if (account) void publishConnectionsChanged(account.oxyUserId);
     res.status(204).end();
   } catch (err: unknown) {
     log.channels.error({ err }, 'Storing an account session failed');

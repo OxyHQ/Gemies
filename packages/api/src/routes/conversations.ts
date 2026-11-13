@@ -10,14 +10,12 @@ import { randomUUID } from 'crypto';
 import { getDb } from '../db/index.js';
 import { findAgentById } from '../db/agents/agentRepository.js';
 import { findAgentThread } from '../db/agents/agentRuntimeRepository.js';
-import {
-  createGroupConversation,
-  listGroupMembers,
-  listGroupMembersFor,
-} from '../db/chat/conversationMemberRepository.js';
+import { createGroupConversation } from '../db/chat/conversationMemberRepository.js';
 import { parseGroupMembers } from '../domain/conversation-groups.js';
 import { canReachAgent } from '../lib/agent-account.js';
-import { spaceIdsForConversations } from '../db/spaces/spaceRepository.js';
+import { accountEventHead } from '../db/realtime/accountEventRepository.js';
+import { summarizeConversations } from '../lib/chat/conversation-summary.js';
+import { publishConversation, publishConversationDeleted } from '../lib/realtime/conversations.js';
 import { appSurfaceOf } from '../lib/app-surface.js';
 import { purgeConversationSpeechClips } from '../lib/speech-clips.js';
 import {
@@ -26,6 +24,7 @@ import {
   deleteConversation,
   findConversation,
   listConversations,
+  markConversationRead,
   upsertConversation,
 } from '../db/chat/conversationRepository.js';
 import {
@@ -318,6 +317,7 @@ router.post('/new', authenticateToken, async (req: Request, res: Response) => {
         agentIds: members.agentIds,
         ...(originApp === undefined ? {} : { originApp }),
       });
+      void publishConversation(req.user.id, group.conversation.conversationId);
       return res.json({
         id: group.conversation.conversationId,
         title: group.conversation.title,
@@ -364,6 +364,7 @@ router.post('/new', authenticateToken, async (req: Request, res: Response) => {
       ...(thread === undefined ? {} : { agentThreadId: thread.id }),
       ...(originApp === undefined ? {} : { originApp }),
     });
+    void publishConversation(req.user.id, conversation.conversationId);
 
     res.json({
       id: conversation.conversationId,
@@ -425,6 +426,11 @@ router.get('/', authenticateTokenOrApiKey, async (req: Request, res: Response) =
     const originApp = requestedApp(req.query.app);
     if (originApp === null) return res.status(400).json(INVALID_APP);
 
+    // The account's realtime cursor, read BEFORE the rows: an event is logged after its change
+    // commits, so every change behind a number up to this one is already in the rows below, and a
+    // client that catches up from it can only replay a change it has, never miss one
+    // (`docs/realtime.mdx`).
+    const realtimeSeq = await accountEventHead(getDb(), localAccountId);
     // One extra row decides `hasMore` without a second count query.
     const rows = await listConversations(getDb(), localAccountId, limit + 1, {
       ...(before === undefined ? {} : { before }),
@@ -434,40 +440,13 @@ router.get('/', authenticateTokenOrApiKey, async (req: Request, res: Response) =
 
     const hasMore = rows.length > limit;
     const results = hasMore ? rows.slice(0, limit) : rows;
-    // The agents of the groups on this page, in one query: empty for every other conversation.
-    const groupMembers = await listGroupMembersFor(
-      getDb(),
-      localAccountId,
-      results.map((c) => c.conversationId),
-    );
-
-    // Which of these are a space's room (ADR 0028), so a client files them under the space and never
-    // among Alia's own chats.
-    const spaceIds = await spaceIdsForConversations(
-      getDb(),
-      localAccountId,
-      results.map((c) => c.conversationId),
-    );
-
     const nextCursor =
       hasMore && results.length > 0 ? results[results.length - 1].updatedAt.toISOString() : null;
+    const conversations = await summarizeConversations(getDb(), localAccountId, results);
 
     res.json({
-      conversations: results.map((c) => ({
-        id: c.conversationId,
-        title: c.title,
-        lastMessage: c.lastMessage,
-        source: c.source,
-        agentId: publicAgentId(c.agentId),
-        // The thread this is a stretch of, so a client files it there and never among the loose
-        // chats (Alia's thread: `lib/gemie-thread.ts`). `null` for a conversation of no thread row.
-        threadId: c.agentThreadId,
-        memberAgentIds: groupMembers.get(c.conversationId) ?? [],
-        spaceId: spaceIds.get(c.conversationId) ?? null,
-        app: c.originApp,
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-      })),
+      conversations,
+      realtimeSeq,
       nextCursor,
       hasMore,
     });
@@ -487,31 +466,23 @@ router.get('/:id', authenticateTokenOrApiKey, async (req: Request, res: Response
     const userId = localAccountId;
 
     const conversationId = String(req.params.id);
+    // Before the reads, for the reason the list gives.
+    const realtimeSeq = await accountEventHead(getDb(), userId);
     const conversation = await findConversation(getDb(), userId, conversationId);
 
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    const rows = await listMessages(getDb(), userId, conversationId);
-    const memberAgentIds = await listGroupMembers(getDb(), userId, conversationId);
-    const spaceId =
-      (await spaceIdsForConversations(getDb(), userId, [conversationId])).get(conversationId) ??
-      null;
+    const [rows, [summary]] = await Promise.all([
+      listMessages(getDb(), userId, conversationId),
+      summarizeConversations(getDb(), userId, [conversation]),
+    ]);
 
     res.json({
-      id: conversation.conversationId,
-      title: conversation.title,
-      lastMessage: conversation.lastMessage,
-      source: conversation.source,
-      agentId: publicAgentId(conversation.agentId),
-      threadId: conversation.agentThreadId,
-      memberAgentIds,
-      spaceId,
-      app: conversation.originApp,
+      ...summary,
       messages: rows.map(toStoredMessage),
-      createdAt: conversation.createdAt,
-      updatedAt: conversation.updatedAt,
+      realtimeSeq,
     });
   } catch (error: unknown) {
     log.chat.error({ err: error }, 'Error fetching conversation');
@@ -579,6 +550,8 @@ router.post('/', authenticateTokenOrApiKey, async (req: Request, res: Response) 
       }),
       replaceMessages(getDb(), localAccountId, conversationId, toStore),
     ]);
+    // A client's full save rewrote the thread: its other surfaces read it again.
+    void publishConversation(localAccountId, conversationId, { reload: true });
 
     res.json({
       id: conversation.conversationId,
@@ -735,6 +708,7 @@ router.delete('/:id/messages', authenticateToken, async (req: Request, res: Resp
     if (matched === 0) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
+    void publishConversation(userId, conversationId, { reload: true });
 
     res.json({ success: true });
   } catch (error: unknown) {
@@ -815,6 +789,8 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
      * The clips spoken from it go first, for the reason the clear above gives.
      */
     const conversationId = String(req.params.id);
+    // Whose thread it was, so the gemie's row hears its new total.
+    const existing = await findConversation(getDb(), req.user.id, conversationId);
     await purgeConversationSpeechClips(getDb(), req.user.id, conversationId);
     const [removed] = await Promise.all([
       deleteConversation(getDb(), req.user.id, conversationId),
@@ -826,11 +802,34 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
     if (removed === 0) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
+    void publishConversationDeleted(req.user.id, conversationId, existing?.agentId);
 
     res.json({ success: true });
   } catch (error: unknown) {
     log.chat.error({ err: error }, 'Error deleting conversation');
     res.status(500).json({ error: 'Failed to delete conversation' });
+  }
+});
+
+/**
+ * The person has seen the conversation: its unread count is zero, on every surface of theirs
+ * (WhatsApp's blue ticks, from the reader's side). Sent by a client showing the conversation when
+ * something arrived; reading moves nothing in the list. 404 for a conversation that is not theirs.
+ */
+router.post('/:id/read', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const conversationId = String(req.params.id);
+    if (!(await markConversationRead(getDb(), req.user.id, conversationId))) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+    void publishConversation(req.user.id, conversationId);
+    res.json({ success: true });
+  } catch (error: unknown) {
+    log.chat.error({ err: error }, 'Error marking a conversation read');
+    res.status(500).json({ error: 'Failed to mark the conversation read' });
   }
 });
 

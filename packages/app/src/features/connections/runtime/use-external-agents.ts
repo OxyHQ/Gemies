@@ -36,15 +36,14 @@ export function useExternalAgents(locale: string) {
   const [invite, setInvite] = useState<PairingInvite | null>(null);
   const [inviteExpired, setInviteExpired] = useState(false);
   /**
-   * Read when the section opens and when the tab comes back, never on a timer: it polled every 6 s
-   * while open. Pairing shows "Connected" through the same seam realtime will use, an
-   * `external-agents:presence` socket event invalidating `queryKeys.agents.external`; until then
-   * the section's own actions (pair, remove) and focus refresh it.
+   * Read when the section opens, never on a timer (it polled every 6 s while open). A computer
+   * coming online or going away is the `presence` signal, written straight into this list; a
+   * pairing finished elsewhere is the `gemies` event, which re-reads it (`useAppRealtime`).
    */
   const query = useQuery({
     queryKey: queryKeys.agents.external,
     enabled: isAuthenticated,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
     queryFn: async () =>
       (await apiClient.get<{ agents: ExternalAgent[] }>(API_ROUTES.agents.external.list)).data
         .agents ?? [],

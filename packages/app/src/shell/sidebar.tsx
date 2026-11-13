@@ -95,6 +95,8 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { Badge } from '@oxy.so/bloom/badge';
+import { type ActorActivityEntry, useRealtimeActivityStore } from '@gemies/sdk/realtime';
 
 const SUPPORT_URL = 'https://oxy.so/help';
 const PRIVACY_URL = 'https://oxy.so/legal/privacy';
@@ -160,6 +162,8 @@ function useSidebarProps() {
   const { t } = useTranslation();
   const chatId = useStore((state) => state.chatId);
   const streamingChatId = useConversationStore((state) => state.streamingConversationId);
+  // Who is doing what, live, on every row ("Pepe is typing…"): the account's realtime activity.
+  const activity = useSidebarActivity();
   const {
     data,
     fetchNextPage,
@@ -379,7 +383,8 @@ function useSidebarProps() {
 
   const row = React.useCallback(
     (conv: Conversation): SidebarTreeItem => {
-      const streaming = streamingChatId === conv.id;
+      const streaming = streamingChatId === conv.id || activity.inConversation(conv.id) !== null;
+      const unread = conv.unreadCount ?? 0;
       const menu = isAuthenticated ? (
         <ConversationActions
           conversation={conv}
@@ -405,13 +410,12 @@ function useSidebarProps() {
         meta: shortTime(conv.updatedAt),
         onPrefetch: () => onHoverIntent(() => prefetchConversation(conv.id)),
         actions:
-          streaming && menu ? (
+          streaming || unread > 0 ? (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <StreamingIndicator />
+              {streaming ? <StreamingIndicator /> : null}
+              {unread > 0 ? <UnreadBadge count={unread} /> : null}
               {menu}
             </View>
-          ) : streaming ? (
-            <StreamingIndicator />
           ) : (
             (menu ?? undefined)
           ),
@@ -423,6 +427,7 @@ function useSidebarProps() {
       t,
       isAuthenticated,
       streamingChatId,
+      activity,
       projects,
       folders,
       pinnedIds,
@@ -474,9 +479,10 @@ function useSidebarProps() {
       ),
       // The last line of the thread, under the name; before anything was said, the invitation.
       description:
-        agent.external && !agent.external.online
+        activity.ofAgent(agent._id, agentDisplayName(agent)) ??
+        (agent.external && !agent.external.online
           ? t('sidebar.externalOffline')
-          : agent.lastMessage?.trim() || t('sidebar.noAgentMessages'),
+          : agent.lastMessage?.trim() || t('sidebar.noAgentMessages')),
       // Ahead of the press: its thread and conversation, when there is a conversation to read.
       onPrefetch: () =>
         onHoverIntent(() =>
@@ -484,16 +490,20 @@ function useSidebarProps() {
         ),
       // Its page, edit, computer, share, move to a space, pause and delete (`sidebar-gemie-menu.tsx`).
       actions: isAuthenticated ? (
-        <GemieRowActions
-          agent={agent}
-          isOwner={user?.id === agent.author}
-          spaces={spacesUi.spaces}
-          handlers={gemieHandlers}
-        />
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {(agent.unreadCount ?? 0) > 0 ? <UnreadBadge count={agent.unreadCount ?? 0} /> : null}
+          <GemieRowActions
+            agent={agent}
+            isOwner={user?.id === agent.author}
+            spaces={spacesUi.spaces}
+            handlers={gemieHandlers}
+          />
+        </View>
       ) : undefined,
     }),
     [
       t,
+      activity,
       onHoverIntent,
       prefetchAgentThread,
       isAuthenticated,
@@ -518,10 +528,15 @@ function useSidebarProps() {
           }))}
         />
       ),
-      description: room?.lastMessage?.trim() || t('sidebar.noAgentMessages'),
+      description:
+        activity.inConversation(space.conversationId) ??
+        (room?.lastMessage?.trim() || t('sidebar.noAgentMessages')),
       onPrefetch: () => onHoverIntent(() => prefetchConversation(space.conversationId)),
+      ...((room?.unreadCount ?? 0) > 0
+        ? { actions: <UnreadBadge count={room?.unreadCount ?? 0} /> }
+        : {}),
     }),
-    [t, onHoverIntent, prefetchConversation],
+    [t, onHoverIntent, prefetchConversation, activity],
   );
 
   // Spaces (ADR 0028): one section per space — its room and its agents, drawn like the Agents list.
@@ -570,7 +585,9 @@ function useSidebarProps() {
           icon: undefined,
           meta: undefined,
           leading: <AgentStack size={AGENT_ROW_AVATAR} agents={members.slice(0, 3)} />,
-          description: conv.lastMessage?.trim() || t('sidebar.noAgentMessages'),
+          description:
+            activity.inConversation(conv.id) ??
+            (conv.lastMessage?.trim() || t('sidebar.noAgentMessages')),
         },
       ];
     });
@@ -1034,4 +1051,45 @@ function shortTime(date: Date): string {
   const weeks = Math.floor(days / 7);
   if (weeks < 52) return `${weeks}w`;
   return formatRelativeTime(date.toISOString());
+}
+
+/** A conversation's or a gemie's unread count, at the row's end (WhatsApp's green dot with a number). */
+function UnreadBadge({ count }: { count: number }) {
+  const { t } = useTranslation();
+  return (
+    <View accessibilityLabel={t('sidebar.unread', { count })}>
+      <Badge content={count > 99 ? '99+' : count} size="md" />
+    </View>
+  );
+}
+
+/**
+ * What every row may say live: who is doing what in a conversation, and what a gemie is doing
+ * anywhere ("Pepe is typing…"), from the account's realtime activity (`@gemies/sdk/realtime`).
+ * Stable between changes, so the rows rebuild only when someone starts or stops.
+ */
+function useSidebarActivity() {
+  const { t } = useTranslation();
+  const entries = useRealtimeActivityStore((s) => s.entries);
+  return React.useMemo(() => {
+    const say = (entry: ActorActivityEntry, name: string | null) => {
+      const who = name ?? entry.name ?? 'Alia';
+      return entry.state === 'writing'
+        ? t('sidebar.activityWriting', { name: who })
+        : entry.state === 'tool'
+          ? t('sidebar.activityTool', { name: who })
+          : t('sidebar.activityThinking', { name: who });
+    };
+    const list = Object.values(entries);
+    return {
+      inConversation: (conversationId: string): string | null => {
+        const entry = list.find((e) => e.conversationId === conversationId);
+        return entry ? say(entry, null) : null;
+      },
+      ofAgent: (agentId: string, name: string): string | null => {
+        const entry = list.find((e) => e.agentId === agentId);
+        return entry ? say(entry, name) : null;
+      },
+    };
+  }, [entries, t]);
 }

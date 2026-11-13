@@ -33,6 +33,7 @@ import {
 } from './agent-account.js';
 import { attachAgentIdentity } from './agent-identity.js';
 import { log } from './logger.js';
+import { publishGemieChanged } from './realtime/account.js';
 
 /** The agent's own record plus the two child lists `populate` used to attach. */
 export async function withChildLists(agent: AgentRecord): Promise<AgentRecord> {
@@ -150,6 +151,7 @@ export async function applyAgentEdit(params: {
     ...(knowledge !== undefined && { libraryFileIds: knowledge }),
   });
   if (!agent) return { ok: false, status: 404, error: 'Agent not found' };
+  void publishGemieChanged(userId, agentId, 'updated');
   return { ok: true, agent };
 }
 

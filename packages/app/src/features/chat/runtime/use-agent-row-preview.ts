@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/shared/api/query-keys';
 import type { Agent } from '@/shared/contracts/agents';
 
@@ -20,7 +20,7 @@ import type { Agent } from '@/shared/contracts/agents';
  * timestamps are ISO-8601 in UTC as the API serialises them, so comparing the
  * strings is comparing the instants.
  */
-function byThreadActivity(a: Agent, b: Agent): number {
+export function byThreadActivity(a: Agent, b: Agent): number {
   const spokenA = a.lastMessageAt ?? null;
   const spokenB = b.lastMessageAt ?? null;
   if (spokenA !== spokenB) {
@@ -103,4 +103,34 @@ export function useAgentRowPreview() {
     },
     [queryClient],
   );
+}
+
+/**
+ * Write what the server says about one gemie's thread into its sidebar row — the newest line, when
+ * it was said, and what is unread — and keep the list in the server's order. The realtime
+ * `conversation` event's half of what `useAgentRowPreview` guesses on send.
+ */
+export function patchAgentRow(
+  queryClient: QueryClient,
+  agentId: string,
+  patch: Pick<Agent, 'lastMessage' | 'lastMessageAt' | 'unreadCount'>,
+): void {
+  queryClient.setQueryData<Agent[]>(queryKeys.agents.mine, (current) => {
+    if (current === undefined) return current;
+    let changed = false;
+    const next = current.map((agent) => {
+      if (agent._id !== agentId) return agent;
+      changed = true;
+      // An older line never replaces a newer one (an event replayed over a fresher read).
+      const older =
+        patch.lastMessageAt !== undefined &&
+        agent.lastMessageAt != null &&
+        patch.lastMessageAt != null &&
+        patch.lastMessageAt < agent.lastMessageAt;
+      return older
+        ? { ...agent, unreadCount: patch.unreadCount ?? agent.unreadCount }
+        : { ...agent, ...patch };
+    });
+    return changed ? next.sort(byThreadActivity) : current;
+  });
 }

@@ -25,6 +25,7 @@ import { listRecentEventStreamEntries } from '../../db/agents/eventStreamEntryRe
 import { AGENT_STATUSES, type AgentStatus } from '../../domain/agent.js';
 import { log } from '../../lib/logger.js';
 import type { Request, Response } from 'express';
+import { publishGemieChanged } from '../../lib/realtime/account.js';
 
 const router = Router();
 
@@ -158,6 +159,7 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
      * either caller can reach.
      */
     await updateAgent(getDb(), id, { status });
+    void publishGemieChanged(req.user.id, id, 'updated');
 
     // If setting to idle/offline, cancel running sessions
     if (status !== 'active') {

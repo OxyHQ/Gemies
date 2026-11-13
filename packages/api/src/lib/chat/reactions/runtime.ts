@@ -13,6 +13,7 @@ import { agentOpensOn } from '../../agent-availability.js';
 import { isExternalAgent } from '../../external-agents/turn.js';
 import { conversationIsActive } from '../activity.js';
 import { roomRuntime, appendRoomReply } from '../room/runtime.js';
+import { publishConversation } from '../../realtime/conversations.js';
 import { listMessages } from '../../../db/chat/messageRepository.js';
 import { findSpaceByConversation } from '../../../db/spaces/spaceRepository.js';
 import { textOf } from '../room/transcript.js';
@@ -57,7 +58,7 @@ export async function runReactionEvent(event: ReactionEvent, leaseValid: () => b
     },
     commit: async (_, input) => {
       if (!event.leaseToken || !owned || !leaseValid()) return null;
-      return withCurrentReaction(
+      const stored = await withCurrentReaction(
         getDb(),
         event,
         event.leaseToken,
@@ -77,6 +78,12 @@ export async function runReactionEvent(event: ReactionEvent, leaseValid: () => b
           };
         },
       );
+      // After the guarded transaction committed: the reply reaches the person's surfaces.
+      if (stored)
+        void publishConversation(event.userId, event.conversationId, {
+          appendedFromSeq: stored.seq,
+        });
+      return stored;
     },
     busy: () => conversationIsActive(event.userId, event.conversationId),
     saveDecision: async (_, decision) => {

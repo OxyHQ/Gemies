@@ -39,6 +39,7 @@ import { MAX_SPACE_MEMBERS, parseSpaceInstructions, parseSpaceName } from '../do
 import { loadAgentForActor, refusalMessage, refusalStatus } from '../lib/agent-account.js';
 import { log } from '../lib/logger.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { publishConversation, publishConversationDeleted } from '../lib/realtime/conversations.js';
 
 const router = Router();
 router.use(authenticateToken);
@@ -154,6 +155,7 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
     const space = await findSpace(getDb(), caller.userId, created.id);
+    void publishConversation(caller.userId, created.conversationId);
     res.status(201).json({ space: space ? wire(space) : wire(created) });
   } catch (error: unknown) {
     log.chat.error({ err: error }, 'Could not create a space');
@@ -241,9 +243,11 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const caller = callerOf(req);
     if (!caller) return res.status(401).json({ error: 'Unauthorized' });
+    const space = await findSpace(getDb(), caller.userId, String(req.params.id));
     if (!(await deleteSpace(getDb(), caller.userId, String(req.params.id)))) {
       return res.status(404).json({ error: 'Space not found' });
     }
+    if (space) void publishConversationDeleted(caller.userId, space.conversationId);
     res.status(204).end();
   } catch (error: unknown) {
     log.chat.error({ err: error }, 'Could not delete a space');

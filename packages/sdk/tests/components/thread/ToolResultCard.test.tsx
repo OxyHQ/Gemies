@@ -32,6 +32,10 @@ const { hosts, slotted } = vi.hoisted(() => ({
   },
 }));
 
+// The runtime provider holds the account's realtime connection; signed out here, it holds none.
+vi.mock('@oxy.so/services/ui/client', () => ({
+  useOxy: () => ({ user: null, canUsePrivateApi: false }),
+}));
 vi.mock('react-native', async () => hosts('View'));
 vi.mock('../../../src/lib/labels', () => ({
   useLabels: () => ({ t: (key: string) => key, locale: 'en' }),

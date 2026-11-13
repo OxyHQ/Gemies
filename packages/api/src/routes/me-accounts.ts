@@ -55,8 +55,23 @@ import {
 } from '../lib/connected-accounts.js';
 import { log } from '../lib/logger.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { publishConnectionsChanged } from '../lib/realtime/account.js';
 
 const router = Router();
+
+/**
+ * Every change to the person's accounts — connected, granted, answered, reauthorized, removed —
+ * reaches their other surfaces as `connections` (`docs/realtime.mdx`), from here rather than from
+ * each route: a write this router serves successfully is a change.
+ */
+router.use((req: Request, res: Response, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.on('finish', () => {
+      if (res.statusCode < 300 && req.user?.id) void publishConnectionsChanged(req.user.id);
+    });
+  }
+  next();
+});
 
 interface Caller {
   readonly oxyUserId: string;

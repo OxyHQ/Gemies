@@ -1,5 +1,29 @@
 # @gemies/sdk
 
+## 6.0.0
+
+- **Breaking: realtime over one socket ([Realtime](../../docs/realtime.mdx), Gemies ADR 0040).**
+  `GemieRuntimeProvider` holds the signed-in account's one Socket.IO connection (new entry
+  `@gemies/sdk/realtime`): reconnect with backoff, catch-up from the account's event cursor after a
+  reconnect (`rt:sync`), topics re-subscribed, every event applied once and in order.
+  - The runtime keeps itself live from it: conversation lists (a new message moves its row to the
+    top with its preview and `unreadCount`), an open conversation's messages (merged by id, never
+    doubled; a rewritten thread is read again), reactions, group rooms and an agent run's panel.
+    No list or detail is refetched after a turn any more.
+  - `GemieRuntimeHost` loses `subscribeConversationMessages`, `subscribeConversationReactions`
+    and `subscribeRoomEvents`: the SDK owns the connection.
+  - "Typing…": `GemieParticipants` shows what a gemie is doing in place of its name;
+    `GemieActivityLine`, `useConversationActivityText` and `useConversationActivity` draw it
+    anywhere. `useGemieActivity` hears the account's activity on the same connection (the
+    separate activity socket is gone, and so is `acquireActivitySocket`).
+  - `useAgentActivity` follows the run's topic on the shared connection instead of opening a
+    socket per run.
+  - Unread: `Conversation.unreadCount`; `useMarkConversationRead`, sent by an open conversation
+    when something arrives while it is in front.
+  - Hooks for a host's own data: `useGemieRealtime`, `useRealtimeEvent`, `useRealtimeReset`,
+    `useRealtimeTopic`.
+  - Copy: `activity(name, state)` in `GemieChatLabels` (English and Spanish).
+
 ## 5.0.0
 
 - **The connectors store grows to hundreds of servers.** Beside the providers' servers Gemies curates,

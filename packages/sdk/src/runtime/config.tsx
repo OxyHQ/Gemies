@@ -1,8 +1,7 @@
-import type { MessageReactionUpdate } from './message-reactions';
 import { createContext, type ReactNode, useContext, useMemo } from 'react';
 import { GEMIES_API_URL } from '../lib/origins';
-import type { RoomEvent } from './room-events';
-import type { AgentRun, Message } from './types';
+import type { AgentRun } from './types';
+import { GemieRealtimeProvider } from '../realtime/react';
 
 /**
  * Where a signed-out session keeps its conversations, per account. The host
@@ -108,28 +107,6 @@ export interface GemieRuntimeHost {
   /** The agent's row in the host's list, ahead of the server: your line, then her answer. */
   onTurnPreview?: (agentId: string | null | undefined, text: string) => void;
   /**
-   * Messages an agent writes into the open conversation by itself (a result, a check-in).
-   * Returns the unsubscribe.
-   */
-  subscribeConversationMessages?: (
-    conversationId: string,
-    listener: (message: Message) => void,
-  ) => () => void;
-  /** Authoritative reaction changes on existing messages, including another device. */
-  subscribeConversationReactions?: (
-    conversationId: string,
-    listener: (update: MessageReactionUpdate) => void,
-  ) => () => void;
-  /**
-   * Live actor responses (group turns or reactions in an agent chat): the host's `group:event` socket
-   * event for this conversation. Returns the unsubscribe. Without it, what a group's members say
-   * after the request ended appears on reload.
-   */
-  subscribeRoomEvents?: (
-    conversationId: string,
-    listener: (event: RoomEvent) => void,
-  ) => () => void;
-  /**
    * Show where the work of a turn is read — the host's right panel — now that the thread selected
    * one (`useThoughtStore`; the panel is `ThoughtPanel`). Return `false` to decline an
    * `automatic` opening because something else is open. A host without it has no thought panel:
@@ -213,7 +190,12 @@ export function GemieRuntimeProvider({
       app: app ?? parent.app,
     };
   }, [apiUrl, offline, streamFetch, speech, host, app, parent]);
-  return <GemieRuntimeContext.Provider value={value}>{children}</GemieRuntimeContext.Provider>;
+  return (
+    <GemieRuntimeContext.Provider value={value}>
+      {/* The account's one realtime connection, for everything below (`docs/realtime.mdx`). */}
+      <GemieRealtimeProvider apiUrl={value.apiUrl}>{children}</GemieRealtimeProvider>
+    </GemieRuntimeContext.Provider>
+  );
 }
 
 /** The runtime's configuration: the nearest provider's, or the defaults. */

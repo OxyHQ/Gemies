@@ -7,8 +7,7 @@ const state = vi.hoisted(() => ({
   lastMessage: vi.fn(),
   insert: vi.fn(),
   notify: vi.fn(),
-  emit: vi.fn(),
-  to: vi.fn(),
+  publish: vi.fn(),
   countOutreach: vi.fn(),
   latestMarks: vi.fn(),
 }));
@@ -30,7 +29,7 @@ vi.mock('../../../db/chat/messageRepository.js', () => ({
   listLatestMessageMarks: state.latestMarks,
 }));
 vi.mock('../../notification-service.js', () => ({ sendNotification: state.notify }));
-vi.mock('../../../socket.js', () => ({ getIO: () => ({ to: state.to }) }));
+vi.mock('../../realtime/conversations.js', () => ({ publishConversation: state.publish }));
 vi.mock('../../logger.js', () => ({ log: { agents: { warn: vi.fn() } } }));
 
 import { ALIA_GEMIE_ID } from '../../../domain/alia-gemie.js';
@@ -53,7 +52,6 @@ beforeEach(() => {
   state.lastMessage.mockResolvedValue(undefined);
   state.insert.mockResolvedValue(undefined);
   state.notify.mockResolvedValue(undefined);
-  state.to.mockReturnValue({ emit: state.emit });
   state.countOutreach.mockResolvedValue(0);
   state.latestMarks.mockResolvedValue([{ role: 'user', clientMessageId: 'msg-1' }]);
 });
@@ -103,17 +101,9 @@ describe('Alia posting a task result', () => {
         lastMessage: 'Meta announced Llama 5 today.',
       }),
     );
-    expect(state.to).toHaveBeenCalledWith('user:owner-1');
-    expect(state.emit).toHaveBeenCalledWith(
-      'conversation:message',
-      expect.objectContaining({
-        conversationId: 'conversation-1',
-        message: expect.objectContaining({
-          role: 'assistant',
-          content: 'Meta announced Llama 5 today.',
-        }),
-      }),
-    );
+    // Every surface of the person hears it, with the message it gained, as unread.
+    expect(state.upsert).toHaveBeenCalledWith(database, expect.objectContaining({ unread: 1 }));
+    expect(state.publish).toHaveBeenCalledWith('owner-1', 'conversation-1', { appendedFromSeq: 7 });
     expect(state.notify).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'owner-1',

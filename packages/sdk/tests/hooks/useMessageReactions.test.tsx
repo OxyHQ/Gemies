@@ -21,14 +21,15 @@ vi.mock('@oxy.so/services/ui/client', () => ({ useOxy: () => ({ user: { id: wire
 vi.mock('../../src/lib/labels', () => ({ useLabels: () => ({ t: (key: string) => key }) }));
 const errors = vi.hoisted(() => vi.fn());
 vi.mock('@oxy.so/bloom/toast', () => ({ toast: { error: errors } }));
+vi.mock('../../src/realtime/react', async (original) =>
+  (await import('../support/fake-realtime')).mockRealtimeReact(await original()),
+);
 
 import { useMessageReactions } from '../../src/hooks/useMessageReactions';
-import { GemieRuntimeProvider, type GemieRuntimeHost } from '../../src/runtime/config';
-import {
-  applyMessageReaction,
-  type MessageReactionUpdate,
-} from '../../src/runtime/message-reactions';
-import { createRoomLedger, type RoomEvent } from '../../src/runtime/room-events';
+import { GemieRuntimeProvider } from '../../src/runtime/config';
+import { fakeRealtime } from '../support/fake-realtime';
+import { applyMessageReaction } from '../../src/runtime/message-reactions';
+import { createRoomLedger } from '../../src/runtime/room-events';
 import { useRoomEvents } from '../../src/runtime/use-room-events';
 import { gemieQueryKeys } from '../../src/runtime/query-keys';
 import type { Message } from '../../src/runtime/types';
@@ -42,20 +43,7 @@ const initial: Message = {
   reactions: [],
   reactionRevision: 0,
 };
-let reactionsListener: ((update: MessageReactionUpdate) => void) | undefined;
-let roomListener: ((event: RoomEvent) => void) | undefined;
-const release = vi.fn();
 const roomFailure = vi.fn();
-const host: GemieRuntimeHost = {
-  subscribeConversationReactions: (_id, listener) => {
-    reactionsListener = listener;
-    return release;
-  },
-  subscribeRoomEvents: (_id, listener) => {
-    roomListener = listener;
-    return () => {};
-  },
-};
 let renderer: ReactTestRenderer | undefined;
 let client: QueryClient;
 let current: { messages: Message[]; reaction: ReturnType<typeof useMessageReactions> };
@@ -72,7 +60,7 @@ function Probe({ conversationId }: { conversationId: string }) {
 }
 const tree = (conversationId: string) => (
   <QueryClientProvider client={client}>
-    <GemieRuntimeProvider host={host}>
+    <GemieRuntimeProvider>
       <Probe conversationId={conversationId} />
     </GemieRuntimeProvider>
   </QueryClientProvider>
@@ -101,12 +89,14 @@ const acknowledge = (revision = 1, reactions = ['❤️']) =>
     });
   });
 const room = (conversationId: string, event: string, data: Record<string, unknown>) =>
-  act(async () => roomListener?.({ conversationId, chainId: 'reaction-event-1', event, data }));
+  act(async () =>
+    fakeRealtime.push('room', { conversationId, chainId: 'reaction-event-1', event, data }),
+  );
 beforeEach(() => {
   wire.requests = [];
   wire.accountId = 'u1';
   errors.mockClear();
-  release.mockClear();
+  fakeRealtime.reset();
   roomFailure.mockClear();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
@@ -159,7 +149,7 @@ describe('saved message reactions', () => {
       ],
     });
     await act(async () =>
-      reactionsListener?.({
+      fakeRealtime.push('message.reaction', {
         conversationId: 'c1',
         messageId: 'm1',
         reactions: ['🎉'],
@@ -168,12 +158,22 @@ describe('saved message reactions', () => {
     );
     expect(visible()).toEqual(['🎉']);
     await act(async () =>
-      reactionsListener?.({ conversationId: 'c1', messageId: 'm1', reactions: [], revision: 2 }),
+      fakeRealtime.push('message.reaction', {
+        conversationId: 'c1',
+        messageId: 'm1',
+        reactions: [],
+        revision: 2,
+      }),
     );
     expect(visible()).toEqual(['🎉']);
     expect(current.messages[0]?.reactionRevision).toBe(3);
     await act(async () =>
-      reactionsListener?.({ conversationId: 'other', messageId: 'm1', reactions: [], revision: 5 }),
+      fakeRealtime.push('message.reaction', {
+        conversationId: 'other',
+        messageId: 'm1',
+        reactions: [],
+        revision: 5,
+      }),
     );
     expect(visible()).toEqual(['🎉']);
     expect(errors).not.toHaveBeenCalled();
@@ -201,7 +201,7 @@ describe('saved message reactions', () => {
     await mount();
     await toggle();
     await act(async () =>
-      reactionsListener?.({
+      fakeRealtime.push('message.reaction', {
         conversationId: 'c1',
         messageId: 'm1',
         reactions: ['🎉'],
@@ -298,6 +298,6 @@ describe('saved message reactions', () => {
     await acknowledge();
     expect(current.messages[0]?.reactions).toEqual([]);
     expect(visible()).toEqual([]);
-    expect(release).toHaveBeenCalled();
+    expect(fakeRealtime.listening('message.reaction')).toBe(1);
   });
 });

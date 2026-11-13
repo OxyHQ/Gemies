@@ -198,6 +198,8 @@ vi.mock('../../src/runtime/conversations', () => ({
     },
   }),
   useDeleteConversation: () => ({ mutateAsync: async () => {} }),
+  useReadConversation: () => async () => ({ messages: [] }),
+  useMarkConversationRead: () => () => undefined,
   useClearConversation: () => ({ mutateAsync: async () => {} }),
 }));
 vi.mock('../../src/runtime/attachment-utils', () => ({

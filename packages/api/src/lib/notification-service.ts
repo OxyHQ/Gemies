@@ -38,7 +38,7 @@ import { getStatusCode } from './errors/index.js';
 import { findPersonAccountOf } from '../db/integrations/connectedAccountRepository.js';
 import { notifyAccountPerson } from './connected-accounts.js';
 import { webPush, VAPID_PUBLIC_KEY, isUnrecoverableSubscriptionError } from './web-push.js';
-import { getIO } from '../socket.js';
+import { publishAccountEvent } from './realtime/publish.js';
 import { log } from './logger.js';
 
 // ── Expo push singleton ──────────────────────────────────────────────
@@ -95,20 +95,19 @@ async function resolveChannels(
 
 // ── Channel delivery implementations ───────────────────────────────
 
+/** In the app: the realtime `notification` event, logged so a device that was away still gets it. */
 async function deliverInApp(notification: NotificationRow): Promise<boolean> {
-  const io = getIO();
-  if (!io) return false;
-
-  io.to(`user:${notification.oxyUserId}`).emit('notification', {
-    id: notification.id,
-    type: notification.type,
-    title: notification.title,
-    body: notification.body,
-    priority: notification.priority,
-    data: notification.data,
-    createdAt: notification.createdAt,
+  await publishAccountEvent(notification.oxyUserId, 'notification', {
+    notification: {
+      id: notification.id,
+      type: notification.type,
+      title: notification.title,
+      body: notification.body,
+      priority: notification.priority,
+      data: notification.data,
+      createdAt: notification.createdAt,
+    },
   });
-
   return true;
 }
 

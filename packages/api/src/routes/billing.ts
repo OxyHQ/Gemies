@@ -38,6 +38,7 @@ import { isCompedSubscriptionId } from '../lib/seed-comped-accounts.js';
 import { z } from 'zod';
 import { log } from '../lib/logger.js';
 import { getSafeErrorMessage } from '../lib/errors/sanitize.js';
+import { publishCreditsChanged } from '../lib/realtime/account.js';
 
 const router = Router();
 router.get('/product-checkout', (_req: Request, res: Response) => {
@@ -847,6 +848,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         description: `Purchased ${credits.toLocaleString()} credits`,
       });
       await addCredits(getDb(), metadata.userId, credits, 'paid');
+      void publishCreditsChanged(metadata.userId);
       log.credits.info({ credits, userId: metadata.userId }, 'Added credits to user');
     } catch (err: unknown) {
       if (isDuplicateTransaction(err)) {
@@ -964,6 +966,7 @@ async function handleSubscriptionUpdate(stripeSubscription: Stripe.Subscription)
         metadata: { dedup: dedupKey },
       });
       await addCredits(getDb(), userCredits.id, plan.creditsPerMonth, 'paid');
+      void publishCreditsChanged(userCredits.id);
       log.credits.info(
         { credits: plan.creditsPerMonth, subscriptionId: stripeSubscription.id, periodStart },
         'Added subscription credits',

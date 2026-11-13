@@ -88,6 +88,11 @@ export interface GemieChatLabels {
   // Conversations (the runtime's own words: toasts and the errors it raises)
   /** A conversation's title until it has one. */
   newChat: string;
+  /**
+   * What a gemie is doing, live, as the header and a sidebar row say it ("Pepe is typing…"):
+   * `name` is the gemie's, `null` for one whose name the event did not carry.
+   */
+  activity: (name: string | null, state: 'thinking' | 'writing' | 'tool') => string;
   /** Over the sheet's recent conversations with its lead. */
   recentConversations: string;
   /** A turn could not be sent and the composer got its text back. */
@@ -168,6 +173,12 @@ export const DEFAULT_LABELS: GemieChatLabels = {
   t: englishCopy,
   locale: 'en',
   newChat: 'New chat',
+  activity: (name, state) => {
+    const verb =
+      state === 'writing' ? 'is typing' : state === 'tool' ? 'is working' : 'is thinking';
+    const bare = state === 'writing' ? 'Typing' : state === 'tool' ? 'Working' : 'Thinking';
+    return name ? `${name} ${verb}…` : `${bare}…`;
+  },
   recentConversations: 'Recent',
   sendFailed: "Your message couldn't be sent",
   signInRequired: 'Sign in to keep chatting',

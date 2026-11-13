@@ -7,7 +7,7 @@ const now = () => selectGemieActivity(useGemieActivityStore.getState());
 const store = () => useGemieActivityStore.getState();
 
 describe('activity store', () => {
-  beforeEach(() => useGemieActivityStore.setState({ local: {}, remote: {} }));
+  beforeEach(() => useGemieActivityStore.setState({ local: {} }));
 
   it('is idle with no source', () => {
     expect(now()).toBe('idle');
@@ -16,11 +16,11 @@ describe('activity store', () => {
   it('shows the busiest source: a tool call outranks thinking outranks writing', () => {
     store().setLocal('sheet', 'writing');
     expect(now()).toBe('writing');
-    store().setRemote('s1', 'thinking');
+    store().setLocal('s1', 'thinking');
     expect(now()).toBe('thinking');
-    store().setRemote('s2', 'working');
+    store().setLocal('s2', 'working');
     expect(now()).toBe('working');
-    store().setRemote('s2', 'idle');
+    store().setLocal('s2', 'idle');
     expect(now()).toBe('thinking');
   });
 
@@ -34,14 +34,6 @@ describe('activity store', () => {
     const empty = store().local;
     store().setLocal('a', 'idle');
     expect(store().local).toBe(empty);
-  });
-
-  it('clearRemote drops every reported run and nothing local', () => {
-    store().setLocal('sheet', 'writing');
-    store().setRemote('s1', 'working');
-    store().clearRemote();
-    expect(store().remote).toEqual({});
-    expect(now()).toBe('writing');
   });
 });
 

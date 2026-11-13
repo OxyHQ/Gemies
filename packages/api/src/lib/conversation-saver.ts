@@ -33,6 +33,7 @@ import {
 } from '../domain/conversation.js';
 import { resolveUtilityModel, getAIModel } from './chat-core.js';
 import { log } from './logger.js';
+import { publishConversation, type ConversationChange } from './realtime/conversations.js';
 
 // Known translations of "TITLE" that LLMs may produce
 const TAG = String.raw`ALIA_TITLE|TITLE|TÍTULO|TITRE|TITOLO|TITEL|ЗАГОЛОВОК`;
@@ -144,6 +145,12 @@ const APPEND_SEQ_INDEX = 'messages_oxy_user_conversation_seq_key';
  * a full delete + reinsert so storage always converges on the client's view.
  */
 export async function saveConversation(params: SaveConversationParams): Promise<void> {
+  const change = await storeConversation(params);
+  // After the write committed: the person's other surfaces see the turn (`docs/realtime.mdx`).
+  void publishConversation(params.userId, params.conversationId, change);
+}
+
+async function storeConversation(params: SaveConversationParams): Promise<ConversationChange> {
   const {
     userId,
     conversationId,
@@ -236,7 +243,7 @@ export async function saveConversation(params: SaveConversationParams): Promise<
 
   if (canAppend) {
     const toAppend = [...clientHistory.slice(storedCount), ...turnTail];
-    if (toAppend.length === 0) return;
+    if (toAppend.length === 0) return {};
     try {
       await insertMessages(
         getDb(),
@@ -244,7 +251,7 @@ export async function saveConversation(params: SaveConversationParams): Promise<
           buildStoredMessage(message, userId, conversationId, storedCount + i),
         ),
       );
-      return;
+      return { appendedFromSeq: storedCount };
     } catch (err) {
       // Concurrent append claimed the same seq → converge via full rewrite below.
       if (!isUniqueViolation(err, APPEND_SEQ_INDEX)) throw err;
@@ -261,6 +268,7 @@ export async function saveConversation(params: SaveConversationParams): Promise<
       buildStoredMessage(message, userId, conversationId, index),
     );
   });
+  return { reload: true };
 }
 
 /** One message a voice call appends (ADR 0017 §3). */
@@ -336,6 +344,7 @@ export async function appendConversationMessages(params: {
             : { interruptedAfterMs: Math.round(message.interruptedAfterMs) }),
         })),
       );
+      void publishConversation(userId, conversationId, { appendedFromSeq: next });
       return;
     } catch (err) {
       if (attempt >= MAX_APPEND_ATTEMPTS || !isUniqueViolation(err, APPEND_SEQ_INDEX)) throw err;
@@ -492,6 +501,7 @@ export async function generateConversationTitle(
     const title = await generateTitle(userMessage);
     if (title) {
       await updateConversationTitle(getDb(), userId, conversationId, title);
+      void publishConversation(userId, conversationId);
       // The title is a model summary of the user's own conversation.
       log.chat.info({ conversationId }, 'Auto-generated conversation title');
     }

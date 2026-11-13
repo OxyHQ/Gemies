@@ -27,6 +27,7 @@ import {
 import { log } from './logger.js';
 import { findCatalogueModel } from './models/catalogue.js';
 import { fundingSourceOf, type CreditFundingSource } from '../domain/credit-funding.js';
+import { publishCreditsChanged } from './realtime/account.js';
 
 /**
  * Credits Manager
@@ -377,6 +378,17 @@ export async function finalizeCredits(
   usage: CreditUsage,
   modelId?: string,
 ): Promise<{ creditsCharged: number; creditsRemaining: number }> {
+  const settled = await settleCredits(reservation, usage, modelId);
+  // Every surface of the person shows the new balance (`docs/realtime.mdx`).
+  void publishCreditsChanged(reservation.userId, settled.creditsRemaining);
+  return settled;
+}
+
+async function settleCredits(
+  reservation: CreditReservation,
+  usage: CreditUsage,
+  modelId?: string,
+): Promise<{ creditsCharged: number; creditsRemaining: number }> {
   try {
     if (reservation.operationId !== undefined)
       return await settleTrackedReservation(reservation, usage, modelId);
@@ -440,6 +452,16 @@ export async function finalizeCredits(
  * `label` names the domain in the ledger logs, exactly as `'chat'` does.
  */
 export async function finalizeFixedCredits(
+  reservation: CreditReservation,
+  credits: number,
+  label: string,
+): Promise<{ creditsCharged: number; creditsRemaining: number }> {
+  const settled = await settleFixedCredits(reservation, credits, label);
+  void publishCreditsChanged(reservation.userId, settled.creditsRemaining);
+  return settled;
+}
+
+async function settleFixedCredits(
   reservation: CreditReservation,
   credits: number,
   label: string,
@@ -586,6 +608,7 @@ export async function refundReservation(reservation: CreditReservation): Promise
   try {
     if (reservation.operationId !== undefined) {
       await refundTrackedReservation(reservation);
+      void publishCreditsChanged(reservation.userId);
       return;
     }
     const bucket = refundBucket(reservation);
@@ -594,6 +617,7 @@ export async function refundReservation(reservation: CreditReservation): Promise
       { refunded: reservation.creditsReserved, userId: reservation.userId, bucket },
       'Refunded credits to user',
     );
+    void publishCreditsChanged(reservation.userId);
   } catch (error) {
     log.credits.error({ err: error }, 'Error refunding credits');
   }

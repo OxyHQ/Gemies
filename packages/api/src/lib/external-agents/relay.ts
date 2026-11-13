@@ -28,6 +28,7 @@ import {
   type ServerFrame,
 } from '../../domain/external-agent.js';
 import { log } from '../logger.js';
+import { signalAccount } from '../realtime/publish.js';
 import { authenticateSocketToken } from '../socket-session-auth.js';
 import { externalAgentCredentialMatches } from './credential.js';
 import type { WebSocketRoute } from '../websocket-upgrades.js';
@@ -64,6 +65,8 @@ interface Connection {
   readonly ws: WebSocket;
   /** The credential this socket was opened with; null on the retired Oxy-session lane. */
   readonly credentialHash: string | null;
+  /** The account that owns the link: who hears this agent come online and go offline. */
+  readonly ownerOxyUserId: string;
 }
 
 interface PendingTurn {
@@ -456,8 +459,14 @@ export function createExternalAgentRelay(
       if (existing && existing.ws.readyState === WebSocket.OPEN) {
         existing.ws.close(4000, 'Replaced by new connection');
       }
-      connections.set(frame.agentId, { ws, credentialHash: link.credentialHash });
+      connections.set(frame.agentId, {
+        ws,
+        credentialHash: link.credentialHash,
+        ownerOxyUserId: link.ownerOxyUserId,
+      });
       announce(frame.agentId);
+      // Its owner's surfaces show it online now (`presence`, `docs/realtime.mdx`).
+      signalAccount(link.ownerOxyUserId, 'presence', { agentId: frame.agentId, online: true });
       send(ws, { type: 'auth-ok', agentId: frame.agentId });
       void markExternalLinkConnected(getDb(), frame.agentId).catch((err: unknown) =>
         log.general.warn({ err }, 'Could not stamp external agent connection'),
@@ -568,8 +577,10 @@ export function createExternalAgentRelay(
       clearInterval(heartbeat);
       if (agentId === null) return;
       // A reconnect replaces this socket's entry; only drop (and fail turns of) our own.
-      if (connections.get(agentId)?.ws === ws) {
+      const own = connections.get(agentId);
+      if (own?.ws === ws) {
         connections.delete(agentId);
+        signalAccount(own.ownerOxyUserId, 'presence', { agentId, online: false });
         bus?.clearPresence(agentId).catch(() => undefined);
         failTurnsOf(agentId, new ExternalAgentOfflineError('The external agent disconnected'));
         log.general.info({ agentId }, 'External agent disconnected');

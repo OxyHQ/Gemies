@@ -103,8 +103,15 @@ vi.mock('../../db/chat/conversationRepository.js', async () => {
       sequence.push(`deleteConversation:${oxyUserId}:${conversationId}`);
       return 1;
     },
+    // Read before a delete, so the gemie's row hears its new total (`lib/realtime`).
+    findConversation: async () => null,
   };
 });
+// The realtime publish after a write is `lib/realtime`'s own test's business.
+vi.mock('../../lib/realtime/conversations.js', () => ({
+  publishConversation: async () => undefined,
+  publishConversationDeleted: async () => undefined,
+}));
 
 vi.mock('../../db/chat/messageRepository.js', async () => {
   const actual = await vi.importActual<typeof import('../../db/chat/messageRepository.js')>(

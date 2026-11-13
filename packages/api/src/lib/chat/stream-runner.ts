@@ -49,6 +49,7 @@ import { createToolMarkupGuard } from './tool-markup.js';
 import { sizeForLog } from './log-size.js';
 import { createReasoningRelay } from './reasoning-relay.js';
 import { streamToolSynthesis } from './tool-synthesis.js';
+import type { ActorActivity } from '../realtime/activity.js';
 
 /**
  * The consultation's result: another agent's whole answer, with its identity.
@@ -140,6 +141,8 @@ export interface RunStreamParams<TOOLS extends ToolSet> {
   idle?: StreamWatchdog;
   /** The turn's tool-loop bounds (`turnStepBounds`); an ordinary chat turn's when absent. */
   stepBounds?: TurnStepBounds;
+  /** What the person's other surfaces show while this streams ("typing…", `lib/realtime/activity.ts`). */
+  activity?: ActorActivity;
 }
 
 /** Token usage summed over the `finish-step` chunks this attempt delivered. */
@@ -190,6 +193,7 @@ export async function runStream<TOOLS extends ToolSet>(
     state,
     onFirstChunk,
     idle,
+    activity,
   } = params;
 
   // Tool tracking for observability
@@ -267,6 +271,11 @@ export async function runStream<TOOLS extends ToolSet>(
     if (chunk.type !== 'text-delta') {
       log.v1.debug({ chunkCount, chunkType: chunk.type }, 'Stream chunk');
     }
+
+    if (chunk.type === 'text-delta') activity?.set('writing');
+    else if (chunk.type === 'reasoning-delta' || chunk.type === 'tool-result')
+      activity?.set('thinking');
+    else if (chunk.type === 'tool-call') activity?.set('tool', chunk.toolName);
 
     if (chunk.type === 'text-delta' && chunk.text) {
       sse.ensureHeaders();

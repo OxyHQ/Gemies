@@ -279,6 +279,11 @@ const aliaChat = surface(aliaChatRouter, '/alia/chat');
  * person's session only (PERSON). `GET /v1/shared/:token` is PUBLIC on purpose: the token is the
  * authority, it is minted by the conversation's owner, expires within a week and shows no tool
  * output (`lib/shared-conversation.ts`). No new auth mechanism comes with any of them.
+ *
+ * ## 30 became 31: reading a conversation (`docs/realtime.mdx`)
+ *
+ * `POST /v1/conversations/:id/read` zeroes its unread count on every surface of the person. A
+ * person's session, like every other conversation route.
  */
 const FROZEN_ROUTES: readonly string[] = [
   'DELETE /v1/conversations/:id',
@@ -310,6 +315,7 @@ const FROZEN_ROUTES: readonly string[] = [
   // The answer to an awaited host action (agent-embedding §2), on the same auth chain as Stop.
   'POST /v1/chat/turns/:turnId/host-results',
   'POST /v1/conversations',
+  'POST /v1/conversations/:id/read',
   'POST /v1/conversations/:id/share',
   'POST /v1/conversations/new',
   'POST /v1/images/generations',
@@ -333,7 +339,7 @@ describe('the compatibility surface gains no route (#139 ws6, ADR 0004)', () => 
     // removal is what the compatibility window gates and an unrecorded removal
     // is the other way this list stops describing the surface.
     expect(v1.map((e) => e.signature)).toEqual([...FROZEN_ROUTES].sort());
-    expect(FROZEN_ROUTES).toHaveLength(30);
+    expect(FROZEN_ROUTES).toHaveLength(31);
     expect(new Set(FROZEN_ROUTES).size).toBe(FROZEN_ROUTES.length);
   });
 
@@ -367,6 +373,7 @@ const FROZEN_CHAINS: Readonly<Record<string, readonly string[]>> = {
   'PATCH /v1/conversations/:id/messages/:messageId/vote': PERSON,
   'POST /v1/conversations/:id/messages/:messageId/reactions': PERSON,
   'POST /v1/conversations': PERSON,
+  'POST /v1/conversations/:id/read': PERSON,
   'POST /v1/conversations/:id/share': PERSON,
   'POST /v1/conversations/new': PERSON,
   'GET /v1/agents/:id/profile': PERSON,
@@ -437,7 +444,7 @@ describe('the compatibility surface gains no auth mechanism (#139 ws6, ADR 0004)
 
   it('admits only a person on the conversations: no key, no bot secret', () => {
     const conversations = v1.filter((e) => e.signature.includes('/v1/conversations'));
-    expect(conversations).toHaveLength(10);
+    expect(conversations).toHaveLength(11);
     for (const endpoint of conversations) {
       // Person auth first, mounted before the channel-bot pre-auth and the blanket lane, so
       // neither of those can have admitted the request.

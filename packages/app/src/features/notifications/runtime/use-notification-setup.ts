@@ -9,12 +9,9 @@ import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import { useQueryClient } from '@tanstack/react-query';
 import { useOxy } from '@oxy.so/services/ui/client';
 import apiClient from '@/shared/api/client';
 import i18n from '@/shared/i18n';
-import { acquireNotificationsSocket } from '@/features/notifications/runtime/notifications-socket';
-import { queryKeys } from '@/shared/api/query-keys';
 import { agentThreadHref } from '@/shared/routing/agent-address';
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -30,7 +27,6 @@ const PROJECT_ID: string | undefined = Constants.expoConfig?.extra?.eas?.project
 export function useNotificationSetup() {
   const { user, isAuthenticated } = useOxy();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const tokenRef = useRef<string | null>(null);
   const webPushRegisteredRef = useRef(false);
 
@@ -180,57 +176,7 @@ export function useNotificationSetup() {
       cancelled = true;
     };
   }, [isAuthenticated, user?.id]);
-
-  // ── Socket.IO real-time notification subscription ──────────────
-  useEffect(() => {
-    if (!isAuthenticated || !user?.id) return;
-
-    /**
-     * The SHARED connection, not one of this hook's own.
-     *
-     * `use-show-progress` listens on the same socket for `show:progress`. When
-     * each hook opened its own, a user on the shows screen held two websockets
-     * in the same room, every server emit was delivered twice, and which socket
-     * a listener landed on depended on mount order.
-     */
-    const { socket, release } = acquireNotificationsSocket();
-
-    const onNotification = () => {
-      // Invalidate React Query caches so notification list + unread count refresh
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    };
-    socket.on('notification', onNotification);
-
-    // An agent wrote into a conversation on its own. The open chat appends it
-    // itself (`use-chat-conversation`); everything else that shows the
-    // conversation — the sidebar, the thread history — is refetched.
-    const onConversationMessage = (event: {
-      conversationId?: string;
-      agentHandle?: string | null;
-    }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all });
-      if (event.conversationId) {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.conversations.detail(event.conversationId),
-        });
-      }
-      if (event.agentHandle) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.agents.thread(event.agentHandle) });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.agents.threadMessages(event.agentHandle),
-        });
-      }
-    };
-    socket.on('conversation:message', onConversationMessage);
-
-    return () => {
-      // Remove only THIS listener; the connection belongs to whoever still
-      // holds it.
-      socket.off('notification', onNotification);
-      socket.off('conversation:message', onConversationMessage);
-      release();
-    };
-  }, [isAuthenticated, user?.id, queryClient]);
+  // New notifications arrive on the account's realtime connection (`useAppRealtime`).
 }
 
 // ── Helpers ──────────────────────────────────────────────────────

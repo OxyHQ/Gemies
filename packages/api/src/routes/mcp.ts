@@ -73,6 +73,7 @@ import {
   type IntegrationsMcpConfig,
 } from '../lib/mcp-connector-config.js';
 import { log } from '../lib/logger.js';
+import { publishConnectionsChanged } from '../lib/realtime/account.js';
 
 /** What integrations answers for a connection, as far as this router reads it. */
 interface ConnectReply {
@@ -360,6 +361,7 @@ router.post('/oauth/complete', authenticateToken, async (req, res) => {
     if (!connected) return res.status(409).json({ error: 'This account is already connected' });
 
     const logos = await registryLogoIds(db).catch(() => new Map<string, string>());
+    void publishConnectionsChanged(req.userId!);
     res.json({
       server: serializeMcpServer(connected, logos.get(connected.registryId ?? '') ?? null),
     });
@@ -512,6 +514,7 @@ router.post('/custom', authenticateToken, async (req, res) => {
       row,
       connectorReturnTarget(req.body?.returnTo),
     );
+    void publishConnectionsChanged(req.userId!);
     res.status(outcome.authorizationUrl ? 202 : 201).json(outcome);
   } catch (error: unknown) {
     log.general.error({ err: error }, 'Add custom connector error');
@@ -666,6 +669,7 @@ router.patch('/:id', authenticateToken, async (req: express.Request<{ id: string
     });
     if (!updated) return res.status(404).json({ error: 'Connector not found' });
     const logos = await registryLogoIds(db).catch(() => new Map<string, string>());
+    void publishConnectionsChanged(req.userId!);
     res.json({ server: serializeMcpServer(updated, logos.get(updated.registryId ?? '') ?? null) });
   } catch (error: unknown) {
     log.general.error({ err: error }, 'Update connector error');
@@ -702,6 +706,7 @@ router.delete('/:id', authenticateToken, async (req: express.Request<{ id: strin
 
     const removed = await deleteMcpServerForUser(db, existing.id, req.userId!);
     if (!removed) return res.status(404).json({ error: 'Connector not found' });
+    void publishConnectionsChanged(req.userId!);
     res.json({ success: true });
   } catch (error: unknown) {
     log.general.error({ err: error }, 'Disconnect connector error');

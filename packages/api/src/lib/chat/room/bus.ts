@@ -13,6 +13,8 @@ import { EventEmitter } from 'node:events';
 import type Redis from 'ioredis';
 import { log } from '../../logger.js';
 import { getRedisClient, getRedisSubClient } from '../../redis.js';
+import { signalAccount } from '../../realtime/publish.js';
+import { startActorActivity, type ActorActivity } from '../../realtime/activity.js';
 
 /** The event names a room publishes (`alia.agent_*` are the frames `docs/agent-embedding.md` §4 defines). */
 type RoomEventName =
@@ -142,19 +144,61 @@ export function getRoomBus(): RoomBus {
  * any instance) and the person's sockets, scoped by `conversationId`. The socket room is reached
  * through the Socket.IO Redis adapter, so one emit serves every instance.
  *
- * `group:event` is the socket event for Phase 2 clients: `{ conversationId, chainId, event, data }`.
+ * On the socket it is the `room` signal (`docs/realtime.mdx`): `{ conversationId, chainId, event, data }`.
  */
 export async function publishRoomEvent(event: RoomEvent): Promise<void> {
   await getRoomBus().publish(event);
-  try {
-    const { getIO } = await import('../../../socket.js');
-    getIO()?.to(`user:${event.userId}`).emit('group:event', {
+  followRoomActivity(event);
+  signalAccount(event.userId, 'room', {
+    conversationId: event.conversationId,
+    chainId: event.chainId,
+    event: event.event,
+    data: event.data,
+  });
+}
+
+/**
+ * Each member's turn as the person's surfaces show it ("Pepe is typing…", `activity`), derived from
+ * the frames that turn already publishes, so a room has one source of what its members do. The
+ * frames are published by the task running the chain, which is where the heartbeat must live.
+ */
+const memberActivities = new Map<string, ActorActivity>();
+
+function followRoomActivity(event: RoomEvent): void {
+  const room = `${event.userId}:${event.conversationId}:`;
+  if (event.event === 'group.idle') {
+    for (const [key, activity] of memberActivities) {
+      if (!key.startsWith(room)) continue;
+      activity.end();
+      memberActivities.delete(key);
+    }
+    return;
+  }
+  const consultId = typeof event.data.consultId === 'string' ? event.data.consultId : null;
+  if (consultId === null) return;
+  const key = room + consultId;
+  if (event.event === 'alia.agent_start') {
+    const agent = event.data.agent as { id?: unknown; name?: unknown } | undefined;
+    memberActivities.get(key)?.end();
+    const activity = startActorActivity({
+      oxyUserId: event.userId,
       conversationId: event.conversationId,
-      chainId: event.chainId,
-      event: event.event,
-      data: event.data,
+      agentId: typeof agent?.id === 'string' ? agent.id : null,
+      name: typeof agent?.name === 'string' ? agent.name : null,
     });
-  } catch (err: unknown) {
-    log.general.warn({ err, event: event.event }, 'Could not push a room event to sockets');
+    activity.set('thinking');
+    memberActivities.set(key, activity);
+    return;
+  }
+  const activity = memberActivities.get(key);
+  if (!activity) return;
+  if (event.event === 'alia.agent_delta') activity.set('writing');
+  else if (event.event === 'alia.agent_tool') {
+    if (event.data.phase === 'call')
+      activity.set('tool', typeof event.data.name === 'string' ? event.data.name : undefined);
+    else activity.set('thinking');
+  } else if (event.event === 'alia.agent_end') {
+    activity.end();
+    memberActivities.delete(key);
   }
 }

@@ -9,9 +9,9 @@ import { APP_ROOT } from '@/shared/testing/app-root';
  * On 2026-11-13 one person's open tab sent 755 requests in 12 minutes, and as many CORS
  * preflights, until the API answered 429 to the conversations they were trying to open: the
  * connected agents every 6 s, credits every 10 s, the local runtimes and the agent list every 30 s,
- * notifications every minute, each from a hook mounted on every chat. Data that changes because
- * of a socket event is invalidated by that event (or will be: the realtime layer owns that seam);
- * the rest is read on mount and when the tab comes back.
+ * notifications every minute, each from a hook mounted on every chat. What changes on the server
+ * reaches the client as an event on the account's realtime connection (`docs/realtime.mdx`); the
+ * rest is read on mount.
  *
  * A timer is allowed only while a screen is SHOWING something live, and is listed here with why.
  */

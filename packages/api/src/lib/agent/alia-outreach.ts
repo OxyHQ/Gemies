@@ -37,7 +37,7 @@ import { AGENT_OUTREACH_MESSAGE_ID_PREFIX } from '../../domain/conversation.js';
 import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { log } from '../logger.js';
 import { sendNotification } from '../notification-service.js';
-import { getIO } from '../../socket.js';
+import { publishConversation } from '../realtime/conversations.js';
 import { checkInRefusal, type CheckInRefusal } from './outreach-budget.js';
 
 /** Longest message Alia posts; the full run stays inspectable on the run itself. */
@@ -73,11 +73,12 @@ async function appendAliaMessage(
   content: string,
 ): Promise<string> {
   const messageId = `${AGENT_OUTREACH_MESSAGE_ID_PREFIX}${randomUUID()}`;
+  let seq = 0;
   // Appended at the end with the next `seq`; retried on exactly the conflict a
   // concurrent turn taking the same seq produces (see `postAgentMessage`).
   for (let attempt = 0; ; attempt++) {
     const last = await findLastMessage(getDb(), oxyUserId, conversationId);
-    const seq = last?.seq == null ? 0 : last.seq + 1;
+    seq = last?.seq == null ? 0 : last.seq + 1;
     try {
       await insertMessages(getDb(), [
         {
@@ -102,15 +103,12 @@ async function appendAliaMessage(
     lastMessage: content.slice(0, 100),
     titleOnInsert: title,
     agentId,
+    // Alia wrote on her own: nobody watched it arrive.
+    unread: 1,
   });
 
-  // Live, for a client that has this conversation open.
-  getIO()
-    ?.to(`user:${oxyUserId}`)
-    .emit('conversation:message', {
-      conversationId,
-      message: { id: messageId, role: 'assistant', content, createdAt: new Date() },
-    });
+  // Live, on every surface of the person: the row moves up and an open conversation gains it.
+  void publishConversation(oxyUserId, conversationId, { appendedFromSeq: seq });
 
   return messageId;
 }
