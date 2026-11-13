@@ -101,11 +101,13 @@ vi.mock('../../../db/chat/conversationMemberRepository.js', () => ({
 }));
 
 vi.mock('../../../db/chat/conversationRepository.js', () => ({
+  findConversation: vi.fn(async () => undefined),
   conversationExists: vi.fn(async () => false),
   updateConversationTitle: vi.fn(async () => 1),
   upsertConversation: vi.fn(async () => ({})),
 }));
 vi.mock('../../../db/chat/messageRepository.js', () => ({
+  findLatestUserMessage: vi.fn(async () => undefined),
   messageExistsInConversation: vi.fn(async () => false),
   countMessages: vi.fn(async () => 0),
   countMessagesInConversation: vi.fn(async () => 0),
@@ -1161,7 +1163,10 @@ describe('deadlines - /v1/chat/completions', () => {
     await pending;
 
     expect(res.json).toHaveBeenCalledTimes(1);
-    expect(saveConversation).not.toHaveBeenCalled();
+    expect(saveConversation).toHaveBeenCalledTimes(1);
+    expect(saveConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ assistantResponse: '', omitLeadReply: true }),
+    );
     expect(mockFinalizeCredits).not.toHaveBeenCalled();
     expect(mockRefundReservation).toHaveBeenCalledWith(VALID_RESERVATION);
   });
@@ -1185,7 +1190,10 @@ describe('deadlines - /v1/chat/completions', () => {
     );
 
     expect(JSON.stringify(res.json.mock.calls[0][0])).not.toContain('choices');
-    expect(saveConversation).not.toHaveBeenCalled();
+    expect(saveConversation).toHaveBeenCalledTimes(1);
+    expect(saveConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ assistantResponse: '', omitLeadReply: true }),
+    );
     expect(mockFinalizeCredits).not.toHaveBeenCalled();
     expect(mockRefundReservation).toHaveBeenCalledWith(VALID_RESERVATION);
   });
