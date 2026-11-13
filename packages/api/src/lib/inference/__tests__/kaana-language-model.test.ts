@@ -7,32 +7,35 @@ const mocks = vi.hoisted(() => ({
   streamFailure: null as Error | null,
 }));
 
-vi.mock('../oxy-inference.js', () => ({
-  getOxyInferenceClient: () => ({
-    respond: async (request: Record<string, unknown>, options: Record<string, unknown>) => {
-      mocks.requests.push(request);
-      mocks.options.push(options);
-      return {
-        requestId: 'req-1',
-        model: 'openai/gpt-5-mini@2026-08-18',
-        servingProvider: 'operator-that-must-not-leak',
-        output: [{ role: 'assistant', content: [{ type: 'text', text: 'hola' }] }],
-        finishReason: 'stop',
-        usage: [
-          { unit: 'input_tokens', quantity: 2 },
-          { unit: 'output_tokens', quantity: 1 },
-        ],
-      };
-    },
-    stream: (request: Record<string, unknown>, options: Record<string, unknown>) => {
-      mocks.requests.push(request);
-      mocks.options.push(options);
-      return (async function* () {
-        for (const event of mocks.events) yield event;
-        if (mocks.streamFailure !== null) throw mocks.streamFailure;
-      })();
+vi.mock('../../kaana/transport.js', () => ({
+  getHostedKaanaClient: () => ({
+    responses: {
+      create: async (request: Record<string, unknown>, options: Record<string, unknown>) => {
+        mocks.requests.push(request);
+        mocks.options.push(options);
+        return {
+          requestId: 'req-1',
+          model: 'openai/gpt-5-mini@2026-08-18',
+          servingProvider: 'operator-that-must-not-leak',
+          output: [{ role: 'assistant', content: [{ type: 'text', text: 'hola' }] }],
+          finishReason: 'stop',
+          usage: [
+            { unit: 'input_tokens', quantity: 2 },
+            { unit: 'output_tokens', quantity: 1 },
+          ],
+        };
+      },
+      stream: (request: Record<string, unknown>, options: Record<string, unknown>) => {
+        mocks.requests.push(request);
+        mocks.options.push(options);
+        return (async function* () {
+          for (const event of mocks.events) yield event;
+          if (mocks.streamFailure !== null) throw mocks.streamFailure;
+        })();
+      },
     },
   }),
+  disposeHostedKaanaClient: vi.fn(),
 }));
 
 import {
@@ -41,7 +44,7 @@ import {
   PAST_TOOL_IMAGE_NOTE,
   TOOL_IMAGE_FOLLOWS_NOTE,
 } from '../kaana-language-model.js';
-import { OxyInferenceError } from '@oxy.so/core/inference';
+import { KaanaError } from '@kaana.ai/sdk';
 import { toAliaError } from '../../errors/failover-error.js';
 
 const prompt = [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'hola' }] }];
@@ -56,7 +59,7 @@ async function drain(stream: ReadableStream<unknown>): Promise<Array<Record<stri
   }
 }
 
-describe('Kaana AI SDK adapter through Oxy', () => {
+describe('Kaana AI SDK adapter over direct public inference', () => {
   beforeEach(() => {
     mocks.requests.length = 0;
     mocks.options.length = 0;
@@ -83,8 +86,6 @@ describe('Kaana AI SDK adapter through Oxy', () => {
 
   it.each([
     ['rate_limited', true, 1250, 'RATE_LIMITED', 2],
-    ['provider_billing_refused', false, undefined, 'PROVIDER_UNAVAILABLE', undefined],
-    ['provider_credential_invalid', false, undefined, 'PROVIDER_UNAVAILABLE', undefined],
     ['no_route_available', false, undefined, 'PROVIDER_UNAVAILABLE', undefined],
     ['provider_timeout', true, undefined, 'TIMEOUT', undefined],
     ['quota_exceeded', false, undefined, 'QUOTA_EXCEEDED', undefined],
@@ -109,7 +110,7 @@ describe('Kaana AI SDK adapter through Oxy', () => {
       const { stream } = await model.doStream({ prompt } as never);
       const parts = await drain(stream);
       const failure = parts.find((part) => part.type === 'error')?.error;
-      expect(failure).toBeInstanceOf(OxyInferenceError);
+      expect(failure).toBeInstanceOf(KaanaError);
       expect(failure).toMatchObject({ code, retryable, requestId: 'req-failed' });
       const productError = toAliaError(failure);
       expect(productError).toMatchObject({ code: productCode, retryable });
@@ -204,7 +205,7 @@ describe('Kaana AI SDK adapter through Oxy', () => {
     expect(mocks.requests[0]).not.toHaveProperty('routingProfile');
     // No effort asked for: the model's own default, and nothing on the wire.
     expect(mocks.requests[0]).not.toHaveProperty('reasoning');
-    expect(mocks.options[0]).toMatchObject({ delegatedUserId: 'user-id' });
+    expect(mocks.options[0]).toMatchObject({ onBehalfOfUserId: 'user-id' });
     expect(result.content).toEqual([{ type: 'text', text: 'hola' }]);
   });
 
@@ -221,7 +222,7 @@ describe('Kaana AI SDK adapter through Oxy', () => {
     expect(mocks.requests[0]).toMatchObject({ maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS });
   });
 
-  it('sends a power level as routingProfile, never as a model, and reports the model Oxy chose', async () => {
+  it('sends a power level as the public model target and reports the actual served model', async () => {
     const model = kaanaLanguageModel({
       target: { kind: 'routingProfile', routingProfile: 'high' },
       modelId: 'high',
@@ -229,8 +230,8 @@ describe('Kaana AI SDK adapter through Oxy', () => {
     });
     const result = await model.doGenerate({ prompt } as never);
 
-    expect(mocks.requests[0]).toMatchObject({ routingProfile: 'high' });
-    expect(mocks.requests[0]).not.toHaveProperty('model');
+    expect(mocks.requests[0]).toMatchObject({ model: 'high' });
+    expect(mocks.requests[0]).not.toHaveProperty('routingProfile');
     expect(mocks.requests[0]).not.toHaveProperty('routingProfileId');
     // The level sets its own effort at Oxy; Alia adds none.
     expect(mocks.requests[0]).not.toHaveProperty('reasoning');
@@ -296,7 +297,7 @@ describe('Kaana AI SDK adapter through Oxy', () => {
     for (const key of keys) expect(key, String(key)).toMatch(uuid);
     expect(new Set(keys).size).toBe(4);
     // The key rides beside the other per-call options rather than replacing them.
-    expect(mocks.options[0]).toMatchObject({ delegatedUserId: 'user-id' });
+    expect(mocks.options[0]).toMatchObject({ onBehalfOfUserId: 'user-id' });
     expect(mocks.options[0].signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -327,7 +328,7 @@ describe('Kaana AI SDK adapter through Oxy', () => {
       {
         type: 'start',
         requestId: 'req-2',
-        resolvedModelReference: 'anthropic/claude-sonnet-4@2026-08-18',
+        model: 'anthropic/claude-sonnet-4@2026-08-18',
         servingProvider: 'operator-that-must-not-leak',
         startedAt: '2026-09-10T00:00:00.000Z',
       },
