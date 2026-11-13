@@ -2,9 +2,10 @@
  * Editing an agent: the one place the write is made, for the HTTP route and for Alia's own tool.
  *
  * `PATCH /agents/:id` and the `updateAgent` tool are two doors to the same act, so what happens
- * behind them is written once: who may edit (anyone who may act as the bot account), the look set
- * on the Oxy account first (so a refusal leaves the agent as it was), the row written from DEFINED
- * keys only, and the answer in the shape `GET /agents/:id` has, child lists attached (the client
+ * behind them is written once: who may edit (anyone who may act as the bot account, or a `local`
+ * gemie's owner), the name and look set where the identity lives — on the Oxy account first, so a
+ * refusal leaves the agent as it was, or on the row of a gemie with no account (ADR 0036) — the row
+ * written from DEFINED keys only, and the answer in the shape `GET /agents/:id` has, child lists attached (the client
  * writes it straight into its cache, and a shape without them used to wipe them on the next save).
  *
  * What a door adds is its own: the route validates the wire body and answers HTTP; the tool
@@ -64,9 +65,15 @@ export type AgentEdit = Omit<UpdateAgentInput, 'skillIds' | 'libraryFileIds'> & 
   knowledge?: string[];
 };
 
-/** What only the account owns, written to Oxy, never to the row: the display name. */
-export interface AgentAccountEdit {
-  displayName?: string;
+/**
+ * Who the gemie is: written where its identity lives. An `oxy` gemie's name is its account's,
+ * renamed at Oxy (its colour too, which the editor writes there itself); a `local` gemie keeps
+ * both on its row.
+ */
+export interface AgentIdentityEdit {
+  name?: string;
+  /** A `local` gemie's colour; an `oxy` gemie's is its account's. */
+  color?: string;
 }
 
 export type AgentEditOutcome =
@@ -82,10 +89,10 @@ export async function applyAgentEdit(params: {
   userId: string;
   accessToken: string;
   edit: AgentEdit;
-  /** The account's own fields (the name), set at Oxy before the row is written. */
-  account?: AgentAccountEdit;
+  /** The name (and a `local` gemie's colour), set where the identity lives. */
+  identity?: AgentIdentityEdit;
 }): Promise<AgentEditOutcome> {
-  const { agentId, userId, accessToken, edit, account } = params;
+  const { agentId, userId, accessToken, edit, identity } = params;
   const loaded = await loadAgentForActor(getDb(), {
     agentId,
     oxyUserId: userId,
@@ -94,43 +101,61 @@ export async function applyAgentEdit(params: {
   });
   if (!loaded.ok) return refused(loaded.refusal);
 
-  // The look lives on the Oxy account too, and every other app draws it from there: change it
-  // there first, so a refusal leaves the agent as it was.
-  if (edit.character !== undefined) {
-    try {
-      await setAgentAccountCharacter({
-        accessToken,
-        oxyAccountId: loaded.agent.oxyAccountId,
-        character: edit.character,
-      });
-    } catch (error: unknown) {
-      log.agents.warn({ err: error, agentId }, 'Oxy refused the look');
-      return { ok: false, status: 502, error: 'Could not set the agent’s look on its account' };
+  const stored = loaded.agent.identity;
+  if (stored.source === 'local') {
+    // Nothing that needs an account of its own: it is its owner's alone (`agents_local_identity_check`).
+    if (edit.isPublished === true || edit.access === 'public') {
+      return { ok: false, status: 400, error: LOCAL_GEMIE_IS_PRIVATE };
     }
-  }
+  } else {
+    if (identity?.color !== undefined) {
+      return { ok: false, status: 400, error: 'This gemie’s colour is its Oxy account’s' };
+    }
+    // The look lives on the Oxy account too, and every other app draws it from there: change it
+    // there first, so a refusal leaves the agent as it was.
+    if (edit.character !== undefined) {
+      try {
+        await setAgentAccountCharacter({
+          accessToken,
+          oxyAccountId: stored.oxyAccountId,
+          character: edit.character,
+        });
+      } catch (error: unknown) {
+        log.agents.warn({ err: error, agentId }, 'Oxy refused the look');
+        return { ok: false, status: 502, error: 'Could not set the agent’s look on its account' };
+      }
+    }
 
-  if (account?.displayName !== undefined) {
-    try {
-      await setAgentAccountName({
-        accessToken,
-        oxyAccountId: loaded.agent.oxyAccountId,
-        displayName: account.displayName,
-      });
-    } catch (error: unknown) {
-      log.agents.warn({ err: error, agentId }, 'Oxy refused the name');
-      return { ok: false, status: 502, error: 'Could not rename the agent’s account' };
+    if (identity?.name !== undefined) {
+      try {
+        await setAgentAccountName({
+          accessToken,
+          oxyAccountId: stored.oxyAccountId,
+          displayName: identity.name,
+        });
+      } catch (error: unknown) {
+        log.agents.warn({ err: error, agentId }, 'Oxy refused the name');
+        return { ok: false, status: 502, error: 'Could not rename the agent’s account' };
+      }
     }
   }
 
   const { skills, knowledge, ...columns } = edit;
   const agent = await updateAgent(getDb(), agentId, {
     ...columns,
+    ...(stored.source === 'local' && identity?.name !== undefined && { localName: identity.name }),
+    ...(stored.source === 'local' &&
+      identity?.color !== undefined && { localColor: identity.color }),
     ...(skills !== undefined && { skillIds: skills }),
     ...(knowledge !== undefined && { libraryFileIds: knowledge }),
   });
   if (!agent) return { ok: false, status: 404, error: 'Agent not found' };
   return { ok: true, agent };
 }
+
+/** Why a `local` gemie cannot be listed or shared (ADR 0036). */
+const LOCAL_GEMIE_IS_PRIVATE =
+  'A gemie with no Oxy account is its owner’s alone: it cannot be published or made public';
 
 function refused(refusal: AgentAccountRefusal | 'agent_not_found'): AgentEditOutcome {
   if (refusal === 'agent_not_found') return { ok: false, status: 404, error: 'Agent not found' };

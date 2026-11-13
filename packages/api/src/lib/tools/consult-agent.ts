@@ -27,12 +27,7 @@ import { z } from 'zod';
 import { getDb } from '../../db/index.js';
 import { findAgentById, listActiveAgentsByAuthor } from '../../db/agents/agentRepository.js';
 import { canReachAgent } from '../agent-account.js';
-import {
-  agentPromptName,
-  attachAgentIdentity,
-  resolveAgentIdentities,
-  UNRESOLVED_IDENTITY,
-} from '../agent-identity.js';
+import { agentPromptName, attachAgentIdentities, attachAgentIdentity } from '../agent-identity.js';
 import { log } from '../logger.js';
 import { getErrorMessage } from '../errors/index.js';
 import type { SSEEmitter } from '../sse-emitter.js';
@@ -93,12 +88,9 @@ async function ownAgentsLine(options: ConsultAgentOptions): Promise<string> {
       (options.allowedAgentIds === undefined || options.allowedAgentIds.includes(agent._id)),
   );
   if (owned.length === 0) return '';
-  const identities = await resolveAgentIdentities(owned.map((agent) => agent.oxyAccountId));
-  return `\n\nThe person's own agents:\n${owned
-    .map(
-      (agent) =>
-        `- ${agent._id} — ${agentPromptName(identities.get(agent.oxyAccountId) ?? UNRESOLVED_IDENTITY)}: ${agent.tagline}`,
-    )
+  const named = await attachAgentIdentities(owned);
+  return `\n\nThe person's own agents:\n${named
+    .map((agent) => `- ${agent._id} — ${agentPromptName(agent)}: ${agent.tagline}`)
     .join('\n')}`;
 }
 
@@ -152,7 +144,8 @@ export async function buildConsultAgentTool(options: ConsultAgentOptions): Promi
           const identity = {
             agentId,
             agentName: agentPromptName(agent),
-            agentHandle: agent.handle ?? 'unknown',
+            // Empty when it has none (a gemie with no Oxy account), as a room member's is.
+            agentHandle: agent.handle ?? '',
             agentColor: agent.color,
             agentCharacter: agent.character,
           };

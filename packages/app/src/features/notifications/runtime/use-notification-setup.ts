@@ -15,6 +15,7 @@ import apiClient from '@/shared/api/client';
 import i18n from '@/shared/i18n';
 import { acquireNotificationsSocket } from '@/features/notifications/runtime/notifications-socket';
 import { queryKeys } from '@/shared/api/query-keys';
+import { agentThreadHref } from '@/shared/routing/agent-address';
 
 // ── Constants ──────────────────────────────────────────────────────
 /**
@@ -105,10 +106,17 @@ export function useNotificationSetup() {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       if (!isAuthenticated) return;
       const data = response.notification.request.content.data;
-      // An agent's message opens its permanent thread (`/@handle`), where the
-      // conversation lives, not the plain `/c/:id` screen.
-      if (typeof data?.agentHandle === 'string' && data.agentHandle) {
-        router.push(`/@${data.agentHandle}`);
+      // An agent's message opens its permanent thread (`/@handle`, or `/agents/<id>`
+      // for one with no handle), where the conversation lives, not the plain
+      // `/c/:id` screen.
+      const thread =
+        typeof data?.agentHandle === 'string' && data.agentHandle
+          ? { handle: data.agentHandle }
+          : typeof data?.agentId === 'string' && data.agentId
+            ? { gemieId: data.agentId }
+            : undefined;
+      if (thread !== undefined) {
+        router.push(agentThreadHref(thread));
       } else if (data?.conversationId) {
         router.push(`/(app)/c/${data.conversationId}`);
       }

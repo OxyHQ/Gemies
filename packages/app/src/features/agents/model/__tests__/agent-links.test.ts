@@ -15,19 +15,19 @@ import { translator } from '@/shared/testing/translate';
 
 describe('Chat, on a catalogue card', () => {
   it('opens the agent’s own thread, not the profile the card already opens', () => {
-    expect(agentChatRoute({ name: 'Pepe', handle: 'pepe' })).toBe('/@pepe');
+    expect(agentChatRoute({ _id: 'a1', handle: 'pepe' })).toBe('/@pepe');
   });
 
   it('keeps the @ in the address: a path, not a route object whose value Expo Router encodes', () => {
-    const route = agentChatRoute({ name: 'Pepe', handle: 'pepe' });
+    const route = agentChatRoute({ _id: 'a1', handle: 'pepe' });
     expect(typeof route).toBe('string');
     expect(route).not.toContain('%40');
-    expect(agentThreadHref('pepe', 'th 1')).toBe('/@pepe?threadId=th%201');
+    expect(agentThreadHref({ handle: 'pepe' }, 'th 1')).toBe('/@pepe?threadId=th%201');
   });
 
-  it('offers nothing when the thread has no address', () => {
-    expect(agentChatRoute({ name: 'Pepe', handle: null })).toBeNull();
-    expect(agentChatRoute({ name: 'Pepe', handle: '  ' })).toBeNull();
+  it('opens a gemie with no handle by its id', () => {
+    expect(agentChatRoute({ _id: 'a1', handle: null })).toBe('/agents/a1');
+    expect(agentChatRoute({ _id: 'a1', handle: '  ' })).toBe('/agents/a1');
   });
 });
 

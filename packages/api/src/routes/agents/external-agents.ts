@@ -9,6 +9,9 @@
  *
  * `redeem` is called by the daemon with the person's own Oxy session, so the account that minted
  * the code and the account that redeems it are the same by construction — the SQL requires it.
+ *
+ * A paired agent has no Oxy account (ADR 0036): it is a `local` gemie, its name and colour kept on
+ * its own row and its owner the person who paired it. A CLI added for a while is not an account.
  */
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { randomUUID } from 'node:crypto';
@@ -24,15 +27,13 @@ import {
   revokeExternalLink,
 } from '../../db/agents/externalAgentRepository.js';
 import {
+  EXTERNAL_AGENT_CLI_COLORS,
   EXTERNAL_AGENT_CLI_LABELS,
   EXTERNAL_AGENT_CLIS,
   EXTERNAL_PAIRING_TTL_MS,
 } from '../../domain/external-agent.js';
-import { agentColorFor } from '../../lib/agent-color.js';
 import { gemieCharacterOf } from '../../lib/agent-character.js';
 import { authenticateToken } from '../../middleware/auth.js';
-import { createAgentBotAccount } from '../../lib/agent-account.js';
-import { fallbackAgentUsername, suggestAgentUsername } from '../../lib/agent-identity.js';
 import { getErrorMessage } from '../../lib/errors/index.js';
 import { log } from '../../lib/logger.js';
 import { buildInvitePrompt, inviteLocaleOf } from '../../lib/external-agents/invite-prompt.js';
@@ -105,9 +106,7 @@ router.post(
   '/external/redeem',
   authenticateToken,
   route(async (req, res) => {
-    if (!req.user?.id || req.accessToken === undefined) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
     const parsed = redeemSchema.safeParse(req.body);
     if (!parsed.success || !isWellFormedPairingCode(parsed.data.code)) {
       return res.status(400).json({ error: 'invalid_request' });
@@ -125,25 +124,16 @@ router.post(
     }
 
     try {
-      const name = `${EXTERNAL_AGENT_CLI_LABELS[cli]} · ${hostName}`;
-      const username =
-        suggestAgentUsername(EXTERNAL_AGENT_CLI_LABELS[cli]) ?? fallbackAgentUsername();
-      const character = gemieCharacterOf(avatarCharacterFor(username));
-      const tagline = `${EXTERNAL_AGENT_CLI_LABELS[cli]} on ${hostName}`;
-      const account = await createAgentBotAccount({
-        accessToken: req.accessToken,
-        username,
-        displayName: name,
-        bio: tagline,
-        color: agentColorFor(username),
-        character,
-      });
+      const label = EXTERNAL_AGENT_CLI_LABELS[cli];
+      const name = `${label} · ${hostName}`;
+      const tagline = `${label} on ${hostName}`;
       const agent = await createAgent(getDb(), {
-        oxyAccountId: account.oxyAccountId,
+        identity: { source: 'local', name, color: EXTERNAL_AGENT_CLI_COLORS[cli] },
+        // Picked from its name, so the agents of two computers look apart; its owner changes it.
+        character: gemieCharacterOf(avatarCharacterFor(name)),
         ownerOxyAccountId: userId,
-        character,
         tagline,
-        description: `${EXTERNAL_AGENT_CLI_LABELS[cli]} running on ${hostName}, connected to Alia through the Codea daemon.`,
+        description: `${label} running on ${hostName}, connected to Gemies through the Codea daemon.`,
         authorOxyUserId: userId,
         category: 'Assistant',
         isPublished: false,
@@ -156,10 +146,10 @@ router.post(
         hostName,
       });
       log.general.info({ agentId: agent._id, cli, userId }, 'External agent paired');
-      res.status(201).json({ agentId: agent._id, name, handle: account.username, cli });
+      res.status(201).json({ agentId: agent._id, name, cli });
     } catch (err: unknown) {
       log.general.error({ err }, 'External agent pairing failed after the code was redeemed');
-      res.status(502).json({ error: 'pairing_failed', message: getErrorMessage(err) });
+      res.status(500).json({ error: 'pairing_failed', message: getErrorMessage(err) });
     }
   }),
 );
@@ -194,7 +184,7 @@ router.delete(
     if (!revoked) return res.status(404).json({ error: 'Not found' });
     disconnectExternalAgent(agentId);
     // The agent goes too: without its link it would answer as an ordinary agent, with Alia's model.
-    // The Oxy `bot` account survives, as for every deleted agent (`DELETE /agents/:id`).
+    // It has no Oxy account to leave behind (ADR 0036).
     await deleteAgent(getDb(), agentId).catch((err: unknown) => {
       log.general.error({ err, agentId }, 'Could not delete the agent of a revoked external link');
     });

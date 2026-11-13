@@ -20,6 +20,7 @@ import { prepareBackgroundCreditReservation } from '../product-credit-access';
 import { getOrCreateUserCredits } from '../user-credits-helpers';
 import { enqueueAgentSession } from '../task-queue';
 import { agentOpensOn } from '../agent-availability';
+import { gemieOxyAccountId } from '../gemie-oxy-actor';
 import { log } from '../logger';
 import { agentHirePrice } from './session-handoff';
 import { deliverPendingAgentWorkResults } from './work-delivery';
@@ -39,6 +40,10 @@ export async function establishAgentWork(
     !agent.scheduleInterval
   )
     return;
+  // Its work runs under an Oxy task with the gemie as its actor; a gemie with no Oxy account
+  // (ADR 0036) is nobody at Oxy, so it has none, and works only when its owner talks to it.
+  const actorAccountId = gemieOxyAccountId(agent);
+  if (actorAccountId === null) return;
   const current = await findWorkAuthority(db, agentId, ownerAccountId);
   if (current && current.expiresAt > new Date()) {
     await migrateAgentWakeSchedules(agentId, ownerAccountId, current.oxyTaskId);
@@ -47,7 +52,7 @@ export async function establishAgentWork(
   const taskId = await createOxyTask({
     accessToken,
     effectiveAccountId: ownerAccountId,
-    actorAccountId: agent.oxyAccountId,
+    actorAccountId,
     origin: { kind: 'goal', id: `agent-work:${agentId}` },
   });
   let accepted = false;
@@ -131,7 +136,7 @@ export async function dispatchAgentWork(now = new Date()): Promise<number> {
         continue;
       // The requester already authorized this durable task. A private agent does
       // not need the now-absent interactive bearer again; confinement stays live.
-      if ((await agentOpensOn(agent.oxyAccountId, null)) !== 'reachable')
+      if ((await agentOpensOn(agent, null)) !== 'reachable')
         throw new Error('Agent availability could not authorize this surface');
       await getOrCreateUserCredits(work.ownerAccountId);
       const reserve = await prepareBackgroundCreditReservation(

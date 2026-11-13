@@ -1,10 +1,10 @@
 import type { Agent } from '@/shared/contracts/agents';
-import { agentHandle } from '@/shared/routing/agent-address';
+import { gemieOfThreadPath } from '@/shared/routing/agent-address';
 
 /**
  * The agent whose thread or conversation the path shows, if any: `/@handle` is the agent's
- * permanent thread, and `/c/:id` is a chat that belongs to an agent. Anything else shows no agent,
- * so the app keeps its own theme there.
+ * permanent thread (`/agents/<id>` for one with no handle), and `/c/:id` is a chat that belongs to
+ * an agent. Anything else shows no agent, so the app keeps its own theme there.
  */
 export function activeAgentFor({
   pathname,
@@ -15,11 +15,8 @@ export function activeAgentFor({
   agents: readonly Agent[];
   conversations: readonly { id: string; agentId?: string | null }[];
 }): Agent | undefined {
-  const handle = /^\/@([^/]+)$/.exec(pathname)?.[1];
-  if (handle !== undefined) {
-    const wanted = decodeURIComponent(handle);
-    return agents.find((agent) => agentHandle(agent) === wanted);
-  }
+  const threadGemie = gemieOfThreadPath(pathname, agents);
+  if (threadGemie !== undefined) return threadGemie;
   const conversationId = /^\/c\/([^/]+)/.exec(pathname)?.[1];
   if (conversationId !== undefined) {
     const agentId = conversations.find(

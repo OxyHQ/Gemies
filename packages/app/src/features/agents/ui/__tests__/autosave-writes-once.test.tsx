@@ -391,7 +391,7 @@ const KNOWLEDGE = [
 function agentFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     _id: 'agent-1',
-    oxyAccountId: 'acct-bot',
+    identity: { source: 'oxy', oxyAccountId: 'acct-bot' },
     name: 'Pepe',
     handle: 'pepe',
     character: { preset: 'blue_beret' },
@@ -739,6 +739,59 @@ describe('the colour is the account’s', () => {
       color: '#ff8b67',
     });
     expect(patchRequest).not.toHaveBeenCalled();
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+});
+
+/**
+ * A gemie with no Oxy account (Gemies ADR 0036, an external agent) keeps its name and colour on its
+ * row: the same editor writes them through `PATCH /agents/:id`, never to Oxy, and it has no handle
+ * to edit and none of the cards of Gemies' own runtime.
+ */
+describe('a gemie with no Oxy account', () => {
+  beforeEach(() => {
+    getRequest.mockImplementation(async (url: string) => {
+      if (url === '/agents/agent-1') {
+        return {
+          data: {
+            agent: agentFixture({
+              identity: { source: 'local', name: 'Claude Code · desk', color: 'orange' },
+              name: 'Claude Code · desk',
+              handle: null,
+              color: 'orange',
+            }),
+          },
+        };
+      }
+      if (url === '/skills') return { data: { skills: [] } };
+      return { data: { connectors: [] } };
+    });
+  });
+
+  it('saves its name and colour to its row, and offers no handle or runtime cards', async () => {
+    const { renderer } = await renderEditor();
+    const creator = renderer.root.findAllByType(
+      'AgentCreator' as unknown as React.ComponentType,
+    )[0];
+    const props = creator.props as {
+      agent: Record<string, unknown>;
+      sections: unknown;
+      onChange: (next: Record<string, unknown>) => void;
+    };
+    expect(props.sections).toBeUndefined();
+    expect(
+      renderer.root.findAllByType('AgentCreatorField' as unknown as React.ComponentType),
+    ).toHaveLength(0);
+
+    await act(async () => {
+      props.onChange({ ...props.agent, name: 'Desk', color: 'lagoon' });
+    });
+    await letTimePass(2);
+
+    expect(updateAccount).not.toHaveBeenCalled();
+    expect(patchBodies()).toEqual([{ name: 'Desk', color: 'lagoon' }]);
     await act(async () => {
       renderer.unmount();
     });

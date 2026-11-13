@@ -101,8 +101,7 @@ export async function runReactionEvent(event: ReactionEvent, leaseValid: () => b
         return null;
       // Reach was authorized with the person's session at the mutation edge. Recheck the current
       // app boundary; no requester bearer or authority is retained, and this runner has no tools.
-      if ((await agentOpensOn(agent.oxyAccountId, event.surfaceApplicationId)) !== 'reachable')
-        return null;
+      if ((await agentOpensOn(agent, event.surfaceApplicationId)) !== 'reachable') return null;
       if (await isExternalAgent(agent._id)) return null;
       return agent;
     },

@@ -5,7 +5,6 @@ import { AgentReviewsSection } from '@/features/agents/ui/detail/agent-reviews-s
 import { AgentThreadsList } from '@/features/agents/ui/detail/agent-threads-list';
 import { ActivityGrid } from '@/features/agents/ui/detail/activity-grid';
 import { agentDisplayName } from '@/features/agents/model/identity';
-import { agentHandle } from '@/shared/routing/agent-address';
 import { CAPABILITY_FAMILIES } from '@/features/chat/model/capability-families';
 import { useOpenAgentEditor } from '@/features/chat/runtime/use-open-agent-editor';
 import { useAgentDetailActions } from '@/features/agents/runtime/use-agent-detail-actions';
@@ -49,7 +48,6 @@ export function AgentDetail({ agent }: { agent: Agent }) {
   const actions = useAgentDetailActions(agent);
 
   const isOwner = !!(user && user.id === agent.author);
-  const handle = agentHandle(agent);
   const capabilityLabels = grantedFamilyLabels(agent.capabilityGrants ?? []).map((key) => t(key));
 
   /**
@@ -89,9 +87,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
           <AgentThreadsList
             key="threads"
             threads={agentThreads}
-            onOpen={(thread) => {
-              if (handle) actions.openThread(handle, thread.id);
-            }}
+            onOpen={(thread) => actions.openThread(thread.id)}
           />,
         ]
       : []),

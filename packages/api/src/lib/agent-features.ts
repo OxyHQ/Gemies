@@ -45,6 +45,8 @@ import {
   presentPersonAgentContext,
   type OxyToolExecutionContext,
 } from './tools/oxy-services.js';
+import { gemieOxyAccountId } from './gemie-oxy-actor.js';
+import type { StoredAgentIdentity } from '../domain/agent.js';
 
 const checkAnswerSchema = z
   .object({ available: z.boolean(), remaining: z.number().int().min(0).optional() })
@@ -68,7 +70,7 @@ export interface FeatureRefusal {
 
 /** The agent fields a gate is read from. */
 export interface GatedAgent {
-  readonly oxyAccountId: string;
+  readonly identity: StoredAgentIdentity;
   readonly ownerOxyAccountId: string | null;
   readonly featureGates: AgentFeatureGates;
 }
@@ -84,8 +86,11 @@ export interface FeaturePerson {
 
 function laneOf(agent: GatedAgent, person: FeaturePerson): OxyToolExecutionContext | null {
   if (person.accessToken === undefined && !person.taskId) return null;
+  // A gate is checked as the gemie's account; one with none (ADR 0036) unlocks nothing.
+  const oxyAccountId = gemieOxyAccountId(agent);
+  if (oxyAccountId === null) return null;
   return presentPersonAgentContext({
-    agent,
+    agent: { oxyAccountId, ownerOxyAccountId: agent.ownerOxyAccountId },
     personAccountId: person.accountId,
     accessToken: person.accessToken,
     taskId: person.taskId,

@@ -157,7 +157,7 @@ const { buildChatRequestContext } = await import('../request-context.js');
 const SINDI = {
   _id: 'sindi',
   id: 'sindi',
-  oxyAccountId: 'sindi-bot',
+  identity: { source: 'oxy', oxyAccountId: 'sindi-bot' },
   ownerOxyAccountId: 'homiio-project',
   featureGates: { 'attachments.documents': { app: 'homiio', feature: 'files' } },
 };

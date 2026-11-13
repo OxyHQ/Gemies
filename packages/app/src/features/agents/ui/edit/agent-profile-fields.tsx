@@ -11,13 +11,19 @@ import { TextFieldInput } from '@oxy.so/bloom/text-field';
  *
  * Two stores, one editor. The name, the handle and the colour are the bot ACCOUNT's, saved to Oxy;
  * the tagline, description and character (its shape and features, no colour) are the agent row's,
- * saved to Alia. The editor hands back one agent, and each field is routed to the draft it belongs
- * to. No voice: Alia's agents have none.
+ * saved to Gemies. The editor hands back one agent, and each field is routed to the draft it belongs
+ * to. No voice: gemies have none.
  *
- * The colour control is Bloom's free picker: any colour, written to the account as a hex.
+ * A gemie with no Oxy account (ADR 0036, an external agent) is the same editor with what it has:
+ * its name and colour are its row's, and it has no handle, and none of the cards below — they
+ * configure Gemies' own runtime (its work, accounts, events, inbox and memory), and an external
+ * agent runs on its owner's computer.
+ *
+ * The colour control is Bloom's free picker: any colour, written as a hex where the identity lives.
  */
 export function AgentProfileFields({
   id,
+  hasAccount,
   identity,
   draft,
   onEditIdentity,
@@ -25,6 +31,8 @@ export function AgentProfileFields({
   onClose,
 }: {
   id: string;
+  /** Whether the gemie IS an Oxy account: it has a handle and the cards of Gemies' runtime. */
+  hasAccount: boolean;
   identity: IdentityDraft;
   draft: Pick<AgentDraft, 'tagline' | 'description' | 'character'>;
   onEditIdentity: (patch: Partial<IdentityDraft>) => void;
@@ -39,7 +47,7 @@ export function AgentProfileFields({
       style={{ flex: 1 }}
       onClose={onClose}
       showPreferences={false}
-      sections={<AgentEditorSections agentId={id} name={identity.name} />}
+      sections={hasAccount ? <AgentEditorSections agentId={id} name={identity.name} /> : undefined}
       agent={{
         id,
         name: identity.name,
@@ -62,17 +70,19 @@ export function AgentProfileFields({
     >
       {/* The handle was PROPOSED at creation and may carry a collision suffix nobody chose, so it is
           editable here rather than permanent: a row of the editor's own card, handed in. */}
-      <AgentCreatorField label={t('agents.handleLabel')}>
-        <TextFieldInput
-          label={t('agents.handlePlaceholder')}
-          size="sm"
-          maxLength={32}
-          value={identity.handle}
-          onChangeText={(text) => onEditIdentity({ handle: text })}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-      </AgentCreatorField>
+      {hasAccount ? (
+        <AgentCreatorField label={t('agents.handleLabel')}>
+          <TextFieldInput
+            label={t('agents.handlePlaceholder')}
+            size="sm"
+            maxLength={32}
+            value={identity.handle}
+            onChangeText={(text) => onEditIdentity({ handle: text })}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </AgentCreatorField>
+      ) : null}
     </AgentCreator>
   );
 }

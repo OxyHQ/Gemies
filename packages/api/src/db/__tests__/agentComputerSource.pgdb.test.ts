@@ -29,7 +29,7 @@ afterAll(async () => closePostgres());
 
 const newAgent = (capabilityGrants?: string[]) =>
   createAgent(db, {
-    oxyAccountId: `cs-bot-${uuidv7()}`,
+    identity: { source: 'oxy', oxyAccountId: `cs-bot-${uuidv7()}` },
     ownerOxyAccountId: 'cs-owner',
     character: TEST_CHARACTER,
     tagline: 't',

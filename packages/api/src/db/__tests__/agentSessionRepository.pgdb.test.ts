@@ -54,7 +54,7 @@ const suffix = () => Math.random().toString(36).slice(2, 10);
 async function seedAgent(overrides: Record<string, unknown> = {}): Promise<string> {
   const agent = await createAgent(db, {
     character: TEST_CHARACTER,
-    oxyAccountId: `oxy-bot-runner-${suffix()}`,
+    identity: { source: 'oxy', oxyAccountId: `oxy-bot-runner-${suffix()}` },
     ownerOxyAccountId: OWNER,
     tagline: 'runs things',
     description: 'd',
@@ -227,12 +227,15 @@ describe('the task listings', () => {
     // the route attaches it with one batched call. What this asserts is that a
     // caller gets something it can resolve, rather than a bare agent id.
     const oxyAccountId = `oxy-bot-cardable-${suffix()}`;
-    const agentId = await seedAgent({ oxyAccountId });
+    const agentId = await seedAgent({ identity: { source: 'oxy', oxyAccountId } });
     const user = `oxy-active-${suffix()}`;
     await createAgentSession(db, { agentId, oxyUserId: user, task: 'live', status: 'running' });
 
     const [session] = await listActiveAgentSessions(db, user, 10);
-    expect(session.agentId).toMatchObject({ _id: agentId, oxyAccountId });
+    expect(session.agentId).toMatchObject({
+      _id: agentId,
+      identity: { source: 'oxy', oxyAccountId },
+    });
   });
 
   /**

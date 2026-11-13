@@ -165,6 +165,7 @@ Own tools use the requester account and live catalogue, without per-app consent.
 |---|---|
 | `GET\|PUT\|DELETE /agents/:id/memory` | The agent's memory files about the caller (`routes/agents/memory.ts`) |
 | `/agents/:id/computer/*` | The live view of the agent's computer: status, files, receipts, browser screenshot and take-over (`routes/agents/computer.ts`) |
+| `PATCH /agents/:id` with `name`, `color` | Who the gemie is, written where its identity lives: a gemie with no Oxy account keeps both on its row; an Oxy gemie's name is renamed on its account, and its colour is its account's (`400` here). A gemie with no Oxy account is never published or public (`400`) — [ADR 0036](./adr/0036-external-agents-have-no-oxy-account.md) |
 | `PATCH /agents/:id` with `starters`, `featureGates` | The empty chat's starters (`[{ title, prompt }]`, at most 6) and the agent's feature gates (`attachments.documents`, `attachments.images`, `deep_research`, `power_level.pro`, `power_level.ultra`), each checked against the app's live catalogue before it is saved (`400` for an undeclared feature, `503` when the catalogues cannot be read) — [agents](./agents.md#feature-gates) |
 | `PATCH /agents/:id` with `primaryTools`, `GET /agents/:id/primary-tool-options` | The app tools active from the first step of every turn the agent leads (`<appId>:<tool>`, at most 12), checked against the live catalogues (`400` for a tool no catalogue offers agents, `503` when they cannot be read); the options are the tools of every app the agent reaches — [agents](./agents.md#primary-tools) |
 | `GET /v1/agents/:id/profile` | The lead participant an embedding app draws: `{ id, name, handle, character, color, description, greeting, starters, access, features: [{ key, gated }] }` (`routes/v1/agents.ts`); `404` for any agent the person may not use |
@@ -179,7 +180,7 @@ session (`authenticateToken`).
 | Route | Purpose |
 |---|---|
 | `POST /agents/external/pair` | Mint a single-use code (10 minutes) and the text to paste into the agent. Body `{ locale?: 'en' \| 'es' }`. 429 above five codes a minute. |
-| `POST /agents/external/redeem` | The daemon trades a code for an agent. Body `{ code, cli: 'claude' \| 'codex' \| 'opencode', hostName }`. Creates a private, unlisted agent and its link; 400 `invalid_or_expired_code` for an unknown, used, expired or foreign code. |
+| `POST /agents/external/redeem` | The daemon trades a code for an agent. Body `{ code, cli: 'claude' \| 'codex' \| 'opencode', hostName }`. Creates a private, unlisted gemie with no Oxy account (`identity: 'local'`, [ADR 0036](./adr/0036-external-agents-have-no-oxy-account.md)) and its link, and answers `{ agentId, name, cli }`; 400 `invalid_or_expired_code` for an unknown, used, expired or foreign code. |
 | `GET /agents/external` | The person's external agents with `online` presence (any instance, through Redis). `GET /agents/me` also marks them: `external: { cli, online }`. |
 | `DELETE /agents/external/:agentId` | Revoke: the link dies, the daemon is disconnected and the agent is deleted. |
 | `WS /ws/external-agent` | The daemon's socket. First frame `{ type: 'auth', token, agentId }`; then `turn` frames down and `delta` / `end` / `error` frames back. |

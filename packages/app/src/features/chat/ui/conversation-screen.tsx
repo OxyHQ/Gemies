@@ -7,7 +7,7 @@ import {
   type GemieSuggestion,
 } from '@gemies/sdk';
 import { ALIA_GEMIE_ID } from '@gemies/sdk/model';
-import { useConversation } from '@gemies/sdk/runtime';
+import { type GemieThreadAddress, useConversation } from '@gemies/sdk/runtime';
 import { ComposerPanelStatusTab } from '@oxy.so/bloom/composer-panel';
 import { useAuth } from '@oxy.so/services/ui/client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -46,14 +46,14 @@ interface ConversationScreenProps {
   /** The agent's name, for the breadcrumb when the chat has no title yet. */
   agentName?: string;
   /**
-   * The handle whose thread this is, when it is one.
+   * The thread this is, when it is one: by the gemie's handle, or by its id when it has none.
    *
    * It is what the history behind the conversation is paged from, and what is re-read when a new
    * stretch is started: the route shows the ACTIVE stretch, and starting one makes a different
    * conversation active. Absent on `/c/:id`, which is a single conversation with no thread behind
    * it, and on the new-chat screen.
    */
-  threadHandle?: string;
+  thread?: GemieThreadAddress;
   /**
    * The route is still resolving which conversation this is (an agent's thread is looked up by its
    * handle). The frame, the header and the composer are drawn at once and the thread shows its
@@ -92,7 +92,7 @@ export const ConversationScreen = ({
   conversationId,
   agentId,
   agentName,
-  threadHandle,
+  thread,
   loading = false,
   group,
 }: ConversationScreenProps) => {
@@ -182,7 +182,7 @@ export const ConversationScreen = ({
           chat={chat}
           agentName={agentName}
           agentId={agentId}
-          threadHandle={threadHandle}
+          thread={thread}
           // Only an ordinary chat is shared: an agent's thread is a view over several
           // conversations, and a temporary chat is never stored.
           shareable={!ephemeral && agentId === undefined && group === undefined}
@@ -226,7 +226,7 @@ export const ConversationScreen = ({
         ),
       };
     },
-    [title, t, projectName, conversationId, agentName, agentId, threadHandle, ephemeral, openAgent],
+    [title, t, projectName, conversationId, agentName, agentId, thread, ephemeral, openAgent],
   );
 
   const agent = useMemo(() => (agentId === undefined ? undefined : { id: agentId }), [agentId]);
@@ -240,7 +240,11 @@ export const ConversationScreen = ({
         bubbles={agentId !== undefined}
         loading={loading}
         group={group}
-        threadHandle={threadHandle}
+        {...(thread === undefined
+          ? {}
+          : 'handle' in thread
+            ? { threadHandle: thread.handle }
+            : { gemieThread: { gemieId: thread.gemieId, threadId: null } })}
         ephemeral={ephemeral}
         model={model}
         onModelChange={conversationId === undefined ? setGlobalLevel : setConversationLevel}

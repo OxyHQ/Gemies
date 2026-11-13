@@ -73,15 +73,17 @@ export interface AgentDraft {
 }
 
 /**
- * The fields that belong to the agent's Oxy bot ACCOUNT rather than to its
- * Alia row, so they are written to a different service by a different call.
+ * Who the gemie is: the fields that belong to its Oxy bot ACCOUNT rather than to its Gemies row,
+ * so they are written to a different service by a different call — or, for a gemie with no Oxy
+ * account (Gemies ADR 0036), to its row, and it has no handle.
  */
 export interface IdentityDraft {
   name: string;
   handle: string;
   /**
-   * The gemie's colour: the account's `User.color`, a Bloom preset key or any hex. It paints the character
-   * and tints the chat everywhere, in this app and every other.
+   * The gemie's colour: the account's `User.color` (a gemie with no account keeps its own), a
+   * Bloom preset key or any hex. It paints the character and tints the chat everywhere, in this app
+   * and every other.
    */
   color: string;
 }
@@ -220,7 +222,8 @@ export function useAgentDraftAutosave(agent: Agent) {
 }
 
 /**
- * The bot account's half: the NAME, the HANDLE and the COLOUR, saved to Oxy.
+ * The bot account's half: the NAME, the HANDLE and the COLOUR, saved to Oxy — or, for a gemie with
+ * no Oxy account, the name and the colour saved to its row through `PATCH /agents/:id`.
  *
  * Two writes, two services — not one call that fans out, because a failed
  * rename must not take the tagline with it and a failed tagline must not roll
@@ -235,6 +238,7 @@ export function useAgentDraftAutosave(agent: Agent) {
 export function useAgentIdentityAutosave(agent: Agent) {
   const { t } = useTranslation();
   const { oxyServices } = useOxy();
+  const updateAgent = useUpdateAgent();
   const queryClient = useQueryClient();
   const look = useAgentLivePreview(agent._id);
   const [identity, setIdentity] = useState<IdentityDraft>(() => ({
@@ -303,16 +307,24 @@ export function useAgentIdentityAutosave(agent: Agent) {
       }
 
       try {
-        await oxyServices.accounts.update(agent.oxyAccountId, {
-          name: { displayName: next.name },
-          // Only when it actually changed: `username` is globally unique, and
-          // re-sending the current one on every keystroke of the NAME field
-          // would ask Oxy to re-check a handle nobody touched.
-          ...(handleChanged && { username: trimmed }),
-          // Only when it changed, like the handle: Oxy weighs a colour against the presets the
-          // account may wear when it is set, and re-sending the same one asks for nothing.
-          ...(colorChanged && { color: next.color }),
-        });
+        if (agent.identity.source === 'local') {
+          // No account: its name and colour are its row's, and it has no handle.
+          await updateAgent.mutateAsync({
+            id: agent._id,
+            updates: { name: next.name, ...(colorChanged && { color: next.color }) },
+          });
+        } else {
+          await oxyServices.accounts.update(agent.identity.oxyAccountId, {
+            name: { displayName: next.name },
+            // Only when it actually changed: `username` is globally unique, and
+            // re-sending the current one on every keystroke of the NAME field
+            // would ask Oxy to re-check a handle nobody touched.
+            ...(handleChanged && { username: trimmed }),
+            // Only when it changed, like the handle: Oxy weighs a colour against the presets the
+            // account may wear when it is set, and re-sending the same one asks for nothing.
+            ...(colorChanged && { color: next.color }),
+          });
+        }
         savedHandle.current = trimmed;
         if (colorChanged) savedColor.current = next.color;
         // The name, the handle and the colour are the account's: everything that shows them (the
@@ -347,7 +359,7 @@ export function useAgentIdentityAutosave(agent: Agent) {
         look.revert();
       }
     },
-    [agent._id, agent.oxyAccountId, oxyServices, queryClient, look, t],
+    [agent._id, agent.identity, oxyServices, updateAgent.mutateAsync, queryClient, look, t],
   );
 
   const scheduleSave = useDebouncedWrite(saveIdentity);

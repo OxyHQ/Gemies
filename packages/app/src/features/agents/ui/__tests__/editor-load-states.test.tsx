@@ -355,7 +355,7 @@ const AGENT_URL = '/agents/agent-1';
 function agentFixture(): Record<string, unknown> {
   return {
     _id: 'agent-1',
-    oxyAccountId: 'acct-bot',
+    identity: { source: 'oxy', oxyAccountId: 'acct-bot' },
     name: 'Pepe',
     handle: 'pepe',
     character: { preset: 'blue_beret' },

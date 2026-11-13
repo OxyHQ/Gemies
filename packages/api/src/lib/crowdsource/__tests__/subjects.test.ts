@@ -76,7 +76,7 @@ function agentRecord(overrides: Record<string, unknown> = {}) {
   return {
     _id: AGENT_ID,
     id: AGENT_ID,
-    oxyAccountId: BOT_ACCOUNT,
+    identity: { source: 'oxy', oxyAccountId: BOT_ACCOUNT },
     tagline: 'Does helpful things',
     description: 'A long description',
     author: AUTHOR_ID,

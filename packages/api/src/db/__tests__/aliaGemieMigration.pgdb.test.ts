@@ -56,7 +56,7 @@ describe('0135: Alia is one official, global gemie', () => {
     expect(alia).toMatchObject({
       ...ALIA_GEMIE_CONFIGURATION,
       capabilityGrants: [...ALIA_GEMIE_CONFIGURATION.capabilityGrants],
-      oxyAccountId: ALIA_PENDING_OXY_ACCOUNT_ID,
+      identity: { source: 'oxy', oxyAccountId: ALIA_PENDING_OXY_ACCOUNT_ID },
       ownerOxyAccountId: null,
       systemPrompt: null,
       featureGates: {},

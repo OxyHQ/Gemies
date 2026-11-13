@@ -2,6 +2,7 @@
 
 import type { ResourceRef } from '@oxy.so/contracts';
 import type { AgentRecord } from '../db/agents/agentRepository.js';
+import { runtimeGemieAccountId } from './gemie-oxy-actor.js';
 import { log } from './logger.js';
 import { getOxyAgentCapabilityMap } from './tools/oxy-services.js';
 
@@ -185,15 +186,17 @@ export async function loadAutomationActorCandidates(
   const results = await Promise.all(
     availableAgents.map(async (agent) => {
       try {
+        // Every candidate passed the unattended rule, which only a gemie with an account does.
+        const actorAccountId = runtimeGemieAccountId(agent);
         const assignments = await getOxyAgentCapabilityMap({
           requesterAccountId: ownerAccountId,
           ownerAccountId,
-          actor: { type: 'agent', accountId: agent.oxyAccountId },
+          actor: { type: 'agent', accountId: actorAccountId },
           autonomy,
         });
         return {
           agentId: agent.id,
-          actorAccountId: agent.oxyAccountId,
+          actorAccountId,
           assignments,
         } satisfies AutomationActorCandidate;
       } catch (error: unknown) {

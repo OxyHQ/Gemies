@@ -152,7 +152,7 @@ vi.mock('../../lib/trigger-engine.js', () => ({
 const AGENT_ROW = {
   _id: 'agent-1',
   id: 'agent-1',
-  oxyAccountId: 'acct-bot',
+  identity: { source: 'oxy', oxyAccountId: 'acct-bot' },
   tagline: 'finds things out',
   description: 'a description',
   author: 'oxy-caller',
@@ -261,17 +261,31 @@ function editorSavePayloads(): ts.ObjectLiteralExpression[] {
   return payloads;
 }
 
-function editorSaveKeys(): string[] {
+function payloadKeys(payload: ts.ObjectLiteralExpression): string[] {
   const keys = new Set<string>();
-  for (const payload of editorSavePayloads()) {
-    for (const property of payload.properties) {
-      const name = property.name;
-      if (name !== undefined && (ts.isIdentifier(name) || ts.isStringLiteralLike(name))) {
-        keys.add(name.text);
-      }
+  for (const property of payload.properties) {
+    const name = property.name;
+    if (name !== undefined && (ts.isIdentifier(name) || ts.isStringLiteralLike(name))) {
+      keys.add(name.text);
     }
   }
   return [...keys].sort();
+}
+
+/**
+ * The keys of the DRAFT's save, the agent row's own fields. The editor's other `updates` is who a
+ * gemie with no Oxy account is (its name and colour, ADR 0036), saved by its own debounce and
+ * asserted on its own below: an Oxy gemie's name is its account's, so the two never travel together.
+ */
+function editorSaveKeys(): string[] {
+  const draft = editorSavePayloads().find((payload) => payloadKeys(payload).includes('tagline'));
+  return draft === undefined ? [] : payloadKeys(draft);
+}
+
+/** The keys of the identity save of a gemie with no Oxy account. */
+function identitySaveKeys(): string[] {
+  const identity = editorSavePayloads().find((payload) => payloadKeys(payload).includes('name'));
+  return identity === undefined ? [] : payloadKeys(identity);
 }
 
 /** Every `catch` in the source whose block does nothing at all. */
@@ -328,7 +342,7 @@ describe('the editor and the route agree on what a save contains', () => {
     // The vacuity floor. A moved file, a payload bound to a `const` first, or a
     // parser that stopped matching all produce an empty list, which would
     // satisfy every assertion below by iterating zero times.
-    expect(editorSavePayloads().length).toBeGreaterThanOrEqual(1);
+    expect(editorSavePayloads().length).toBeGreaterThanOrEqual(2);
 
     const keys = editorSaveKeys();
     expect(keys.length).toBeGreaterThanOrEqual(10);
@@ -393,6 +407,36 @@ describe('the editor and the route agree on what a save contains', () => {
     );
     expect(missing, `${missing.join(', ')} never reached the repository`).toEqual([]);
     expect(written.capabilityGrants).toEqual(['web', 'mcp:conn-1']);
+  });
+
+  /**
+   * A gemie with no Oxy account (ADR 0036) keeps its name and colour on its row: the editor's
+   * identity save for it reaches the row, and nothing is written to an account.
+   */
+  it('saves the name and colour of a gemie with no Oxy account to its row', async () => {
+    expect(identitySaveKeys()).toEqual(['name']);
+    const local = {
+      ...AGENT_ROW,
+      identity: { source: 'local', name: 'Claude Code · desk', color: 'orange' },
+      isPublished: false,
+    };
+    const { loadAgentForActor } = await import('../../lib/agent-account.js');
+    vi.mocked(loadAgentForActor).mockResolvedValueOnce({ ok: true, agent: local as never });
+
+    const res = await patch({ name: 'Desk', color: '#ff8b67' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(repository.updateAgent).toHaveBeenCalledWith(expect.anything(), 'agent-1', {
+      localName: 'Desk',
+      localColor: '#ff8b67',
+    });
+    expect(accountLook).not.toHaveBeenCalled();
+  });
+
+  it('refuses a colour that is not one a gemie may wear', async () => {
+    const res = await patch({ color: 'not-a-colour' });
+    expect(res.status).toBe(400);
+    expect(repository.updateAgent).not.toHaveBeenCalled();
   });
 
   /**

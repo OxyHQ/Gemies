@@ -145,7 +145,6 @@ export async function evolveAgentSoul(
     log.general.info(
       {
         agentId,
-        oxyAccountId: agent.oxyAccountId,
         newCount,
         hasUpdates:
           currentFocus !== undefined || newExpertise !== undefined || newVibe !== undefined,

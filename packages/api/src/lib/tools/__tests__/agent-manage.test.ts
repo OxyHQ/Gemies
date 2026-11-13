@@ -79,7 +79,7 @@ describe('updateAgent', () => {
       userId: 'u1',
       accessToken: 'token',
       edit: { tagline: 'Finds things' },
-      account: { displayName: 'Nadia' },
+      identity: { name: 'Nadia' },
     });
     expect(result).toMatchObject({ success: true, agent: { id: 'a1' } });
   });

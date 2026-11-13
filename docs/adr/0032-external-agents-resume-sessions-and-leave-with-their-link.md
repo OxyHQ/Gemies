@@ -1,7 +1,9 @@
 # 32. External agents continue the CLI's own session and are deleted with their link
 
 Status: Accepted (2026-11-10). Completes [ADR 0030](./0030-external-agents.md) and
-[ADR 0031](./0031-external-agents-edit-by-default-and-span-instances.md).
+[ADR 0031](./0031-external-agents-edit-by-default-and-span-instances.md). The surviving Oxy `bot`
+account of §2 is superseded by [ADR 0036](./0036-external-agents-have-no-oxy-account.md): an
+external agent has none.
 Date: 2026-11-10.
 
 ## Context

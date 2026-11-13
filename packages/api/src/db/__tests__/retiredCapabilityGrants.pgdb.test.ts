@@ -34,7 +34,7 @@ afterAll(async () => {
 async function agentWith(grants: string[]): Promise<string> {
   const agent = await createAgent(db, {
     character: TEST_CHARACTER,
-    oxyAccountId: `oxy-bot-retired-${process.pid}-${seq++}`,
+    identity: { source: 'oxy', oxyAccountId: `oxy-bot-retired-${process.pid}-${seq++}` },
     ownerOxyAccountId: OWNER,
     tagline: 't',
     description: 'd',

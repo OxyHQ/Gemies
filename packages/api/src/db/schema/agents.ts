@@ -22,6 +22,15 @@
  * another service. UNIQUE, because two agents sharing a bot account would each
  * claim to be it.
  *
+ * ## …unless its identity is `local` (ADR 0036)
+ *
+ * An external agent is a CLI on its owner's computer, paired for as long as it
+ * is connected; an Oxy account for it would be an account nobody asked for. So
+ * `identity` says where a gemie's identity lives: `oxy`, the account above, or
+ * `local`, a name and a colour kept on this row (`local_name`, `local_color`)
+ * beside the character every gemie already keeps here. Two CHECKs hold the
+ * columns to it, and `lib/agent-identity.ts` resolves either the same way.
+ *
  * ## `author_oxy_user_id` is a listing index, NEVER an authorization gate
  *
  * It answers "show me my agents" in one indexed scan instead of a fan-out to
@@ -82,6 +91,7 @@ import {
   AGENT_ACCESS,
   AGENT_ARCHETYPES,
   AGENT_COMPUTER_SOURCES,
+  AGENT_IDENTITY_SOURCES,
   AGENT_MEMORY_STORES,
   AGENT_REACHES,
   AGENT_STATUSES,
@@ -114,11 +124,26 @@ export const agents = pgTable(
   {
     id: generatedId(),
     /**
-     * The Oxy `bot` account this agent IS. No foreign key — Oxy owns identity —
-     * and UNIQUE, because two agents cannot be the same account. Name, handle
-     * and avatar are read from it; none of them is stored here.
+     * Where the gemie's identity lives (ADR 0036): `oxy`, its own bot account, or `local`, this
+     * row's `local_name` and `local_color`. `domain/agent.ts` says what each decides, and
+     * `agents_identity_check` keeps the columns below in step with it.
      */
-    oxyAccountId: text().notNull(),
+    identity: text({ enum: AGENT_IDENTITY_SOURCES as unknown as [string, ...string[]] })
+      .notNull()
+      .default('oxy'),
+    /**
+     * The Oxy `bot` account this agent IS, when its identity is `oxy`, and null when it is
+     * `local`. No foreign key — Oxy owns identity — and UNIQUE, because two agents cannot be the
+     * same account. Name, handle and avatar are read from it; none of them is stored here.
+     */
+    oxyAccountId: text(),
+    /** A `local` gemie's name, which its owner may change. Null for an `oxy` one: its account's. */
+    localName: text(),
+    /**
+     * A `local` gemie's colour, in the vocabulary of an account's `User.color` (a Bloom preset key
+     * or a hex), so it is painted exactly as an account's is. Null for an `oxy` one.
+     */
+    localColor: text(),
     /**
      * The bot account's direct parent in Oxy's account graph.
      *
@@ -299,6 +324,23 @@ export const agents = pgTable(
     checkOneOf('agents_reach_check', t.reach, AGENT_REACHES),
     checkOneOf('agents_task_authority_check', t.taskAuthority, AGENT_TASK_AUTHORITIES),
     checkOneOf('agents_archetype_check', t.archetype, AGENT_ARCHETYPES),
+    checkOneOf('agents_identity_source_check', t.identity, AGENT_IDENTITY_SOURCES),
+    /**
+     * Where the identity lives decides which columns hold it: an `oxy` gemie names its account and
+     * keeps no name or colour of its own, a `local` one keeps both and names no account.
+     */
+    check(
+      'agents_identity_check',
+      sql`(${t.identity} = 'oxy' and ${t.oxyAccountId} is not null and ${t.localName} is null and ${t.localColor} is null) or (${t.identity} = 'local' and ${t.oxyAccountId} is null and ${t.localName} is not null and ${t.localColor} is not null)`,
+    ),
+    /**
+     * A `local` gemie has no account of its own, so nothing that needs one is open to it: it is
+     * never listed or used by anybody but its owner, has no mailbox, and is nobody's own assistant.
+     */
+    check(
+      'agents_local_identity_check',
+      sql`${t.identity} = 'oxy' or (${t.isPublished} = false and ${t.access} = 'private' and ${t.mailbox} = false and ${t.reach} = 'grants' and ${t.ownerOxyAccountId} is not null)`,
+    ),
     /**
      * Bounded 0..5. A domain invariant, not input shaping:
      * the value is an average of 1..5 review ratings, so anything outside it

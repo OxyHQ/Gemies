@@ -60,22 +60,6 @@ export const API_ROUTES = {
       remove: (agentId: string) => `/agents/external/${encodeURIComponent(agentId)}`,
     },
     get: (id: string) => `/agents/${id}`,
-    /**
-     * The permanent thread between the caller and one agent, resolved-or-created
-     * from the agent's Oxy username. Answers 404 both for an agent that does not
-     * exist and for one the caller cannot reach — a 403 would confirm it exists.
-     */
-    thread: (username: string) => `/agents/thread/${encodeURIComponent(username)}`,
-    /**
-     * A page of that thread, oldest-first, crossing the seams between the
-     * conversations it is made of. `before=<cursor>` walks backwards; the
-     * cursors come from the messages themselves.
-     */
-    /**
-     * Everything said in the thread that matches, across every conversation in
-     * it. Each hit carries the cursor that opens the window containing it,
-     * which is what makes a result reachable rather than just visible.
-     */
     create: '/agents',
     /** One agent's card by its Oxy handle: what `/@username/details` and `/@username/edit` read. */
     byHandle: (username: string) => `/agents/handle/${encodeURIComponent(username)}`,

@@ -15,6 +15,16 @@ export const EXTERNAL_AGENT_CLI_LABELS: Record<ExternalAgentCli, string> = {
   opencode: 'OpenCode',
 };
 
+/**
+ * The colour a paired agent starts with, by its CLI (a Bloom preset key, as an account's colour
+ * is); its owner may change it in the editor. Migration 0149 gave the existing ones the same.
+ */
+export const EXTERNAL_AGENT_CLI_COLORS: Record<ExternalAgentCli, string> = {
+  claude: 'orange',
+  codex: 'graphite',
+  opencode: 'teal',
+};
+
 /** One earlier message of the conversation a turn answers. */
 export interface ChatTurn {
   readonly role: 'user' | 'assistant';

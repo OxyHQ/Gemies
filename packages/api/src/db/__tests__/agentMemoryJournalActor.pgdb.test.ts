@@ -7,6 +7,7 @@ import { createAgent } from '../agents/agentRepository';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
 import { agentMemoryJournal } from '../schema/agent-runtime';
 import { TEST_CHARACTER } from './support/agent-character';
+import { runtimeGemieAccountId } from '../../lib/gemie-oxy-actor.js';
 
 /**
  * Migration 0119 repairs the memory journal's `actor_oxy_account_id` where it holds the agent's row id
@@ -54,7 +55,7 @@ const actorOf = async (id: string) =>
 describe('0119: the journal names the writer by account', () => {
   it('repairs a row written under the agent’s row id, and only that', async () => {
     const created = await createAgent(db, {
-      oxyAccountId: `journal-bot-${uuidv7()}`,
+      identity: { source: 'oxy', oxyAccountId: `journal-bot-${uuidv7()}` },
       ownerOxyAccountId: 'journal-owner',
       character: TEST_CHARACTER,
       tagline: 't',
@@ -64,14 +65,14 @@ describe('0119: the journal names the writer by account', () => {
     });
     const wrong = await entry(created._id, created._id);
     const byPerson = await entry(created._id, 'journal-person');
-    const alreadyRight = await entry(created._id, created.oxyAccountId);
+    const alreadyRight = await entry(created._id, runtimeGemieAccountId(created));
     const orphan = await entry(uuidv7(), 'some-deleted-agent-row');
 
     await db.execute(sql.raw(readFileSync(MIGRATION, 'utf8').replace(/^--.*$/gm, '')));
 
-    expect(await actorOf(wrong)).toBe(created.oxyAccountId);
+    expect(await actorOf(wrong)).toBe(runtimeGemieAccountId(created));
     expect(await actorOf(byPerson)).toBe('journal-person');
-    expect(await actorOf(alreadyRight)).toBe(created.oxyAccountId);
+    expect(await actorOf(alreadyRight)).toBe(runtimeGemieAccountId(created));
     expect(await actorOf(orphan)).toBe('some-deleted-agent-row');
   });
 });

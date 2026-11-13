@@ -179,12 +179,18 @@ beforeEach(() => {
 
 describe('the conversation the screen names', () => {
   it('passes the conversation, its agent and its thread to the SDK screen as they are', () => {
-    mount({ conversationId: 'c1', agentId: 'a1', threadHandle: 'pepe' });
+    mount({ conversationId: 'c1', agentId: 'a1', thread: { handle: 'pepe' } });
     expect(content()).toMatchObject({
       conversationId: 'c1',
       agent: { id: 'a1' },
       threadHandle: 'pepe',
     });
+  });
+
+  it('passes a thread addressed by its gemie’s id as the SDK’s gemie thread', () => {
+    mount({ conversationId: 'c1', agentId: 'g1', thread: { gemieId: 'g1' } });
+    expect(content()).toMatchObject({ gemieThread: { gemieId: 'g1', threadId: null } });
+    expect(content().threadHandle).toBeUndefined();
   });
 
   it('names none on the new-chat screen, which is what makes its first turn create one', () => {
@@ -351,7 +357,7 @@ describe('the breadcrumb', () => {
   });
 
   it('wires the actions to what the chat tells it, once there is a conversation', () => {
-    mount({ conversationId: 'c1', agentId: 'a1', agentName: 'Atlas', threadHandle: 'pepe' });
+    mount({ conversationId: 'c1', agentId: 'a1', agentName: 'Atlas', thread: { handle: 'pepe' } });
     const chat = { conversationId: 'c1' };
     // The actions are the bell and the chat's own menu; the menu is the child that carries the chat.
     const actions = content().chrome(chat).actions as React.ReactElement<{
@@ -365,7 +371,7 @@ describe('the breadcrumb', () => {
       chat,
       agentName: 'Atlas',
       agentId: 'a1',
-      threadHandle: 'pepe',
+      thread: { handle: 'pepe' },
     });
   });
 });

@@ -827,11 +827,30 @@ describe("a gemie row's menu", () => {
     expect(labels).toContain('agents.resume');
   });
 
-  it('offers no editor, computer or pause for a gemie connected from a computer', async () => {
-    state.agents = [mine({ external: { cli: 'claude', online: true }, status: 'offline' })];
+  it('offers a gemie connected from a computer its editor and delete, and no page, share, computer or pause', async () => {
+    // It has no Oxy account, so no handle: no page to open or share (ADR 0036).
+    state.agents = [
+      mine({
+        handle: null,
+        identity: { source: 'local', name: 'Pepe', color: 'orange' },
+        external: { cli: 'claude', online: true },
+        status: 'offline',
+      }),
+    ];
     await mount();
     const { labels } = await openMenu();
-    expect(labels).toEqual(['agents.viewProfile', 'agents.share', 'agents.delete']);
+    expect(labels).toEqual(['agents.edit', 'agents.delete']);
+  });
+
+  it('opens a gemie with no handle at its id', async () => {
+    state.agents = [
+      mine({ handle: null, identity: { source: 'local', name: 'Pepe', color: 'orange' } }),
+    ];
+    await mount();
+    act(() => {
+      state.sidebarProps!.onTreeItemPress({ key: 'agent:a1' });
+    });
+    expect(state.push).toHaveBeenCalledWith('/agents/a1');
   });
 
   it('offers only its page and share to someone who does not own it', async () => {

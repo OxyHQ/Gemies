@@ -40,7 +40,7 @@ const person = () => `sp-person-${uuidv7()}`;
 
 async function agentOf(owner: string) {
   const created = await createAgent(db, {
-    oxyAccountId: `sp-bot-${uuidv7()}`,
+    identity: { source: 'oxy', oxyAccountId: `sp-bot-${uuidv7()}` },
     ownerOxyAccountId: owner,
     character: TEST_CHARACTER,
     tagline: 't',

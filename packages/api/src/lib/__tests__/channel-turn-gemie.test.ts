@@ -17,8 +17,11 @@ vi.mock('../../db/agents/agentRepository.js', () => ({
   findAgentSkills: async () => [],
 }));
 vi.mock('../agent-availability.js', () => ({
-  agentOpensOn: async (account: string, surface: string | null) => {
-    state.asked.push({ account, surface });
+  agentOpensOn: async (
+    agent: { identity: { source: string; oxyAccountId?: string } },
+    surface: string | null,
+  ) => {
+    state.asked.push({ account: agent.identity.oxyAccountId ?? '', surface });
     return state.opens;
   },
 }));
@@ -54,7 +57,7 @@ beforeEach(() => {
       'own',
       {
         _id: 'own',
-        oxyAccountId: 'bot-own',
+        identity: { source: 'oxy', oxyAccountId: 'bot-own' },
         ownerOxyAccountId: 'person-1',
         access: 'private',
         status: 'active',
@@ -64,7 +67,7 @@ beforeEach(() => {
       'stranger',
       {
         _id: 'stranger',
-        oxyAccountId: 'bot-x',
+        identity: { source: 'oxy', oxyAccountId: 'bot-x' },
         ownerOxyAccountId: 'other',
         access: 'private',
         status: 'active',
@@ -74,7 +77,7 @@ beforeEach(() => {
       'public',
       {
         _id: 'public',
-        oxyAccountId: 'bot-p',
+        identity: { source: 'oxy', oxyAccountId: 'bot-p' },
         ownerOxyAccountId: 'other',
         access: 'public',
         status: 'active',

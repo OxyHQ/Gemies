@@ -82,7 +82,12 @@ import {
 import { getOrCreateUserCredits } from '../../../db/billing/userCreditsRepository.js';
 import { enqueueAgentSession } from '../../task-queue.js';
 import { createOxyTask } from '../../oxy-task-authority.js';
-import { reclaimOrphanedAgentSessions, startAgentSession } from '../session-handoff.js';
+import {
+  type HirableAgent,
+  reclaimOrphanedAgentSessions,
+  startAgentSession,
+} from '../session-handoff.js';
+import { runtimeGemieAccountId } from '../../gemie-oxy-actor.js';
 
 let db: ApiDatabase;
 
@@ -148,17 +153,15 @@ async function backdate(agentId: string): Promise<void> {
 /**
  * A hirable agent, in the shape `startAgentSession` reads.
  *
- * `oxyAccountId` stands where `name` was: an agent IS an Oxy `bot` account, so
+ * Its identity stands where `name` was: an agent IS an Oxy `bot` account, so
  * the primitive resolves the queue label from that account rather than from a
  * column. Nothing about the BILLING assertions below changes — the identity
  * lookup fails open and cannot turn a handoff into a refund.
  */
-async function seedAgent(
-  price: number,
-): Promise<{ _id: string; oxyAccountId: string; price: number }> {
+async function seedAgent(price: number): Promise<HirableAgent> {
   const agent = await createAgent(db, {
     character: TEST_CHARACTER,
-    oxyAccountId: `oxy-bot-handoff-${SUITE}-${seq++}`,
+    identity: { source: 'oxy', oxyAccountId: `oxy-bot-handoff-${SUITE}-${seq++}` },
     ownerOxyAccountId: SUITE,
     tagline: 'runs things',
     description: 'd',
@@ -166,13 +169,13 @@ async function seedAgent(
     category: 'research',
     price,
   });
-  return { _id: agent._id, oxyAccountId: agent.oxyAccountId, price };
+  return { _id: agent._id, identity: agent.identity, price };
 }
 
 /**
  * The queue label comes from the agent's Oxy `bot` account.
  *
- * `HirableAgent` carries `oxyAccountId` and no name, so this line is the only
+ * `HirableAgent` carries its identity and no name, so this line is the only
  * thing turning an account into something a queue entry can show — and without
  * an assertion it is a mechanism that is green and inert: replacing it with a
  * constant changed nothing anywhere.
@@ -186,7 +189,7 @@ describe('the queue label', () => {
     const userId = await account(100, 0);
     const agent = await seedAgent(15);
     oxyIdentity.users = [
-      { _id: agent.oxyAccountId, username: 'runner', displayName: 'The Runner' },
+      { _id: runtimeGemieAccountId(agent), username: 'runner', displayName: 'The Runner' },
     ];
 
     const outcome = await startAgentSession({
@@ -250,7 +253,7 @@ describe('startAgentSession', () => {
       expect.objectContaining({
         accessToken: 'real-requester',
         effectiveAccountId: userId,
-        actorAccountId: agent.oxyAccountId,
+        actorAccountId: runtimeGemieAccountId(agent),
       }),
     );
     if (outcome.ok)

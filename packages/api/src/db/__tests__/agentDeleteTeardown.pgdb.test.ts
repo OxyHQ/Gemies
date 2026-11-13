@@ -34,7 +34,7 @@ const OWNER = 'teardown-owner';
 
 async function newAgent() {
   const created = await createAgent(db, {
-    oxyAccountId: `teardown-bot-${uuidv7()}`,
+    identity: { source: 'oxy', oxyAccountId: `teardown-bot-${uuidv7()}` },
     ownerOxyAccountId: OWNER,
     character: TEST_CHARACTER,
     tagline: 't',

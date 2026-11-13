@@ -1,4 +1,9 @@
-import { usePrefetchConversation } from '@gemies/sdk/runtime';
+import {
+  AGENT_ROUTES,
+  type GemieThreadAddress,
+  threadKey,
+  usePrefetchConversation,
+} from '@gemies/sdk/runtime';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import apiClient from '@/shared/api/client';
@@ -9,11 +14,13 @@ import { errorStatus } from '@/shared/api/error-utils';
 /**
  * The permanent thread between the signed-in person and one agent.
  *
- * `/a/pepe` is not a link to a conversation, it is the conversation — one per
+ * `/@pepe` is not a link to a conversation, it is the conversation — one per
  * (person, agent) pair, the way a DM is one per pair. `GET /agents/thread/:username`
  * resolves the username through Oxy's global namespace and answers with that
- * pair's conversation, creating it the first time. Opening the same URL twice
- * is the same thread; two people opening the same agent are two threads.
+ * pair's conversation, creating it the first time; a gemie with no handle (no Oxy
+ * account) is asked by its id, `GET /agents/:id/thread`, for the same answer.
+ * Opening the same URL twice is the same thread; two people opening the same
+ * agent are two threads.
  *
  * ## Three of the agent's fields are nullable, and that is the ordinary path
  *
@@ -56,9 +63,10 @@ const THREAD_STALE_MS = 5 * 60 * 1000;
  * The thread's query, as a value: what `useAgentThread` runs and what a prefetch runs, so the two
  * are one question under one key and a prefetched thread is the one the screen reads.
  */
-function agentThreadQuery(username: string, threadId?: string) {
+function agentThreadQuery(thread: GemieThreadAddress, threadId?: string) {
   return {
-    queryKey: [...queryKeys.agents.thread(username), threadId ?? 'default'] as const,
+    // Under the SDK's key for the thread, so the chat starting its next stretch re-reads this.
+    queryKey: [...queryKeys.agents.thread(threadKey(thread)), threadId ?? 'default'] as const,
     queryFn: async (): Promise<AgentThread> => {
       if (threadId) {
         const response = await apiClient.get<{
@@ -67,14 +75,14 @@ function agentThreadQuery(username: string, threadId?: string) {
         }>(API_ROUTES.agents.threadById(threadId));
         if (!response.data.conversationId)
           throw new Error('Agent thread has no active conversation');
-        const identity = await apiClient.get<AgentThread>(API_ROUTES.agents.thread(username));
+        const identity = await apiClient.get<AgentThread>(AGENT_ROUTES.thread(thread));
         return {
           agent: identity.data.agent,
           conversationId: response.data.conversationId,
           threadId: response.data.thread.id,
         };
       }
-      const response = await apiClient.get<AgentThread>(API_ROUTES.agents.thread(username));
+      const response = await apiClient.get<AgentThread>(AGENT_ROUTES.thread(thread));
       return response.data;
     },
     // Fresh for a while, so opening a thread that was read a moment ago (or prefetched on the way
@@ -90,27 +98,32 @@ function agentThreadQuery(username: string, threadId?: string) {
   };
 }
 
-export function useAgentThread(username: string | undefined, threadId?: string) {
+/** Whether an address names a thread: a non-empty handle or gemie id. */
+function addresses(thread: GemieThreadAddress): boolean {
+  return ('handle' in thread ? thread.handle : thread.gemieId).length > 0;
+}
+
+export function useAgentThread(thread: GemieThreadAddress, threadId?: string) {
   return useQuery({
-    ...agentThreadQuery(username ?? '', threadId),
-    enabled: typeof username === 'string' && username.length > 0,
+    ...agentThreadQuery(thread, threadId),
+    enabled: addresses(thread),
   });
 }
 
 /**
  * Read an agent's thread ahead of the press that opens it, and the conversation behind it.
  *
- * ONLY for an agent the person has already talked to: `GET /agents/thread/:username` CREATES the
- * thread the first time it is asked, so asking it for an agent never opened would make threads
- * nobody started. The caller says so with `hasThread`.
+ * ONLY for an agent the person has already talked to: opening a thread CREATES it the first time
+ * it is asked, so asking it for an agent never opened would make threads nobody started. The
+ * caller says so with `hasThread`.
  */
-export function usePrefetchAgentThread(): (username: string, hasThread: boolean) => void {
+export function usePrefetchAgentThread(): (thread: GemieThreadAddress, hasThread: boolean) => void {
   const queryClient = useQueryClient();
   const prefetchConversation = usePrefetchConversation();
   return useCallback(
-    (username, hasThread) => {
-      if (!hasThread || username === '') return;
-      const query = agentThreadQuery(username);
+    (thread, hasThread) => {
+      if (!hasThread || !addresses(thread)) return;
+      const query = agentThreadQuery(thread);
       // Best effort, never retried: see `prefetchConversation` in the SDK.
       void queryClient.prefetchQuery({ ...query, retry: false }).then(() => {
         const thread = queryClient.getQueryData<AgentThread>(query.queryKey);

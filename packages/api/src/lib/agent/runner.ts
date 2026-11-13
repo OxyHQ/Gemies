@@ -65,6 +65,7 @@ import {
 } from '../../db/automation/automationDefinitionRepository.js';
 import { buildContextMessages, buildSystemPrompt } from './run-context.js';
 import { holdRunLease, type RunLease } from './run-lease.js';
+import { runtimeGemieAccountId } from '../gemie-oxy-actor.js';
 
 export { buildSystemPrompt } from './run-context.js';
 export { getRecentActivity } from './run-activity.js';
@@ -357,7 +358,7 @@ async function driveAgentSession(
     runtime: {
       session,
       computerActorId: resolveComputerActor({ agent, oxyUserId: session.oxyUserId }),
-      agentAccountId: agent.oxyAccountId,
+      agentAccountId: runtimeGemieAccountId(agent),
       onComplete,
       onHireAgent,
       // A child run (delegated, orchestrated) reports to its parent, not to

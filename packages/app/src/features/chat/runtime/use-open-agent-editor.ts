@@ -13,8 +13,8 @@ import { useCallback } from 'react';
  * screen, `/@handle/edit`, on a phone — a panel there would be a drawer over the chat it edits.
  *
  * The handle is read from what the app already holds of the agent (its page or the person's own
- * list); a gemie with no handle to address it by (Alia, until her Oxy account exists) opens at
- * `/agents/edit/<id>`.
+ * list); a gemie with no handle to address it by (one with no Oxy account, or Alia until hers
+ * exists) opens at `/agents/edit/<id>` (`agentEditRoute`).
  */
 export function useOpenAgentEditor(): (agentId: string) => void {
   const router = useRouter();
@@ -31,9 +31,7 @@ export function useOpenAgentEditor(): (agentId: string) => void {
         queryClient
           .getQueryData<Agent[]>(queryKeys.agents.mine)
           ?.find((agent) => agent._id === agentId);
-      const route = agentEditRoute({ name: known?.name ?? null, handle: known?.handle ?? null });
-      if (route !== null) router.push(route);
-      else router.push({ pathname: '/(app)/agents/edit/[id]', params: { id: agentId } });
+      router.push(agentEditRoute({ _id: agentId, handle: known?.handle ?? null }));
     },
     [isLargeScreen, router, queryClient],
   );

@@ -32,6 +32,7 @@
 
 import type { OxyServices } from '@oxy.so/core';
 import { readTargetDatabase } from '@oxy.so/db/migrate';
+import { isNotNull } from 'drizzle-orm';
 
 import { assertTargetDatabase } from '../db/assertTargetDatabase.js';
 import { closePostgres, connectPostgres, getDb } from '../db/index.js';
@@ -68,10 +69,16 @@ async function main(): Promise<void> {
 
   let report: Report;
   try {
-    const rows = await getDb()
-      .select({ oxyAccountId: agents.oxyAccountId, character: agents.character })
-      .from(agents)
-      .orderBy(agents.oxyAccountId);
+    // Only a gemie that IS an account has one to put its look on (ADR 0036).
+    const rows = (
+      await getDb()
+        .select({ oxyAccountId: agents.oxyAccountId, character: agents.character })
+        .from(agents)
+        .where(isNotNull(agents.oxyAccountId))
+        .orderBy(agents.oxyAccountId)
+    ).flatMap((row) =>
+      row.oxyAccountId === null ? [] : [{ ...row, oxyAccountId: row.oxyAccountId }],
+    );
 
     let alreadyHadOne = 0;
     let missing = 0;

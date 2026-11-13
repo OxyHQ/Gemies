@@ -173,7 +173,7 @@ function agentWith(
     author,
     _id: 'caller-agent',
     id: 'caller-agent',
-    oxyAccountId: 'bot-account-1',
+    identity: { source: 'oxy', oxyAccountId: 'bot-account-1' },
     ownerOxyAccountId: author,
   });
 }

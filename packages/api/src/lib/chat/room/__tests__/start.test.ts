@@ -51,7 +51,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.find.mockImplementation(async (_db, id) => ({
     _id: id,
-    oxyAccountId: `bot-${id}`,
+    identity: { source: 'oxy', oxyAccountId: `bot-${id}` },
     description: `${id} public remit`,
   }));
   h.reach.mockResolvedValue('reachable');

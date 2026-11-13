@@ -54,7 +54,11 @@ describe('agent turn settlement', () => {
   it('exposes scheduling in an authenticated chat without exposing unsolicited messaging', async () => {
     createAgentSession.mockResolvedValueOnce({ _id: 'session-1', id: 'session-1' });
     const turn = await AgentTurnCoordinator.begin({
-      agent: { _id: 'agent-1', oxyAccountId: 'bot-1', maxConcurrentThreads: 3 } as never,
+      agent: {
+        _id: 'agent-1',
+        identity: { source: 'oxy', oxyAccountId: 'bot-1' },
+        maxConcurrentThreads: 3,
+      } as never,
       oxyUserId: 'user-1',
       requesterToken: 'live-token',
       conversationId: 'conversation-1',

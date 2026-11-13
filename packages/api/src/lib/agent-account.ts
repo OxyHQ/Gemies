@@ -51,6 +51,14 @@
  * is an ATTRIBUTION lookup rather than a write gate. Same shape, different
  * blast radius.
  *
+ * ## A gemie with no Oxy account is its owner's (ADR 0036)
+ *
+ * A `local` gemie (an external agent) has no account to hold memberships or
+ * `account:act_as`, so none of the above is asked for it: the person who owns
+ * it (`owner_oxy_account_id`) may use, change and act as it, and nobody else
+ * may. {@link ownsLocalGemie} is that rule, read by the write gate and the
+ * reach gate alike.
+ *
  * ## Asked as the caller
  *
  * A verdict is scoped to the caller, so it is read with the caller's bearer:
@@ -308,11 +316,28 @@ export async function loadAgentForActor(
 ): Promise<AgentForActor> {
   const agent = await findAgentById(db, params.agentId);
   if (agent === null) return { ok: false, refusal: 'agent_not_found' };
+  return actorVerdictFor(agent, params);
+}
+
+/**
+ * {@link loadAgentForActor} for a row the caller already holds — a READ deciding what to show
+ * (`GET /agents/:id` drawing the editor), never a write, which loads through the function above.
+ */
+export async function actorVerdictFor(
+  agent: AgentRecord,
+  params: { oxyUserId: string; accessToken: string; cache: boolean },
+): Promise<AgentForActor> {
+  if (agent.identity.source === 'local') {
+    // Not its owner's: the same not-found a stranger gets for an Oxy gemie they may not act as.
+    return ownsLocalGemie(agent, params.oxyUserId)
+      ? { ok: true, agent }
+      : { ok: false, refusal: 'agent_not_found' };
+  }
 
   const verdict = await verifyAgentAccount({
     oxyUserId: params.oxyUserId,
     accessToken: params.accessToken,
-    oxyAccountId: agent.oxyAccountId,
+    oxyAccountId: agent.identity.oxyAccountId,
     cache: params.cache,
   });
   if (!verdict.permitted) {
@@ -324,6 +349,14 @@ export async function loadAgentForActor(
     return { ok: false, refusal: verdict.refusal };
   }
   return { ok: true, agent };
+}
+
+/**
+ * Whether `oxyUserId` owns a `local` gemie (ADR 0036): its whole authority, since it has no account
+ * that could be shared or acted as.
+ */
+function ownsLocalGemie(agent: AgentRecord, oxyUserId: string): boolean {
+  return agent.ownerOxyAccountId !== null && agent.ownerOxyAccountId === oxyUserId;
 }
 
 /**
@@ -353,6 +386,9 @@ export async function loadAgentForAccounts(
   const agent = await findAgentById(db, params.agentId);
   if (agent === null) return { ok: false, refusal: 'agent_not_found' };
   if (isPersonsOwnAssistant(agent)) return { ok: true, agent };
+  // A connected account answers as the gemie it is linked to, through that gemie's own Oxy account:
+  // a gemie with none has nothing to link (ADR 0036).
+  if (agent.identity.source === 'local') return { ok: false, refusal: 'agent_not_found' };
   return loadAgentForActor(db, { ...params, cache: false });
 }
 
@@ -561,20 +597,23 @@ export async function canReachAgent(
 ): Promise<AgentReach> {
   const who = await whoMayReach(agent, caller);
   if (who !== 'reachable') return who;
-  return agentOpensOn(agent.oxyAccountId, caller.surfaceApplicationId);
+  return agentOpensOn(agent, caller.surfaceApplicationId);
 }
 
 async function whoMayReach(
   agent: AgentRecord,
   caller: { oxyUserId: string; accessToken: string | undefined },
 ): Promise<AgentReach> {
+  if (agent.identity.source === 'local') {
+    return ownsLocalGemie(agent, caller.oxyUserId) ? 'reachable' : 'out_of_reach';
+  }
   if (agent.access === 'public' && agent.status === 'active') return 'reachable';
   // No bearer is not a failure to ask; it is an answer, and the answer is no.
   if (caller.accessToken === undefined) return 'out_of_reach';
   return holdsAgentStanding({
     oxyUserId: caller.oxyUserId,
     accessToken: caller.accessToken,
-    oxyAccountId: agent.oxyAccountId,
+    oxyAccountId: agent.identity.oxyAccountId,
   });
 }
 

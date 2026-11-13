@@ -33,7 +33,7 @@ export const createSearchAgentsTool = (surfaceApplicationId: string | null) =>
       try {
         const found = await searchActiveAgents(getDb(), query, MAX_RESULTS);
         const opens = await Promise.all(
-          found.map((agent) => agentOpensOn(agent.oxyAccountId, surfaceApplicationId)),
+          found.map((agent) => agentOpensOn(agent, surfaceApplicationId)),
         );
         const agents = found.filter((_agent, index) => opens[index] === 'reachable');
 

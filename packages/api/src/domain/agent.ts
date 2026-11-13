@@ -88,6 +88,32 @@ export const AGENT_TASK_AUTHORITIES = ['standing', 'session'] as const;
 export type AgentTaskAuthority = (typeof AGENT_TASK_AUTHORITIES)[number];
 
 /**
+ * Where a gemie's identity — its name and colour — lives (ADR 0036).
+ *
+ *  - `oxy` (the default): the gemie IS an Oxy `bot` account (`oxy_account_id`). Its name, handle
+ *    and colour are the account's, it is addressed by that handle (`/@pepe`), and whoever holds
+ *    `account:act_as` on the account may change it.
+ *  - `local`: the gemie has no Oxy account. Its name and colour are this row's own (`local_name`,
+ *    `local_color`), it has no handle and is addressed by its id, and only the person who owns it
+ *    (`owner_oxy_account_id`) may use or change it. Nothing that needs an account of its own is
+ *    open to it: it is never listed or shared, has no mailbox, no connected accounts and acts as
+ *    nobody at Oxy. An external agent (ADR 0030) is one: a CLI on its owner's computer, paired
+ *    for as long as it is connected.
+ */
+export const AGENT_IDENTITY_SOURCES = ['oxy', 'local'] as const;
+export type AgentIdentitySource = (typeof AGENT_IDENTITY_SOURCES)[number];
+
+/**
+ * A gemie's identity as its row stores it: the Oxy account it is, or the name and colour it keeps
+ * itself. A union rather than nullable columns read one by one, so a reader cannot take the account
+ * of a gemie that has none: it says which source it handles. `lib/agent-identity.ts` turns either
+ * into what a client draws.
+ */
+export type StoredAgentIdentity =
+  | { readonly source: 'oxy'; readonly oxyAccountId: string }
+  | { readonly source: 'local'; readonly name: string; readonly color: string };
+
+/**
  * `archetype_config`, and the ONE place its stored shape is narrowed.
  *
  * The column is `jsonb` and nothing validates it on the way in: it holds a union

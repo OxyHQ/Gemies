@@ -75,7 +75,7 @@ vi.mock('@oxy.so/core', async () => {
 const CLAUDIO = {
   _id: 'agent-1',
   id: 'agent-1',
-  oxyAccountId: 'oxy-bot-1',
+  identity: { source: 'oxy', oxyAccountId: 'oxy-bot-1' },
   access: 'private',
   status: 'active',
   isPublished: true,

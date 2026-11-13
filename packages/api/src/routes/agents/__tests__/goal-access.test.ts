@@ -179,7 +179,7 @@ const { withAgentAdmission } = await import('../../../db/agents/agentRuntimeRepo
 const AGENT = {
   _id: 'agent-1',
   id: 'agent-1',
-  oxyAccountId: 'acct-bot',
+  identity: { source: 'oxy', oxyAccountId: 'acct-bot' },
   tagline: 'runs things',
   description: 'd',
   author: 'oxy-owner',

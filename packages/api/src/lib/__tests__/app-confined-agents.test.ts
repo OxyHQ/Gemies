@@ -82,7 +82,7 @@ const PERSON = { userId: 'person-1', sessionId: 'session-1' };
 const clarity = {
   _id: 'clarity-agent',
   id: 'clarity-agent',
-  oxyAccountId: 'clarity-bot',
+  identity: { source: 'oxy', oxyAccountId: 'clarity-bot' },
   access: 'public',
   status: 'active',
   isPublished: false,
@@ -91,7 +91,7 @@ const clarity = {
 const sindi = {
   _id: 'sindi-agent',
   id: 'sindi-agent',
-  oxyAccountId: 'sindi-bot',
+  identity: { source: 'oxy', oxyAccountId: 'sindi-bot' },
   access: 'public',
   status: 'active',
   isPublished: true,
@@ -100,7 +100,7 @@ const sindi = {
 const privateAgent = {
   _id: 'private-agent',
   id: 'private-agent',
-  oxyAccountId: 'private-bot',
+  identity: { source: 'oxy', oxyAccountId: 'private-bot' },
   access: 'private',
   status: 'active',
 } as never;
@@ -254,8 +254,16 @@ describe('the surface is read once per request', () => {
 describe('searchAgents offers only agents that open where the person is', () => {
   beforeEach(() => {
     store.searched = [
-      { id: 'clarity-agent', oxyAccountId: 'clarity-bot', tagline: 'Clarity' },
-      { id: 'sindi-agent', oxyAccountId: 'sindi-bot', tagline: 'Sindi' },
+      {
+        id: 'clarity-agent',
+        identity: { source: 'oxy', oxyAccountId: 'clarity-bot' },
+        tagline: 'Clarity',
+      },
+      {
+        id: 'sindi-agent',
+        identity: { source: 'oxy', oxyAccountId: 'sindi-bot' },
+        tagline: 'Sindi',
+      },
     ];
   });
 

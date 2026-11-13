@@ -156,7 +156,7 @@ const { clearAgentAccountVerdicts } = await import('../../../lib/agent-account.j
 const AGENT_ROW = {
   _id: 'agent-1',
   id: 'agent-1',
-  oxyAccountId: 'acct-bot',
+  identity: { source: 'oxy', oxyAccountId: 'acct-bot' },
   ownerOxyAccountId: 'oxy-owner',
   tagline: 'keeps the roadmap honest',
   description: 'a description',
@@ -337,7 +337,7 @@ describe('what a caller may do with a gemie, as its card says (ADR 0035)', () =>
   /** Alia's row as 0135 seeds it: every person's own assistant, public, not listed, no account. */
   const ALIA_ROW = {
     ...AGENT_ROW,
-    oxyAccountId: 'pending-oxy-account:alia',
+    identity: { source: 'oxy', oxyAccountId: 'pending-oxy-account:alia' },
     ownerOxyAccountId: null,
     isPublished: false,
     reach: 'person',

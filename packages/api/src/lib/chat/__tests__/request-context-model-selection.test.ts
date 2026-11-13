@@ -335,7 +335,7 @@ describe('app-only machine turn boundary and payer', () => {
 /** Private and published: listed, but only its owner may use it. */
 const privateAgent = {
   _id: 'agent-2',
-  oxyAccountId: 'oxy-bot-2',
+  identity: { source: 'oxy', oxyAccountId: 'oxy-bot-2' },
   isPublished: true,
   access: 'private',
   status: 'active',
@@ -347,7 +347,7 @@ describe('the turn resolves the agent it NAMED', () => {
   it('reads body.agentId and puts the agent on the context', async () => {
     findAgentById.mockResolvedValue({
       _id: 'agent-1',
-      oxyAccountId: 'oxy-bot-1',
+      identity: { source: 'oxy', oxyAccountId: 'oxy-bot-1' },
       isPublished: true,
       // PUBLIC, which is what makes it reachable — being listed is a separate
       // question and stopped granting use.

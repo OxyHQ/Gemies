@@ -44,7 +44,7 @@ import {
 import type { ChatMessage } from '../message-converter.js';
 
 const agent = {
-  oxyAccountId: 'bot',
+  identity: { source: 'oxy' as const, oxyAccountId: 'bot' },
   ownerOxyAccountId: 'owner',
   featureGates: { 'attachments.documents': { app: 'homiio', feature: 'files' } },
 };

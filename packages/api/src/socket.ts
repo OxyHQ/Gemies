@@ -7,8 +7,7 @@ import { log } from './lib/logger.js';
 import { oxy } from './lib/oxy.js';
 import { appOriginsFor } from './lib/cors-origins.js';
 import { getDb } from './db/index.js';
-import { findAgentOxyAccountId } from './db/agents/agentRepository.js';
-import { verifyAgentAccount } from './lib/agent-account.js';
+import { loadAgentForActor } from './lib/agent-account.js';
 import {
   accountHasSessionWithAgent,
   agentSessionIsOwnedBy,
@@ -151,27 +150,25 @@ export function initSocket(server: http.Server) {
       // The 24-hex shape check that used to gate this is gone with the ObjectIds
       // it described — see `ownsAgentSession`.
       //
-      // The operator ground is `account:act_as` at Oxy, not the `author` column:
-      // this room shows an agent's live work, and who may watch that is the same
-      // question as who may edit it. The verdict is cached, so a subscription
-      // storm costs one round trip rather than one each.
+      // The operator ground is `account:act_as` at Oxy (a `local` gemie's owner,
+      // ADR 0036), not the `author` column: this room shows an agent's live work,
+      // and who may watch that is the same question as who may edit it. The
+      // verdict is cached, so a subscription storm costs one round trip rather
+      // than one each.
       const accessToken = socketAccessToken(socket);
-      const oxyAccountId =
-        accessToken === null ? null : await findAgentOxyAccountId(getDb(), agentId);
       const operator =
-        oxyAccountId !== null &&
         accessToken !== null &&
         (
-          await verifyAgentAccount({
+          await loadAgentForActor(getDb(), {
+            agentId,
             oxyUserId: userId,
             accessToken,
-            oxyAccountId,
             // A room SUBSCRIPTION — a read, and the one place a cached verdict
             // earns its keep: a client reconnecting re-subscribes to every room
             // it was in, which is a burst of the same question.
             cache: true,
           })
-        ).permitted;
+        ).ok;
       const hasSession = operator || (await accountHasSessionWithAgent(getDb(), agentId, userId));
       if (!operator && !hasSession) return;
       Promise.resolve(socket.join(`agent:${agentId}`)).catch((err) =>

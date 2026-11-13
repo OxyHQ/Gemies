@@ -5,18 +5,20 @@ import {
   agentEditRoute,
   agentHandle,
   agentThreadHref,
+  gemieThreadAddress,
 } from '@/shared/routing/agent-address';
 
 /**
- * An agent is addressed by its handle, as a STRING with the `@` written out: the object form
+ * A gemie is addressed by its handle, as a STRING with the `@` written out: the object form
  * `{ pathname: '/(app)/[username]', params: { username: '@pepe' } }` is encoded by Expo Router and
- * put `/%40pepe` in the address bar.
+ * put `/%40pepe` in the address bar. One with no handle — no Oxy account (ADR 0036), or one Oxy did
+ * not resolve — is addressed by its id, and has no page.
  */
 
-const pepe = { name: 'Pepe', handle: 'pepe' };
-const nameless = { name: null, handle: null };
+const pepe = { _id: 'pepe-id', handle: 'pepe' };
+const local = { _id: 'local 1', handle: null };
 
-describe('an agent’s addresses', () => {
+describe('a gemie’s addresses', () => {
   it('are strings with the @ in them: the thread, the page and the editor', () => {
     expect(agentChatRoute(pepe)).toBe('/@pepe');
     expect(agentDetailsRoute(pepe)).toBe('/@pepe/details');
@@ -28,20 +30,23 @@ describe('an agent’s addresses', () => {
   });
 
   it('carry the stretch of a thread, encoded', () => {
-    expect(agentThreadHref('pepe')).toBe('/@pepe');
-    expect(agentThreadHref('pepe', 'th 1')).toBe('/@pepe?threadId=th%201');
+    expect(agentThreadHref({ handle: 'pepe' })).toBe('/@pepe');
+    expect(agentThreadHref({ handle: 'pepe' }, 'th 1')).toBe('/@pepe?threadId=th%201');
+    expect(agentThreadHref({ gemieId: 'g 1' }, 'th 1')).toBe('/agents/g%201?threadId=th%201');
   });
 
-  it('read the handle trimmed, empty when Oxy resolved none', () => {
-    expect(agentHandle({ name: null, handle: '  pepe ' })).toBe('pepe');
-    expect(agentHandle(nameless)).toBe('');
-    expect(agentHandle({ name: null, handle: '   ' })).toBe('');
+  it('read the handle trimmed, empty when there is none', () => {
+    expect(agentHandle({ handle: '  pepe ' })).toBe('pepe');
+    expect(agentHandle({ handle: null })).toBe('');
+    expect(agentHandle({ handle: '   ' })).toBe('');
   });
 
-  it('do not exist for an agent with no handle: it has no address, and no route by id stands in', () => {
-    expect(agentChatRoute(nameless)).toBeNull();
-    expect(agentDetailsRoute(nameless)).toBeNull();
-    expect(agentEditRoute(nameless)).toBeNull();
-    expect(agentChatRoute({ name: 'Pepe', handle: '   ' })).toBeNull();
+  it('are by id for a gemie with no handle, which has a thread and an editor but no page', () => {
+    expect(gemieThreadAddress(local)).toEqual({ gemieId: 'local 1' });
+    expect(gemieThreadAddress(pepe)).toEqual({ handle: 'pepe' });
+    expect(agentChatRoute(local)).toBe('/agents/local%201');
+    expect(agentEditRoute(local)).toBe('/agents/edit/local%201');
+    expect(agentDetailsRoute(local)).toBeNull();
+    expect(agentChatRoute({ _id: 'x', handle: '   ' })).toBe('/agents/x');
   });
 });

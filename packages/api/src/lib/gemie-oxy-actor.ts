@@ -22,19 +22,50 @@
  */
 
 import type { ActorRef } from '@oxy.so/contracts';
-import type { AgentReach } from '../domain/agent.js';
+import type { AgentReach, StoredAgentIdentity } from '../domain/agent.js';
 
 /** What the seam reads of a gemie. */
 export interface OxyActorGemie {
   readonly reach: AgentReach;
-  readonly oxyAccountId: string;
+  readonly identity: StoredAgentIdentity;
+}
+
+/**
+ * The Oxy `bot` account a gemie acts as, or `null` when it has none: a `local` gemie (ADR 0036, an
+ * external agent) is nobody at Oxy, so every lane that needs an actor of its own — an Oxy task for
+ * its work, its tools as itself, a connected account — is closed to it. What a gate asks before it
+ * opens one.
+ */
+export function gemieOxyAccountId(gemie: {
+  readonly identity: StoredAgentIdentity;
+}): string | null {
+  return gemie.identity.source === 'oxy' ? gemie.identity.oxyAccountId : null;
+}
+
+/** A gemie with no Oxy account reached a lane that acts as one: a gate before it is missing. */
+export class GemieWithoutOxyAccountError extends Error {
+  constructor() {
+    super('A gemie with no Oxy account cannot act at Oxy');
+    this.name = 'GemieWithoutOxyAccountError';
+  }
+}
+
+/**
+ * The account a gemie acts as inside Alia's own runtime (its tools, its memory, its follow-ups). A
+ * `local` gemie never runs there — its turns are its daemon's (ADR 0030) and its gates refuse every
+ * background lane — so arriving here with one is a fault, thrown rather than acted on as nobody.
+ */
+export function runtimeGemieAccountId(gemie: { readonly identity: StoredAgentIdentity }): string {
+  const accountId = gemieOxyAccountId(gemie);
+  if (accountId === null) throw new GemieWithoutOxyAccountError();
+  return accountId;
 }
 
 /** The Oxy actor for `gemie` acting for `personAccountId`. */
 export function oxyActorFor(gemie: OxyActorGemie, personAccountId: string): ActorRef {
   return gemie.reach === 'person'
     ? personAssistantActor(personAccountId)
-    : { type: 'agent', accountId: gemie.oxyAccountId };
+    : { type: 'agent', accountId: runtimeGemieAccountId(gemie) };
 }
 
 /**
