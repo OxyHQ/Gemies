@@ -447,3 +447,47 @@ keep running: `scripts/icon-shims.mjs`, `__tests__/icon-shims.test.ts` and
   export was produced to confirm it.
 - The `--check` gate covers **one screen**. A splitting change that broke a
   screen the harness does not capture would not be caught here.
+
+## 11. Where it stands on 2026-11-13, and granular chunks
+
+Re-measured on `main` at `1a5b5e2c`: a production export with source maps, and the requests a
+cold load makes recorded in Chromium with the export served under `https://gemies.ai`, so the
+real API answers.
+
+| | Raw | Brotli |
+| --- | ---: | ---: |
+| `__common-*.js` | 7,937,160 B | ~2.27 MB |
+| `index-*.js` | 1,134,791 B | ~297 KB |
+| JS a route loads before it is usable (any route) | ~9.12 MB | ~2.30 MB |
+
+Every route pays the same because the layouts reach almost everything. What dominates
+`__common`, and where each would have to be fixed:
+
+| Raw | What | Owner |
+| ---: | --- | --- |
+| 1,091,069 B | `@oxy.so/contracts` (550,803) and `zod` (540,266): `@oxy.so/core` imports the contracts' root barrel from 16 of its modules | `oxy` |
+| ~630,000 B | the `@oxy.so/bloom/multi-agent-chat` barrel, for `SelectedAgentPreview` alone (the sidebar's group picker, the SDK's group welcome): it brings `agent-creator` (`rainbow-artwork.js` is 346,431), `settings-modal` and the rest of that template | Bloom: a subpath for the preview |
+| 312,636 B | `agent-avatar/vector-static.js`, a static import of `VectorCharacterAvatar` | Bloom |
+| 188,724 → 50,210 B | `chart-cards` | done in `@gemies/sdk` 2.0.0 (`bar-list` and `line` by subpath) |
+
+**Granular chunks, measured and not enabled.** Expo 58 can group shared modules by the set of
+routes that need them (`experiments.chunking.mode: "granular"`) instead of hoisting them into
+one `__common`. It does what it says: the entry chunk lists each route's chunks and requests
+them together, where `legacy` waits for `__common`, then the layouts, then the screen; and a
+`React.lazy` boundary finally splits a module two chunks share. With the settings modal made
+lazy on top, interleaved runs against `main` (5 per route, 100 ms RTT, 20 Mbps shared, 1× CPU):
+
+| Route | `main`, usable at | granular | JS before usable (brotli) |
+| --- | ---: | ---: | ---: |
+| `/` | 2,145 ms | 1,930 ms | 2,300 → 2,402 KB |
+| `/shows` | 1,743 ms | 1,661 ms | 2,300 → 2,348 KB |
+| `/settings` | 2,064 ms | 2,049 ms | 2,300 → 2,403 KB |
+| `/notifications` | 1,704 ms | 1,679 ms | 2,298 → 2,346 KB |
+| `/download` | 2,124 ms | 2,192 ms | 2,298 → 2,348 KB |
+| `/agents` | 1,706 ms | 1,821 ms | 2,299 → 2,366 KB |
+
+Faster on some routes and slower on others, inside the runs' spread, and always 50–100 KB more
+to download: the route context grows from 7,422 to 130,433 B because it carries every route's
+chunk list. While the layouts import what they import no route needs less code, so the finer
+chunks have nothing to leave out. It is worth enabling once the rows above are fixed at their
+owners and the shell stops importing the SDK's root barrel; the measurement to repeat is this one.

@@ -5,7 +5,7 @@ import { Image } from '@/shared/ui/image';
  * The web draws the animation itself (`gemies-welcome-art.web.tsx`); here, until the native app
  * ships, the still frame.
  */
-const GEMIES_WELCOME_FRAME = require('../../../assets/images/gemies-welcome.png');
+const GEMIES_WELCOME_FRAME = require('../../../assets/images/gemies-welcome.webp');
 
 /** The welcome art, square, at the size the intro gives it. */
 export function GemiesWelcomeArt({ size }: { size: number }) {
