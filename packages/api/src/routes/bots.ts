@@ -7,317 +7,35 @@ import { authenticateToken } from '../middleware/auth.js';
 import { authenticateChannelBot } from '../middleware/channel-auth.js';
 import { getDb } from '../db/index.js';
 import {
-  deleteBot,
   findBotById,
-  findBotTaskIds,
-  findBotByPlatformIdentity,
   findBotUser,
   findBotUserByAuthToken,
   findLinkedBotUser,
-  findOwnedBot,
-  findOwnedBotWithToken,
   findSystemBot,
   linkBotUser,
   replaceBotUserTask,
-  listVisibleBots,
   logoutBotUser,
-  registerBot,
-  setBotAgent,
-  setBotOwnerPaysAgentTurns,
   setBotUserAuthToken,
   setBotUserConversation,
   setBotUserPreferredModel,
   unlinkBotUser,
   upsertBotUser,
-  type BotRow,
 } from '../db/integrations/botRepository.js';
-import { findAgentById } from '../db/agents/agentRepository.js';
 import type { ChannelId } from '../lib/channels/types.js';
 import { log } from '../lib/logger.js';
 import { personAssistantActor } from '../lib/gemie-oxy-actor.js';
 
 const router = express.Router();
 
-/** Telegram bot tokens look like `<numericId>:<alphanumeric>`. */
-const TELEGRAM_TOKEN_RE = /^\d+:[A-Za-z0-9_-]{20,}$/;
-
-interface TelegramGetMeResult {
-  ok: boolean;
-  result?: {
-    id: number;
-    is_bot?: boolean;
-    first_name?: string;
-    username?: string;
-  };
-}
-
 function generateAuthToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-/**
- * Serialize a Bot for API responses, never exposing the token or routing secret.
- *
- * `BotRow` already carries neither — the repository's column list has no
- * credential in it — so this is now a SHAPE choice rather than the only thing
- * between a secret and the wire. `undefined` for an absent owner or agent is
- * kept: it is what the clients have always received, and `null` would serialize
- * differently.
- */
-function serializeBot(bot: BotRow): Record<string, unknown> {
-  return {
-    id: bot.id,
-    platform: bot.platform,
-    botId: bot.botId,
-    name: bot.name,
-    username: bot.username,
-    avatarUrl: bot.avatarUrl,
-    status: bot.status,
-    userId: bot.userId ?? undefined,
-    agentId: bot.agentId ?? undefined,
-    ownerPaysAgentTurns: bot.ownerPaysAgentTurns,
-  };
-}
-
 // ============================================
-// Public routes (authenticated users)
+// Linking a person to a system bot (authenticated users)
 // ============================================
-
-// List system bots plus the current user's own registered bots
-router.get('/', authenticateToken, async (req, res) => {
-  try {
-    const bots = await listVisibleBots(getDb(), req.userId!);
-    res.json({ bots });
-  } catch (error: unknown) {
-    log.channels.error({ err: error }, 'List bots error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Register a user-owned Telegram bot bound to an optional agent
-router.post('/telegram', authenticateToken, async (req, res) => {
-  try {
-    if (!req.userId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    const { botToken, agentId } = req.body as { botToken?: string; agentId?: string };
-
-    if (!botToken || typeof botToken !== 'string' || !TELEGRAM_TOKEN_RE.test(botToken.trim())) {
-      return res.status(400).json({ error: 'A valid Telegram bot token is required' });
-    }
-    const token = botToken.trim();
-
-    // Validate the token against Telegram (getMe).
-    let getMe: TelegramGetMeResult;
-    try {
-      const meRes = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-      getMe = (await meRes.json()) as TelegramGetMeResult;
-      if (!meRes.ok || !getMe.ok || !getMe.result) {
-        return res.status(400).json({ error: 'Invalid Telegram bot token' });
-      }
-    } catch (error: unknown) {
-      log.channels.error({ err: error }, 'Telegram getMe failed');
-      return res.status(400).json({ error: 'Could not validate the Telegram bot token' });
-    }
-
-    const numericBotId = token.split(':')[0];
-
-    // Verify agent ownership when a binding is requested.
-    const db = getDb();
-    let boundAgentId: string | undefined;
-    if (agentId) {
-      const agent = await findAgentById(db, agentId);
-      if (!agent) {
-        return res.status(404).json({ error: 'Agent not found' });
-      }
-      if (agent.author !== req.userId) {
-        return res.status(403).json({ error: 'You do not own this agent' });
-      }
-      boundAgentId = agentId;
-    }
-
-    // A Telegram bot token can only ever be bound to one webhook.
-    const existing = await findBotByPlatformIdentity(db, 'telegram', numericBotId);
-    if (existing) {
-      return res.status(409).json({ error: 'This Telegram bot is already registered' });
-    }
-
-    const webhookSecret = crypto.randomBytes(32).toString('hex');
-    const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:4150';
-    const webhookUrl = `${apiBaseUrl}/webhooks/telegram`;
-
-    // `null` means the platform identity was taken between the check above and
-    // here — a concurrent registration of the same bot, decided by
-    // `bots_platform_bot_id_key` rather than by a caught error.
-    const bot = await registerBot(db, {
-      platform: 'telegram',
-      botId: numericBotId,
-      name: getMe.result.first_name || 'Telegram bot',
-      username: getMe.result.username,
-      userId: req.userId,
-      agentId: boundAgentId,
-      botToken: token,
-      webhookSecret,
-      platformConfigWebhookUrl: webhookUrl,
-    });
-    if (!bot) {
-      return res.status(409).json({ error: 'This Telegram bot is already registered' });
-    }
-
-    // Point Telegram's webhook at us, echoing our per-bot secret on every update.
-    try {
-      const swRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: webhookUrl, secret_token: webhookSecret }),
-      });
-      const swData = (await swRes.json()) as { ok?: boolean; description?: string };
-      if (!swRes.ok || !swData.ok) {
-        await deleteBot(db, bot.id);
-        log.channels.error({ description: swData.description }, 'Telegram setWebhook failed');
-        return res.status(502).json({ error: 'Failed to register the Telegram webhook' });
-      }
-    } catch (error: unknown) {
-      await deleteBot(db, bot.id);
-      log.channels.error({ err: error }, 'Telegram setWebhook request error');
-      return res.status(502).json({ error: 'Failed to register the Telegram webhook' });
-    }
-
-    res.status(201).json({ bot: serializeBot(bot) });
-  } catch (error: unknown) {
-    log.channels.error({ err: error }, 'Register Telegram bot error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get bot details
-router.get('/:id', authenticateToken, async (req: express.Request<{ id: string }>, res) => {
-  try {
-    const bot = await findBotById(getDb(), req.params.id);
-    if (!bot) {
-      return res.status(404).json({ error: 'Bot not found' });
-    }
-    // User-owned bots are private to their owner; system bots stay public.
-    if (bot.userId && bot.userId !== req.userId) {
-      return res.status(404).json({ error: 'Bot not found' });
-    }
-    res.json({ bot });
-  } catch (error: unknown) {
-    log.channels.error({ err: error }, 'Get bot error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * Bind / change / clear the agent on a user-owned bot, and/or grant or withdraw
- * the owner's consent to pay for that agent's turns.
- *
- * Either field may come alone; at least one must. `ownerPaysAgentTurns` is the
- * `ownerFallbackAllowed` of `lib/agent/turn-funding.ts`, and it is written
- * here — by the bot's owner and nobody else — because it commits the owner's
- * credits. See `db/schema/bots.ts`.
- */
-router.patch('/:id', authenticateToken, async (req: express.Request<{ id: string }>, res) => {
-  try {
-    if (!req.userId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    const db = getDb();
-    const bot = await findOwnedBot(db, req.params.id, req.userId);
-    if (!bot) {
-      return res.status(404).json({ error: 'Bot not found' });
-    }
-
-    const { agentId, ownerPaysAgentTurns } = req.body as {
-      agentId?: string | null;
-      ownerPaysAgentTurns?: unknown;
-    };
-
-    if (agentId === undefined && ownerPaysAgentTurns === undefined) {
-      return res.status(400).json({ error: 'agentId or ownerPaysAgentTurns is required' });
-    }
-    if (ownerPaysAgentTurns !== undefined && typeof ownerPaysAgentTurns !== 'boolean') {
-      return res.status(400).json({ error: 'ownerPaysAgentTurns must be a boolean' });
-    }
-
-    // An explicit clear writes NULL. Assigning `undefined` through drizzle is a
-    // silent no-op, so the bot would have kept answering with the old agent's prompt
-    // while the UI showed it unbound.
-    let nextAgentId: string | null | undefined;
-    if (agentId === undefined) {
-      nextAgentId = undefined;
-    } else if (agentId === null || agentId === '') {
-      nextAgentId = null;
-    } else if (typeof agentId === 'string') {
-      const agent = await findAgentById(db, agentId);
-      if (!agent) {
-        return res.status(404).json({ error: 'Agent not found' });
-      }
-      if (agent.author !== req.userId) {
-        return res.status(403).json({ error: 'You do not own this agent' });
-      }
-      nextAgentId = agentId;
-    } else {
-      return res.status(400).json({ error: 'agentId must be a string or null' });
-    }
-
-    let updated: BotRow | null = bot;
-    if (nextAgentId !== undefined) {
-      updated = await setBotAgent(db, bot.id, req.userId, nextAgentId);
-    }
-    if (updated && typeof ownerPaysAgentTurns === 'boolean') {
-      updated = await setBotOwnerPaysAgentTurns(db, bot.id, req.userId, ownerPaysAgentTurns);
-    }
-    if (!updated) {
-      return res.status(404).json({ error: 'Bot not found' });
-    }
-    res.json({ bot: serializeBot(updated) });
-  } catch (error: unknown) {
-    log.channels.error({ err: error }, 'Update bot error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Delete a user-owned bot (never the system/global bot)
-router.delete('/:id', authenticateToken, async (req: express.Request<{ id: string }>, res) => {
-  try {
-    if (!req.userId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-
-    // Scope to the owner: a system bot (no userId) can never match here.
-    const db = getDb();
-    const bot = await findOwnedBotWithToken(db, req.params.id, req.userId);
-    if (!bot) {
-      return res.status(404).json({ error: 'Bot not found' });
-    }
-
-    for (const taskId of await findBotTaskIds(db, bot.id)) await revokeOxyTask(taskId);
-
-    // Best-effort removal of the Telegram webhook using the bot's own token.
-    if (bot.platform === 'telegram' && bot.botToken) {
-      try {
-        await fetch(`https://api.telegram.org/bot${bot.botToken}/deleteWebhook`, {
-          method: 'POST',
-        });
-      } catch (error: unknown) {
-        log.channels.warn({ err: error }, 'Telegram deleteWebhook failed (continuing)');
-      }
-    }
-
-    // `bot_users` go with the bot: the foreign key is `ON DELETE CASCADE`, which
-    // is the structural version of the source's explicit `deleteMany` and cannot
-    // be forgotten by a future caller.
-    await deleteBot(db, bot.id);
-
-    res.json({ success: true });
-  } catch (error: unknown) {
-    log.channels.error({ err: error }, 'Delete bot error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+//
+// A gemie's own Telegram bot is managed in its editor (`routes/agents/telegram-bot.ts`).
 
 // Get link status for current user with a specific bot
 router.get(

@@ -6,8 +6,8 @@ import { gemieQueryKeys } from './query-keys';
 import { AGENT_ROUTES } from './routes';
 
 /**
- * A gemie's connected accounts (ADR 0035): the WhatsApp and Telegram accounts the person linked to
- * a gemie, which answers what arrives on them as their replies say. Each is the caller's own; the
+ * A gemie's connected accounts (ADR 0035): the WhatsApp and Telegram (Business, ADR 0037) accounts
+ * the person linked to a gemie, which answers what arrives on them as their replies say. Each is the caller's own; the
  * API never lists another person's. The Gemies app (in a gemie's editor) and the Alia app (for
  * Alia's gemie) both manage them through these hooks and `GemieAccounts` (`@gemies/sdk/accounts`).
  */
@@ -20,6 +20,7 @@ export const GEMIE_ACCOUNT_STATUSES = [
   'qr-pending',
   'connected',
   'disconnected',
+  'paused',
   'logged-out',
   'failed',
 ] as const;
@@ -39,6 +40,8 @@ export interface GemieAccount {
   displayName: string | null;
   phoneNumber: string | null;
   status: GemieAccountStatus;
+  /** Whether the platform lets the gemie write from it (Telegram Business); `null` elsewhere. */
+  canReply: boolean | null;
   oxyTaskState: 'active' | 'reauth_required';
   replies: GemieAccountReplies;
   replyChatIds: string[];
@@ -53,7 +56,10 @@ export interface GemieAccountChat {
   kind: 'direct' | 'group';
 }
 
-/** A link waiting for its scan. */
+/**
+ * A link waiting to be finished: WhatsApp's code to scan, or Telegram's t.me link to
+ * open (or scan from another device).
+ */
 export interface GemieAccountLink {
   accountId: string;
   qr: string | null;
@@ -97,7 +103,8 @@ export function useGemieAccounts(gemieId: string) {
 
 /**
  * The code of an account being linked, refreshed while it waits (WhatsApp rotates its code every
- * few seconds). It stops once the session leaves `qr-pending`, and the list is re-read then, so the
+ * few seconds; Telegram's link is renewed when it expires, and is gone once Telegram knows who the
+ * person is). It stops once the session leaves `qr-pending`, and the list is re-read then, so the
  * account shows as it is.
  */
 export function useGemieAccountQr(gemieId: string, link: GemieAccountLink | null) {

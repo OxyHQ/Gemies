@@ -14,7 +14,7 @@ import { Switch } from '@oxy.so/bloom/switch';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
 import { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Linking, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { englishCopy, type Translate } from '../lib/copy';
 import { errorMessage } from '../runtime/error-utils';
@@ -93,7 +93,52 @@ function Choice<T extends string>({
   );
 }
 
-/** The account being linked: its QR code until the person scans it with the platform's app. */
+/** A code to scan, drawn with its own white quiet zone so it scans on a dark theme too. */
+function Code({ value }: { value: string | null | undefined }) {
+  return value ? (
+    <QRCode value={value} size={200} quietZone={12} backgroundColor="white" color="black" />
+  ) : (
+    // The code's own shape while the provider makes it: the same square, the quiet zone in.
+    <Skeleton.Region>
+      <Skeleton.Box width={224} height={224} />
+    </Skeleton.Region>
+  );
+}
+
+/**
+ * Telegram's two steps (ADR 0037): open the shared Gemies bot from this link, so Telegram says who
+ * the person is, and add it in Telegram › Settings › Telegram Business › Chatbots. The link opens
+ * Telegram here, and its code opens it on a phone. Once Telegram knows who the person is, only the
+ * second step is left.
+ */
+function TelegramSteps({ link, t }: { link: string | null; t: Translate }) {
+  return (
+    <View className="gap-2">
+      <Text variant="body-2-regular" className="text-text-secondary">
+        {t(`${K}.telegram.note`)}
+      </Text>
+      {link ? (
+        <>
+          <Text variant="body-2-regular">{t(`${K}.telegram.step1`)}</Text>
+          <Text variant="body-2-regular">{t(`${K}.telegram.step2`)}</Text>
+          <View className="flex-row">
+            <Button size="sm" onPress={() => void Linking.openURL(link)}>
+              {t(`${K}.telegram.open`)}
+            </Button>
+          </View>
+          <Code value={link} />
+        </>
+      ) : (
+        <Text variant="body-2-regular">{t(`${K}.telegram.waitingBusiness`)}</Text>
+      )}
+    </View>
+  );
+}
+
+/**
+ * The account being linked, until the person finishes on their phone: WhatsApp's code to scan, or
+ * Telegram's steps.
+ */
 function LinkingAccount({
   gemieId,
   name,
@@ -117,25 +162,28 @@ function LinkingAccount({
 
   useEffect(() => {
     if (status === 'qr-pending') return;
-    if (status === 'connected') toast.success(t(`${K}.linked`, { platform: label, name }));
-    else toast.error(t(`${K}.linkExpired`, { platform: label }));
+    // Telegram reports a connection its person turned off as paused: linked all the same.
+    if (status === 'connected' || status === 'paused') {
+      toast.success(t(`${K}.linked`, { platform: label, name }));
+    } else toast.error(t(`${K}.linkExpired`, { platform: label }));
     onDone();
   }, [label, name, onDone, status, t]);
 
   return (
     <Row>
-      <Text variant="body-2-semibold">{t(`${K}.scanTitle`, { platform: label })}</Text>
-      <Text variant="body-2-regular" className="text-text-secondary">
-        {t(`${K}.scan.${platform}`)}
-      </Text>
-      {data?.qr ? (
-        // The code carries its own white quiet zone, so it scans on a dark theme too.
-        <QRCode value={data.qr} size={200} quietZone={12} backgroundColor="white" color="black" />
+      {platform === 'telegram' ? (
+        <>
+          <Text variant="body-2-semibold">{t(`${K}.telegram.linkTitle`)}</Text>
+          <TelegramSteps link={data?.qr ?? null} t={t} />
+        </>
       ) : (
-        // The code's own shape while the provider makes it: the same square, the quiet zone in.
-        <Skeleton.Region>
-          <Skeleton.Box width={224} height={224} />
-        </Skeleton.Region>
+        <>
+          <Text variant="body-2-semibold">{t(`${K}.scanTitle`, { platform: label })}</Text>
+          <Text variant="body-2-regular" className="text-text-secondary">
+            {t(`${K}.scan.${platform}`)}
+          </Text>
+          <Code value={data?.qr} />
+        </>
       )}
       <View className="flex-row">
         <Button size="sm" appearance="outline" tone="neutral" onPress={onCancel}>
@@ -144,6 +192,20 @@ function LinkingAccount({
       </View>
     </Row>
   );
+}
+
+/** A Telegram account the person left before finishing: its steps, kept until it is linked. */
+function PendingTelegram({
+  gemieId,
+  account,
+  t,
+}: {
+  gemieId: string;
+  account: GemieAccount;
+  t: Translate;
+}) {
+  const { data } = useGemieAccountQr(gemieId, { accountId: account._id, qr: null });
+  return <TelegramSteps link={data?.qr ?? null} t={t} />;
 }
 
 /** The chats a `chosen` account answers, picked from its recent ones. */
@@ -223,11 +285,19 @@ function AccountRow({
 }) {
   const { setReplies, remove } = useGemieAccountMutations(gemieId);
   const platform = PLATFORM_LABELS[account.platform] ?? account.platform;
-  const status = GEMIE_ACCOUNT_STATUSES.includes(account.status)
-    ? t(`${K}.status.${account.status}`)
-    : account.status;
+  const telegram = account.platform === 'telegram';
+  // Telegram's statuses mean something of their own: a link waiting in Telegram, an account the
+  // person paused there, one that moved to another gemie. None asks them to sign in again.
+  const status = !GEMIE_ACCOUNT_STATUSES.includes(account.status)
+    ? account.status
+    : telegram && account.status !== 'connected'
+      ? t(`${K}.telegram.status.${account.status}`)
+      : t(`${K}.status.${account.status}`);
   const identifier = account.phoneNumber || account.displayName;
-  const live = account.status === 'connected' || account.status === 'disconnected';
+  const live =
+    account.status === 'connected' ||
+    account.status === 'disconnected' ||
+    account.status === 'paused';
 
   const save = async (patch: {
     replies?: GemieAccountReplies;
@@ -243,7 +313,9 @@ function AccountRow({
   const handleRemove = async () => {
     const ok = await confirm({
       title: t(`${K}.removeTitle`, { platform }),
-      description: t(`${K}.removeDescription`, { platform, name }),
+      description: telegram
+        ? t(`${K}.telegram.removeDescription`, { name })
+        : t(`${K}.removeDescription`, { platform, name }),
       confirmLabel: t(`${K}.remove`),
       cancelLabel: t(`${K}.cancel`),
       destructive: true,
@@ -280,6 +352,14 @@ function AccountRow({
           {t(`${K}.remove`)}
         </Button>
       </View>
+      {telegram && account.status === 'qr-pending' ? (
+        <PendingTelegram gemieId={gemieId} account={account} t={t} />
+      ) : null}
+      {telegram && account.status === 'connected' && account.canReply === false ? (
+        <Text variant="body-2-regular" className="text-text-secondary">
+          {t(`${K}.telegram.cannotReply`, { name })}
+        </Text>
+      ) : null}
       {live ? (
         <>
           <Choice
@@ -296,7 +376,8 @@ function AccountRow({
           {account.replies === 'chosen' ? (
             <ChosenChats gemieId={gemieId} account={account} t={t} />
           ) : null}
-          {account.replies !== 'nobody' ? (
+          {/* Telegram Business covers private chats only: it has no groups to choose for. */}
+          {account.replies !== 'nobody' && !telegram ? (
             <Choice
               label={t(`${K}.groupRepliesLabel`)}
               value={account.groupReplies}
@@ -324,7 +405,8 @@ export interface GemieAccountsProps {
 }
 
 /**
- * The WhatsApp and Telegram accounts the person linked to a gemie (ADR 0035), drawn without a
+ * The WhatsApp and Telegram accounts the person linked to a gemie (ADR 0035; Telegram through
+ * Telegram Business, ADR 0037), drawn without a
  * frame of its own so each app puts it in its own: the Gemies app in a gemie's editor card, the
  * Alia app in its settings. The gemie answers what arrives on them as the person chooses, and only
  * its own turns can read or send through them. Only what this deployment can link is offered.
@@ -437,7 +519,13 @@ export function GemieAccounts({ gemieId, name, t = englishCopy }: GemieAccountsP
             <Text variant="body-2-regular" className="text-text-secondary">
               {t(`${K}.unavailable`)}
             </Text>
-          ) : (
+          ) : null}
+          {platforms.includes('telegram') ? (
+            <Text variant="body-2-regular" className="text-text-secondary">
+              {t(`${K}.telegram.note`)}
+            </Text>
+          ) : null}
+          {platforms.length === 0 ? null : (
             <View className="flex-row flex-wrap gap-2">
               {platforms.map((platform) => (
                 <Button

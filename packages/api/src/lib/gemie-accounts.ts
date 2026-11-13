@@ -2,7 +2,7 @@
  * A gemie's connected accounts: the provider sessions behind them, the Oxy authority they carry
  * and who they answer (ADR 0035).
  *
- * A person links a WhatsApp or Telegram account to ONE gemie. The integrations gateway holds the
+ * A person links a WhatsApp account, or Telegram through Telegram Business (ADR 0037), to ONE gemie. The integrations gateway holds the
  * provider session and speaks one contract for every platform (`@gemies/server/internal`); this
  * service holds the row, and with it a durable Oxy task the person granted when linking it, whose
  * actor is the gemie's own (`oxyActorFor`): Alia's lane is the person's own, every other gemie
@@ -141,7 +141,8 @@ export async function syncAccountSession(
   const moved =
     live.status !== account.status ||
     (live.phoneNumber && live.phoneNumber !== account.phoneNumber) ||
-    (live.displayName && live.displayName !== account.displayName);
+    (live.displayName && live.displayName !== account.displayName) ||
+    (typeof live.canReply === 'boolean' && live.canReply !== account.canReply);
   if (!moved) return account;
   return (await setConnectedAccountSessionState(getDb(), account.id, live)) ?? account;
 }
@@ -187,6 +188,22 @@ export function sendAccountMessage(
   return gateway<{ messageId: string }>(personAccountId, `${sessionPath(account)}/send`, {
     method: 'POST',
     body: JSON.stringify({ chatId, text }),
+  });
+}
+
+/**
+ * Write to the person who linked the account — a notification, not a message to a contact. Telegram
+ * writes in the person's own chat with the shared Gemies bot; a platform with no way to reach them
+ * answers a `GatewayError`.
+ */
+export function notifyAccountPerson(
+  account: ConnectedAccountRow,
+  personAccountId: string,
+  text: string,
+): Promise<{ messageId: string }> {
+  return gateway<{ messageId: string }>(personAccountId, `${sessionPath(account)}/notify`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
   });
 }
 

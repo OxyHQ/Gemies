@@ -264,6 +264,7 @@
       "lib/automation-dispatcher.ts",
       "lib/channels/inbound-handlers.ts",
       "lib/chat/request-context.ts",
+      "lib/gemie-telegram-bot.ts",
       "lib/seed-comped-accounts.ts",
       "lib/show/show-pipeline.ts",
       "routes/billing.ts",

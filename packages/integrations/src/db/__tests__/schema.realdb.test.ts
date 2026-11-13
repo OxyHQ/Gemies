@@ -19,13 +19,7 @@ import {
   isUniqueViolation,
 } from '@oxy.so/db';
 import { closePostgres, connectPostgres, type IntegrationsDatabase } from '../index';
-import {
-  mcpConnectorAuths,
-  telegramSessions,
-  whatsappChats,
-  whatsappMessages,
-  whatsappSessions,
-} from '../schema';
+import { mcpConnectorAuths, whatsappChats, whatsappMessages, whatsappSessions } from '../schema';
 
 let db: IntegrationsDatabase;
 
@@ -210,18 +204,6 @@ describe('credentials survive a round trip unchanged', () => {
       .where(eq(whatsappSessions.sessionId, 'wa-nokeys'));
     expect(row?.authKeys).toEqual({});
     expect(row?.authState).toBeNull();
-  });
-
-  it('keeps a Telegram session string byte-identical', async () => {
-    const sessionString = '1BQANOTEuMTA4LjU2LjE3MwG7' + 'x'.repeat(300);
-    await db
-      .insert(telegramSessions)
-      .values({ sessionId: 'tg-1', oxyUserId: 'user-5', sessionString });
-    const [row] = await db
-      .select()
-      .from(telegramSessions)
-      .where(eq(telegramSessions.sessionId, 'tg-1'));
-    expect(row?.sessionString).toBe(sessionString);
   });
 });
 

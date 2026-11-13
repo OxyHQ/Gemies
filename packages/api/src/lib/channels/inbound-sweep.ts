@@ -13,7 +13,7 @@
  * never answer one message twice.
  */
 
-import { findBotUserById, findInboundUserBotById } from '../../db/integrations/botRepository.js';
+import { findBotUserById } from '../../db/integrations/botRepository.js';
 import {
   claimChannelInbound,
   claimStalledChannelInbound,
@@ -23,7 +23,7 @@ import {
 } from '../../db/integrations/channelInboundRepository.js';
 import { getDb } from '../../db/index.js';
 import { log } from '../logger.js';
-import { processAgentBotMessage, processChannelMessage } from './inbound-handlers.js';
+import { processChannelMessage } from './inbound-handlers.js';
 import type { ChannelId } from './types.js';
 
 /** A healthy reply starts within seconds; this is past the slowest one. */
@@ -45,16 +45,7 @@ async function run(work: ChannelInboundWork): Promise<void> {
   }
   const channelType = work.channelType as ChannelId;
   try {
-    if (work.kind === 'agent_bot') {
-      const bot = await findInboundUserBotById(db, work.botId);
-      if (!bot) {
-        await settleChannelInbound(db, work.id, 'failed');
-        return;
-      }
-      await processAgentBotMessage(bot, botUser, work.message, channelType);
-    } else {
-      await processChannelMessage(channelType, botUser, work.message);
-    }
+    await processChannelMessage(channelType, botUser, work.message);
     await settleChannelInbound(db, work.id, 'done');
   } catch (error: unknown) {
     log.webhook.error({ err: error, channelType, inboundId: work.id }, 'Inbound processing error');

@@ -1,5 +1,6 @@
 /**
- * Core AI chat response handler — shared by all messaging adapters.
+ * How a message that arrived on a connected account (WhatsApp, Telegram Business) is answered by
+ * the account's gemie — shared by every account gateway.
  *
  * Each adapter extracts the platform-specific message data, then calls
  * handleIncomingMessage() with platform-agnostic params + callbacks.
@@ -131,7 +132,8 @@ export async function handleIncomingMessage(
 
     // Conversation is auto-saved by the API when conversationId is provided
   } catch (error: unknown) {
+    // Nothing is said in the chat: it is the person's own account writing to one of their
+    // contacts, and an apology from it would be a message the person never wrote.
     logger.error('Error:', error);
-    await sendResponse('Sorry, an error occurred. Please try again.').catch(() => {});
   }
 }

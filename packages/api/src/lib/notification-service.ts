@@ -4,7 +4,8 @@
  * Delivers notifications to users via multiple channels:
  * - in_app: Socket.io real-time event
  * - push: Expo push notifications (mobile)
- * - telegram: the system bot, to the person's linked chat
+ * - telegram: the shared Gemies bot, in the person's own chat with it, when they linked their
+ *   Telegram to one of their gemies (ADR 0037)
  *
  * Each notification is persisted and can be delivered to multiple channels simultaneously.
  */
@@ -34,8 +35,8 @@ import type {
   NotificationTypeValue,
 } from '../db/schema/notifications.js';
 import { getStatusCode } from './errors/index.js';
-import { findLinkedBotUser, findSystemBot } from '../db/integrations/botRepository.js';
-import { sendChannelMessage } from './channels/outbound.js';
+import { findPersonAccountOf } from '../db/integrations/connectedAccountRepository.js';
+import { notifyAccountPerson } from './gemie-accounts.js';
 import { webPush, VAPID_PUBLIC_KEY, isUnrecoverableSubscriptionError } from './web-push.js';
 import { getIO } from '../socket.js';
 import { log } from './logger.js';
@@ -112,16 +113,15 @@ async function deliverInApp(notification: NotificationRow): Promise<boolean> {
 }
 
 async function deliverTelegram(userId: string, notification: NotificationRow): Promise<boolean> {
-  const db = getDb();
-  const bot = await findSystemBot(db, 'telegram', { activeOnly: true });
-  if (!bot) return false;
-
-  const botUser = await findLinkedBotUser(db, bot.id, userId);
-  if (!botUser?.chatId) return false;
-
-  const text = formatNotificationText(notification);
-  const results = await sendChannelMessage('telegram', botUser.chatId, text);
-  return results.length > 0 && results[0].ok;
+  const account = await findPersonAccountOf(getDb(), userId, 'telegram');
+  if (!account) return false;
+  try {
+    await notifyAccountPerson(account, userId, formatNotificationText(notification));
+    return true;
+  } catch {
+    // `notifyAccountPerson` logged why.
+    return false;
+  }
 }
 
 // ── Expo Push Notifications ─────────────────────────────────────────

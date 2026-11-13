@@ -1,5 +1,16 @@
 # @gemies/sdk
 
+## 3.2.0
+
+- **Telegram is Telegram Business (Gemies ADR 0037).** `GemieAccounts` links a person's Telegram
+  through the shared Gemies bot: a button and a code that open the bot, and the step in Telegram ›
+  Settings › Telegram Business › Chatbots. It says Telegram Premium is needed and that only private
+  chats are covered, offers no group setting for it, and shows a connection the person turned off
+  in Telegram as paused (it resumes by itself) and one moved to another gemie as revoked; nothing
+  asks to sign in again. `GEMIE_ACCOUNT_STATUSES` gains `paused`, and `GemieAccount` carries
+  `canReply` (whether Telegram lets the gemie write); the panel says when it does not. New copy
+  under `gemie.accounts.telegram.*`; `gemie.accounts.scan.telegram` is gone.
+
 ## 3.1.0
 
 - **New: `AGENT_ROUTES` and `threadKey` from `@gemies/sdk/runtime`**, the routes and cache key of a

@@ -70,7 +70,7 @@ beforeEach(() => {
 describe('channel workload identity', () => {
   it('resolves bot-linked account and task without creating an Oxy session', async () => {
     const { req, next } = await invoke({
-      'x-alia-channel': 'telegram',
+      'x-alia-channel': 'discord',
       'x-alia-platform-user': '123',
       'x-alia-account-context': 'forged',
     });
@@ -118,7 +118,7 @@ describe('channel workload identity', () => {
             : { appId: 'other' }),
       };
       const { res, next } = await invoke({
-        'x-alia-channel': 'telegram',
+        'x-alia-channel': 'discord',
         'x-alia-platform-user': '123',
       });
       expect(res.status).toHaveBeenCalledWith(403);
@@ -129,13 +129,13 @@ describe('channel workload identity', () => {
   it('refuses a removed link and never substitutes a supplied Oxy user', async () => {
     fixture.link.mockResolvedValue(null);
     const { res, next } = await invoke({
-      'x-alia-channel': 'telegram',
+      'x-alia-channel': 'discord',
       'x-alia-platform-user': '123',
     });
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
     const spoof = await invoke({
-      'x-alia-channel': 'telegram',
+      'x-alia-channel': 'discord',
       'x-alia-platform-user': '123',
       'x-oxy-user-id': ACCOUNT,
     });
@@ -143,9 +143,9 @@ describe('channel workload identity', () => {
   });
   it('requires account provenance and rejects mixed provenance', async () => {
     for (const headers of [
-      { 'x-alia-channel': 'telegram' },
+      { 'x-alia-channel': 'discord' },
       {
-        'x-alia-channel': 'telegram',
+        'x-alia-channel': 'discord',
         'x-alia-platform-user': '123',
         'x-alia-channel-session': 'session',
       },
@@ -172,8 +172,8 @@ describe('channel workload identity', () => {
   it('pins administrative bot operations to their channel', async () => {
     const res = response();
     const next = vi.fn();
-    await authenticateChannelBot('telegram')(
-      { headers: { authorization: 'Bearer workload', 'x-alia-channel': 'discord' } } as any,
+    await authenticateChannelBot('discord')(
+      { headers: { authorization: 'Bearer workload', 'x-alia-channel': 'slack' } } as any,
       res,
       next,
     );

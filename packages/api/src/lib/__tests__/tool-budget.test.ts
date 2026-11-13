@@ -46,6 +46,14 @@ vi.mock('../../db/integrations/connectedAccountRepository.js', () => ({
     sources.accountsAsked.push(scope);
     return sources.linked.map((platform) => ({ id: `${platform}-1`, platform, sessionId: 's' }));
   }),
+  listGemieAccounts: vi.fn(async () =>
+    sources.linked.map((platform) => ({
+      id: `${platform}-1`,
+      platform,
+      sessionId: 's',
+      status: 'connected',
+    })),
+  ),
 }));
 
 vi.mock('../tools/oxy-services.js', () => ({
@@ -788,8 +796,8 @@ describe('ToolPipeline.forUser applies the budget on every path it serves', () =
       vi.stubEnv('INTEGRATIONS_URL', '');
       const result = await forUser();
       for (const name of ACCOUNT_TOOLS) expect(result.tools[name]).toBeUndefined();
-      // The neighbouring messaging tool is unaffected.
-      expect(result.tools.sendTelegramMessage).toBeDefined();
+      // Nor the person's own Telegram (ADR 0037): it goes through the same gateway.
+      expect(result.tools.sendTelegramMessage).toBeUndefined();
     });
 
     it('offers all three, for the platforms it has, where the gemie has an account — the control', async () => {
@@ -799,6 +807,8 @@ describe('ToolPipeline.forUser applies the budget on every path it serves', () =
       vi.stubEnv('INTEGRATIONS_URL', 'https://gateway.example.test');
       const result = await forUser();
       for (const name of ACCOUNT_TOOLS) expect(result.tools[name]).toBeDefined();
+      // A linked Telegram also reaches its person (ADR 0037).
+      expect(result.tools.sendTelegramMessage).toBeDefined();
       // Asked of the turn's own gemie and person, never of the person alone (ADR 0035).
       expect(sources.accountsAsked).toEqual([{ agentId: aliaGemie()._id, oxyUserId: 'user-1' }]);
       const schema = asSchema(result.tools.sendAccountMessage?.inputSchema).jsonSchema as {
@@ -813,7 +823,7 @@ describe('ToolPipeline.forUser applies the budget on every path it serves', () =
       vi.stubEnv('INTEGRATIONS_URL', 'https://gateway.example.test');
       const result = await forUser();
       for (const name of ACCOUNT_TOOLS) expect(result.tools[name]).toBeUndefined();
-      expect(result.tools.sendTelegramMessage).toBeDefined();
+      expect(result.tools.sendTelegramMessage).toBeUndefined();
     });
   });
 

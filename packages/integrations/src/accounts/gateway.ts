@@ -8,7 +8,8 @@ import type {
 } from '@gemies/server/internal';
 
 /**
- * One messaging platform a person's account can be linked through (ADR 0035): WhatsApp, Telegram.
+ * One messaging platform a person's account can be linked through (ADR 0035): WhatsApp, and
+ * Telegram Business (ADR 0037).
  *
  * Every platform answers the same contract (`@gemies/server/internal`'s account types), so the
  * routes the API calls are one router for all of them (`gateway-router.ts`) and nothing above this
@@ -36,4 +37,9 @@ export interface AccountGateway {
   messages(sessionId: string, chatId: string, limit: number): Promise<GemieAccountMessage[]>;
   /** Send through a live session; `null` when the session is not live. */
   send(sessionId: string, chatId: string, text: string): Promise<{ messageId: string } | null>;
+  /**
+   * Write to the person who linked the session (a notification), where the platform has a way to
+   * reach them; `null` when this session cannot yet.
+   */
+  notify?(sessionId: string, text: string): Promise<{ messageId: string } | null>;
 }

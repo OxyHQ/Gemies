@@ -5,10 +5,10 @@ import { databaseGauges } from '../../lib/observability/operational-metrics';
 import { addInboxItem } from '../agents/agentInboxRepository';
 import { claimAutomationEvent } from '../automation/automationDefinitionRepository';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
-import { registerBot, upsertBotUser } from '../integrations/botRepository';
+import { upsertBotUser } from '../integrations/botRepository';
 import { acceptChannelInbound } from '../integrations/channelInboundRepository';
 import { automationEvents } from '../schema/agency';
-import { channelInbound } from '../schema/bots';
+import { bots, channelInbound } from '../schema/bots';
 
 /**
  * The operational gauges against a REAL server. The database is shared by other test files, so each
@@ -76,15 +76,19 @@ describe('databaseGauges', () => {
   });
 
   it('counts a stored channel message as stalled, and a failed one as failed', async () => {
-    const bot = await registerBot(db, {
-      platform: 'metrics-telegram',
-      botId: `m-${uuidv7()}`,
-      name: 'Metrics Bot',
-      userId: 'metrics-owner',
-      botToken: 't',
-      webhookSecret: `s-${uuidv7()}`,
-      platformConfigWebhookUrl: 'https://api.test/x',
-    });
+    const bot = (
+      await db
+        .insert(bots)
+        .values({
+          platform: 'metrics-telegram',
+          botId: `m-${uuidv7()}`,
+          name: 'Metrics Bot',
+          userId: 'metrics-owner',
+          botToken: 't',
+          status: 'active',
+        })
+        .returning({ id: bots.id })
+    )[0];
     if (!bot) throw new Error('bot not registered');
     const user = await upsertBotUser(db, {
       botId: bot.id,
@@ -98,7 +102,7 @@ describe('databaseGauges', () => {
       db,
       {
         dedupeKey: `metrics:${uuidv7()}`,
-        kind: 'agent_bot',
+        kind: 'system',
         channelType: 'metrics-telegram',
         botId: bot.id,
         botUserId: user.id,

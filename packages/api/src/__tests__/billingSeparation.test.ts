@@ -695,7 +695,9 @@ describe('the billing path audit matches the tree it describes (#139 ws12)', () 
     // joined when automation runs started holding credits like a goal does.
     // `lib/agent/deferred-approvals.ts` left with approvals (ADR 0020 §3).
     // Durable autonomous work reserves its hold with the session in one transaction.
-    expect(derived.length).toBe(12);
+    // `lib/gemie-telegram-bot.ts` joined when a gemie's own bot moved out of the channel
+    // handlers (ADR 0037); those still provision the system bot's person.
+    expect(derived.length).toBe(13);
   });
 });
 

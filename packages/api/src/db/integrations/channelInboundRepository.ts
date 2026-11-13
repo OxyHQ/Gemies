@@ -16,7 +16,7 @@ type Executor = Pick<ApiDatabase, 'select' | 'insert' | 'update' | 'delete'>;
 
 export interface ChannelInboundWork {
   id: string;
-  kind: 'system' | 'agent_bot';
+  kind: 'system';
   channelType: string;
   botId: string;
   botUserId: string;
@@ -26,7 +26,7 @@ export interface ChannelInboundWork {
 
 export interface AcceptChannelInbound {
   dedupeKey: string;
-  kind: 'system' | 'agent_bot';
+  kind: 'system';
   channelType: string;
   botId: string;
   botUserId: string;

@@ -32,14 +32,17 @@ API's encryption key for connector records. `API_BASE_URL` points to Alia's API;
 
 | Adapter | Configuration |
 | --- | --- |
-| Telegram bot | `TELEGRAM_BOT_ENABLED`, `TELEGRAM_BOT_TOKEN` |
+| Telegram (Bot API, ADR 0037) | `TELEGRAM_BOT_TOKEN`: the shared Gemies bot, for Telegram Business accounts. Gemies' own bots need nothing here: the API keeps their tokens. |
 | Discord bot | `DISCORD_BOT_ENABLED`, `DISCORD_BOT_TOKEN` |
 | WhatsApp accounts | `WHATSAPP_ENABLED` |
-| Telegram accounts | `TELEGRAM_GATEWAY_ENABLED`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` |
 
 Adapters are enabled by default; set the corresponding enabled value to false
 to disable one. External provider OAuth scopes and webhook signatures remain
 provider requirements; they do not authenticate internal Alia traffic.
+
+Telegram reaches this process only through the API: every bot's webhook is
+`${API_BASE_URL}/webhooks/telegram/<botId>`, which the API relays to
+`POST /telegram/updates/:botId` here. This service stays private.
 
 ## Development
 

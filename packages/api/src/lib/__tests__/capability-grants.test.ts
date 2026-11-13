@@ -136,14 +136,18 @@ vi.mock('../tools/consult-agent.js', () => ({
 vi.mock('../logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   return {
-    log: { agents: child, chat: child, general: child, v1: child, providers: child },
+    log: { agents: child, chat: child, general: child, v1: child, providers: child, tools: child },
   };
 });
 vi.mock('../../db/index.js', () => ({ getDb: () => ({}) }));
 // The messaging family's account tools need the gemie's own connected account (ADR 0035).
+// `sendTelegramMessage` needs the person's Telegram linked to the gemie (ADR 0037).
 vi.mock('../../db/integrations/connectedAccountRepository.js', () => ({
   listConnectedGemieAccounts: vi.fn(async () => [
     { id: 'wa-1', platform: 'whatsapp', sessionId: 'wa-session' },
+  ]),
+  listGemieAccounts: vi.fn(async () => [
+    { id: 'tg-1', platform: 'telegram', sessionId: 'tg-session', status: 'connected' },
   ]),
 }));
 /** The peers of a space member: set per test, since the rows are in a database this test lacks. */

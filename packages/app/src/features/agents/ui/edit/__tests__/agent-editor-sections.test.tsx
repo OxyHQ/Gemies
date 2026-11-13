@@ -49,6 +49,9 @@ vi.mock('@oxy.so/bloom/skeleton', async () => hosts('Box', 'Region'));
 vi.mock('@oxy.so/bloom/settings-modal', async () => hosts('SettingsCard'));
 vi.mock('@oxy.so/bloom/icons/RiDeleteBinLine', () => ({ RiDeleteBinLine: 'RiDeleteBinLine' }));
 vi.mock('@gemies/sdk/accounts', async () => hosts('GemieAccounts'));
+vi.mock('@gemies/sdk', async () => ({ readAgentCharacter: (character: unknown) => character }));
+vi.mock('@oxy.so/bloom/agent-avatar', async () => hosts('AgentAvatar'));
+vi.mock('@oxy.so/bloom/text-field', async () => hosts('TextFieldInput'));
 vi.mock('@oxy.so/bloom/surfaces', () => ({ confirm }));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast }));
 vi.mock('@oxy.so/services/ui/client', () => ({
@@ -89,7 +92,11 @@ async function render(): Promise<ReactTestRenderer> {
   await act(async () => {
     renderer = create(
       <QueryClientProvider client={client}>
-        <AgentEditorSections agentId="agent-1" name="Scout" />
+        <AgentEditorSections
+          agentId="agent-1"
+          name="Scout"
+          look={{ character: { preset: 'blue_beret' }, color: null }}
+        />
       </QueryClientProvider>,
     );
   });
@@ -132,6 +139,7 @@ let alerts = {
   agents: [{ agentId: 'agent-1', name: 'Scout', handle: 'scout', color: null, enabled: false }],
 };
 let documents: { path: string }[] = [];
+let telegramBot: { bot: unknown; available: boolean } = { bot: null, available: true };
 
 beforeEach(() => {
   commitAccountProjection('A', 'session-A');
@@ -148,6 +156,7 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(async (url: string, config?: { params?: { path?: string } }) => {
       if (url === '/notifications/email-alerts') return { data: alerts };
+      if (url.endsWith('/telegram-bot')) return { data: telegramBot };
       if (url.endsWith('/inbox'))
         return { data: { items, heartbeat: { intervalMinutes: 60, lastHeartbeatAt } } };
       if (url.endsWith('/subscriptions')) return { data: { subscriptions } };
@@ -455,5 +464,77 @@ describe('the accounts it answers on', () => {
     expect(
       all(tree, 'AgentCreatorSection').some((node) => node.props.title === 'Connected accounts'),
     ).toBe(true);
+  });
+});
+
+describe('its own Telegram bot (ADR 0037)', () => {
+  const TOKEN = `8000000002:${'B'.repeat(35)}`;
+  const bot = {
+    botId: '8000000002',
+    username: 'scout_bot',
+    name: 'Scout',
+    status: 'active',
+    groupReplies: 'mentions',
+    ownerPaysAgentTurns: true,
+    callerPays: true,
+    totalMessages: 3,
+    lastMessageAt: null,
+    live: {
+      username: 'scout_bot',
+      name: 'Scout',
+      canJoinGroups: true,
+      canReadAllGroupMessages: false,
+      webhook: 'ok',
+      webhookError: null,
+      pendingUpdates: 0,
+    },
+  };
+  const button = (tree: ReactTestRenderer, words: string) =>
+    all(tree, 'Button').find((node) => String(node.props.children).includes(words));
+
+  afterEach(() => {
+    telegramBot = { bot: null, available: true };
+  });
+
+  it('is its own card, apart from the person’s connected accounts', async () => {
+    const tree = await render();
+    expect(
+      all(tree, 'AgentCreatorSection').some((node) => node.props.title === 'Telegram bot'),
+    ).toBe(true);
+  });
+
+  it('connects a pasted @BotFather token, with the person’s say on who pays', async () => {
+    api.put.mockResolvedValueOnce({
+      data: { bot, profile: { name: true, description: true, photo: true } },
+    });
+    const tree = await render();
+    await act(async () => all(tree, 'TextFieldInput')[0]?.props.onChangeText(TOKEN));
+    await act(async () =>
+      switchLabelled(tree, 'Pay for its answers')?.props.onCheckedChange(false),
+    );
+    await act(async () => button(tree, 'Connect the bot')?.props.onPress());
+    await settle();
+    expect(api.put).toHaveBeenCalledWith('/agents/agent-1/telegram-bot', {
+      token: TOKEN,
+      ownerPaysAgentTurns: false,
+      // The off-screen avatar cannot be read here; the bot then keeps its own picture.
+      photoJpegBase64: null,
+    });
+    expect(toast.success).toHaveBeenCalledWith('Scout answers on Telegram now.');
+  });
+
+  it('shows the bot as Telegram sees it, says what groups need, and removes it on confirm', async () => {
+    telegramBot = { bot, available: true };
+    api.delete.mockReset().mockResolvedValue({ data: {} });
+    const tree = await render();
+    const texts = all(tree, 'Text').map((node) => String(node.props.children));
+    expect(texts).toContain('@scout_bot');
+    expect(texts.some((text) => text.includes('Live'))).toBe(true);
+    expect(texts.some((text) => text.includes('/setprivacy'))).toBe(true);
+
+    confirm.mockResolvedValueOnce(true);
+    await act(async () => button(tree, 'Remove')?.props.onPress());
+    await settle();
+    expect(api.delete).toHaveBeenCalledWith('/agents/agent-1/telegram-bot');
   });
 });

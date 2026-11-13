@@ -1419,6 +1419,57 @@
         "forgotten": "Olvidado",
         "forgetFailed": "No se pudo olvidar. Inténtalo de nuevo.",
         "changedMeanwhile": "El Gemie cambió esta nota mientras la editabas. Se muestra su última versión."
+      },
+      "telegramBot": {
+        "title": "Bot de Telegram",
+        "description": "Dale a {{name}} un bot de Telegram propio: la gente habla con {{name}} allí y puedes añadirlo a grupos. Sus chats aparecen en las conversaciones de {{name}}.",
+        "howTo": "Cómo",
+        "step1": "1. En Telegram, abre @BotFather, envía /newbot y sigue los pasos.",
+        "step2": "2. Pega aquí el token que te da. El bot toma el nombre, la descripción y la imagen de {{name}}.",
+        "token": "Token del bot",
+        "tokenPlaceholder": "123456789:AA…",
+        "pays": "Pagar sus respuestas con mis créditos cuando {{name}} no tenga",
+        "connect": "Conectar el bot",
+        "connected": "{{name}} ya responde en Telegram.",
+        "connectFailed": "No se ha podido conectar el bot: {{reason}}",
+        "tryAgain": "inténtalo de nuevo en un momento.",
+        "profilePartial": "Telegram no ha aceptado su {{parts}}. Prueba de nuevo «Actualizar desde el gemie».",
+        "part": {
+          "name": "nombre",
+          "description": "descripción",
+          "photo": "imagen"
+        },
+        "bot": "Bot",
+        "state": {
+          "ok": "Activo: Telegram entrega sus mensajes",
+          "failing": "Telegram no puede entregar sus mensajes ahora; sigue reintentando",
+          "missing": "Reconectando con Telegram",
+          "unknown": "Ahora no se ha podido consultar a Telegram"
+        },
+        "answered": {
+          "one": "{{count}} mensaje respondido",
+          "other": "{{count}} mensajes respondidos"
+        },
+        "open": "Abrir en Telegram",
+        "addToGroup": "Añadir a un grupo",
+        "groups": "En grupos",
+        "groupReplies": {
+          "mentions": "Solo cuando le mencionan o le responden",
+          "never": "Nunca"
+        },
+        "privacy": "En grupos el bot solo ve las respuestas a sus mensajes y los comandos que lo nombran (/ask@{{username}}). Para que responda también cuando alguien escribe @{{username}}, hazlo administrador del grupo o desactiva su privacidad en @BotFather (/setprivacy).",
+        "conversations": "Sus chats aparecen en las conversaciones de {{name}}.",
+        "sync": "Actualizar desde {{name}}",
+        "synced": "El bot muestra el nombre, la descripción y la imagen de {{name}}.",
+        "saveFailed": "No se ha podido guardar: {{reason}}",
+        "remove": "Quitar",
+        "removeTitle": "Quitar el bot de Telegram",
+        "removeDescription": "{{name}} deja de responder en @{{username}}. El bot sigue siendo tuyo en @BotFather.",
+        "removed": "Bot de Telegram quitado",
+        "removeFailed": "No se ha podido quitar. Inténtalo de nuevo.",
+        "cancel": "Cancelar",
+        "loadFailed": "No se ha podido cargar. Inténtalo de nuevo.",
+        "unavailable": "Ahora mismo no se puede conectar un bot de Telegram."
       }
     },
     "threads": "Hilos",
@@ -1442,7 +1493,6 @@
     "linkFailed": "Error al vincular",
     "failedToLink": "Error al vincular tu cuenta. Por favor intenta de nuevo.",
     "returnToApp": "¡Ahora puedes volver a %{app} y empezar a chatear con Alia!",
-    "requestNewLink": "Solicitar nuevo enlace",
     "invalidToken": "Token de autenticación inválido. El enlace que seguiste no es válido.",
     "tokenExpired": "Este enlace ha expirado. Por favor solicita uno nuevo.",
     "invalidOrExpiredToken": "Token inválido o expirado. Por favor solicita un nuevo enlace.",
@@ -2311,15 +2361,15 @@
       "linked": "{{platform}} está vinculado. {{name}} ya responde allí.",
       "scanTitle": "Escanea con {{platform}}",
       "scan": {
-        "whatsapp": "Abre WhatsApp en tu teléfono, ve a Ajustes > Dispositivos vinculados > Vincular un dispositivo y escanea este código.",
-        "telegram": "Abre Telegram en tu teléfono, ve a Ajustes > Dispositivos > Vincular dispositivo de escritorio y escanea este código."
+        "whatsapp": "Abre WhatsApp en tu teléfono, ve a Ajustes > Dispositivos vinculados > Vincular un dispositivo y escanea este código."
       },
       "status": {
         "qr-pending": "Esperando el escaneo",
         "connected": "Conectada",
         "disconnected": "Reconectando",
         "logged-out": "Desvinculada desde el teléfono. Quítala y vuelve a vincularla.",
-        "failed": "No se ha podido reconectar. Quítala y vuelve a vincularla."
+        "failed": "No se ha podido reconectar. Quítala y vuelve a vincularla.",
+        "paused": "En pausa"
       },
       "lastMessage": "Último mensaje: {{when}}",
       "noMessagesYet": "Aún no hay mensajes",
@@ -2345,7 +2395,24 @@
       "removeFailed": "No se ha podido quitar. Inténtalo de nuevo.",
       "cancel": "Cancelar",
       "saveFailed": "No se ha podido guardar. Inténtalo de nuevo.",
-      "retry": "Reintentar"
+      "retry": "Reintentar",
+      "telegram": {
+        "cannotReply": "Telegram aún no deja responder a {{name}}: permite «Responder a mensajes» al bot en Telegram › Ajustes › Telegram Business › Chatbots.",
+        "linkTitle": "Conectar Telegram",
+        "note": "Telegram Business necesita Telegram Premium y solo cubre tus chats privados (no grupos ni canales). Sigue conectado hasta que lo quites en Telegram.",
+        "open": "Abrir Telegram",
+        "removeDescription": "{{name}} deja de responder en tu Telegram y se borra lo que leyó allí. Para desconectarlo también en Telegram, quita el bot en Telegram › Ajustes › Telegram Business › Chatbots.",
+        "status": {
+          "disconnected": "Reconectando",
+          "failed": "No se ha podido contactar con Telegram. Lo reintenta solo.",
+          "logged-out": "Revocado: este Telegram ahora responde a través de otro gemie. Quítalo o vuelve a vincularlo.",
+          "paused": "En pausa en Telegram. Se reanuda solo cuando vuelvas a activar el bot allí.",
+          "qr-pending": "Esperándote en Telegram"
+        },
+        "step1": "1. Abre el bot de Gemies en Telegram y pulsa Iniciar (o escanea este código con el teléfono).",
+        "step2": "2. En Telegram, ve a Ajustes › Telegram Business › Chatbots, añade el bot y elige qué chats puede responder.",
+        "waitingBusiness": "Telegram ya sabe que eres tú. Ahora ve a Telegram › Ajustes › Telegram Business › Chatbots y añade el bot que acabas de abrir."
+      }
     }
   }
 }

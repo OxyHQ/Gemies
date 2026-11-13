@@ -95,5 +95,25 @@ export function gatewayRouter(gateway: AccountGateway): Router {
     }),
   );
 
+  router.post(
+    '/sessions/:sessionId/notify',
+    handle('Notifying', async (req, res) => {
+      const { text } = req.body as { text?: unknown };
+      if (typeof text !== 'string' || !text) {
+        return res.status(400).json({ error: 'text is required' });
+      }
+      if (!gateway.notify) {
+        return res.status(404).json({ error: `${gateway.platform} cannot notify its person` });
+      }
+      const sent = await gateway.notify(req.params.sessionId, text);
+      if (!sent) {
+        return res
+          .status(409)
+          .json({ error: 'The account is not linked to its person on the platform yet' });
+      }
+      res.json(sent);
+    }),
+  );
+
   return router;
 }

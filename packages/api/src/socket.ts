@@ -280,10 +280,6 @@ export function initSocket(server: http.Server) {
       );
     };
     socket.on('subscribe-notifications', joinOwnUserRoom);
-    // "Your Telegram is linked" goes to the person who linked it. The pairing
-    // code an older app still sends with this is ignored: a room named by a
-    // client-chosen string is one any client can join.
-    socket.on('subscribe-telegram-token', joinOwnUserRoom);
     // Alia's live state (`alia:activity`), for every "Ask Alia" button the person has open.
     socket.on('subscribe-alia-activity', joinOwnUserRoom);
   });
@@ -292,12 +288,6 @@ export function initSocket(server: http.Server) {
 
 export function getIO(): Server | null {
   return io;
-}
-
-export function emitTelegramLinked(userId: string, data: any) {
-  if (io) {
-    io.to(`user:${userId}`).emit('telegram-linked', data);
-  }
 }
 
 export interface AgentActivityEvent {

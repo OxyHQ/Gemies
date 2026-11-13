@@ -191,11 +191,10 @@ carries exactly one account (`lib/agent/turn-funding.ts`).
 - **Somebody present asked for it — they pay.** A hire (`session-handoff.ts`)
   is paid by the person hiring; an agent asked inside another turn
   (`tools/agent-turn.ts`) is paid by whoever funds that outer turn.
-- **Nobody present asked — the agent's own Telegram bot.** `reserveAgentTurn`
-  tries the agent's own account (`agents.oxy_account_id`) first, then the bot
-  owner's, but only if that owner turned on "Pay for its replies with my
-  credits" (`bots.owner_pays_agent_turns`, writable only by the bot's owner
-  through `PATCH /bots/:id`). Otherwise the bot tells the person it is not
+- **Nobody present asked — the gemie's own Telegram bot** (ADR 0037). `reserveAgentTurn`
+  tries the gemie's own account first, then the person who connected the bot, but only if they
+  turned on "Pay for its answers with my credits" (`bots.owner_pays_agent_turns`, writable only by
+  them through `PATCH /agents/:id/telegram-bot`). Otherwise the bot tells the person it is not
   available, and says whether that is a missing permission or missing credit.
 
 An agent's account is never provisioned with the free allowance: its balance

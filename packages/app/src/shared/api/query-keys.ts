@@ -57,6 +57,8 @@ export const queryKeys = {
     /** What one agent subscribes to, and what waits in its inbox (ADR 0026). */
     subscriptions: (id: string) => ['agents', 'subscriptions', id] as const,
     inbox: (id: string) => ['agents', 'inbox', id] as const,
+    /** The gemie's own Telegram bot (ADR 0037). */
+    telegramBot: (id: string) => ['agents', 'telegram-bot', id] as const,
     /** The agents that remember something about the caller. */
     /**
      * Keyed by the thread's ADDRESS (`threadKey` in the SDK: the handle the URL

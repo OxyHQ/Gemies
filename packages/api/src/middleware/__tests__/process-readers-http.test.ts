@@ -169,7 +169,7 @@ beforeAll(async () => {
   });
   const receiver = express();
   receiver.use(express.json());
-  receiver.post('/api/bot', authenticateChannelBot('telegram'), (req, res) =>
+  receiver.post('/api/bot', authenticateChannelBot('discord'), (req, res) =>
     res.json({ channel: req.channelType }),
   );
   receiver.post('/api/channel', authenticateChannelAccount, (req, res) =>
@@ -215,7 +215,7 @@ describe('workload-only process readers over real HTTP', () => {
       const response = await send(path, {
         'x-channel-bot-secret': 'legacy-bot-secret',
         'x-oxy-user-id': OWNER,
-        'x-alia-legacy-channel': 'telegram',
+        'x-alia-legacy-channel': 'discord',
         'x-alia-legacy-platform-user': 'remote-provider-user',
       });
       expect(response.status).toBeGreaterThanOrEqual(400);
@@ -241,7 +241,7 @@ describe('workload-only process readers over real HTTP', () => {
           authorization: `Bearer ${token(failure === 'wrong-workload' ? 'wl_other' : workload, overrides, key)}`,
           'x-channel-bot-secret': 'legacy-bot-secret',
           'x-gateway-secret': 'legacy-gateway-secret',
-          'x-alia-channel': 'telegram',
+          'x-alia-channel': 'discord',
           'x-alia-account-context': OWNER,
         });
         expect(result.status).toBeGreaterThanOrEqual(400);
@@ -249,7 +249,7 @@ describe('workload-only process readers over real HTTP', () => {
     },
   );
   it.each([
-    ['telegram', 'x-alia-platform-user', 'remote-user', 'system-bot'],
+    ['discord', 'x-alia-platform-user', 'remote-user', 'system-bot'],
     ['whatsapp', 'x-alia-channel-session', 'session-owner', 'whatsapp'],
   ])(
     'resolves %s account from its live provider row without Oxy authority',
@@ -276,10 +276,10 @@ describe('workload-only process readers over real HTTP', () => {
   it('accepts new administrative bot calls only for their declared channel', async () => {
     const headers = {
       authorization: `Bearer ${token(GEMIES_INTEGRATIONS_WORKLOAD_ID)}`,
-      'x-alia-channel': 'telegram',
+      'x-alia-channel': 'discord',
     };
     expect((await send('/api/bot', headers)).status).toBe(200);
-    expect((await send('/api/bot', { ...headers, 'x-alia-channel': 'discord' })).status).toBe(403);
+    expect((await send('/api/bot', { ...headers, 'x-alia-channel': 'slack' })).status).toBe(403);
     expect((await send('/api/channel', headers)).status).toBe(401);
   });
 });

@@ -52,6 +52,15 @@ export async function buildAccountTools(scope: GemieAccountScope): Promise<ToolS
     .enum([first, ...rest])
     .describe(`Which account: ${platforms.map((p) => `${p} (${PLATFORM_LABELS[p]})`).join(', ')}`);
   const names = platforms.map((p) => PLATFORM_LABELS[p]).join(' and ');
+  /**
+   * What the platform really offers, said to the model so it never claims more. Telegram Business
+   * (ADR 0037) shares only private chats, only from when it was connected (the Bot API has no chat
+   * list and no history), and lets the gemie write only where the contact wrote in the last 24
+   * hours.
+   */
+  const limits = byPlatform.has('telegram')
+    ? ' Telegram: only private chats, and only what arrived since it was connected (older history and groups are not available); you can write only in chats where the contact wrote in the last 24 hours.'
+    : '';
   const accountOf = (name: GemieAccountPlatform) => byPlatform.get(name) as ConnectedAccountRow;
 
   /** Run a tool call, answering a failure in words the model can tell the person. */
@@ -66,7 +75,7 @@ export async function buildAccountTools(scope: GemieAccountScope): Promise<ToolS
 
   return {
     listAccountChats: tool({
-      description: `The person's recent ${names} chats, as linked to you: names, chat ids, whether each is a group, unread counts and last-message previews.`,
+      description: `The person's recent ${names} chats, as linked to you: names, chat ids, whether each is a group, unread counts and last-message previews.${limits}`,
       inputSchema: z.object({ platform }),
       execute: ({ platform: name }) =>
         run('listAccountChats', async () => ({
@@ -74,7 +83,7 @@ export async function buildAccountTools(scope: GemieAccountScope): Promise<ToolS
         })),
     }),
     readAccountMessages: tool({
-      description: `Recent messages of one ${names} chat. Get its chat id from listAccountChats first.`,
+      description: `Recent messages of one ${names} chat. Get its chat id from listAccountChats first.${limits}`,
       inputSchema: z.object({
         platform,
         chatId: z.string().min(1).describe('The chat id, from listAccountChats.'),
@@ -86,7 +95,7 @@ export async function buildAccountTools(scope: GemieAccountScope): Promise<ToolS
         })),
     }),
     sendAccountMessage: tool({
-      description: `Send a message from the person's ${names}. ONLY when the person explicitly asks. Get the chat id from listAccountChats first.`,
+      description: `Send a message from the person's ${names}, as them. ONLY when the person asked for it, now or in a task or watch they set up. Get the chat id from listAccountChats first.${limits}`,
       inputSchema: z.object({
         platform,
         chatId: z.string().min(1).describe('The chat id, from listAccountChats.'),

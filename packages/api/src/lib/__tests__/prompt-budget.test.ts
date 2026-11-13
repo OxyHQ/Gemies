@@ -16,7 +16,7 @@ const { measureScenarios, formatReport } = await import('./support/prompt-scenar
 const BUDGET: Record<string, number> = {
   '1 chat (all tools)': 5900,
   '2 voice': 5900,
-  '3 telegram': 580,
+  '3 system bot': 580,
   '5 agent run (browser only)': 990,
 };
 

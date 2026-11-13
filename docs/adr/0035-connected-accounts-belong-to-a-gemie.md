@@ -103,3 +103,11 @@ QR (both platforms' QR flows are what their apps offer for a linked device).
 - **The web app ships after the API**, and the API offers a platform only once the gateway answers
   `GET /accounts/platforms` (the contract handshake), so no release order leaves the app calling a
   route that is not deployed.
+
+## Amendment (2026-11-13, ADR 0037): Telegram is Telegram Business
+
+A person's Telegram is no longer an MTProto session logged in with a QR code: it is a Telegram
+Business connection to the shared Gemies bot, on Telegram's official Bot API, and it never expires
+on Gemies' side. The status vocabulary gains `paused` (turned off in Telegram, resumed by itself)
+and the account stores whether Telegram lets the gemie reply (`can_reply`). See
+[ADR 0037](./0037-telegram-on-the-bot-api.md).

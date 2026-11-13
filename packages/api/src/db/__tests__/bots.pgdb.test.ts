@@ -1,17 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { constraintNameOf, isCheckViolation, isUniqueViolation } from '@oxy.so/db';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
 import { botUsers, bots } from '../schema/bots';
 
 /**
- * Bots, against a REAL server.
- *
- * The assertion that matters here is the ASYMMETRY between two credentials on
- * one table: `bot_token` is encrypted and `webhook_secret` deliberately is not,
- * because the second is the key every inbound webhook is matched on. A test that
- * only checked "both are protected" would happily pass against a schema that had
- * broken bot routing outright.
+ * Bots, against a REAL server: the token is encrypted, a platform identity and a gemie's bot are
+ * unique, and the closed value sets are CHECKed.
  */
 
 let db: ApiDatabase;
@@ -27,7 +22,7 @@ afterAll(async () => {
   await closePostgres();
 });
 
-describe('a bot carries two credentials that must NOT be treated alike', () => {
+describe('a bot and its token', () => {
   it('encrypts the platform token at rest', async () => {
     await db.insert(bots).values({
       id: 'bot-token',
@@ -50,38 +45,29 @@ describe('a bot carries two credentials that must NOT be treated alike', () => {
     expect(row?.token).toBe('plaintext-bot-token');
   });
 
-  it('leaves the webhook secret in the clear SO THAT the inbound lookup works', async () => {
-    /**
-     * `routes/webhooks.ts` does `Bot.findOne({ webhookSecret: perBotSecret, … })`
-     * on every update. This test is the reason the column is not encrypted: the
-     * equality predicate below is the production lookup, and against an
-     * `encryptedText` column it would match nothing — every row's ciphertext
-     * differs even for identical plaintext (pinned in `integrations.pgdb.test.ts`).
-     *
-     * So this is not "we forgot to protect it". It is the routing path.
-     */
+  it('gives a gemie at most one bot on a platform', async () => {
     await db.insert(bots).values({
       id: 'bot-hook',
       platform: 'telegram',
       botId: 'tg-2',
-      name: 'Hook Bot',
-      status: 'active',
+      name: 'Gemie Bot',
       userId: 'oxy-user-1',
-      webhookSecret: 'secret-abc',
+      agentId: 'gemie-1',
+    });
+    const second = db.insert(bots).values({
+      id: 'bot-gemie-2',
+      platform: 'telegram',
+      botId: 'tg-g2',
+      name: 'Gemie Bot 2',
+      userId: 'oxy-user-1',
+      agentId: 'gemie-1',
     });
 
-    const [found] = await db
-      .select({ id: bots.id })
-      .from(bots)
-      .where(
-        and(
-          eq(bots.webhookSecret, 'secret-abc'),
-          eq(bots.platform, 'telegram'),
-          eq(bots.status, 'active'),
-        ),
-      );
-
-    expect(found?.id).toBe('bot-hook');
+    await expect(second).rejects.toSatisfy((error: unknown) => {
+      expect(isUniqueViolation(error)).toBe(true);
+      expect(constraintNameOf(error)).toBe('bots_agent_platform_key');
+      return true;
+    });
   });
 
   it('refuses two bots with the same platform identity', async () => {

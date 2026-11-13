@@ -120,7 +120,7 @@ export const integrations = pgTable(
 );
 
 /**
- * A messaging account (WhatsApp, Telegram) a person linked to ONE gemie (ADR 0035).
+ * A messaging account (WhatsApp, Telegram Business) a person linked to ONE gemie (ADR 0035, 0037).
  *
  * The gemie answers what arrives on it, and only that gemie's turns for that
  * person can see or use it. A session-based link: the integrations service holds
@@ -148,6 +148,11 @@ export const connectedAccounts = pgTable(
       .$type<GemieAccountStatus>()
       .notNull()
       .default('qr-pending'),
+    /**
+     * Whether the platform lets the gemie write from the account: Telegram Business grants it per
+     * connection ("Reply to messages"). Null where the platform has no such grant (WhatsApp).
+     */
+    canReply: boolean(),
     /** Who its gemie answers (ADR 0035): see {@link CONNECTED_ACCOUNT_REPLIES}. */
     replies: text({ enum: CONNECTED_ACCOUNT_REPLIES as unknown as [string, ...string[]] })
       .$type<ConnectedAccountReplies>()

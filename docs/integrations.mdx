@@ -31,7 +31,7 @@ by a grant. The families and the tools each contributes:
 | `browser` | `browser` — the runner's Clarity primitive (`search`, `goto`, `get_text`); no Chromium |
 | `artifacts` | `canvas`, `generateFile` |
 | `memory` | `memory` (the agent's own MEMORY.md and topic files), `searchThread` |
-| `messaging` | `sendTelegramMessage`, `getWhatsAppChats`, `getWhatsAppMessages`, `sendWhatsAppMessage` |
+| `messaging` | `sendTelegramMessage` (to the person, through the Telegram they linked to the gemie), `listAccountChats`, `readAccountMessages`, `sendAccountMessage` |
 | `automation` | `createAutomation` |
 | `delegation` | `createAgent`, `searchAgents`, `delegate` |
 | `computer` | `computer_*`, `run_computer_command`, `*_computer_file(s)`, `browser_*` — the agents' computer ([agents](./agents.md#the-agents-computer-computer)) |
@@ -251,9 +251,8 @@ resource, actor, account, run, step and tool.
 
 | Subdirectory | Channel | Notes |
 |--------------|---------|-------|
-| `accounts/telegram-gateway/` | Telegram user accounts | MTProto bridge |
+| `telegram/` | Telegram | The one Bot API layer (ADR 0037): Telegram Business through the shared bot, and gemies' own bots |
 | `accounts/whatsapp/` | WhatsApp Web | Multi-device bridge with chat / message sync |
-| `bots/telegram-bot/` | Telegram bot | Bot API bridge |
 | `bots/discord-bot/` | Discord | Bot user that mirrors guild channels |
 | `browser/` | Headless browser sessions | Not the gemies' computers (that is GemiesOS, `packages/gemies-os`); the API's web tools read pages through Clarity |
 | `terminal/` | PTY sessions | Streamed to their owner over `/ws` |
@@ -275,9 +274,16 @@ gemie's turns for that person can use it.
   (`@gemies/server/internal` `accounts.ts`): platforms, the session status vocabulary, chats,
   messages and inbound metadata. The integrations service serves it through ONE router
   (`accounts/gateway-router.ts`) over an `AccountGateway` per platform (`whatsapp/gateway.ts`,
-  `telegram-gateway/gateway.ts`), mounted at `/accounts/<platform>`, and `GET /accounts/platforms`
-  says which ones run (Telegram needs `TELEGRAM_API_ID`/`TELEGRAM_API_HASH`). The API offers only
+  `telegram/business/gateway.ts`), mounted at `/accounts/<platform>`, and `GET /accounts/platforms`
+  says which ones run (Telegram needs the shared bot, `TELEGRAM_BOT_TOKEN`). The API offers only
   those.
+- **Telegram is Telegram Business** (ADR 0037). The panel's link opens the shared Gemies bot with
+  a one-time code, and the person adds the bot in Telegram › Settings › Telegram Business ›
+  Chatbots (Telegram Premium; private chats only). The connection never expires here: turned off
+  in Telegram it is `paused` and resumes by itself, and every change is told to the API at once
+  (`POST /channel-accounts/session`). The Bot API has no chat list or history, so the tools read
+  what arrived since it was connected, and write only where the contact wrote in the last 24 hours
+  and Telegram granted "Reply to messages".
 - **Who it answers.** Each account has `replies` (everyone, the chosen chats, or nobody) and
   `group_replies` (never, or when the message mentions or replies to the account). The gateway asks
   `POST /channel-accounts/inbound` before a message reaches a turn (`shouldAnswer`); a message it is
@@ -308,6 +314,28 @@ gemie's turns for that person can use it.
   (`lib/gemie-accounts.ts`).
 
 Outbound tools (e.g. `sendTelegramMessage`, `sendAccountMessage`) are `R2`: they run, flagged. Structured automation actions remain bound by their exact Oxy authority and Alia risk policy.
+
+### Telegram on the Bot API
+
+Telegram runs on its official Bot API only, in one layer in `packages/integrations/src/telegram/`
+(ADR 0037): one client (`bot-api.ts`), one webhook and inbox, one sender.
+
+- **Webhook.** Every bot's is `${API_BASE_URL}/webhooks/telegram/<botId>`. The public API relays the
+  delivery untouched to the private integrations process (`POST /telegram/updates/:botId`, as the
+  API workload), which checks Telegram's `secret_token` (derived per bot from its id and
+  `TOKEN_ENCRYPTION_KEY`, never stored), writes the update to `telegram_updates` and only then
+  answers. A sweep at startup and every minute handles what a restart left. Every webhook is
+  registered at startup and checked with `getWebhookInfo` every ten minutes.
+- **The shared bot** (`TELEGRAM_BOT_TOKEN`) carries Telegram Business: a person's own Telegram as
+  a [connected account](#connected-accounts) of a gemie.
+- **A gemie's own bot** is a card of the gemie's editor (`/agents/:id/telegram-bot`): the owner
+  pastes a @BotFather token, and the bot takes the gemie's name, description, tagline and picture.
+  The API keeps the bot and its encrypted token (`bots`) and runs every turn
+  (`POST /channel-bots/telegram/:botId/messages`); the integrations process reads the bots it
+  speaks as (`GET /channel-bots/telegram`). A private chat is always answered; a group only when the
+  bot is mentioned, named in a command or replied to (`group_replies`), and in privacy mode a bot
+  sees only replies and commands. Each chat is one of the gemie's conversations. The gemie's
+  balance pays first, then the person who connected the bot if they allowed it.
 
 ## Structured Automations
 

@@ -47,7 +47,15 @@ export function AgentProfileFields({
       style={{ flex: 1 }}
       onClose={onClose}
       showPreferences={false}
-      sections={hasAccount ? <AgentEditorSections agentId={id} name={identity.name} /> : undefined}
+      sections={
+        hasAccount ? (
+          <AgentEditorSections
+            agentId={id}
+            name={identity.name}
+            look={{ character: draft.character, color: identity.color }}
+          />
+        ) : undefined
+      }
       agent={{
         id,
         name: identity.name,

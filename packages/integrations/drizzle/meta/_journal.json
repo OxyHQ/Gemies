@@ -22,6 +22,20 @@
       "when": 1794546978297,
       "tag": "0002_logged_out_sessions_forgotten",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794568448753,
+      "tag": "0003_telegram_on_the_bot_api",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794568456572,
+      "tag": "0004_mtproto_telegram_is_retired",
+      "breakpoints": true
     }
   ]
 }

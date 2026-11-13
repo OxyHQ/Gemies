@@ -103,10 +103,9 @@ mutation-tested: asserting a different constraint name turns it red.
 A CHECK is `DROP CONSTRAINT` / `ADD CONSTRAINT`; removing or renaming a pg enum
 value is not possible.
 
-**The two session-status tuples are deliberately NOT one shared union**, even
-though WhatsApp's and Telegram's are identical today. Two protocols agreeing is
-not a shared contract, and one tuple would let a change to either silently widen
-the other.
+A Telegram Business session has no status column at all: its status is derived
+from what Telegram last reported about the connection (`telegram/business/`), so
+there is no second copy of it to drift.
 
 **Adding a value is a code change PLUS a migration.** The constraint is DDL that
 has already been applied: the tuple changes the TypeScript union
@@ -126,7 +125,7 @@ invisible in the schema file and would overwrite historical values during a
 backfill.
 
 **Protocol timestamps stay integers.** `timestamp`, `conversation_timestamp` and
-`last_message_timestamp` are epoch values WhatsApp and Telegram
+`last_message_at` are epoch values WhatsApp and Telegram
 produce, and the adapters echo them back verbatim. They are `bigint({ mode:
 'number' })`, not `timestamptz`: converting them would assert a unit (seconds vs
 milliseconds) that the protocols do not agree on, change what the value means,
@@ -146,7 +145,7 @@ needs no special handling.
 ## Protected columns — the `select: false` replacement
 
 `db.select().from(table)` returns EVERY column. The first naive port of a query is
-the first time a Telegram `sessionString` — a full account credential — can be
+the first time a Baileys `authState` — a full account credential — can be
 serialized into a response nobody audited.
 
 `../protectedColumns.ts` holds the registry; read through

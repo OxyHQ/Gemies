@@ -1,6 +1,6 @@
 /**
  * The one router every platform's gateway is served through (`gateway-router.ts`): the same
- * routes and answers for WhatsApp and Telegram, each held to the caller's own sessions.
+ * routes and answers for WhatsApp and Telegram Business, each held to the caller's own sessions.
  */
 import type { Server } from 'node:http';
 import express from 'express';
@@ -27,6 +27,7 @@ const gateway = {
   chats: vi.fn(async () => []),
   messages: vi.fn(async () => []),
   send: vi.fn(async (): Promise<{ messageId: string } | null> => ({ messageId: 'm1' })),
+  notify: vi.fn(async (): Promise<{ messageId: string } | null> => ({ messageId: 'n1' })),
 } satisfies AccountGateway;
 
 let server: Server;
@@ -90,6 +91,18 @@ describe('a gateway’s routes', () => {
     expect((await call('POST', '/sessions/mine/send', { chatId: 'c1', text: 'hi' })).status).toBe(
       409,
     );
+  });
+
+  it('writes to the person who linked the session, once it can reach them', async () => {
+    expect((await call('POST', '/sessions/mine/notify', {})).status).toBe(400);
+    expect(await call('POST', '/sessions/mine/notify', { text: 'done' })).toEqual({
+      status: 200,
+      body: { messageId: 'n1' },
+    });
+    expect(gateway.notify).toHaveBeenCalledWith('mine', 'done');
+    gateway.notify.mockResolvedValueOnce(null);
+    expect((await call('POST', '/sessions/mine/notify', { text: 'done' })).status).toBe(409);
+    expect((await call('POST', '/sessions/theirs/notify', { text: 'x' })).status).toBe(404);
   });
 
   it('says what failed instead of hanging', async () => {

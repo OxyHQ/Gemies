@@ -1,3 +1,4 @@
+import type { ToolSet } from 'ai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** A Redis with the one behaviour the claim relies on: SET ... NX is atomic and DEL removes. */
@@ -11,81 +12,104 @@ const redis = vi.hoisted(() => ({
   del: vi.fn(async (key: string) => (marks.delete(key) ? 1 : 0)),
 }));
 const redisState = vi.hoisted(() => ({ available: true }));
+const accounts = vi.hoisted(() => ({
+  list: [] as Array<{ id: string; platform: string; sessionId: string | null; status: string }>,
+}));
+const notify = vi.hoisted(() =>
+  vi.fn(async (..._args: unknown[]): Promise<{ messageId: string }> => ({ messageId: 'm1' })),
+);
 
 vi.mock('../../redis.js', () => ({ getRedisClient: () => (redisState.available ? redis : null) }));
 vi.mock('../../../db/index.js', () => ({ getDb: () => ({}) }));
-vi.mock('../../../db/integrations/botRepository.js', () => ({
-  findSystemBot: vi.fn(async () => ({ id: 'bot-1' })),
-  findLinkedBotUser: vi.fn(async () => ({ chatId: 'chat-1', platformUserId: 'p1' })),
+vi.mock('../../../db/integrations/connectedAccountRepository.js', () => ({
+  listGemieAccounts: vi.fn(async () => accounts.list),
 }));
+vi.mock('../../gemie-accounts.js', () => ({ notifyAccountPerson: notify }));
 vi.mock('../../logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   return { log: { tools: child } };
 });
 
-const { createSendTelegramTool } = await import('../telegram.js');
+const { buildSendTelegramTool } = await import('../telegram.js');
 
-const fetchMock = vi.fn();
-vi.stubGlobal('fetch', fetchMock);
+const SCOPE = { agentId: 'gemie-1', oxyUserId: 'u1' };
+const LINKED = { id: 'acc-1', platform: 'telegram', sessionId: 's-1', status: 'connected' };
 
 type Exec = (input: { message: string }, options: never) => Promise<{ success: boolean }>;
-const send = (tool: ReturnType<typeof createSendTelegramTool>, message: string) =>
-  (tool.execute as unknown as Exec)({ message }, {} as never);
+async function send(runId: string | undefined, message: string) {
+  const tools: ToolSet = await buildSendTelegramTool(SCOPE, runId);
+  const tool = tools.sendTelegramMessage;
+  if (!tool) throw new Error('sendTelegramMessage was not offered');
+  return (tool.execute as unknown as Exec)({ message }, {} as never);
+}
 
 beforeEach(() => {
   marks.clear();
   vi.clearAllMocks();
   redisState.available = true;
-  process.env.TELEGRAM_BOT_TOKEN = 'token';
-  fetchMock.mockReset().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+  accounts.list = [LINKED];
+  process.env.INTEGRATIONS_URL = 'http://integrations.test';
+});
+
+describe('sendTelegramMessage', () => {
+  it('is offered only when the person linked their Telegram to this gemie', async () => {
+    accounts.list = [{ ...LINKED, platform: 'whatsapp' }];
+    expect(await buildSendTelegramTool(SCOPE)).toEqual({});
+    accounts.list = [{ ...LINKED, status: 'logged-out' }];
+    expect(await buildSendTelegramTool(SCOPE)).toEqual({});
+    accounts.list = [{ ...LINKED, status: 'paused' }];
+    expect(Object.keys(await buildSendTelegramTool(SCOPE))).toEqual(['sendTelegramMessage']);
+  });
+
+  it('writes to the person through their linked account', async () => {
+    expect((await send(undefined, 'hola')).success).toBe(true);
+    expect(notify).toHaveBeenCalledWith(LINKED, 'u1', 'hola');
+  });
 });
 
 describe('sendTelegramMessage inside a run', () => {
   it('sends a message once however many times the run is retried', async () => {
-    const first = await send(createSendTelegramTool('u1', 'run-1'), 'Tu tarea terminó');
+    const first = await send('run-1', 'Tu tarea terminó');
     // The queue retries the whole run: a new tool, the same run.
-    const retry = await send(createSendTelegramTool('u1', 'run-1'), 'Tu tarea terminó');
+    const retry = await send('run-1', 'Tu tarea terminó');
 
     expect(first.success).toBe(true);
     expect(retry.success).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledTimes(1);
   });
 
   it('still sends a different message, and the same message in a different run', async () => {
-    await send(createSendTelegramTool('u1', 'run-1'), 'uno');
-    await send(createSendTelegramTool('u1', 'run-1'), 'dos');
-    await send(createSendTelegramTool('u1', 'run-2'), 'uno');
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await send('run-1', 'uno');
+    await send('run-1', 'dos');
+    await send('run-2', 'uno');
+    expect(notify).toHaveBeenCalledTimes(3);
   });
 
   it('lets the retry send what failed the first time: a failed send releases its claim', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      json: async () => ({ description: 'Bad Gateway' }),
+    notify.mockImplementationOnce(async () => {
+      throw new Error('Bad Gateway');
     });
-    const failed = await send(createSendTelegramTool('u1', 'run-1'), 'aviso');
+    const failed = await send('run-1', 'aviso');
     expect(failed.success).toBe(false);
 
-    const retried = await send(createSendTelegramTool('u1', 'run-1'), 'aviso');
+    const retried = await send('run-1', 'aviso');
     expect(retried.success).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(notify).toHaveBeenCalledTimes(2);
   });
 
   it('is not limited outside a run: a chat can send the same text twice', async () => {
-    const tool = createSendTelegramTool('u1');
-    await send(tool, 'hola');
-    await send(tool, 'hola');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await send(undefined, 'hola');
+    await send(undefined, 'hola');
+    expect(notify).toHaveBeenCalledTimes(2);
     expect(redis.set).not.toHaveBeenCalled();
   });
 
   it('sends when there is no Redis to claim against, and when Redis errors', async () => {
     redisState.available = false;
-    await send(createSendTelegramTool('u1', 'run-1'), 'sin redis');
+    await send('run-1', 'sin redis');
     redisState.available = true;
     redis.set.mockRejectedValueOnce(new Error('redis down'));
-    await send(createSendTelegramTool('u1', 'run-1'), 'redis caído');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await send('run-1', 'redis caído');
+    expect(notify).toHaveBeenCalledTimes(2);
   });
 });

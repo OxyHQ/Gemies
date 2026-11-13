@@ -18,11 +18,13 @@ const api = vi.hoisted(() => ({
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 const confirm = vi.hoisted(() => vi.fn());
 
+const linking = vi.hoisted(() => ({ openURL: vi.fn(async () => true) }));
 vi.mock('react-native', async () => {
   const ReactModule = await import('react');
   return {
     View: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement('View', props, children),
+    Linking: linking,
   };
 });
 vi.mock('@oxy.so/bloom/typography', async () => host('Text'));
@@ -294,5 +296,70 @@ describe('a linked account', () => {
     accounts = [account({ oxyTaskState: 'reauth_required' })];
     await render();
     expect(api.post).toHaveBeenCalledWith('/agents/gemie-1/accounts/acc-9/reauthorize');
+  });
+});
+
+describe('Telegram Business (ADR 0037)', () => {
+  const LINK = 'https://t.me/gemies_bot?start=abc';
+
+  it('says it needs Premium and covers private chats only, and walks through both steps', async () => {
+    api.post.mockImplementation(async () => ({ data: { accountId: 'acc-1', qr: LINK } }));
+    qr = { status: 'qr-pending', qr: LINK };
+    const tree = await render();
+    expect(texts(tree).some((text) => text.includes('needs Telegram Premium'))).toBe(true);
+
+    await act(async () => button(tree, 'Link a Telegram account')?.props.onPress());
+    await settle();
+    expect(texts(tree)).toContain('Connect Telegram');
+    expect(texts(tree).some((text) => text.includes('Telegram Business › Chatbots'))).toBe(true);
+    expect(all(tree, 'QRCode')[0]?.props.value).toBe(LINK);
+    const open = all(tree, 'Button').find((node) => node.props.children === 'Open Telegram');
+    await act(async () => open?.props.onPress());
+    expect(linking.openURL).toHaveBeenCalledWith(LINK);
+  });
+
+  it('keeps the steps of a link the person left, until Telegram connects it', async () => {
+    accounts = [account({ platform: 'telegram', status: 'qr-pending', phoneNumber: null })];
+    qr = { status: 'qr-pending', qr: null };
+    const tree = await render();
+    expect(texts(tree).some((text) => text.includes('Telegram knows it is you'))).toBe(true);
+  });
+
+  it('shows paused and revoked as Telegram reports them, never as a sign-in', async () => {
+    accounts = [
+      account({ platform: 'telegram', status: 'paused', displayName: '@ada', phoneNumber: null }),
+    ];
+    let tree = await render();
+    expect(texts(tree)).toContain(
+      '@ada · Paused in Telegram. It resumes on its own when you turn the bot back on there.',
+    );
+    act(() => renderer?.unmount());
+    renderer = null;
+
+    accounts = [
+      account({
+        platform: 'telegram',
+        status: 'logged-out',
+        displayName: '@ada',
+        phoneNumber: null,
+      }),
+    ];
+    tree = await render();
+    expect(
+      texts(tree).some((text) =>
+        text.includes('Revoked: this Telegram now answers through another gemie'),
+      ),
+    ).toBe(true);
+    expect(texts(tree).some((text) => /sign in|log in/i.test(text))).toBe(false);
+  });
+
+  it('says when Telegram does not let it reply, and offers no group setting', async () => {
+    accounts = [
+      account({ platform: 'telegram', canReply: false, displayName: '@ada', phoneNumber: null }),
+    ];
+    const tree = await render();
+    expect(texts(tree).some((text) => text.includes('Reply to messages'))).toBe(true);
+    expect(select(tree, 'mentions')).toBeUndefined();
+    expect(select(tree, 'everyone')).toBeDefined();
   });
 });
