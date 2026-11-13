@@ -30,6 +30,11 @@ export interface GemieChatParticipants {
   lead: GemieLead;
   /** The consulted agents that have joined the header, in the order they joined. */
   joined: GemieParticipant[];
+  /**
+   * The conversation they are in, so the header can say live what one of them is doing
+   * ("Pepe is typing…") in place of their names. Absent before the first turn creates one.
+   */
+  conversationId?: string;
 }
 
 /**

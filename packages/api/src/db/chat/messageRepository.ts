@@ -28,7 +28,7 @@ import { lockMessageThread } from './messageLock.js';
 import { hydrateReactionRows, mutateMessageReaction } from './reactionRepository.js';
 import { messageReactionStates, reactionEvents } from '../schema/message-reactions.js';
 import type { AvatarCharacter } from '@oxy.so/contracts';
-import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import type {
   AgentInfo,
   MessageContent,
@@ -201,6 +201,31 @@ export async function listMessages(
     .from(messages)
     .where(and(eq(messages.oxyUserId, oxyUserId), eq(messages.conversationId, conversationId)))
     .orderBy(sql`${messages.seq} asc nulls first`, asc(messages.createdAt));
+  return hydrateReactionRows(db, oxyUserId, conversationId, rows);
+}
+
+/**
+ * The messages a thread gained from `fromSeq` on, in order: what a writer that just appended at
+ * `fromSeq` publishes to the person's other surfaces (`lib/realtime/conversations.ts`). Read back
+ * rather than built from the insert, so a client receives exactly what `GET` would answer.
+ */
+export async function listMessagesFromSeq(
+  db: Executor,
+  oxyUserId: string,
+  conversationId: string,
+  fromSeq: number,
+): Promise<MessageRow[]> {
+  const rows = await db
+    .select()
+    .from(messages)
+    .where(
+      and(
+        eq(messages.oxyUserId, oxyUserId),
+        eq(messages.conversationId, conversationId),
+        gte(messages.seq, fromSeq),
+      ),
+    )
+    .orderBy(asc(messages.seq));
   return hydrateReactionRows(db, oxyUserId, conversationId, rows);
 }
 

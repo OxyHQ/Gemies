@@ -15,7 +15,7 @@
 
 import {
   emitAgentActivity,
-  emitAliaActivity,
+  emitLegacyAliaActivity,
   type AgentActivityEvent,
   type AliaActivityState,
 } from '../../socket.js';
@@ -25,6 +25,7 @@ import {
   listEventStreamEntries,
 } from '../../db/agents/eventStreamEntryRepository.js';
 import { log } from '../logger.js';
+import { startActorActivity, type ActorActivity } from '../realtime/activity.js';
 
 export type EventType =
   | 'user_message'
@@ -102,6 +103,8 @@ export class EventStream {
   /** Whose run this is: the person whose open surfaces hear what Alia is doing. */
   private userId?: string;
   private aliaState: AliaActivityState = 'idle';
+  /** The same state on the realtime socket (`activity`), once the run says something. */
+  private activity: ActorActivity | null = null;
 
   /** Pending entries not yet flushed to PostgreSQL. */
   private pendingFlush: EventStreamEntry[] = [];
@@ -118,12 +121,24 @@ export class EventStream {
     if (!this.userId || !this.agentId || !this.sessionId || next === null) return;
     if (next === this.aliaState) return;
     this.aliaState = next;
-    emitAliaActivity(this.userId, {
+    emitLegacyAliaActivity(this.userId, {
       state: next,
       agentId: this.agentId,
       sessionId: this.sessionId,
       timestamp: Date.now(),
     });
+    if (next === 'idle') {
+      this.activity?.end();
+      this.activity = null;
+      return;
+    }
+    this.activity ??= startActorActivity({
+      oxyUserId: this.userId,
+      conversationId: null,
+      sessionId: this.sessionId,
+      agentId: this.agentId,
+    });
+    this.activity.set(next === 'working' ? 'tool' : next);
   }
 
   /** Append a new entry. Returns the created entry. */

@@ -90,7 +90,12 @@ export function roomRuntime(): RoomRuntime {
       const { getDb } = await import('../../../db/index.js');
       for (let attempt = 1; ; attempt++) {
         try {
-          return await appendRoomReply(getDb(), input);
+          const stored = await appendRoomReply(getDb(), input);
+          const { publishConversation } = await import('../../realtime/conversations.js');
+          void publishConversation(input.userId, input.conversationId, {
+            appendedFromSeq: stored.seq,
+          });
+          return stored;
         } catch (error) {
           if (attempt >= MAX_APPEND_ATTEMPTS || !isUniqueViolation(error, SEQ_INDEX)) throw error;
         }
@@ -166,6 +171,8 @@ export async function appendRoomReply(
       lastMessage: input.content.slice(0, 100),
       titleOnInsert: input.agentInfo.name,
       agentId: ROOM_GEMIE_ID,
+      // A member answering in the room: the person may be watching, and reading clears it.
+      unread: 1,
     });
     return { id: input.clientMessageId, seq, createdAt };
   });

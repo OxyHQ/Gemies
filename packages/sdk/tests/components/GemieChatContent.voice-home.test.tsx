@@ -58,6 +58,9 @@ vi.mock('@oxy.so/services/ui/client', () => ({
   }),
 }));
 vi.mock('@oxy.so/core', () => ({ getAccountDisplayName: () => 'Nate' }));
+vi.mock('../../src/realtime/react', async (original) =>
+  (await import('../support/fake-realtime')).mockRealtimeReact(await original()),
+);
 vi.mock('@oxy.so/bloom/toast', () => ({
   toast: { error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
@@ -172,6 +175,8 @@ vi.mock('../../src/runtime/conversations', () => ({
     },
   }),
   useDeleteConversation: () => ({ mutateAsync: async () => {} }),
+  useReadConversation: () => async () => ({ messages: [] }),
+  useMarkConversationRead: () => () => undefined,
   useClearConversation: () => ({ mutateAsync: async () => {} }),
 }));
 

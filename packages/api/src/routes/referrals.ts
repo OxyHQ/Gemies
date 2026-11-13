@@ -11,6 +11,7 @@ import { getOrCreateUserCredits } from '../lib/user-credits-helpers.js';
 import { addCredits } from '../db/billing/userCreditsRepository.js';
 import { log } from '../lib/logger.js';
 import { getSafeErrorMessage } from '../lib/errors/sanitize.js';
+import { publishCreditsChanged } from '../lib/realtime/account.js';
 
 const router = Router();
 
@@ -90,6 +91,8 @@ router.post('/redeem', authenticateToken, async (req, res) => {
     // Award credits to referrer
     const referrerCredits = await getOrCreateUserCredits(referrer.id);
     await addCredits(getDb(), referrerCredits.id, REFERRAL_CREDIT_REWARD, 'paid');
+    void publishCreditsChanged(userCredits.id);
+    void publishCreditsChanged(referrerCredits.id);
 
     res.json({ success: true, creditsAwarded: REFERRAL_CREDIT_REWARD });
   } catch (error: unknown) {

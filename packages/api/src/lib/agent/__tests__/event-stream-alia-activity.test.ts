@@ -4,9 +4,12 @@ const sent = vi.hoisted(() => ({ alia: [] as Array<[string, Record<string, unkno
 
 vi.mock('../../../socket.js', () => ({
   emitAgentActivity: vi.fn(),
-  emitAliaActivity: (userId: string, data: Record<string, unknown>) => {
+  emitLegacyAliaActivity: (userId: string, data: Record<string, unknown>) => {
     sent.alia.push([userId, data]);
   },
+}));
+vi.mock('../../realtime/activity.js', () => ({
+  startActorActivity: () => ({ set: vi.fn(), end: vi.fn() }),
 }));
 vi.mock('../../../db/index.js', () => ({ getDb: vi.fn() }));
 vi.mock('../../../db/agents/eventStreamEntryRepository.js', () => ({

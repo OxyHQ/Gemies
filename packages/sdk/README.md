@@ -359,6 +359,25 @@ transcript in the thread), `useThreadView` (the present or a moment of an agent'
 An agent's thread and runs (`useThreadHistory`, `useThreadSearch`, `useThreadWindow`,
 `useAgentActivity`) read the agent routes through the same API and cache.
 
+### Realtime: one socket, kept by the provider
+
+`GemieRuntimeProvider` holds the signed-in account's ONE Socket.IO connection to `apiUrl`
+(`@gemies/sdk/realtime`, [Realtime](../../docs/realtime.mdx)). It keeps the runtime live by itself:
+the conversation lists (a new message moves its row to the top with its unread count), an open
+conversation's messages (merged by id, so nothing is doubled), reactions, group rooms, an agent
+run's panel and "Pepe is typing…" (`GemieParticipants`, `GemieActivityLine`,
+`useConversationActivity`). After a reconnect it catches up from its cursor; nothing polls.
+
+A host listens for what is its own on the same connection:
+
+```tsx
+import { useRealtimeEvent, useRealtimeReset } from '@gemies/sdk/runtime';
+
+useRealtimeEvent('credits', (frame) => setBalance(frame.data.credits));
+useRealtimeEvent('notification', () => refetchNotifications());
+useRealtimeReset(() => refetchEverythingYouShow()); // too far behind to catch up
+```
+
 A turn goes to `POST {apiUrl}/v1/chat/completions`; conversations to `{apiUrl}/v1/conversations`.
 `apiUrl` defaults to `EXPO_PUBLIC_GEMIES_API_URL`, then `https://api.gemies.ai`. A failure to
 answer is a typed error that keeps the person's turn in the thread with a retry (`FailedTurn`),

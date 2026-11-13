@@ -32,6 +32,7 @@ import {
   consultedAgents,
 } from '../lib/participants';
 import type { Message } from '../runtime/types';
+import { useConversationActivityText } from '../realtime/activity-text';
 
 export interface UseParticipantsOptions {
   lead: GemieLead;
@@ -113,6 +114,8 @@ export const GemieParticipants = memo(function GemieParticipants({
   onPress,
 }: GemieParticipantsProps) {
   const flights = useGemieFlights();
+  // WhatsApp's header: the names give way to what one of them is doing, while they do it.
+  const activity = useConversationActivityText(participants.conversationId);
   const agents = useMemo(
     () =>
       [participants.lead, ...participants.joined].map((agent) => ({
@@ -125,6 +128,7 @@ export const GemieParticipants = memo(function GemieParticipants({
   return (
     <AgentProfile
       agents={agents}
+      {...(activity === null ? {} : { label: activity })}
       onPress={onPress ?? noop}
       avatarRef={flights?.anchor(ANCHORS.profile)}
       avatarHidden={flights?.isLanding(ANCHORS.profile)}

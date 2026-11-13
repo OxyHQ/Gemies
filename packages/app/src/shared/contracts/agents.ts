@@ -128,6 +128,8 @@ export interface Agent {
    */
   lastMessage?: string | null;
   lastMessageAt?: string | null;
+  /** Messages in the thread the person has not seen: the row's badge. */
+  unreadCount?: number;
   /**
    * Set when the agent is a coding-agent CLI on the person's own computer (ADR 0030): which CLI,
    * and whether its computer is connected to Alia right now. `null` for every other agent.

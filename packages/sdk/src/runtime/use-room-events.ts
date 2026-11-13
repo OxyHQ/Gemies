@@ -1,17 +1,17 @@
 import { useEffect, useRef } from 'react';
-import { useGemieRuntime } from './config';
+import { useGemieRealtime } from '../realtime/react';
 import {
   applyRoomEvent,
   roomFailureReason,
   type RoomFailureReason,
+  type RoomEvent,
   type RoomLedger,
 } from './room-events';
 import type { Message } from './types';
 
 /**
- * While a conversation is open, fold its room's events (`group:event`, ADR 0025) into the thread.
- * Group turns and reaction-triggered agent replies share this lifecycle. A host without
- * `subscribeRoomEvents` sees background replies on reload.
+ * While a conversation is open, fold its room's events (`room` frames on the realtime socket,
+ * ADR 0025) into the thread. Group turns and reaction-triggered agent replies share this lifecycle.
  */
 /**
  * How long a room may say nothing while a member still shows as typing before the thread stops
@@ -28,15 +28,16 @@ export function useRoomEvents(
   setMessages: (update: (prev: Message[]) => Message[]) => void,
   onFailure?: (failure: { chainId: string; reason: RoomFailureReason }) => void,
 ): void {
-  const { host } = useGemieRuntime();
-  const subscribe = host.subscribeRoomEvents;
+  const realtime = useGemieRealtime();
   const failureRef = useRef(onFailure);
   failureRef.current = onFailure;
   useEffect(() => {
-    if (!conversationId || !subscribe) return;
+    if (!conversationId || !realtime) return;
     let lastEventAt = Date.now();
     const failedChains = new Set<string>();
-    const unsubscribe = subscribe(conversationId, (event) => {
+    const unsubscribe = realtime.on('room', (frame) => {
+      const event = frame.data as RoomEvent;
+      if (event?.conversationId !== conversationId) return;
       lastEventAt = Date.now();
       setMessages((prev) => applyRoomEvent(prev, ledger, conversationId, event));
       const reason =
@@ -71,5 +72,5 @@ export function useRoomEvents(
       clearInterval(timer);
       unsubscribe();
     };
-  }, [conversationId, ledger, subscribe, setMessages]);
+  }, [conversationId, ledger, realtime, setMessages]);
 }

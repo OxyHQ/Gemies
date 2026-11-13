@@ -1,8 +1,7 @@
-import { useOxy } from '@oxy.so/services/ui/client';
 import { useCallback, useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
+import { useRealtimeTopic } from '../realtime/react';
+import type { RealtimeFrame } from '../realtime/contract';
 import { useGemieApi } from './api';
-import { useGemieRuntime } from './config';
 import { AGENT_ROUTES } from './routes';
 import {
   type AgentActivityEvent,
@@ -17,11 +16,12 @@ import {
 export type UseAgentActivityResult = AgentActivityState;
 
 /**
- * Follow one agent run live: the session's room over Socket.IO, seeded with what the run had
- * already done (`GET` on its status, best-effort — the socket still carries live progress).
+ * Follow one agent run live: its session's topic on the account's realtime connection
+ * (`agent-session:<id>`, `docs/realtime.mdx`), seeded with what the run had already done (`GET` on
+ * its status, best-effort — the topic still carries live progress).
  *
  * @param sessionId - The agent session to follow; `null` follows nothing.
- * @param agentId - The agent's own room too, for the runs that announce themselves there.
+ * @param agentId - The agent's own topic too, for the runs that announce themselves there.
  */
 export function useAgentActivity(
   sessionId: string | null,
@@ -29,60 +29,33 @@ export function useAgentActivity(
 ): UseAgentActivityResult {
   const [state, setState] = useState<AgentActivityState>(INITIAL_ACTIVITY);
   const api = useGemieApi();
-  const { apiUrl } = useGemieRuntime();
-  const { oxyServices } = useOxy();
-
-  const handleEvent = useCallback((event: AgentActivityEvent) => {
-    setState((prev) => applyActivityEvent(prev, event));
-  }, []);
 
   useEffect(() => {
     if (!sessionId) return;
-
     setState(INITIAL_ACTIVITY);
     let cancelled = false;
-
     api
       .get<AgentSessionStatus>(AGENT_ROUTES.sessionStatus(sessionId))
       .then(({ data }) => {
         if (!cancelled) setState((prev) => hydrateActivity(prev, data, sessionId));
       })
       .catch(() => {
-        // Socket updates still provide live progress; hydration is best-effort.
+        // The topic still provides live progress; hydration is best-effort.
       });
-
-    // The API's own token, refreshed when due (the session's base token is not, for this origin).
-    const linked = oxyServices.createLinkedClient({ baseURL: apiUrl });
-    const socket = io(apiUrl, {
-      transports: ['websocket'],
-      // The function form asks for a token on every (re)connect, so it survives rotation.
-      auth: (cb) => {
-        linked.getAccessToken(apiUrl).then(
-          (token) => cb({ token }),
-          () => cb({}),
-        );
-      },
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 10000,
-    });
-
-    socket.on('connect', () => {
-      socket.emit('subscribe-agent-session', sessionId);
-      if (agentId) socket.emit('subscribe-agent', agentId);
-    });
-
-    socket.on('agent-activity', (event: AgentActivityEvent) => {
-      if (event.sessionId === sessionId) handleEvent(event);
-    });
-
     return () => {
       cancelled = true;
-      socket.disconnect();
-      linked.dispose();
     };
-  }, [sessionId, agentId, handleEvent, api, apiUrl, oxyServices]);
+  }, [sessionId, api]);
+
+  const onFrame = useCallback(
+    (frame: RealtimeFrame) => {
+      const event = frame.data as AgentActivityEvent;
+      if (event?.sessionId === sessionId) setState((prev) => applyActivityEvent(prev, event));
+    },
+    [sessionId],
+  );
+  useRealtimeTopic(sessionId ? `agent-session:${sessionId}` : null, onFrame);
+  useRealtimeTopic(sessionId && agentId ? `agent:${agentId}` : null, onFrame);
 
   return state;
 }

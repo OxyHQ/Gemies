@@ -1,0 +1,163 @@
+---
+title: "Realtime"
+description: "One socket per signed-in client: conversations, the sidebar, typing and presence, live and without polling."
+order: 2
+---
+
+# Realtime
+
+Gemies is a messaging app: what a gemie writes, what another device does and what a gemie is doing
+reach every surface of the person at once, the way WhatsApp's do. One layer carries all of it
+([ADR 0040](./adr/0040-realtime-over-one-socket.md)):
+
+- **one authenticated Socket.IO connection per client and account**, held by `@gemies/sdk`;
+- **one server → client event, `rt`**, carrying a typed frame;
+- **a per-account event log** in Postgres, so a client that was away catches up from its cursor
+  instead of reloading everything;
+- **no polling** for anything that has an event source.
+
+The token stream of a turn stays on SSE, on the request that asked for it (see
+[Why the turn stays on SSE](#why-the-turn-stays-on-sse)).
+
+## The connection
+
+`GemieRuntimeProvider` mounts `GemieRealtimeProvider`, which holds the signed-in account's
+connection to the runtime's API (`packages/sdk/src/realtime/`). Nested providers on the same API
+share it; every screen, hook and the app's own bindings listen on it. A host that draws only the
+"Ask Alia" avatar outside any provider holds the same connection through `useGemieActivity`.
+
+| Concern | Where |
+| --- | --- |
+| Handshake | A fresh token of the API's own linked Oxy client on every (re)connect (`createLinkedClient(...).getAccessToken`), never a captured one. |
+| Reconnect | Socket.IO's own, jittered (1 s doubling to 30 s, ±50 %). A handshake the server *refuses* — which Socket.IO does not retry — is retried at 5 s doubling to 60 s. |
+| Sharing | `acquireRealtime(apiUrl, account, token)`: one socket per API and account, refcounted; the last holder closes it. A sign-out or an account switch releases the old one. |
+| Room | The server joins every authenticated connection to `user:<oxyUserId>` on connect. Nothing the client sends chooses it. |
+| Topics | `rt:subscribe { topic }` for someone else's stream: `agent:<id>` (who may act as the gemie, or has a session with it) and `agent-session:<id>` (its owner). Re-subscribed after every reconnect. |
+| Fan-out | The Socket.IO Redis adapter (`socket.ts`): one emit reaches the connection on whichever ECS task holds it. |
+| Keepalive | Engine.IO pings every 25 s and gives up after 20 s more, inside the edge ALB's 60 s idle timeout and Cloudflare's 100 s. WebSocket transport only, so no sticky session is needed for it (the ALB keeps its stickiness for voice calls). |
+
+## Frames
+
+Every frame is `{ v: 1, type, data, seq?, topic? }` on the event `rt`. The two lists are
+`domain/account-events.ts` + `lib/realtime/contract.ts` in the API and `realtime/contract.ts` in the
+SDK; `socketProductEvents.test.ts` holds them equal and fails if a client listens for any other
+socket event by name.
+
+**Durable** — numbered (`seq`) in the account's log and replayed to a client that missed them:
+
+| `type` | `data` | Published by |
+| --- | --- | --- |
+| `conversation` | `{ conversation, thread, appended?, reload? }`: the sidebar row (`lib/chat/conversation-summary.ts`, the same projection `GET /conversations` answers), the unread total of its gemie's thread, the messages it gained (as `GET /conversations/:id` returns them) or `reload` when the thread was rewritten | every conversation writer, after its commit: `lib/realtime/conversations.ts` |
+| `conversation.deleted` | `{ conversationId, thread? }` | `DELETE /conversations/:id`, a space's deletion |
+| `message.reaction` | `{ conversationId, messageId, reactions, revision, mutationId }` | the reaction mutation |
+| `gemies` | `{ agentId, change }` | creating, editing (name, look, colour, status) or deleting a gemie |
+| `credits` | `{ credits? }` | settling or refunding a turn (with the new balance), a purchase, a referral |
+| `notification` | `{ notification }` | `notification-service.ts`, in-app channel |
+| `connections` | `{}` | `/me/accounts` writes, the integrations service's session callback, `/mcp` connectors |
+
+**Signals** — only true while they happen, never logged:
+
+| `type` | `data` | Published by |
+| --- | --- | --- |
+| `activity` | `{ conversationId, sessionId?, actor: { agentId, name }, state, tool?, ttlMs }` | a turn (`chat-completions`, also an external agent's), a room member's reply, an agent run (`EventStream`) |
+| `room` | `{ conversationId, chainId, event, data }` — a group room's frames (ADR 0025) | `publishRoomEvent` |
+| `presence` | `{ agentId, online }` | the external-agent relay |
+| `runtimes` | `{}` | a device offering or withdrawing its own models |
+| `show.progress` | an episode's progress | the show pipeline |
+| `agent.activity` | an agent run's detailed event, on its topic | `EventStream` |
+
+## Catch-up: the account log
+
+`account_events` holds each durable frame with its number; `account_event_heads` holds each
+account's newest number (`db/schema/realtime.ts`, migration 0161).
+
+- **Numbers are 1, 2, 3… per account, in commit order, with no gaps.** The head row is updated in
+  the same statement that inserts the event, so its row lock serialises one account's appends for
+  that one statement. A global sequence would not do: two writers can commit 101 before 100, and a
+  client that saw 101 never asks for 100.
+- **An event is appended after the change it describes has committed**, never inside its
+  transaction: the head lock is then statement-long and takes part in no deadlock. A change whose
+  publish fails (the process died between the two) is repaired by the client's next read of that
+  list; the failure is logged.
+- **On every connect** the client sends `rt:sync { since }` and the server answers the events after
+  `since` in order, or `{ reset: true }` when the log no longer reaches back (swept after three days,
+  or more than 500 behind): the client then reloads what it shows, once.
+- **Each HTTP read that lists conversations carries `realtimeSeq`**, the head read *before* its rows.
+  Before its first sync a client starts from the lowest one it saw, so nothing that happened between
+  its first read and its connection is lost; after it, a read that predates events the client already
+  applied gets them applied again over it (`noteSnapshot`).
+- **The client applies a durable frame once.** One it already applied is dropped; one that skips a
+  number triggers a sync that fills the gap in order. Every cache write is an idempotent upsert by
+  id, so a replay converges on the same state.
+
+## Conversations, the sidebar and unread
+
+- A new message moves its conversation to the top of every list it belongs to, with its preview and
+  unread count, and an open conversation merges the messages **by id**. The id a client drew a
+  message under is the id the server stores (`clientMessageId`, `assistantMessageId`), so the
+  sender's own optimistic copy is replaced, never doubled.
+- Sending is optimistic: the message appears at once, the sidebar row jumps on send
+  (`bumpConversation`), and the turn is confirmed by its stream and its `conversation` event, or
+  fails as a typed error with Retry (`turn-failure.ts`).
+- **Unread** is `conversations.unread_count`: messages that arrived while nobody watched — a gemie
+  writing on its own, a group member answering in the background, Alia's tasks. A turn the person
+  is watching, a voice call and a channel the person reads elsewhere (Telegram) never count.
+  `POST /v1/conversations/:id/read` zeroes it; a client showing the conversation sends it when
+  something arrives while the screen is in front, and every device's badge follows. A gemie's
+  sidebar row shows the total of its thread (`GET /agents/me` → `unreadCount`, and `thread` on
+  every `conversation` frame).
+- Gemie-to-gemie conversations, rooms and group chats are conversations: they publish the same
+  frames from the same writers (`appendRoomReply`, `publishRoomEvent`).
+
+## Typing and activity
+
+What an actor is doing is an `activity` signal from `lib/realtime/activity.ts`: `thinking`,
+`writing`, `tool` (with its name) or `idle`. It is sent when it changes and repeated every 10 s
+while it lasts; a client forgets one it has not heard for 30 s, so a run that crashed without
+saying `idle` stops showing and a client that reconnects mid-turn hears it again. A lost connection
+clears every indicator.
+
+- The conversation header (`GemieParticipants`, every host) shows "Pepe está escribiendo…" in place
+  of the names; `GemieActivityLine` draws the same line anywhere.
+- A sidebar row shows it in place of its last line, and an Alia chat row shows the streaming dot.
+- The "Ask Alia" avatar (`useGemieActivity`) is the busiest of this app's own turns and the
+  account's activity anywhere.
+
+## Why the turn stays on SSE
+
+A turn's tokens stay on the `POST /v1/chat/completions` stream of the device that sent it; the
+socket carries everything else, other devices included.
+
+- **It is the public contract.** `/v1/chat/completions` is OpenAI-compatible and is how
+  `@gemies/server` and third parties talk to a gemie; a socket-only stream would be a second
+  contract to keep equal to the first.
+- **A turn is a request.** Its stream is bounded by it: the abort and the explicit Stop, the 80 s
+  budget, back-pressure and the typed failure envelope all belong to that request. On a socket that
+  may be reconnecting, each would need a second, weaker implementation.
+- **Nothing is lost or doubled.** Other devices see "Pepe está escribiendo…" while it streams and
+  the stored message when it is saved, merged by id; the sending device's own stream and its
+  `conversation` event describe the same message under the same id.
+
+A group's members keep speaking after their request closes; their frames (`alia.agent_*`,
+`group.message`, `group.idle`) reach every device as `room`, which is how a room has always worked
+(ADR 0025).
+
+## What still reads on a timer, and why
+
+`packages/app/__tests__/no-background-polling.test.ts` forbids every other API poll. The exceptions
+have no event source:
+
+- `use-agent-computer.ts`: the live screenshot of an agent's computer while its panel is open.
+- `use-billing.ts`: the plan after a checkout redirect, until the payment provider confirms it.
+- `use-my-agents.ts`: an owner-present work handshake that was refused, retried once a minute.
+- `use-local-runtime.ts`: a probe of the person's own machine (`localhost`), never the API.
+- `@gemies/sdk` `useConnectedAccountQr`: the WhatsApp code rotates inside the integrations service
+  every few seconds and is read while it is on screen; the moment it is scanned arrives as
+  `connections`.
+
+## Compatibility
+
+`alia:activity` is still emitted beside `activity` for agent runs: the "Ask Alia" button of every
+Oxy app on `@gemies/sdk` before 6.0 (and `@alia.onl/sdk`) listens for it. It goes when those apps
+are on 6.0 or later. Nothing else of the previous events (`notification`, `conversation:message`,
+`conversation:reaction`, `group:event`, `show:progress`, `agent-activity`) is emitted any more.

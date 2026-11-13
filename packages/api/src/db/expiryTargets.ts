@@ -50,10 +50,22 @@ import { oxyFileEvents } from './schema/oxy-files';
 import { chatTurnControls } from './schema/chat-turn-controls';
 import { externalAgentPairings, externalAgentToolCalls } from './schema/external-agents';
 import { chatHostResults } from './schema/chat-host-results';
+import { accountEvents } from './schema/realtime';
+import { ACCOUNT_EVENT_RETENTION_SECONDS } from '../domain/account-events.js';
 
 const DAY = 24 * 60 * 60;
 
 export const EXPIRY_TARGETS: readonly ExpirySweepTarget[] = [
+  {
+    table: accountEvents,
+    /**
+     * From creation. An event only lets a reconnecting client catch up; one older than the window is
+     * answered with a reload (`reset`), so deleting it loses nothing the state tables do not hold.
+     */
+    column: accountEvents.createdAt,
+    retentionSeconds: ACCOUNT_EVENT_RETENTION_SECONDS,
+    reason: 'Realtime catch-up log (docs/realtime.mdx); the change itself lives in its own table.',
+  },
   {
     table: externalAgentPairings,
     column: externalAgentPairings.expiresAt,

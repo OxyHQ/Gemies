@@ -1,5 +1,4 @@
 import { useOxy } from '@oxy.so/services/ui/client';
-import { createApiSocketSession } from '@/shared/api/socket-session';
 import apiClient from '@/shared/api/client';
 import i18n from '@/shared/i18n';
 import config from '@/shared/platform/config';
@@ -7,7 +6,7 @@ import { LinesSkeleton } from '@/shared/ui/skeletons';
 import { Text } from '@oxy.so/bloom/typography';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
-import { io as socketIO, type Socket } from 'socket.io-client';
+import { useGemieRealtime } from '@gemies/sdk/runtime';
 import { errorMessage as getErrorMessage } from '@/shared/api/error-utils';
 interface AgentTerminalProps {
   agentId: string;
@@ -75,7 +74,7 @@ function WebTerminal({ agentId }: AgentTerminalProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<any>(null);
   const fitAddonRef = useRef<any>(null);
-  const socketRef = useRef<Socket | null>(null);
+  const realtime = useGemieRealtime();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -202,58 +201,41 @@ function WebTerminal({ agentId }: AgentTerminalProps) {
         // Silently fail backfill
       });
 
-    // Connect Socket.IO
-    let wasConnected = false;
-    const session = createApiSocketSession();
-    const socket = socketIO(config.apiUrl, {
-      // Function form so a fresh token is read on every (re)connect.
-      auth: session.auth,
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 10000,
+    // The agent's live work, on the account's realtime connection (its `agent:<id>` topic).
+    if (!realtime) {
+      return () => {
+        active = false;
+      };
+    }
+    let wasConnected = realtime.connected;
+    const release = realtime.follow(`agent:${agentId}`);
+    const offActivity = realtime.on('agent.activity', (frame) => {
+      const data = frame.data as AgentActivityEvent & { agentId?: string };
+      if (frame.topic === `agent:${agentId}` && data.agentId === agentId) {
+        terminalRef.current?.write(formatActivity(data));
+      }
     });
-    session.bind(socket);
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      socket.emit('subscribe-agent', agentId);
-      if (wasConnected) {
+    const offStatus = realtime.onStatus((connected) => {
+      if (connected && !wasConnected) {
         terminalRef.current?.writeln(
           `\x1b[32m\u25B8 ${i18n.t('agents.terminal.reconnected')}\x1b[0m`,
         );
       }
-      wasConnected = true;
-    });
-
-    socket.on('agent-activity', (data: any) => {
-      if (data.agentId === agentId) {
-        terminalRef.current?.write(formatActivity(data));
-      }
-    });
-
-    socket.on('disconnect', (reason) => {
-      if (reason !== 'io client disconnect') {
+      if (!connected && wasConnected) {
         terminalRef.current?.writeln(
           `\x1b[33m\u25B8 ${i18n.t('agents.terminal.connectionLost')}\x1b[0m`,
         );
       }
-    });
-
-    socket.on('connect_error', () => {
-      terminalRef.current?.writeln(
-        `\x1b[31m\u25B8 ${i18n.t('agents.terminal.connectionError')}\x1b[0m`,
-      );
+      wasConnected = connected;
     });
 
     return () => {
       active = false;
-      session.dispose();
-      socket.disconnect();
-      socketRef.current = null;
+      offActivity();
+      offStatus();
+      release();
     };
-  }, [ready, agentId]);
+  }, [ready, agentId, realtime]);
 
   if (error) {
     return (
@@ -393,7 +375,7 @@ const TERMINAL_HTML = `
 
 function NativeTerminal({ agentId }: AgentTerminalProps) {
   const webViewRef = useRef<any>(null);
-  const socketRef = useRef<Socket | null>(null);
+  const realtime = useGemieRealtime();
   const [webViewReady, setWebViewReady] = useState(false);
   const [WebViewComponent, setWebViewComponent] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -447,52 +429,37 @@ function NativeTerminal({ agentId }: AgentTerminalProps) {
       })
       .catch(() => {});
 
-    // Connect Socket.IO
-    let wasConnected = false;
-    const session = createApiSocketSession();
-    const socket = socketIO(config.apiUrl, {
-      // Function form so a fresh token is read on every (re)connect.
-      auth: session.auth,
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 10000,
-    });
-    session.bind(socket);
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      socket.emit('subscribe-agent', agentId);
-      if (wasConnected) {
-        writeToWebView(`\x1b[32m\u25B8 ${i18n.t('agents.terminal.reconnected')}\x1b[0m\r\n`);
-      }
-      wasConnected = true;
-    });
-
-    socket.on('agent-activity', (data: any) => {
-      if (data.agentId === agentId) {
+    // The agent's live work, on the account's realtime connection (its `agent:<id>` topic).
+    if (!realtime) {
+      return () => {
+        active = false;
+      };
+    }
+    let wasConnected = realtime.connected;
+    const release = realtime.follow(`agent:${agentId}`);
+    const offActivity = realtime.on('agent.activity', (frame) => {
+      const data = frame.data as AgentActivityEvent & { agentId?: string };
+      if (frame.topic === `agent:${agentId}` && data.agentId === agentId) {
         writeToWebView(formatActivity(data));
       }
     });
-
-    socket.on('disconnect', (reason) => {
-      if (reason !== 'io client disconnect') {
+    const offStatus = realtime.onStatus((connected) => {
+      if (connected && !wasConnected) {
+        writeToWebView(`\x1b[32m\u25B8 ${i18n.t('agents.terminal.reconnected')}\x1b[0m\r\n`);
+      }
+      if (!connected && wasConnected) {
         writeToWebView(`\x1b[33m\u25B8 ${i18n.t('agents.terminal.connectionLost')}\x1b[0m\r\n`);
       }
-    });
-
-    socket.on('connect_error', () => {
-      writeToWebView(`\x1b[31m\u25B8 ${i18n.t('agents.terminal.connectionError')}\x1b[0m\r\n`);
+      wasConnected = connected;
     });
 
     return () => {
       active = false;
-      session.dispose();
-      socket.disconnect();
-      socketRef.current = null;
+      offActivity();
+      offStatus();
+      release();
     };
-  }, [webViewReady, agentId, writeToWebView]);
+  }, [webViewReady, agentId, writeToWebView, realtime]);
 
   const handleWebViewMessage = useCallback((event: any) => {
     try {

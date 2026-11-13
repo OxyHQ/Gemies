@@ -105,8 +105,8 @@ A conversation with `conversation_members` is a group. Its members answer in a *
 in API workers (ADR 0025). The request stores the person's message, checks member reach, mints Oxy
 task authority and subscribes before queueing. It forwards `alia.group_turn` and the existing
 `alia.agent_*` frames until the chain ends or its 70-second HTTP budget expires. Work can continue
-after that connection ends; the same room events arrive through `group:event` on Socket.IO, and
-stored replies reconcile on reload.
+after that connection ends; the same room events arrive as `room` frames on the account's
+realtime connection ([Realtime](./realtime.mdx)), and each stored reply as a `conversation` frame.
 
 - **Select before running.** The versioned `group-rooms-v2` queue separates selection and speaking.
   A structured decision selects a participant, asks one clarification, ends deliberately or reports
@@ -136,7 +136,7 @@ stored replies reconcile on reload.
   speaking jobs find their stored reply before running again. The saver preserves unseen replies.
 - **Existing events.** `alia.agent_start` is emitted only when a selected actor runs, followed by
   its deltas, tools and end. `group.message` carries a stored reply and `group.idle` closes the
-  chain. These travel through the existing room bus and `group:event`; no new WebSocket route or
+  chain. These travel through the existing room bus and the `room` frame; no new WebSocket route or
   public request field is introduced.
 
 Code lives in `packages/api/src/lib/chat/room/`; `lib/chat/group-turn-http.ts` watches its events.
@@ -156,9 +156,9 @@ feedback context, including removals; they do not trust reaction metadata echoed
 New clients send the desired boolean state and a UUID mutation ID. Reusing that ID retries the
 same mutation, including a no-op; conflicting reuse returns 409. Omitting `active` retains the
 legacy toggle contract. The response is `{ messageId, reactions, revision, mutationId }`, and
-`conversation:reaction` adds `conversationId` on the existing authenticated Socket.IO connection.
+`message.reaction` adds `conversationId` on the account's realtime connection, numbered in its log.
 History exposes `reactionRevision`. Clients reconcile snapshots by revision and mutation ID;
-reload repairs a missed socket notification. A quiet reaction creates no empty assistant bubble
+a reconnecting client replays a missed one from its cursor. A quiet reaction creates no empty assistant bubble
 or thinking indicator.
 
 For a reachable hosted agent in a direct chat or group, an added reaction can schedule one

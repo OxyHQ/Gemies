@@ -413,6 +413,10 @@
     "earlier": "Earlier",
     "collapse": "Collapse sidebar",
     "expand": "Expand sidebar",
+    "activityThinking": "{{name}} is thinking…",
+    "activityWriting": "{{name}} is typing…",
+    "activityTool": "{{name}} is working…",
+    "unread": "{{count}} unread",
     "noAgentMessages": "No messages yet",
     "create": {
       "chat": "New chat",
@@ -1239,7 +1243,6 @@
       "waiting": "Waiting for activity…",
       "reconnected": "Reconnected",
       "connectionLost": "Connection lost — reconnecting…",
-      "connectionError": "Connection error — retrying…",
       "unavailable": "The terminal is not available on this device."
     },
     "modelPinned": "Pinned model (%{model})",

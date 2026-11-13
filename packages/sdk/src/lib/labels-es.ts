@@ -75,6 +75,16 @@ export const SPANISH_LABELS: GemieChatLabels = {
   reasoning: 'Razonamiento',
   locale: 'es',
   newChat: 'Nueva conversación',
+  activity: (name, state) => {
+    const verb =
+      state === 'writing'
+        ? 'está escribiendo'
+        : state === 'tool'
+          ? 'está trabajando'
+          : 'está pensando';
+    const bare = state === 'writing' ? 'Escribiendo' : state === 'tool' ? 'Trabajando' : 'Pensando';
+    return name ? `${name} ${verb}…` : `${bare}…`;
+  },
   recentConversations: 'Recientes',
   sendFailed:
     'No se pudo enviar el mensaje. Lo tienes de vuelta en el cuadro de texto, inténtalo otra vez.',

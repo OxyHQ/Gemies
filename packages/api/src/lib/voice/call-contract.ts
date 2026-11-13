@@ -105,8 +105,6 @@ export interface VoiceCallEnvironment {
     agentId?: string;
     titleOnInsert: string;
   }): Promise<void>;
-  /** Tell the person's open clients (socket.io `conversation:message`). */
-  announce(oxyUserId: string, conversationId: string, messages: readonly AppendedMessage[]): void;
   titleConversation(oxyUserId: string, conversationId: string, firstUserText: string): void;
   recordAnalytics(record: {
     oxyUserId: string;

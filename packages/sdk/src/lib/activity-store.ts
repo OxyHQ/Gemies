@@ -4,20 +4,14 @@ import type { GemieAvatarState } from '../components/GemieAvatar';
 type Sources = Readonly<Record<string, GemieAvatarState>>;
 
 /**
- * What Alia is doing, from every place that can know. Two sources feed it and neither owns it:
- *
- * - `local`: the turns running in THIS app, one entry per `useConversationThread` instance;
- * - `remote`: runs the server reports for the person, one entry per agent session, so a button
- *   reacts to work that is not in any open chat.
- *
- * An idle source holds no entry, so neither map grows with use.
+ * The turns running in THIS app, one entry per `useConversationThread` instance, so every chat
+ * drives every "Ask Alia" button. What the person's gemies do elsewhere is the realtime activity
+ * store's (`realtime/activity.ts`); `useGemieActivity` shows the busier of the two. An idle source
+ * holds no entry, so the map does not grow with use.
  */
 interface GemieActivityStore {
   local: Sources;
-  remote: Sources;
   setLocal(source: string, state: GemieAvatarState): void;
-  setRemote(session: string, state: GemieAvatarState): void;
-  clearRemote(): void;
 }
 
 function put(map: Sources, key: string, state: GemieAvatarState): Sources {
@@ -31,10 +25,7 @@ function put(map: Sources, key: string, state: GemieAvatarState): Sources {
 
 export const useGemieActivityStore = create<GemieActivityStore>((set) => ({
   local: {},
-  remote: {},
   setLocal: (source, state) => set((s) => ({ local: put(s.local, source, state) })),
-  setRemote: (session, state) => set((s) => ({ remote: put(s.remote, session, state) })),
-  clearRemote: () => set((s) => (Object.keys(s.remote).length === 0 ? s : { remote: {} })),
 }));
 
 /** The most telling thing any source is doing: a tool call outranks thinking, thinking outranks writing. */
@@ -48,6 +39,5 @@ export function busiest(...maps: ReadonlyArray<Sources>): GemieAvatarState {
   return top;
 }
 
-/** A primitive, so a subscriber re-renders when the state changes and not when a session does. */
-export const selectGemieActivity = (s: GemieActivityStore): GemieAvatarState =>
-  busiest(s.local, s.remote);
+/** A primitive, so a subscriber re-renders when the state changes and not when a source does. */
+export const selectGemieActivity = (s: GemieActivityStore): GemieAvatarState => busiest(s.local);

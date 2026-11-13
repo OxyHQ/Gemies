@@ -25,6 +25,8 @@ export const API_ROUTES = {
      * what is being deleted is the message collection and nothing else.
      */
     clearMessages: (id: string) => `/v1/conversations/${id}/messages`,
+    /** The person has seen it: its unread count goes to zero on every surface. */
+    read: (id: string) => `/v1/conversations/${id}/read`,
     vote: (id: string, messageId: string) => `/v1/conversations/${id}/messages/${messageId}/vote`,
     react: (id: string, messageId: string) =>
       `/v1/conversations/${id}/messages/${messageId}/reactions`,

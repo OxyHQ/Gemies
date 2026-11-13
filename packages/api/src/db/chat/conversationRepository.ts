@@ -46,6 +46,8 @@ export interface ConversationRow {
   readonly agentThreadId: string | null;
   /** The app the conversation started in, or `null` for Alia's own surfaces. */
   readonly originApp: string | null;
+  /** Messages the person has not seen yet (`conversations.unread_count`). */
+  readonly unreadCount: number;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -229,6 +231,13 @@ export interface ConversationUpsert {
   readonly agentThreadId?: string;
   /** The insert branch only: an app labels the conversation it STARTS, once. */
   readonly originApp?: string;
+  /**
+   * Messages this write adds that the person did not watch arrive (a gemie writing on its own, a
+   * group member answering in the background): added to `unread_count`. Omitted by a writer whose
+   * messages the person is watching — their own turn, a call — and by a channel the person reads
+   * elsewhere.
+   */
+  readonly unread?: number;
 }
 
 /**
@@ -268,6 +277,7 @@ export async function upsertConversation(
     ...(input.title === undefined ? {} : { title: input.title }),
   };
 
+  const unread = input.unread !== undefined && input.unread > 0 ? input.unread : 0;
   const [row] = await db
     .insert(conversations)
     .values({
@@ -278,11 +288,16 @@ export async function upsertConversation(
       agentId: input.agentId,
       agentThreadId: input.agentThreadId ?? null,
       originApp: input.originApp ?? null,
+      unreadCount: unread,
       ...changed,
     })
     .onConflictDoUpdate({
       target: [conversations.oxyUserId, conversations.conversationId],
-      set: { ...changed, updatedAt: new Date() },
+      set: {
+        ...changed,
+        ...(unread > 0 ? { unreadCount: sql`${conversations.unreadCount} + ${unread}` } : {}),
+        updatedAt: new Date(),
+      },
     })
     .returning();
 
@@ -502,6 +517,54 @@ export async function latestMessagePerAgent(
     lastMessage: row.lastMessage,
     updatedAt: row.updatedAt,
   }));
+}
+
+/**
+ * The person has seen a thread: its unread count is zero. Reports whether a row matched; `updated_at`
+ * does not move, because reading is not activity and must not reorder the list.
+ */
+export async function markConversationRead(
+  db: ApiDatabase,
+  oxyUserId: string,
+  conversationId: string,
+): Promise<boolean> {
+  const rows = await db
+    .update(conversations)
+    .set({ unreadCount: 0, updatedAt: sql`${conversations.updatedAt}` })
+    .where(
+      and(eq(conversations.oxyUserId, oxyUserId), eq(conversations.conversationId, conversationId)),
+    )
+    .returning({ id: conversations.id });
+  return rows.length > 0;
+}
+
+/**
+ * Unread messages per gemie across all of the person's conversations with it: the badge on the
+ * sidebar's gemie row, whose thread is many conversations. Gemies with none are absent.
+ */
+export async function unreadPerAgent(
+  db: Executor,
+  oxyUserId: string,
+  agentIds: readonly string[],
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (agentIds.length === 0) return result;
+  const rows = await db
+    .select({
+      agentId: conversations.agentId,
+      unread: sql<number>`sum(${conversations.unreadCount})::int`,
+    })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.oxyUserId, oxyUserId),
+        inArray(conversations.agentId, [...agentIds]),
+        sql`${conversations.unreadCount} > 0`,
+      ),
+    )
+    .groupBy(conversations.agentId);
+  for (const row of rows) result.set(row.agentId, row.unread);
+  return result;
 }
 
 /** One day of the activity heatmap: threads this agent started that day. */

@@ -138,7 +138,6 @@ export function harness(options: HarnessOptions = {}) {
   const instructionsFor = vi.fn(
     async (h: readonly HistoryMessage[]) => `INSTRUCTIONS(${h.length})`,
   );
-  const announce = vi.fn();
   const titleConversation = vi.fn();
   const recordAnalytics = vi.fn(async () => undefined);
 
@@ -178,7 +177,6 @@ export function harness(options: HarnessOptions = {}) {
         ...params.messages.map((message) => ({ role: message.role, content: message.content })),
       ];
     },
-    announce,
     titleConversation,
     recordAnalytics,
   };
@@ -208,7 +206,6 @@ export function harness(options: HarnessOptions = {}) {
     turnInputs,
     prefetched,
     instructionsFor,
-    announce,
     titleConversation,
     recordAnalytics,
     held: () => held,

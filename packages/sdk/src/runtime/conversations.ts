@@ -18,6 +18,8 @@ import { gemieQueryKeys, type ConversationsFilter } from './query-keys';
 import { API_ROUTES } from './routes';
 import { createRandomUuid } from './random-uuid';
 import type { Conversation, ConversationsInfiniteData, ConversationsPage, Message } from './types';
+import type { RealtimeConnection } from '../realtime/connection';
+import { useGemieRealtime } from '../realtime/react';
 
 /** Conversation as returned by the API (timestamps are ISO strings, not Dates). */
 type ApiConversation = Omit<Conversation, 'createdAt' | 'updatedAt' | 'messages'> & {
@@ -106,6 +108,8 @@ export interface ConversationsClient {
   newChatTitle: string;
   /** The chat's app, which labels a conversation it creates (`GemieRuntimeConfig.app`). */
   app: string | undefined;
+  /** Told the account's realtime cursor each read carried, so no event is lost behind it. */
+  realtime: RealtimeConnection | null;
 }
 
 /** The runtime's conversation client for the nearest provider. */
@@ -113,9 +117,16 @@ function useConversationsClient(): ConversationsClient {
   const api = useGemieApi();
   const { offline, app } = useGemieRuntime();
   const { newChat } = useLabels();
+  const realtime = useGemieRealtime();
   return useMemo(
-    () => ({ api, offline: new OfflineConversations(offline), newChatTitle: newChat, app }),
-    [api, offline, newChat, app],
+    () => ({
+      api,
+      offline: new OfflineConversations(offline),
+      newChatTitle: newChat,
+      app,
+      realtime,
+    }),
+    [api, offline, newChat, app, realtime],
   );
 }
 
@@ -129,6 +140,7 @@ async function fetchConversationsPage(
     conversations: ApiConversation[];
     nextCursor: string | null;
     hasMore: boolean;
+    realtimeSeq?: number;
   }>(API_ROUTES.conversations.list, {
     signal,
     params: {
@@ -138,6 +150,7 @@ async function fetchConversationsPage(
       ...(app === undefined ? {} : { app }),
     },
   });
+  if (typeof data.realtimeSeq === 'number') client.realtime?.noteSnapshot(data.realtimeSeq);
   return {
     conversations: data.conversations.map((conv) => ({
       ...conv,
@@ -226,7 +239,10 @@ export function useConversations({ agentId, app }: ConversationsFilter = {}) {
 
 async function fetchConversation(client: ConversationsClient, id: string): Promise<Conversation> {
   try {
-    const { data } = await client.api.get<ApiConversation>(API_ROUTES.conversations.get(id));
+    const { data } = await client.api.get<ApiConversation & { realtimeSeq?: number }>(
+      API_ROUTES.conversations.get(id),
+    );
+    if (typeof data.realtimeSeq === 'number') client.realtime?.noteSnapshot(data.realtimeSeq);
     return {
       ...data,
       createdAt: new Date(data.createdAt),
@@ -271,6 +287,42 @@ export function useConversation(id: string | undefined) {
     // 404 and makes one stale local link look like an API outage in the console.
     retry: false,
   });
+}
+
+/** Read one conversation afresh, as `useConversation` would (a rewritten thread, reloaded). */
+export function useReadConversation(): (id: string) => Promise<Conversation> {
+  const client = useConversationsClient();
+  return useCallback((id) => fetchConversation(client, id), [client]);
+}
+
+/**
+ * The person has seen a conversation: its unread count goes to zero here at once and on every
+ * other surface through the server's `conversation` event. Sent only when there is something
+ * unread, so an open conversation costs nothing while nothing arrives.
+ */
+export function useMarkConversationRead(): (id: string) => void {
+  const queryClient = useQueryClient();
+  const client = useConversationsClient();
+  return useCallback(
+    (id) => {
+      const update = (c: Conversation) => (c.id === id ? { ...c, unreadCount: 0 } : c);
+      queryClient.setQueriesData<ConversationsInfiniteData>(
+        { queryKey: gemieQueryKeys.conversations.all },
+        (old) =>
+          old?.pages
+            ? {
+                ...old,
+                pages: old.pages.map((page) => ({
+                  ...page,
+                  conversations: page.conversations.map(update),
+                })),
+              }
+            : old,
+      );
+      void client.api.post(API_ROUTES.conversations.read(id), {}).catch(() => undefined);
+    },
+    [queryClient, client],
+  );
 }
 
 /** Prefetch a conversation's detail (call from the sidebar on press-in / hover). */

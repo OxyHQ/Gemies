@@ -110,6 +110,8 @@ vi.mock('../../../src/runtime/conversations', () => ({
   useConversation: () => ({ data: undefined, isLoading: false, isFetching: false }),
   useCreateConversation: () => ({ mutateAsync: async () => ({}), mutate: () => {} }),
   useDeleteConversation: () => ({ mutateAsync: async () => {} }),
+  useReadConversation: () => async () => ({ messages: [] }),
+  useMarkConversationRead: () => () => undefined,
   useClearConversation: () => ({ mutateAsync: async () => {} }),
 }));
 vi.mock('../../../src/runtime/use-agent-activity', () => ({ useAgentActivity: () => ({}) }));
@@ -126,6 +128,9 @@ vi.mock('@oxy.so/services/ui/client', () => ({
   }),
 }));
 vi.mock('@oxy.so/core', () => ({ getAccountDisplayName: () => 'Nate' }));
+vi.mock('../../../src/realtime/react', async (original) =>
+  (await import('../../support/fake-realtime')).mockRealtimeReact(await original()),
+);
 
 // ---- everything else the chat draws, which a thread does not read -----------
 const stub = vi.hoisted(() => (name: string) => async () => {

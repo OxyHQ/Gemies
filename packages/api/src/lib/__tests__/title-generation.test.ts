@@ -79,6 +79,10 @@ vi.mock('../logger.js', () => {
 });
 
 vi.mock('../../db/index.js', () => ({ getDb: vi.fn(() => ({})) }));
+// A title reaches the person's surfaces through `lib/realtime`, whose own tests cover it.
+vi.mock('../realtime/conversations.js', () => ({
+  publishConversation: vi.fn(async () => undefined),
+}));
 
 vi.mock('../../db/chat/conversationRepository.js', () => ({
   findConversation: vi.fn(async () => H.conversation ?? undefined),

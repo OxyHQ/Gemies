@@ -43,7 +43,7 @@ import { agentPromptName, attachAgentIdentity } from '../agent-identity.js';
 import { log } from '../logger.js';
 import { checkInRefusal, type CheckInRefusal } from './outreach-budget.js';
 import { sendNotification } from '../notification-service.js';
-import { getIO } from '../../socket.js';
+import { publishConversation } from '../realtime/conversations.js';
 
 export { CHECK_IN_DAILY_LIMIT, UNANSWERED_CHECK_IN_LIMIT } from './outreach-budget.js';
 
@@ -149,8 +149,10 @@ export async function postAgentMessage(input: AgentOutreachInput): Promise<Agent
       });
       if (refusal) return { posted: false as const, reason: refusal };
     }
+    let seq = 0;
     for (let attempt = 0; ; attempt++) {
       const last = await findLastMessage(tx, input.oxyUserId, conversation.conversationId);
+      seq = last?.seq == null ? 0 : last.seq + 1;
       try {
         // A concurrent chat append may take this sequence; the savepoint keeps the outer transaction usable.
         await tx.transaction((savepoint) =>
@@ -162,7 +164,7 @@ export async function postAgentMessage(input: AgentOutreachInput): Promise<Agent
               role: 'assistant',
               content,
               agentInfo,
-              seq: last?.seq == null ? 0 : last.seq + 1,
+              seq,
               createdAt: new Date(),
             },
           ]),
@@ -178,27 +180,25 @@ export async function postAgentMessage(input: AgentOutreachInput): Promise<Agent
       lastMessage: content.slice(0, 100),
       titleOnInsert: name,
       agentId: input.agentId,
+      // The gemie wrote on its own: nobody watched it arrive.
+      unread: 1,
     });
     return {
       posted: true as const,
       duplicate: false,
       conversationId: conversation.conversationId,
       messageId,
+      seq,
     };
   });
   if (!written.posted) return written;
   if (written.duplicate) return { posted: true, conversationId: written.conversationId, messageId };
   const conversation = { conversationId: written.conversationId };
 
-  // Live, for a client that has this conversation open.
-  getIO()
-    ?.to(`user:${input.oxyUserId}`)
-    .emit('conversation:message', {
-      conversationId: conversation.conversationId,
-      agentId: agent._id,
-      agentHandle: agent.handle,
-      message: { id: messageId, role: 'assistant', content, agentInfo, createdAt: new Date() },
-    });
+  // Live, on every surface of the person: the row moves up and an open conversation gains it.
+  void publishConversation(input.oxyUserId, conversation.conversationId, {
+    appendedFromSeq: written.seq,
+  });
 
   await sendNotification({
     userId: input.oxyUserId,

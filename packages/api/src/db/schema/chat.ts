@@ -96,6 +96,13 @@ export const conversations = pgTable(
      * column. A listing label, never authority: no access decision reads it.
      */
     originApp: text(),
+    /**
+     * Messages that arrived while the person was not watching (a gemie wrote on its own, a group
+     * member answered after the request closed, another gemie spoke): the sidebar's badge. Raised by
+     * the background writers (`upsertConversation`'s `unread`), zeroed by `POST …/:id/read`. A
+     * reply the person watched stream in is never counted.
+     */
+    unreadCount: integer().notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

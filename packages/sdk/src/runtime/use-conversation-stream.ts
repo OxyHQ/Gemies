@@ -47,6 +47,7 @@ import type {
   ToolInvocation,
 } from './types';
 import { UsageLimitError } from './usage-limit-error';
+import { useGemieRealtime } from '../realtime/react';
 
 export type { ToolInvocation };
 export type { FailedTurn };
@@ -181,6 +182,10 @@ export function useConversationStream({
   room,
 }: UseConversationStreamOptions = {}) {
   const { apiUrl, streamFetch, host, app } = useGemieRuntime();
+  // Whether a member still speaking after the request can be followed live (`room` frames).
+  const realtime = useGemieRealtime();
+  const realtimeRef = useRef(realtime);
+  realtimeRef.current = realtime;
   /** Where an awaited host action's answer goes: the same account and app assertion as the turn. */
   const api = useGemieApi();
   /** Read at send time and when an action arrives: the host's declaration may change between turns. */
@@ -677,8 +682,8 @@ export function useConversationStream({
         flushPendingUpdates();
         if (event.errorCode === ROOM_CONTINUES) {
           // The request is over but the member is still speaking: the room's socket carries it on.
-          // With no socket to carry it, it stops here, unfinished but not failed.
-          if (host.subscribeRoomEvents) releaseConsult(roomRef.current, event.consultId);
+          // With no socket to carry it (signed out), it stops here, unfinished but not failed.
+          if (realtimeRef.current) releaseConsult(roomRef.current, event.consultId);
           else {
             setMessages((prev) =>
               prev.map((m) => (m.id === id ? { ...m, isStreaming: false } : m)),

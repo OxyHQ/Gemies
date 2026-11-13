@@ -13,6 +13,7 @@ import {
 } from '../../domain/capability-grants.js';
 import { AGENT_COLORS, agentColorFor, isAgentColor } from '../agent-color.js';
 import { accountCategoryChoices, isOfferedAccountCategory } from '../account-category.js';
+import { publishGemieChanged } from '../realtime/account.js';
 
 /**
  * Factory tool for creating AI agents during conversation.
@@ -200,6 +201,7 @@ export const createAgentTool = (userId: string, accessToken: string | undefined)
           { agentId: agent._id, username: account.username, userId },
           'Agent created via tool',
         );
+        void publishGemieChanged(userId, agent._id, 'created');
 
         return {
           success: true,

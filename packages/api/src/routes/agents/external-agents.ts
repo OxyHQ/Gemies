@@ -54,6 +54,7 @@ import {
   disconnectExternalAgent,
   isExternalAgentReachable,
 } from '../../lib/external-agents/relay.js';
+import { publishGemieChanged } from '../../lib/realtime/account.js';
 
 const router = Router();
 const route =
@@ -227,6 +228,8 @@ router.post(
       { agentId, cli, hostName, userId: ownerOxyUserId, ip, reconnected },
       reconnected ? 'External agent reconnected' : 'External agent paired',
     );
+    // The owner's gemies list shows it on every device (`gemies`, `docs/realtime.mdx`).
+    void publishGemieChanged(ownerOxyUserId, agentId, reconnected ? 'updated' : 'created');
     res.status(201).json({ agentId, name, cli, credential });
   }),
 );
@@ -265,6 +268,7 @@ router.delete(
     await deleteAgent(getDb(), agentId).catch((err: unknown) => {
       log.general.error({ err, agentId }, 'Could not delete the agent of a revoked external link');
     });
+    void publishGemieChanged(req.user.id, agentId, 'deleted');
     res.status(204).end();
   }),
 );

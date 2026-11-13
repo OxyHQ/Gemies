@@ -4,9 +4,9 @@ import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * The product-specific socket events — epic #139 workstream 13, "Preserve
- * notifications and product-specific events". Approval events are not among
- * them: no agent asks for approval (ADR 0020 §3), so none is emitted.
+ * What the API pushes on the realtime socket (`docs/realtime.mdx`): every product event is ONE
+ * Socket.IO event, `rt`, carrying a typed frame — durable ones numbered from the account's log,
+ * signals not. Approval events are not among them: no agent asks for approval (ADR 0020 §3).
  *
  * ## Why a socket event is the easiest thing in the product to delete by accident
  *
@@ -58,6 +58,18 @@ vi.mock('../lib/oxy.js', () => ({
 
 // Stores only. `notification-service.ts` itself, and its channel resolution, run.
 vi.mock('../db/index.js', () => ({ getDb: vi.fn(() => ({})) }));
+// The account's log: numbered 1, 2, 3… as Postgres would (its own test is `accountEvents.pgdb.test.ts`).
+vi.mock('../db/realtime/accountEventRepository.js', () => {
+  let seq = 0;
+  return {
+    appendAccountEvent: vi.fn(async (_db: unknown, _user: string, type: string, data: unknown) => ({
+      seq: ++seq,
+      type,
+      data,
+      createdAt: new Date(0),
+    })),
+  };
+});
 vi.mock('../db/notifications/notificationRepository.js', () => ({
   createNotification: vi.fn(async () => H.notificationRow),
   setDeliveryStatus: vi.fn(async () => undefined),
@@ -94,11 +106,17 @@ vi.mock('../lib/logger.js', () => {
   };
 });
 
-import { emitAgentActivity, emitAliaActivity, emitAudioJobUpdate, initSocket } from '../socket.js';
+import { emitAgentActivity, emitLegacyAliaActivity, initSocket } from '../socket.js';
 import { publishRoomEvent } from '../lib/chat/room/bus.js';
 import { publishConversationReaction } from '../lib/chat/reactions/bus.js';
 import type { Server } from 'socket.io';
 import { sendNotification } from '../lib/notification-service.js';
+import {
+  REALTIME_EVENT,
+  REALTIME_SIGNAL_TYPES,
+  type RealtimeFrame,
+} from '../lib/realtime/contract.js';
+import { ACCOUNT_EVENT_TYPES } from '../domain/account-events.js';
 
 // ── The recorder: what the server was asked to broadcast ───────────────────
 
@@ -134,12 +152,11 @@ beforeEach(() => {
   broadcasts.length = 0;
 });
 
-// ===========================================================================
-// Every emitter, by name and by room
-// ===========================================================================
+const frames = () =>
+  broadcasts.map((b) => ({ event: b.event, rooms: b.rooms, frame: b.payload as RealtimeFrame }));
 
-describe('each product event is emitted under its own name, to its own room', () => {
-  it('publishes the canonical reaction revision to its owner through the real socket adapter', async () => {
+describe('every product event is a typed `rt` frame, to its own room', () => {
+  it('a reaction is durable: numbered, to its owner', async () => {
     const update = {
       conversationId: 'conversation-ws13',
       messageId: 'answer-ws13',
@@ -148,68 +165,49 @@ describe('each product event is emitted under its own name, to its own room', ()
       mutationId: 'mutation-ws13',
     };
     await publishConversationReaction('user-ws13', update);
-    expect(broadcasts).toEqual([
+    expect(frames()).toEqual([
       {
-        event: 'conversation:reaction',
+        event: REALTIME_EVENT,
         rooms: ['user:user-ws13'],
-        payload: update,
+        frame: { v: 1, type: 'message.reaction', data: update, seq: expect.any(Number) },
       },
     ]);
   });
-  it('agent activity, to the agent room AND the session room', () => {
+
+  it('an agent run, to its agent topic AND its session topic', () => {
     emitAgentActivity('agent-ws13', {
       type: 'tool_call',
       content: 'running',
       timestamp: 1,
       sessionId: 'sess-ws13',
     });
-
-    // Two rooms, not one: the agent detail screen and the in-chat task card are
-    // different subscribers, and dropping either silently blanks one of them.
-    expect(broadcasts.map((entry) => ({ event: entry.event, rooms: entry.rooms }))).toEqual([
-      { event: 'agent-activity', rooms: ['agent:agent-ws13'] },
-      { event: 'agent-activity', rooms: ['agent-session:sess-ws13'] },
+    // Two topics: the agent detail screen and the in-chat task card are different followers.
+    expect(
+      frames().map((f) => ({ rooms: f.rooms, topic: f.frame.topic, type: f.frame.type })),
+    ).toEqual([
+      { rooms: ['agent:agent-ws13'], topic: 'agent:agent-ws13', type: 'agent.activity' },
+      {
+        rooms: ['agent-session:sess-ws13'],
+        topic: 'agent-session:sess-ws13',
+        type: 'agent.activity',
+      },
     ]);
-    expect(broadcasts[0].payload).toMatchObject({ agentId: 'agent-ws13', type: 'tool_call' });
+    expect(frames()[0]?.frame.data).toMatchObject({ agentId: 'agent-ws13', type: 'tool_call' });
   });
 
-  it("Alia's activity, to the person's own room and nobody else's", () => {
-    emitAliaActivity('user-ws13', {
+  it("keeps `alia:activity` for the Oxy apps on an SDK before 6.0, to the person's room only", () => {
+    emitLegacyAliaActivity('user-ws13', {
       state: 'working',
       agentId: 'agent-ws13',
       sessionId: 'sess-ws13',
       timestamp: 1,
     });
-
-    expect(broadcasts.map((entry) => ({ event: entry.event, rooms: entry.rooms }))).toEqual([
+    expect(broadcasts.map((b) => ({ event: b.event, rooms: b.rooms }))).toEqual([
       { event: 'alia:activity', rooms: ['user:user-ws13'] },
     ]);
-    // A state, never the work: no content, arguments or screenshots ride on it.
-    expect(broadcasts[0].payload).toEqual({
-      eventVersion: 1,
-      state: 'working',
-      agentId: 'agent-ws13',
-      sessionId: 'sess-ws13',
-      timestamp: 1,
-    });
   });
 
-  it('an audio job, on its own room', () => {
-    emitAudioJobUpdate('user-ws13', {
-      jobId: 'job-1',
-      status: 'completed',
-      audioUrl: 'https://x.test/a.mp3',
-    });
-
-    expect(broadcasts.map((entry) => ({ event: entry.event, rooms: entry.rooms }))).toEqual([
-      { event: 'audio:job-update', rooms: ['user:user-ws13'] },
-    ]);
-  });
-
-  it('a notification reaches the user room as `notification`, through the service', async () => {
-    // The one event emitted from outside `socket.ts`: `deliverInApp` reads
-    // `getIO()` and writes to the same user room the app subscribes to
-    // (`notification-service.ts:112-126`).
+  it('a notification is durable, through the service', async () => {
     const sent = await sendNotification({
       userId: 'user-ws13',
       type: 'chat_response_ready',
@@ -217,160 +215,102 @@ describe('each product event is emitted under its own name, to its own room', ()
       body: 'the answer',
       channels: ['in_app'],
     });
-
-    expect(broadcasts).toHaveLength(1);
-    expect(broadcasts[0].event).toBe('notification');
-    expect(broadcasts[0].rooms).toEqual(['user:user-ws13']);
-    expect(broadcasts[0].payload).toEqual({
-      id: 'notif-ws13',
-      type: 'chat_response_ready',
-      title: 'Alia has responded',
-      body: 'the answer',
-      priority: 'normal',
-      data: { conversationId: 'conv-ws13' },
-      createdAt: H.notificationRow.createdAt,
+    expect(frames()).toHaveLength(1);
+    expect(frames()[0]).toMatchObject({
+      event: REALTIME_EVENT,
+      rooms: ['user:user-ws13'],
+      frame: {
+        type: 'notification',
+        seq: expect.any(Number),
+        data: {
+          notification: { id: 'notif-ws13', type: 'chat_response_ready', body: 'the answer' },
+        },
+      },
     });
-    // Delivery is recorded as having succeeded, which is what makes a later
-    // "was it delivered?" answerable rather than assumed.
     expect(sent.deliveryStatus).toEqual({ in_app: 'sent' });
   });
-});
 
-// ===========================================================================
-// The required set, derived from the app rather than from memory
-// ===========================================================================
-
-/**
- * Every `socket.on('<name>', …)` in `packages/app` and in the SDK it mounts
- * (`packages/sdk`: the agent run's feed and the activity socket now live
- * there), minus the three names Socket.IO itself owns.
- *
- * Read off disk deliberately: a list written here would be a list that agrees
- * with the API by construction, and the failure this guards is precisely the two
- * sides disagreeing.
- */
-/** Approval events the API no longer emits: no agent asks for approval (ADR 0020 §3). */
-const RETIRED_APPROVAL_EVENTS = new Set([
-  'alia.approval_request',
-  'alia.approval_result',
-  'agent-approval-request',
-  'agent-approval-result',
-  'agent-approval-decision',
-  'approvals:changed',
-]);
-
-function appSocketListeners(): { names: string[]; filesScanned: number } {
-  const appRoot = path.resolve(import.meta.dirname, '../../../app');
-  const sdkRoot = path.resolve(import.meta.dirname, '../../../sdk');
-  const names = new Set<string>();
-  let filesScanned = 0;
-
-  const walk = (dir: string): void => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name === '.expo' || entry.name === 'dist')
-          continue;
-        walk(full);
-        continue;
-      }
-      if (!/\.tsx?$/.test(entry.name)) continue;
-      filesScanned += 1;
-      const source = fs.readFileSync(full, 'utf8');
-      for (const line of source.split('\n')) {
-        // Line-based on purpose: `socket.on('x'` never spans a newline in this
-        // codebase, and a comment is excluded rather than counted.
-        const trimmed = line.trim();
-        if (trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
-        for (const match of line.matchAll(
-          /\bsocket(?:Ref\.current)?\??\.on\(\s*['"]([^'"]+)['"]/g,
-        )) {
-          names.add(match[1]);
-        }
-      }
-    }
-  };
-
-  walk(path.join(appRoot, 'src'));
-  walk(path.join(appRoot, 'app'));
-  walk(path.join(sdkRoot, 'src'));
-
-  for (const transport of ['connect', 'disconnect', 'connect_error']) names.delete(transport);
-  return { names: [...names].sort(), filesScanned };
-}
-
-describe('every socket event the app listens for is one the API emits', () => {
-  const { names, filesScanned } = appSocketListeners();
-
-  it('read the app at all, so an empty required set cannot pass as agreement', () => {
-    expect(filesScanned).toBeGreaterThan(100);
-    expect(names.length).toBeGreaterThanOrEqual(5);
-    // A positive control on the scanner itself: a name it is KNOWN to find.
-    expect(names).toContain('agent-activity');
-  });
-
-  it('emits every name the app binds, and the census can tell a miss from a hit', async () => {
-    /**
-     * Driving every `socket.ts` emitter plus the notification service once, and reading
-     * the union of the names they produced. This is what the app must find.
-     */
-    broadcasts.length = 0;
-    emitAgentActivity('a', { type: 'system', content: '', timestamp: 1, sessionId: 's' });
-    emitAliaActivity('u', { state: 'working', agentId: 'a', sessionId: 's', timestamp: 1 });
-    emitAudioJobUpdate('u', { jobId: 'j', status: 'completed' });
-    // A group room's event, through the real publisher: `group:event` reaches the person's sockets
-    // (lib/chat/room/bus.ts, publishRoomEvent()).
+  it('a room\'s frame is a signal, and a member starting to answer is "typing" for the person', async () => {
     await publishRoomEvent({
       userId: 'u',
       conversationId: 'c',
       chainId: 'p',
-      event: 'group.idle',
-      data: { reason: 'done' },
+      event: 'alia.agent_start',
+      data: { consultId: 'k', agent: { id: 'pepe', name: 'Pepe' } },
     });
-    await publishConversationReaction('u', {
+    await publishRoomEvent({
+      userId: 'u',
       conversationId: 'c',
-      messageId: 'answer',
-      reactions: ['❤️'],
-      revision: 1,
-      mutationId: 'mutation',
+      chainId: 'p',
+      event: 'alia.agent_end',
+      data: { consultId: 'k' },
     });
-    const emitted = new Set(broadcasts.map((entry) => entry.event));
-    // `notification` and `show:progress` are emitted by their own services
-    // rather than by `socket.ts`; each is named with the file that emits it so
-    // the exemption is checkable rather than a hole.
-    emitted.add('notification'); // lib/notification-service.ts:116, driven above
-    emitted.add('show:progress'); // lib/show/show-pipeline.ts, emitProgress()
-    emitted.add('conversation:message'); // lib/agent/agent-outreach.ts, postAgentMessage()
-    /**
-     * The two frames a device serving a local model receives. They are emitted
-     * from `lib/inference/user-runtime-bridge.ts` rather than `socket.ts`,
-     * because both are sent to ONE socket in the middle of a chat request
-     * instead of broadcast to a room — driving them here would need a fake io
-     * and a connected runtime.
-     *
-     * Named rather than assumed: `lib/inference/__tests__/user-runtime-bridge.test.ts`
-     * asserts both, `user-runtime:request` in "asks the device that owns the
-     * model" and `user-runtime:abort` in "tells the device to stop". So this
-     * exemption is backed by a behavioural test, not only by a file reference.
-     */
-    emitted.add('user-runtime:request');
-    emitted.add('user-runtime:abort');
+    const types = frames().map((f) => [f.frame.type, (f.frame.data as { state?: string }).state]);
+    expect(types).toEqual([
+      ['activity', 'thinking'],
+      ['room', undefined],
+      ['activity', 'idle'],
+      ['room', undefined],
+    ]);
+    expect(frames()[0]?.frame.data).toMatchObject({
+      conversationId: 'c',
+      actor: { agentId: 'pepe', name: 'Pepe' },
+    });
+  });
+});
 
-    // Retired with approvals (ADR 0020 §3). The SDK's listeners for them are
-    // removed in the SDK's own change; a listener for a retired name is dead
-    // code there, never a name the API must start emitting again.
-    const unemitted = names.filter(
-      (name) => !emitted.has(name) && !RETIRED_APPROVAL_EVENTS.has(name),
+describe('the SDK and the API speak the same list of frames', () => {
+  /** A tuple of the SDK's contract, read off disk: the API does not compile the SDK. */
+  const sdkTuple = (name: string): string[] => {
+    const source = fs.readFileSync(
+      path.resolve(import.meta.dirname, '../../../sdk/src/realtime/contract.ts'),
+      'utf8',
     );
-    expect(unemitted).toEqual([]);
-    expect([...emitted].filter((name) => RETIRED_APPROVAL_EVENTS.has(name))).toEqual([]);
+    const body = new RegExp(`export const ${name} = \\[([^\\]]*)\\] as const`).exec(source)?.[1];
+    return [...(body ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1] as string);
+  };
 
-    // The negative control: the census WOULD report a name the API does not
-    // emit. Without it, an empty `unemitted` is also what a broken filter says.
-    expect(
-      [...names, 'alia.event_nobody_emits'].filter(
-        (name) => !emitted.has(name) && !RETIRED_APPROVAL_EVENTS.has(name),
-      ),
-    ).toEqual(['alia.event_nobody_emits']);
+  it('names every durable type and every signal the same on both sides', () => {
+    expect(sdkTuple('REALTIME_DURABLE_TYPES').sort()).toEqual([...ACCOUNT_EVENT_TYPES].sort());
+    expect(sdkTuple('REALTIME_SIGNAL_TYPES').sort()).toEqual([...REALTIME_SIGNAL_TYPES].sort());
+    expect(sdkTuple('REALTIME_SIGNAL_TYPES').length).toBeGreaterThan(3);
+  });
+
+  it('listens for no socket event by name but `rt`, and the runtime offer hears only what the API sends it', () => {
+    const appRoot = path.resolve(import.meta.dirname, '../../../app');
+    const sdkRoot = path.resolve(import.meta.dirname, '../../../sdk');
+    const onNames = new Set<string>();
+    const protocol = new Set<string>();
+    let files = 0;
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (['node_modules', '.expo', 'dist', '__tests__'].includes(entry.name)) continue;
+          walk(full);
+          continue;
+        }
+        if (!/\.tsx?$/.test(entry.name)) continue;
+        files += 1;
+        const source = fs.readFileSync(full, 'utf8');
+        for (const line of source.split('\n')) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
+          for (const match of line.matchAll(/\bsocket\??\.on\(\s*['"]([^'"]+)['"]/g))
+            onNames.add(match[1] as string);
+        }
+        // The formatter may break the call after its parenthesis: matched across lines.
+        for (const match of source.matchAll(/\.listen\(\s*['"]([^'"]+)['"]/g))
+          protocol.add(match[1] as string);
+      }
+    };
+    walk(path.join(appRoot, 'src'));
+    walk(path.join(sdkRoot, 'src'));
+    expect(files).toBeGreaterThan(100);
+    for (const transport of ['connect', 'disconnect', 'connect_error']) onNames.delete(transport);
+    // `rt` is read by `realtime/connection.ts` through its constant: no other name is listened for.
+    expect([...onNames]).toEqual([]);
+    // The local runtime's own protocol (`lib/inference/user-runtime-bridge.ts` sends both).
+    expect([...protocol].sort()).toEqual(['user-runtime:abort', 'user-runtime:request']);
   });
 });

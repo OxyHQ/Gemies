@@ -35,11 +35,10 @@ export function useMyAgents() {
     },
     enabled: canUsePrivateApi && isAccountCacheReady,
     staleTime: 1000 * 60 * 5,
-    // No presence polling (it re-read the whole list every 30 s for anyone with an external agent).
-    // A connected computer's presence is refreshed when the tab comes back; the server knows the
-    // moment one connects or drops (`external-agents/relay.ts`), and an `external-agents:presence`
-    // socket event invalidating `queryKeys.agents.mine` is where realtime takes over.
-    refetchOnWindowFocus: true,
+    // No timer: the account's realtime connection keeps it (`useAppRealtime`) — a thread's newest
+    // line and unread count from `conversation`, a computer online or away from `presence`, a gemie
+    // made, edited or deleted on any device from `gemies` — and a reconnect reads it once.
+    refetchOnWindowFocus: false,
   });
   // This handshake is not persisted. Each agent retries independently, without
   // blocking the sidebar or requiring another list refresh after an outage.

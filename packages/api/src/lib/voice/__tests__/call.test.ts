@@ -547,11 +547,6 @@ describe('barge-in and transcripts', () => {
             .map((event) => event.messageId),
         ),
       ).toEqual(new Set([message.id]));
-    // Announced to the person's other screens once each, under the same ids.
-    const announced = h.announce.mock.calls.flatMap(([, , messages]) =>
-      (messages as Array<{ id: string }>).map((message) => message.id),
-    );
-    expect(announced).toEqual(stored.map((message) => message.id));
   });
 
   it('truncates the interrupted item at what was played and stores the answer whole, marked', async () => {
@@ -620,7 +615,6 @@ describe('barge-in and transcripts', () => {
       }),
     ]);
     expect(h.sink.find('messages.saved')[0]?.conversationId).toBe('conv-1');
-    expect(h.announce).toHaveBeenCalled();
     await h.call.end('hangup');
   });
 

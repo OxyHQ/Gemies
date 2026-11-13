@@ -31,6 +31,7 @@ import { upsertConversation } from '../db/chat/conversationRepository.js';
 import { insertMessages, listRecentTurns } from '../db/chat/messageRepository.js';
 import { getDb } from '../db/index.js';
 import { recordGemieBotMessage, type GemieBotRow } from '../db/integrations/gemieBotRepository.js';
+import { publishConversation } from './realtime/conversations.js';
 
 /**
  * Per-(bot, sender) limit. The bot is public and its turns are paid, so one sender flooding it
@@ -200,6 +201,8 @@ export async function answerGemieTelegramMessage(
       },
     ]);
     await recordGemieBotMessage(db, bot.id);
+    // Seen in Telegram, so never unread; the app's row and an open copy follow it.
+    void publishConversation(bot.userId, conversationId, { reload: true });
     return reply;
   } finally {
     if (!settled) await safeRefund(reservation, 'Telegram bot turn ended without charging');

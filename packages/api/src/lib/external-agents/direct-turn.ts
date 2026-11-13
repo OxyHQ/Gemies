@@ -5,6 +5,7 @@ import type { SSEWriter } from '../chat/sse-writer.js';
 import { saveConversationResult, type LifecycleContext } from '../chat-lifecycle.js';
 import { externalHistoryOf } from './history.js';
 import { runExternalAgentTurn } from './turn.js';
+import type { ActorActivity } from '../realtime/activity.js';
 
 /**
  * Serves a direct (1:1) chat turn with an external agent (ADR 0030): the same OpenAI-shaped stream
@@ -28,6 +29,8 @@ export async function serveExternalDirectTurn(input: {
   beforeFinish?: () => Promise<void>;
   /** Server-loaded observations, encoded in the existing external task interface. */
   reactionContext?: string;
+  /** What the person's other surfaces show while the agent answers (`lib/realtime/activity.ts`). */
+  activity?: ActorActivity;
 }): Promise<boolean> {
   const { res, sse, requestId, modelId } = input;
   const { task, history } = externalHistoryOf(input.messages);
@@ -49,6 +52,7 @@ export async function serveExternalDirectTurn(input: {
     ...(input.stream
       ? {
           onTextDelta: (text: string) => {
+            input.activity?.set('writing');
             if (res.writableEnded) return;
             writeContentChunk(res, requestId, modelId, text);
           },

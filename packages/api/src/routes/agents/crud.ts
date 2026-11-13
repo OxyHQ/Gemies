@@ -37,7 +37,7 @@ import {
 } from '../../lib/agent-identity.js';
 import { gemieOxyAccountId } from '../../lib/gemie-oxy-actor.js';
 import { isAgentColor } from '../../lib/agent-color.js';
-import { latestMessagePerAgent } from '../../db/chat/conversationRepository.js';
+import { latestMessagePerAgent, unreadPerAgent } from '../../db/chat/conversationRepository.js';
 import {
   AGENT_ACCESS,
   AGENT_ARCHETYPES,
@@ -81,6 +81,7 @@ import {
   refuseUnknownModel,
   withChildLists,
 } from '../../lib/agent-update.js';
+import { publishGemieChanged } from '../../lib/realtime/account.js';
 
 const router = Router();
 
@@ -148,9 +149,15 @@ router.get('/me', authenticateToken, async (req: Request, res: Response) => {
      * HTTP call to Oxy: a database round trip queued behind a network one, on
      * every sidebar load.
      */
-    const [identified, latest, externalLinks] = await Promise.all([
+    const [identified, latest, unread, externalLinks] = await Promise.all([
       Promise.all(owned.map(withChildLists)).then(attachAgentIdentities),
       latestMessagePerAgent(
+        getDb(),
+        req.user.id,
+        owned.map((agent) => agent._id),
+      ),
+      // The row's badge: what arrived in its thread while the person was not watching.
+      unreadPerAgent(
         getDb(),
         req.user.id,
         owned.map((agent) => agent._id),
@@ -172,6 +179,7 @@ router.get('/me', authenticateToken, async (req: Request, res: Response) => {
           // as its own line rather than as a gap.
           lastMessage: thread?.lastMessage ?? null,
           lastMessageAt: thread?.updatedAt.toISOString() ?? null,
+          unreadCount: unread.get(agent._id) ?? 0,
           external: linkOf.has(agent._id)
             ? { cli: linkOf.get(agent._id)?.cli, online: presence.get(agent._id) === true }
             : null,
@@ -589,6 +597,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
         ),
       );
     }
+    void publishGemieChanged(req.user.id, agent._id, 'created');
     res.status(201).json({ agent: await attachAgentIdentity(withoutInternalAgentBindings(agent)) });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
@@ -791,6 +800,7 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
     if (deleted === 0) {
       return res.status(404).json({ error: 'Agent not found' });
     }
+    void publishGemieChanged(req.user.id, id, 'deleted');
 
     res.json({ success: true });
   } catch (error: unknown) {

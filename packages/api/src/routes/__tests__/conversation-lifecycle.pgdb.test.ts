@@ -2,16 +2,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
-const reactionNotifications = vi.hoisted(
-  () => [] as Array<{ room: string; event: string; data: unknown }>,
-);
-vi.mock('../../socket.js', () => ({
-  getIO: () => ({
-    to: (room: string) => ({
-      emit: (event: string, data: unknown) => reactionNotifications.push({ room, event, data }),
-    }),
-  }),
+const published = vi.hoisted(() => [] as Array<{ userId: string; type: string; data: unknown }>);
+// What the routes publish on the account's realtime connection (`lib/realtime/publish.ts`).
+vi.mock('../../lib/realtime/publish.js', () => ({
+  publishAccountEvent: async (userId: string, type: string, data: unknown) => {
+    published.push({ userId, type, data });
+  },
+  signalAccount: () => undefined,
+  signalTopic: () => undefined,
+  bindRealtimeServer: () => undefined,
+  accountRoom: (userId: string) => `user:${userId}`,
 }));
+const reactionNotifications = () => published.filter((entry) => entry.type === 'message.reaction');
 
 /**
  * The conversation lifecycle — epic #139 workstream 6, *"`/alia/chat` or its
@@ -179,7 +181,7 @@ beforeEach(async () => {
   await db.delete(conversations).where(sql`${conversations.oxyUserId} in (${ALICE.id}, ${BOB.id})`);
   await db.delete(speechClips).where(sql`${speechClips.oxyUserId} in (${ALICE.id}, ${BOB.id})`);
   removedObjects.length = 0;
-  reactionNotifications.length = 0;
+  published.length = 0;
   vi.clearAllMocks();
 });
 
@@ -633,10 +635,10 @@ describe('every stage of the lifecycle is scoped to the owner (#139 ws6)', () =>
     expect(first.status).toBe(200);
     expect(first.body).toEqual({ messageId: 'msg-1', reactions: ['❤️'], revision: 1, mutationId });
     expect(retry.body).toEqual(first.body);
-    expect(reactionNotifications).toEqual(
+    expect(reactionNotifications()).toEqual(
       Array.from({ length: 2 }, () => ({
-        room: `user:${ALICE.id}`,
-        event: 'conversation:reaction',
+        userId: ALICE.id,
+        type: 'message.reaction',
         data: { conversationId, ...(first.body as object) },
       })),
     );
@@ -655,7 +657,7 @@ describe('every stage of the lifecycle is scoped to the owner (#139 ws6)', () =>
       body: { emoji: '❤️', active: false, mutationId: randomUUID() },
     });
     expect(removed.body).toMatchObject({ messageId: 'msg-1', reactions: [], revision: 2 });
-    expect(reactionNotifications).toHaveLength(3);
+    expect(reactionNotifications()).toHaveLength(3);
   });
 
   it('does not let a second user write into it', async () => {
@@ -699,6 +701,7 @@ describe('every stage of the lifecycle is scoped to the owner (#139 ws6)', () =>
         ['delete', '/:id/messages'],
         ['post', '/:id/share'],
         ['delete', '/:id/share'],
+        ['post', '/:id/read'],
         ['delete', '/:id'],
       ].sort(),
     );

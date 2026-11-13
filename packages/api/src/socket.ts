@@ -6,17 +6,18 @@ import { getRedisClient, getRedisSubClient } from './lib/redis.js';
 import { log } from './lib/logger.js';
 import { oxy } from './lib/oxy.js';
 import { appOriginsFor } from './lib/cors-origins.js';
-import { getDb } from './db/index.js';
-import { loadAgentForActor } from './lib/agent-account.js';
-import {
-  accountHasSessionWithAgent,
-  agentSessionIsOwnedBy,
-} from './db/agents/agentSessionRepository.js';
 import {
   deliverUserRuntimeMessage,
   userRuntimeRoom,
   type UserRuntimePresence,
 } from './lib/inference/user-runtime-bridge.js';
+import {
+  accountRoom,
+  bindRealtimeServer,
+  signalAccount,
+  signalTopic,
+} from './lib/realtime/publish.js';
+import { attachRealtimeHandlers } from './lib/realtime/socket-handlers.js';
 
 /** Read the authenticated user id planted on the socket by `oxy.middleware.socket()`. */
 function socketUserId(socket: Socket): string | null {
@@ -38,22 +39,6 @@ function socketAccessToken(socket: Socket): string | null {
   const token = socket.data?.token;
   if (typeof token === 'string' && token.length > 0) return token;
   return null;
-}
-
-/**
- * True if the authenticated user owns the given agent session.
- *
- * The `/^[a-f0-9]{24}$/` shape check this opened with is GONE with the ids it
- * described. Ids are uuid v7 now, so it rejected every real session — and its
- * failure mode is silent: a `subscribe-agent-session` that returns without
- * joining and without an error, so the agent panel simply never receives an
- * event and looks like a stalled run.
- *
- * An EXISTS, not a fetch-then-compare: a permission gate that hands back the row
- * is one edit from being a leak.
- */
-async function ownsAgentSession(userId: string, sessionId: string): Promise<boolean> {
-  return await agentSessionIsOwnedBy(getDb(), sessionId, userId);
 }
 
 /**
@@ -86,6 +71,12 @@ export function initSocket(server: http.Server) {
     // same-origin.
     ...createOxySocketCors({ appOrigins: appOriginsFor(process.env.WEB_URL) }),
     transports: ['websocket', 'polling'],
+    // Engine.IO's own heartbeat, stated rather than defaulted because two idle timeouts sit in
+    // front of this socket: the edge ALB's 60 s (`oxy-infra` alb-edge.tf) and Cloudflare's 100 s
+    // for a proxied WebSocket. A ping every 25 s keeps the connection busy well inside both, and a
+    // client that misses one for 20 s more is gone (`docs/realtime.mdx`).
+    pingInterval: 25_000,
+    pingTimeout: 20_000,
     // Upgrades to other paths belong to `lib/websocket-upgrades.ts`, which
     // refuses unknown ones itself. engine.io's default ends any upgrade it did
     // not serve after 1 s unless `socket.bytesWritten > 0`, which an upgraded
@@ -138,51 +129,23 @@ export function initSocket(server: http.Server) {
   // invalid / expired tokens before any `connection` handler runs.
   io.use(oxy.middleware.socket());
 
+  bindRealtimeServer(io);
+
   io.on('connection', (socket) => {
     const userId = socketUserId(socket);
+    if (!userId) {
+      socket.disconnect(true);
+      return;
+    }
 
-    socket.on('subscribe-agent', async (agentId: string) => {
-      if (typeof agentId !== 'string' || agentId.length === 0 || agentId.length > 256) return;
-      if (!userId) return;
-      // A user may observe an agent's activity room only if they may ACT AS its
-      // bot account, or currently have a session with it. Agent-activity events
-      // carry tool calls, file changes, and screenshots from a running session.
-      // The 24-hex shape check that used to gate this is gone with the ObjectIds
-      // it described — see `ownsAgentSession`.
-      //
-      // The operator ground is `account:act_as` at Oxy (a `local` gemie's owner,
-      // ADR 0036), not the `author` column: this room shows an agent's live work,
-      // and who may watch that is the same question as who may edit it. The
-      // verdict is cached, so a subscription storm costs one round trip rather
-      // than one each.
-      const accessToken = socketAccessToken(socket);
-      const operator =
-        accessToken !== null &&
-        (
-          await loadAgentForActor(getDb(), {
-            agentId,
-            oxyUserId: userId,
-            accessToken,
-            // A room SUBSCRIPTION — a read, and the one place a cached verdict
-            // earns its keep: a client reconnecting re-subscribes to every room
-            // it was in, which is a burst of the same question.
-            cache: true,
-          })
-        ).ok;
-      const hasSession = operator || (await accountHasSessionWithAgent(getDb(), agentId, userId));
-      if (!operator && !hasSession) return;
-      Promise.resolve(socket.join(`agent:${agentId}`)).catch((err) =>
-        log.general.warn({ err }, 'socket.join agent failed'),
-      );
-    });
-
-    socket.on('subscribe-agent-session', async (sessionId: string) => {
-      if (typeof sessionId !== 'string' || sessionId.length === 0 || sessionId.length > 256) return;
-      if (!userId || !(await ownsAgentSession(userId, sessionId))) return;
-      Promise.resolve(socket.join(`agent-session:${sessionId}`)).catch((err) =>
-        log.general.warn({ err }, 'socket.join agent-session failed'),
-      );
-    });
+    // The account's own room: every frame for this person (`lib/realtime/publish.ts`). Derived from
+    // the authenticated user and never from anything the client sends, so a connection hears its
+    // own account and nobody else's. Joined here, once, rather than on request: it is a property of
+    // the connection, and a request a client could forget is a client that hears nothing.
+    Promise.resolve(socket.join(accountRoom(userId))).catch((err) =>
+      log.general.warn({ err }, 'socket.join account room failed'),
+    );
+    attachRealtimeHandlers(socket, userId, socketAccessToken(socket));
 
     /**
      * A device OFFERING its own inference runtime — a browser tab with Ollama on
@@ -194,19 +157,19 @@ export function initSocket(server: http.Server) {
      * that could serve it was closed. It is also what lets the person's OTHER
      * devices see the list — a phone cannot reach the laptop's `localhost`, so
      * without this announcement a local model would be unusable anywhere but
-     * the machine running it.
+     * the machine running it. The other devices hear `runtimes` the moment one
+     * joins or leaves, and read the list again.
      *
      * The endpoint URL is deliberately NOT part of the offer. It never leaves
      * the browser that talks to it.
      */
     socket.on('subscribe-user-runtime', (offer: unknown) => {
-      if (!userId) return;
       const presence = runtimeOffer(offer);
       if (!presence) return;
       socket.data.localRuntime = presence;
-      Promise.resolve(socket.join(userRuntimeRoom(userId))).catch((err) =>
-        log.general.warn({ err }, 'socket.join user-runtime failed'),
-      );
+      Promise.resolve(socket.join(userRuntimeRoom(userId)))
+        .then(() => signalAccount(userId, 'runtimes', {}))
+        .catch((err) => log.general.warn({ err }, 'socket.join user-runtime failed'));
     });
 
     /**
@@ -216,11 +179,18 @@ export function initSocket(server: http.Server) {
      * model list.
      */
     socket.on('unsubscribe-user-runtime', () => {
-      if (!userId) return;
+      const offered = socket.data.localRuntime !== undefined;
       delete socket.data.localRuntime;
-      Promise.resolve(socket.leave(userRuntimeRoom(userId))).catch((err) =>
-        log.general.warn({ err }, 'socket.leave user-runtime failed'),
-      );
+      Promise.resolve(socket.leave(userRuntimeRoom(userId)))
+        .then(() => {
+          if (offered) signalAccount(userId, 'runtimes', {});
+        })
+        .catch((err) => log.general.warn({ err }, 'socket.leave user-runtime failed'));
+    });
+
+    // A tab that offered a runtime and closed takes its models with it.
+    socket.on('disconnect', () => {
+      if (socket.data.localRuntime !== undefined) signalAccount(userId, 'runtimes', {});
     });
 
     /**
@@ -231,13 +201,13 @@ export function initSocket(server: http.Server) {
      * run's owner in the bridge. The run id alone is not an authorisation.
      */
     socket.on('user-runtime:head', (frame: { runId?: unknown; status?: unknown }) => {
-      if (!userId || typeof frame?.runId !== 'string') return;
+      if (typeof frame?.runId !== 'string') return;
       const status = typeof frame.status === 'number' ? frame.status : 200;
       deliverUserRuntimeMessage(userId, { runId: frame.runId, kind: 'head', status });
     });
 
     socket.on('user-runtime:chunk', (frame: { runId?: unknown; data?: unknown }) => {
-      if (!userId || typeof frame?.runId !== 'string') return;
+      if (typeof frame?.runId !== 'string') return;
       const { data } = frame;
       const bytes =
         typeof data === 'string'
@@ -252,12 +222,12 @@ export function initSocket(server: http.Server) {
     });
 
     socket.on('user-runtime:end', (frame: { runId?: unknown }) => {
-      if (!userId || typeof frame?.runId !== 'string') return;
+      if (typeof frame?.runId !== 'string') return;
       deliverUserRuntimeMessage(userId, { runId: frame.runId, kind: 'end' });
     });
 
     socket.on('user-runtime:error', (frame: { runId?: unknown; message?: unknown }) => {
-      if (!userId || typeof frame?.runId !== 'string') return;
+      if (typeof frame?.runId !== 'string') return;
       /**
        * The runtime's own failure text is the CALLER'S OWN environment talking
        * back, so it is capped rather than sanitised — but never trusted for
@@ -269,19 +239,6 @@ export function initSocket(server: http.Server) {
           : 'The local runtime failed.';
       deliverUserRuntimeMessage(userId, { runId: frame.runId, kind: 'error', message });
     });
-
-    // Room is always derived from the authenticated user — any client-supplied
-    // userId is ignored to prevent subscribing to another user's room. Two
-    // names, one room: what a client wants from it differs, who may join does not.
-    const joinOwnUserRoom = () => {
-      if (!userId) return;
-      Promise.resolve(socket.join(`user:${userId}`)).catch((err) =>
-        log.general.warn({ err }, 'socket.join user room failed'),
-      );
-    };
-    socket.on('subscribe-notifications', joinOwnUserRoom);
-    // Alia's live state (`alia:activity`), for every "Ask Alia" button the person has open.
-    socket.on('subscribe-alia-activity', joinOwnUserRoom);
   });
   return io;
 }
@@ -341,19 +298,6 @@ export interface AgentActivityEvent {
   };
 }
 
-export interface AudioJobUpdate {
-  jobId: string;
-  status: 'completed' | 'failed';
-  audioUrl?: string;
-  error?: string;
-}
-
-export function emitAudioJobUpdate(userId: string, data: AudioJobUpdate) {
-  if (io) {
-    io.to(`user:${userId}`).emit('audio:job-update', data);
-  }
-}
-
 /** What Alia is doing for a person, coarsely: enough to animate her avatar, nothing of the work itself. */
 export type AliaActivityState = 'idle' | 'thinking' | 'working' | 'writing';
 
@@ -365,22 +309,18 @@ export interface AliaActivityEvent {
 }
 
 /**
- * Tell a person's open surfaces what their agent run is doing, so an "Ask Alia"
- * button reacts when a run is working in the background. Carries a state, never
- * content: tool arguments and screenshots stay on the owner-checked agent rooms.
+ * `alia:activity`, the frame `@gemies/sdk` before 6.0 (and `@alia.onl/sdk`) listens for to animate
+ * the "Ask Alia" button that every Oxy app embeds. It is a contract between Oxy products, kept until
+ * those apps are on `@gemies/sdk` 6, which reads the same state from `activity` on `rt`
+ * (`docs/realtime.mdx`, "Compatibility"); nothing in this repository listens for it.
  */
-export function emitAliaActivity(userId: string, data: AliaActivityEvent) {
-  if (io) {
-    io.to(`user:${userId}`).emit('alia:activity', { eventVersion: 1, ...data });
-  }
+export function emitLegacyAliaActivity(userId: string, data: AliaActivityEvent) {
+  io?.to(accountRoom(userId)).emit('alia:activity', { eventVersion: 1, ...data });
 }
 
+/** An agent run's detailed activity, to whoever follows the agent or the session (`rt:subscribe`). */
 export function emitAgentActivity(agentId: string, data: AgentActivityEvent) {
-  if (io) {
-    io.to(`agent:${agentId}`).emit('agent-activity', { agentId, ...data });
-    // Also emit to session-specific room for task card subscribers
-    if (data.sessionId) {
-      io.to(`agent-session:${data.sessionId}`).emit('agent-activity', { agentId, ...data });
-    }
-  }
+  const frame = { agentId, ...data };
+  signalTopic(`agent:${agentId}`, 'agent.activity', frame);
+  if (data.sessionId) signalTopic(`agent-session:${data.sessionId}`, 'agent.activity', frame);
 }

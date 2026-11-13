@@ -420,8 +420,11 @@ function GemieConversationView({
     [agentId, group],
   );
   const participants = useMemo(
-    () => (group === undefined ? consulted : groupParticipants(group)),
-    [group, consulted],
+    () => ({
+      ...(group === undefined ? consulted : groupParticipants(group)),
+      ...(conversationId === undefined ? {} : { conversationId }),
+    }),
+    [group, consulted, conversationId],
   );
   const asked = usePendingQuestions(messages, isLoading);
   const gemieId = gemieThread?.gemieId;

@@ -1,4 +1,6 @@
-/** The durable reaction state reaches only the owner's existing authenticated socket room. */
+import { publishAccountEvent } from '../../realtime/publish.js';
+
+/** The durable reaction state, for every surface of the owner (`message.reaction` on `rt`). */
 export interface ConversationReactionUpdate {
   readonly conversationId: string;
   readonly messageId: string;
@@ -7,11 +9,10 @@ export interface ConversationReactionUpdate {
   readonly mutationId: string;
 }
 
-/** Call after the mutation commits; HTTP retry and conversation reload repair missed delivery. */
+/** Call after the mutation commits; a reconnecting client replays it from the account's log. */
 export async function publishConversationReaction(
   userId: string,
   update: ConversationReactionUpdate,
 ): Promise<void> {
-  const { getIO } = await import('../../../socket.js');
-  getIO()?.to(`user:${userId}`).emit('conversation:reaction', update);
+  await publishAccountEvent(userId, 'message.reaction', update);
 }

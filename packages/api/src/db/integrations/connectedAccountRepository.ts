@@ -24,6 +24,8 @@ import { agentIdentityColumns, readStoredIdentity } from '../agents/storedIdenti
 export interface ConnectedAccountRow {
   _id: string;
   id: string;
+  /** The person whose account it is. */
+  oxyUserId: string;
   platform: GemieAccountPlatform;
   displayName: string | null;
   phoneNumber: string | null;
@@ -44,6 +46,7 @@ export interface ConnectedAccountRow {
 
 const COLUMNS = {
   id: connectedAccounts.id,
+  oxyUserId: connectedAccounts.oxyUserId,
   platform: connectedAccounts.platform,
   displayName: connectedAccounts.displayName,
   phoneNumber: connectedAccounts.phoneNumber,
@@ -411,7 +414,6 @@ export async function findConnectedAccountBySession(
   const rows = await db
     .select({
       ...COLUMNS,
-      oxyUserId: connectedAccounts.oxyUserId,
       answeringAgentId: connectedAccountGrants.agentId,
     })
     .from(connectedAccounts)
@@ -433,8 +435,8 @@ export async function findConnectedAccountBySession(
   // No unique constraint exists on provider session ids. Ambiguity never chooses an owner.
   const row = rows.length === 1 ? rows[0] : undefined;
   if (!row) return null;
-  const { oxyUserId, answeringAgentId, ...account } = row;
-  return { ...withLegacyId(account), oxyUserId, answeringAgentId };
+  const { answeringAgentId, ...account } = row;
+  return { ...withLegacyId(account), answeringAgentId };
 }
 
 export async function setConnectedAccountTask(

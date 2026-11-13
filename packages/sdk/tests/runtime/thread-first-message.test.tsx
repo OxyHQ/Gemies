@@ -61,6 +61,8 @@ vi.mock('../../src/runtime/conversations', () => {
         world.deleted.push(id);
       },
     }),
+    useReadConversation: () => async () => ({ messages: [] }),
+    useMarkConversationRead: () => () => undefined,
     useClearConversation: () => ({ mutateAsync: async () => {} }),
   };
 });

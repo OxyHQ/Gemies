@@ -163,13 +163,14 @@ person's words from the session's own input transcription, and the answer from i
 output transcript with the tool round trips. An interrupted answer is stored whole,
 with `messages.interrupted_after_ms` = what was heard. A response with no output
 stores nothing. The open client is told twice: `messages.saved` on the call's socket
-and `conversation:message` on socket.io, which appends to the open thread. The first
+and a `conversation` frame on the realtime connection ([Realtime](./realtime.mdx)), which
+appends to the open thread on every device. The first
 words of a new conversation title it.
 
 **One id per message, from the first word.** Every `transcript.delta|done` and
 `tool.started|finished` names `messageId`, the id the message is stored and announced
 under; the client draws one message per `messageId` (an assistant turn's items and its
-tools are one message, as stored). So the stored copy that `conversation:message`
+tools are one message, as stored). So the stored copy that the `conversation` frame
 brings is the message already on screen, never a second one, and once a message is
 saved the thread shows the stored copy (`lib/call-thread.ts`): the one a reload or a
 resume shows, with its tools' arguments and results, which the call's socket never

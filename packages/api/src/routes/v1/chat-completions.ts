@@ -46,6 +46,8 @@ import {
   AgentTurnCoordinator,
   type CoordinatedAgentTurn,
 } from '../../lib/agent/agent-turn-coordinator.js';
+import { startActorActivity, type ActorActivity } from '../../lib/realtime/activity.js';
+import { agentPromptName } from '../../lib/agent-identity.js';
 
 const router = Router();
 
@@ -139,6 +141,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
    */
   const providerAbort = new AbortController();
   let releaseActivity: (() => Promise<void>) | undefined;
+  let activity: ActorActivity | undefined;
   const globalTimer = setTimeout(() => {
     state.globalTimedOut = true;
     log.v1.error('Global request timeout after 80s');
@@ -362,6 +365,18 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       }
     }
 
+    // "Pepe is typing…" on the person's other surfaces while this turn runs (`docs/realtime.mdx`);
+    // the device that sent it reads the turn itself from this stream. Ended in `finally`.
+    if (req.user?.id && conversationId) {
+      activity = startActorActivity({
+        oxyUserId: req.user.id,
+        conversationId,
+        agentId: linkedAgent._id,
+        name: agentPromptName(linkedAgent),
+      });
+      activity.set('thinking');
+    }
+
     // An external agent (ADR 0030) answers from the person's own machine: no tools of ours, no
     // system prompt, no model. The reservation stays unsettled, so the release point refunds it.
     const reactionContext =
@@ -377,6 +392,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       clearTimeout(globalTimer);
       const answered = await serveExternalDirectTurn({
         reactionContext,
+        ...(activity === undefined ? {} : { activity }),
         req,
         res,
         sse,
@@ -614,6 +630,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       assistantMessageId,
       ...(host === undefined ? {} : { originApp: host.app }),
       stepBounds: turnStepBounds(hostAwaitsResults(host)),
+      ...(activity === undefined ? {} : { activity }),
       reasoningEffort,
       convertedMessages,
       truncatedTools,
@@ -709,6 +726,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       }
     } else failTurn(aliaError);
   } finally {
+    activity?.end();
     await releaseActivity?.().catch(() =>
       log.v1.warn({ requestId }, 'Conversation activity cleanup failed'),
     );

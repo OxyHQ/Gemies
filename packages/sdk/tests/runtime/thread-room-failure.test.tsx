@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RoomEvent } from '../../src/runtime/room-events';
 
 const world = vi.hoisted(() => ({
   loading: false,
@@ -33,7 +32,13 @@ vi.mock('../../src/runtime/conversations', () => ({
   useCreateConversation: () => ({ mutateAsync: vi.fn() }),
   useDeleteConversation: () => ({ mutateAsync: vi.fn() }),
   useClearConversation: () => ({ mutateAsync: vi.fn() }),
+  useReadConversation: () => vi.fn(),
+  useMarkConversationRead: () => vi.fn(),
 }));
+vi.mock('../../src/realtime/react', async (original) =>
+  (await import('../support/fake-realtime')).mockRealtimeReact(await original()),
+);
+
 vi.mock('@oxy.so/services/ui/client', () => ({
   useOxy: () => ({ user: null, isAuthenticated: true }),
 }));
@@ -41,19 +46,11 @@ vi.mock('@oxy.so/bloom/toast', () => ({ toast: { error: world.toast } }));
 vi.mock('../../src/runtime/attachment-utils', () => ({ buildMessageContent: vi.fn() }));
 
 import { DEFAULT_LABELS } from '../../src/lib/labels';
-import { GemieRuntimeProvider, type GemieRuntimeHost } from '../../src/runtime/config';
+import { GemieRuntimeProvider } from '../../src/runtime/config';
+import { fakeRealtime } from '../support/fake-realtime';
 import { useConversationThread } from '../../src/runtime/use-conversation-thread';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-let listener: ((event: RoomEvent) => void) | undefined;
-const host: GemieRuntimeHost = {
-  subscribeRoomEvents: (_id, onEvent) => {
-    listener = onEvent;
-    return () => {
-      listener = undefined;
-    };
-  },
-};
 let renderer: ReactTestRenderer | undefined;
 let queryClient: QueryClient;
 function Probe() {
@@ -62,21 +59,26 @@ function Probe() {
 }
 const tree = () => (
   <QueryClientProvider client={queryClient}>
-    <GemieRuntimeProvider host={host}>
+    <GemieRuntimeProvider>
       <Probe />
     </GemieRuntimeProvider>
   </QueryClientProvider>
 );
 const fail = (chainId = 'db-user-message-id') =>
   act(async () => {
-    listener?.({ conversationId: 'c1', chainId, event: 'group.idle', data: { reason: 'error' } });
+    fakeRealtime.push('room', {
+      conversationId: 'c1',
+      chainId,
+      event: 'group.idle',
+      data: { reason: 'error' },
+    });
   });
 beforeEach(() => {
   world.loading = false;
   world.failed = false;
   world.toast.mockClear();
   world.setMessages.mockClear();
-  listener = undefined;
+  fakeRealtime.reset();
   queryClient = new QueryClient();
 });
 afterEach(async () => {

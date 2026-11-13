@@ -24,6 +24,7 @@ import type { ChannelId, ChannelInboundMessage } from '../channels/types.js';
 import { log } from '../logger.js';
 import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { servedModelId, servedReferenceOf } from '../models/power-levels.js';
+import { publishConversation } from '../realtime/conversations.js';
 
 function generateAuthToken(): string {
   return crypto.randomBytes(32).toString('hex');
@@ -237,6 +238,8 @@ export async function processChannelMessage(
           createdAt: new Date(),
         },
       ]);
+      // Read in the channel, so never unread; the app's row and an open copy follow it.
+      void publishConversation(botUser.oxyUserId, conversationId, { reload: true });
     }
   } catch (error: unknown) {
     log.webhook.error({ err: error, channelType }, 'Chat processing error');

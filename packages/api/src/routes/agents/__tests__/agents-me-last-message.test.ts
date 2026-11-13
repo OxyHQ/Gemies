@@ -80,6 +80,7 @@ vi.mock('../../../db/agents/agentRepository.js', () => ({
 }));
 
 vi.mock('../../../db/chat/conversationRepository.js', () => ({
+  unreadPerAgent: vi.fn(async () => new Map<string, number>()),
   latestMessagePerAgent: vi.fn(
     async (_db: unknown, oxyUserId: string, agentIds: readonly string[]) => {
       state.latestCalls.push({ oxyUserId, agentIds });

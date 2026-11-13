@@ -16,6 +16,12 @@ export type {
   UseParticipantsOptions,
 } from './components/GemieParticipants';
 export { GemieParticipantsHeader } from './components/GemieParticipantsHeader';
+export {
+  GemieActivityLine,
+  activityText,
+  useConversationActivityText,
+} from './components/GemieActivityLine';
+export type { GemieActivityLineProps } from './components/GemieActivityLine';
 export type { GemieParticipantsHeaderProps } from './components/GemieParticipantsHeader';
 export { ALIA_GEMIE_ID } from './lib/alia-gemie';
 export { ALIA_LEAD, leadOf } from './lib/participants';

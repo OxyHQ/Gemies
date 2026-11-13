@@ -56,7 +56,7 @@ import { speakableText, splitForSpeech } from './audio-text.js';
 import { speakingVoices } from './voice-roster.js';
 import { log } from '../logger.js';
 import { getSafeErrorMessage } from '../errors/sanitize.js';
-import { getIO } from '../../socket.js';
+import { signalAccount } from '../realtime/publish.js';
 import type { ShowSegment, ShowSpeaker } from '../../db/schema/shows.js';
 
 /** Max concurrent synthesis calls, to stay inside provider rate limits. */
@@ -159,18 +159,15 @@ interface ProgressUpdate {
  * is one.
  */
 function emitProgress(episode: ShowEpisodeRow, update: ProgressUpdate): void {
-  const io = getIO();
-  if (io) {
-    io.to(`user:${episode.userId}`).emit('show:progress', {
-      episodeId: episode.id,
-      seriesId: episode.seriesId,
-      // Only once there IS one. An episode nobody named carries null until the
-      // script writes a title, and emitting that would ask the client to blank
-      // a name rather than to wait for one.
-      ...(episode.title === null ? {} : { title: episode.title }),
-      ...update,
-    });
-  }
+  signalAccount(episode.userId, 'show.progress', {
+    episodeId: episode.id,
+    seriesId: episode.seriesId,
+    // Only once there IS one. An episode nobody named carries null until the
+    // script writes a title, and emitting that would ask the client to blank
+    // a name rather than to wait for one.
+    ...(episode.title === null ? {} : { title: episode.title }),
+    ...update,
+  });
 }
 
 /**

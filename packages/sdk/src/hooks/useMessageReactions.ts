@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { useLabels } from '../lib/labels';
 import { useGemieApi } from '../runtime/api';
-import { useGemieRuntime } from '../runtime/config';
 import { GEMIES_API_ROUTES } from '../runtime/model';
 import {
   MessageReactionController,
@@ -13,6 +12,7 @@ import {
   type MessageReactionSnapshot,
 } from '../runtime/message-reactions';
 import { updateReactionCaches } from '../runtime/reaction-cache';
+import { useGemieRealtime } from '../realtime/react';
 
 const NONE: readonly string[] = [];
 
@@ -28,7 +28,6 @@ export function useMessageReactions({
 } = {}) {
   const { t } = useLabels();
   const api = useGemieApi();
-  const { host } = useGemieRuntime();
   const { user } = useOxy();
   const queryClient = useQueryClient();
   const [version, changed] = useReducer((value: number) => value + 1, 0);
@@ -68,21 +67,17 @@ export function useMessageReactions({
     return () => controller.dispose();
   }, [controller]);
 
+  // Reactions changed anywhere — another device, a gemie — arrive as `message.reaction`.
   const subscriptions = JSON.stringify([...new Set(conversationIds)].sort());
-  const subscribe = host.subscribeConversationReactions;
+  const realtime = useGemieRealtime();
   useEffect(() => {
-    if (!enabled || !subscribe) return;
-    const ids: string[] = JSON.parse(subscriptions);
-    const unsubscribers = ids.map((conversationId) =>
-      subscribe(conversationId, (value) => {
-        const update = readMessageReactionUpdate(value);
-        if (update?.conversationId === conversationId) controller.receive(update);
-      }),
-    );
-    return () => {
-      for (const unsubscribe of unsubscribers) unsubscribe();
-    };
-  }, [controller, enabled, subscribe, subscriptions]);
+    if (!enabled || !realtime) return;
+    const ids = new Set<string>(JSON.parse(subscriptions));
+    return realtime.on('message.reaction', (frame) => {
+      const update = readMessageReactionUpdate(frame.data);
+      if (update && ids.has(update.conversationId)) controller.receive(update);
+    });
+  }, [controller, enabled, realtime, subscriptions]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: each update refreshes memoized rows
   const reactionsOf = useCallback(

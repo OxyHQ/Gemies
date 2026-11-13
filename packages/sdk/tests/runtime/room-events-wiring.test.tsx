@@ -3,7 +3,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * The room's socket (`host.subscribeRoomEvents`) and the chat request (SSE) both draw a group's
+ * The room's socket (`room` frames on the realtime connection) and the chat request (SSE) both draw a group's
  * members: over a mocked transport and a fake socket, the thread shows each member once, a member
  * still speaking when the request ends (`room_continues`) goes on over the socket, and the
  * subscription follows the open conversation.
@@ -39,9 +39,12 @@ vi.mock('@oxy.so/services/ui/client', async () => ({
   }),
 }));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast: { error: vi.fn() } }));
+vi.mock('../../src/realtime/react', async (original) =>
+  (await import('../support/fake-realtime')).mockRealtimeReact(await original()),
+);
 
-import { GemieRuntimeProvider, type GemieRuntimeHost } from '../../src/runtime/config';
-import type { RoomEvent } from '../../src/runtime/room-events';
+import { GemieRuntimeProvider } from '../../src/runtime/config';
+import { fakeRealtime } from '../support/fake-realtime';
 import { createRoomLedger } from '../../src/runtime/room-events';
 import { useConversationStream } from '../../src/runtime/use-conversation-stream';
 import { ROOM_SILENCE_MS, useRoomEvents } from '../../src/runtime/use-room-events';
@@ -50,17 +53,6 @@ import { useMemo } from 'react';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const NADIA = { id: 'nadia', name: 'Nadia', handle: 'nadia' };
-let listeners: { conversationId: string; listener: (event: RoomEvent) => void }[] = [];
-let unsubscribed = 0;
-const subscribeRoomEvents = vi.fn((conversationId: string, listener: (e: RoomEvent) => void) => {
-  const entry = { conversationId, listener };
-  listeners.push(entry);
-  return () => {
-    unsubscribed += 1;
-    listeners = listeners.filter((l) => l !== entry);
-  };
-});
-const host: GemieRuntimeHost = { subscribeRoomEvents };
 const onRoomFailure = vi.fn();
 
 let api: ReturnType<typeof useConversationStream>;
@@ -76,7 +68,7 @@ function Probe({ conversationId }: { conversationId: string }) {
 
 const tree = (conversationId: string) => (
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-    <GemieRuntimeProvider apiUrl="http://api.test" host={host}>
+    <GemieRuntimeProvider apiUrl="http://api.test">
       <Probe conversationId={conversationId} />
     </GemieRuntimeProvider>
   </QueryClientProvider>
@@ -89,9 +81,7 @@ const mount = async (conversationId = 'c1') => {
 /** What the server pushes to every socket of the person. */
 const push = (event: string, data: Record<string, unknown>, conversationId = 'c1') =>
   act(async () => {
-    for (const l of [...listeners]) {
-      l.listener({ conversationId, chainId: 'p1', event, data });
-    }
+    fakeRealtime.push('room', { conversationId, chainId: 'p1', event, data });
   });
 
 const frame = (payload: unknown, event?: string) =>
@@ -101,9 +91,7 @@ const sse = (event: string, payload: Record<string, unknown>) =>
 const members = () => api.messages.filter((m) => m.agentInfo !== undefined);
 
 beforeEach(() => {
-  listeners = [];
-  unsubscribed = 0;
-  subscribeRoomEvents.mockClear();
+  fakeRealtime.reset();
   harness.replies.length = 0;
   onRoomFailure.mockClear();
 });
@@ -118,17 +106,16 @@ afterEach(async () => {
 describe('the open group conversation', () => {
   it('subscribes for its conversation and lets go on unmount', async () => {
     await mount('c1');
-    expect(subscribeRoomEvents).toHaveBeenCalledWith('c1', expect.any(Function));
+    expect(fakeRealtime.listening('room')).toBe(1);
     await act(async () => renderer?.unmount());
     renderer = null;
-    expect(unsubscribed).toBe(1);
-    expect(listeners).toEqual([]);
+    expect(fakeRealtime.listening('room')).toBe(0);
   });
 
   it('follows the open conversation: events of the previous one are ignored', async () => {
     await mount('c1');
     await act(async () => renderer?.update(tree('c2')));
-    expect(unsubscribed).toBe(1);
+    expect(fakeRealtime.listening('room')).toBe(1);
     await push('alia.agent_start', { consultId: 'k9', agent: NADIA }, 'c1');
     expect(members()).toHaveLength(0);
     await push('alia.agent_start', { consultId: 'k9', agent: NADIA }, 'c2');

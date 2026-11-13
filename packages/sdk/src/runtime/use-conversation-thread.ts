@@ -19,6 +19,8 @@ import {
   useConversation,
   useCreateConversation,
   useDeleteConversation,
+  useMarkConversationRead,
+  useReadConversation,
 } from './conversations';
 import { gemieQueryKeys } from './query-keys';
 import { reportDroppedAttachments, useStartConversation } from './use-start-conversation';
@@ -26,6 +28,10 @@ import { createRoomLedger } from './room-events';
 import { applyMessageReaction, type MessageReactionSnapshot } from './message-reactions';
 import { useConversationStream } from './use-conversation-stream';
 import { useRoomEvents } from './use-room-events';
+import { useGemieRealtime } from '../realtime/react';
+import { bumpConversation, mergeMessages } from '../realtime/cache';
+import type { RealtimeData } from '../realtime/contract';
+import { normalizeConversationMessages } from './message-history';
 import type { Message, SendOptions } from './types';
 
 export interface UseConversationThreadOptions {
@@ -82,6 +88,11 @@ function isEmptyContent(content: MessageContent | undefined): boolean {
   if (content === undefined || content === null) return true;
   if (typeof content === 'string') return !content.trim();
   return content.length === 0;
+}
+
+/** Whether the screen is in front of the person: a hidden browser tab is not; a mounted native screen is. */
+function inFront(): boolean {
+  return typeof document === 'undefined' || document.visibilityState !== 'hidden';
 }
 
 export function useConversationThread({
@@ -194,25 +205,21 @@ export function useConversationThread({
     };
   }, [isLoading, conversationId, setStreamingConversationId]);
 
-  // Refresh sidebar when streaming finishes (backend auto-saves with AI-generated title)
-  useEffect(() => {
-    if (wasLoadingRef.current && !isLoading && conversationId) {
-      // Immediate refetch (gets saved conversation data)
-      void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.conversations.all });
-      void queryClient.invalidateQueries({
-        queryKey: gemieQueryKeys.conversations.detail(conversationId),
-      });
-      // Delayed fallback for async title generation. Only the list needs it —
-      // re-fetching the whole message detail 5s after every exchange just for
-      // a possible title was a second full refetch per message.
-      const timer = setTimeout(() => {
-        void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.conversations.all });
-      }, 5000);
-      wasLoadingRef.current = isLoading;
-      return () => clearTimeout(timer);
+  // The sidebar row moves as soon as the person sends — WhatsApp's own row jumps on send — and
+  // the server's `conversation` event replaces this guess with what it stored. No refetch: the
+  // turn's saved row, its title and the other devices' copies all arrive as events.
+  const lastUserText = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message?.role === 'user') return getTextFromContent(message.content);
     }
+    return '';
+  }, [messages]);
+  useEffect(() => {
+    if (wasLoadingRef.current === isLoading) return;
     wasLoadingRef.current = isLoading;
-  }, [isLoading, conversationId, queryClient]);
+    if (isLoading && conversationId) bumpConversation(queryClient, conversationId, lastUserText);
+  }, [isLoading, conversationId, queryClient, lastUserText]);
 
   // Sync chatId and load messages when conversation changes or when
   // seeded cache data upgrades to full data (messages go from empty to populated).
@@ -240,17 +247,45 @@ export function useConversationThread({
     setMessages(validMessages);
   }, [conversationId, conversation, conversationQueryLoading, setMessages, messages.length]);
 
-  // An agent wrote into THIS conversation on its own (a result, a check-in).
-  // Appended to what is on screen: the detail refetch alone would not reach an
-  // open chat, whose local messages are only replaced when the id changes. The
-  // server keeps it even if the next turn is sent before this arrives.
+  // What this conversation gained elsewhere — a gemie writing on its own, a group member, another
+  // device — arrives as the `conversation` event: merged by id, so the copy this device drew under
+  // the same id is replaced, never doubled. A rewritten thread (an edit or a regenerate on another
+  // device) is read again, unless a turn of this device is writing it now.
+  const realtime = useGemieRealtime();
+  const readConversation = useReadConversation();
+  const markRead = useMarkConversationRead();
+  // Opening a conversation with something unread reads it.
+  const openUnread = (conversation?.unreadCount ?? 0) > 0;
   useEffect(() => {
-    if (!conversationId) return;
-    return host.subscribeConversationMessages?.(conversationId, (incoming) => {
-      if (!incoming?.id) return;
-      setMessages((prev) => (prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]));
+    if (conversationId && openUnread) markRead(conversationId);
+  }, [conversationId, openUnread, markRead]);
+  const loadingRef = useRef(isLoading);
+  loadingRef.current = isLoading;
+  useEffect(() => {
+    if (!conversationId || !realtime) return;
+    return realtime.on('conversation', (frame) => {
+      const data = frame.data as RealtimeData['conversation'];
+      if (data.conversation.id !== conversationId) return;
+      // Open and in front of the person: what arrived is read (every surface's badge clears).
+      if (data.conversation.unreadCount > 0 && inFront()) markRead(conversationId);
+      if (data.appended?.length) {
+        const incoming = normalizeConversationMessages(data.appended);
+        setMessages((prev) => mergeMessages(prev, incoming));
+      }
+      if (data.reload && !loadingRef.current) {
+        void queryClient
+          .fetchQuery({
+            queryKey: gemieQueryKeys.conversations.detail(conversationId),
+            queryFn: () => readConversation(conversationId),
+            staleTime: 0,
+          })
+          .then((fresh) => {
+            if (!loadingRef.current) setMessages(fresh.messages);
+          })
+          .catch(() => undefined);
+      }
     });
-  }, [conversationId, setMessages, host]);
+  }, [conversationId, realtime, setMessages, queryClient, readConversation, markRead]);
 
   // Send pending initial message for new conversations
   useEffect(() => {
