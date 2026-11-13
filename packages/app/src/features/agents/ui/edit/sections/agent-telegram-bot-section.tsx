@@ -1,11 +1,9 @@
 import {
   type GemieTelegramBot,
-  type TelegramBotProfileResult,
   useGemieTelegramBot,
   useGemieTelegramBotMutations,
 } from '@/features/agents/runtime/use-gemie-telegram-bot';
 import { EditorSelect } from '@/features/agents/ui/edit/sections/editor-select';
-import { useGemieAvatarPhoto } from '@/features/agents/ui/edit/sections/gemie-avatar-photo';
 import { errorMessage } from '@/shared/api/error-utils';
 import { queryKeys } from '@/shared/api/query-keys';
 import { useTranslation } from '@/shared/i18n/use-translation';
@@ -47,17 +45,6 @@ const STATUS_COLOR = {
 
 type T = ReturnType<typeof useTranslation>['t'];
 type Look = { character: AvatarCharacter; color: string | null };
-
-/** Say which parts of the gemie's profile Telegram did not take, when any. */
-function reportProfile(profile: TelegramBotProfileResult | undefined, t: T) {
-  if (!profile) return;
-  const missed = (['name', 'description', 'photo'] as const).filter((part) => !profile[part]);
-  if (missed.length > 0) {
-    toast.error(
-      t(`${K}.profilePartial`, { parts: missed.map((part) => t(`${K}.part.${part}`)).join(', ') }),
-    );
-  }
-}
 
 /** One row of the card, with the hairline above it that every row but the first has. */
 function Row({
@@ -154,15 +141,7 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
 }
 
 /** Pasting a @BotFather token: the gemie gets its own bot. */
-function ConnectBot({
-  gemieId,
-  name,
-  capturePhoto,
-}: {
-  gemieId: string;
-  name: string;
-  capturePhoto: () => Promise<string | null>;
-}) {
+function ConnectBot({ gemieId, name }: { gemieId: string; name: string }) {
   const { t } = useTranslation();
   const { connect } = useGemieTelegramBotMutations(gemieId);
   const [token, setToken] = useState('');
@@ -170,14 +149,9 @@ function ConnectBot({
 
   const submit = async () => {
     try {
-      const { profile } = await connect.mutateAsync({
-        token: token.trim(),
-        ownerPaysAgentTurns: ownerPays,
-        photoJpegBase64: await capturePhoto(),
-      });
+      await connect.mutateAsync({ token: token.trim(), ownerPaysAgentTurns: ownerPays });
       setToken('');
       toast.success(t(`${K}.connected`, { name }));
-      reportProfile(profile, t);
     } catch (error) {
       toast.error(t(`${K}.connectFailed`, { reason: errorMessage(error, t(`${K}.tryAgain`)) }));
     }
@@ -303,13 +277,11 @@ function ConnectedBot({
   name,
   bot,
   look,
-  capturePhoto,
 }: {
   gemieId: string;
   name: string;
   bot: GemieTelegramBot;
   look: Look;
-  capturePhoto: () => Promise<string | null>;
 }) {
   const { t } = useTranslation();
   const { update, remove, link, unlink } = useGemieTelegramBotMutations(gemieId);
@@ -337,11 +309,7 @@ function ConnectedBot({
 
   const save = async (patch: Parameters<typeof update.mutateAsync>[0]) => {
     try {
-      const { profile } = await update.mutateAsync(patch);
-      if (patch.syncProfile) {
-        toast.success(t(`${K}.synced`, { name }));
-        reportProfile(profile, t);
-      }
+      await update.mutateAsync(patch);
     } catch (error) {
       toast.error(t(`${K}.saveFailed`, { reason: errorMessage(error, t(`${K}.tryAgain`)) }));
     }
@@ -367,6 +335,27 @@ function ConnectedBot({
   return (
     <>
       <BotCard bot={bot} name={name} username={username} look={look} t={t} />
+      {/* The bot follows the gemie by itself; only a failure is said, with the one manual control. */}
+      {bot.profileSyncError ? (
+        <Row className="gap-2">
+          <Admonition type="error" size="sm">
+            {[t(`${K}.syncFailed`, { name }), bot.profileSyncError].join('\n')}
+          </Admonition>
+          <View className="flex-row">
+            <Button
+              size="sm"
+              appearance="outline"
+              tone="neutral"
+              leadingIcon={RiRefreshLine}
+              loading={update.isPending && update.variables?.retryProfileSync === true}
+              disabled={update.isPending}
+              onPress={() => save({ retryProfileSync: true })}
+            >
+              {t(`${K}.retrySync`)}
+            </Button>
+          </View>
+        </Row>
+      ) : null}
       <Row className="flex-row flex-wrap gap-2">
         {username ? (
           <>
@@ -390,17 +379,6 @@ function ConnectedBot({
             </Button>
           </>
         ) : null}
-        <Button
-          size="sm"
-          appearance="outline"
-          tone="neutral"
-          leadingIcon={RiRefreshLine}
-          loading={update.isPending && update.variables?.syncProfile === true}
-          disabled={update.isPending}
-          onPress={async () => save({ syncProfile: true, photoJpegBase64: await capturePhoto() })}
-        >
-          {t(`${K}.sync`)}
-        </Button>
       </Row>
       <AgentCreatorField label={t(`${K}.groups`)}>
         <EditorSelect
@@ -494,24 +472,17 @@ export function AgentTelegramBotSection({
 }: {
   agentId: string;
   name: string;
-  /** The gemie's character and colour, drawn as the bot's picture. */
+  /** The gemie's character and colour, drawn beside the bot as the bot shows it. */
   look: Look;
 }) {
   const { t } = useTranslation();
   const { data, isPending, isError } = useGemieTelegramBot(agentId);
-  const photo = useGemieAvatarPhoto(look);
   const bot = !isPending && !isError && data?.available ? data.bot : null;
 
   return (
     <AgentCreatorSection title={t(`${K}.title`)}>
       {bot ? (
-        <ConnectedBot
-          gemieId={agentId}
-          name={name}
-          bot={bot}
-          look={look}
-          capturePhoto={photo.capture}
-        />
+        <ConnectedBot gemieId={agentId} name={name} bot={bot} look={look} />
       ) : (
         <>
           <Intro name={name} t={t} />
@@ -532,11 +503,10 @@ export function AgentTelegramBotSection({
               </Text>
             </Row>
           ) : (
-            <ConnectBot gemieId={agentId} name={name} capturePhoto={photo.capture} />
+            <ConnectBot gemieId={agentId} name={name} />
           )}
         </>
       )}
-      {photo.element}
     </AgentCreatorSection>
   );
 }

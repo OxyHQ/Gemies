@@ -3,8 +3,9 @@
  * gemie (`loadAgentForActor`, the check of `PATCH /agents/:id`; never Alia, whose identity is
  * Oxy's).
  *
- * The owner pastes a @BotFather token; the bot takes the gemie's name, description and picture, and
- * people talk to the gemie there, alone or in groups. The person who connects it pays for its turns
+ * The owner pastes a @BotFather token; the bot shows the gemie's name, description and picture, and
+ * follows them by itself whenever the gemie changes (`lib/gemie-telegram-bot-profile.ts`). People
+ * talk to the gemie there, alone or in groups. The person who connects it pays for its turns
  * when the gemie cannot, if they allow it, and only they can change that.
  */
 
@@ -33,11 +34,10 @@ import {
   setUpTelegramBot,
   tearDownTelegramBot,
   TelegramBotSetupError,
-  telegramProfileOf,
-  updateTelegramBotProfile,
   type TelegramBotLiveStatus,
 } from '../../lib/gemie-telegram-bot-setup.js';
 import { oxyActorFor } from '../../lib/gemie-oxy-actor.js';
+import { syncGemieBotProfileNow } from '../../lib/gemie-telegram-bot-profile.js';
 import { log } from '../../lib/logger.js';
 import { createOxyTask, revokeReleasedTask } from '../../lib/oxy-task-authority.js';
 import { authenticateToken } from '../../middleware/auth.js';
@@ -98,6 +98,11 @@ function present(bot: GemieBotRow, caller: Caller, live: TelegramBotLiveStatus |
     personLinked: bot.linkedTelegramUserId !== null && bot.oxyTaskId !== null,
     totalMessages: bot.totalMessages,
     lastMessageAt: bot.lastMessageAt,
+    /**
+     * The last failure to give the bot its gemie's name, description or picture, while it is still
+     * behind; null otherwise. The only state of the sync the editor shows, with a retry.
+     */
+    profileSyncError: bot.profileSyncError,
     live,
   };
 }
@@ -119,13 +124,6 @@ async function liveStatus(agentId: string): Promise<TelegramBotLiveStatus | null
   return readTelegramBotStatus(token).catch(() => null);
 }
 
-/** A JPEG of the gemie's avatar, base64, drawn by the editor: Telegram takes only JPEG. */
-const photoSchema = z
-  .string()
-  .max(1_500_000)
-  .regex(/^[A-Za-z0-9+/=]+$/)
-  .nullish();
-
 // GET /agents/:id/telegram-bot — the gemie's bot, or none; and whether one can be connected here.
 router.get('/:id/telegram-bot', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -144,12 +142,11 @@ const connectSchema = z
   .object({
     token: z.string().trim().min(10).max(200),
     ownerPaysAgentTurns: z.boolean(),
-    photoJpegBase64: photoSchema,
   })
   .strict();
 
-// PUT /agents/:id/telegram-bot { token, ownerPaysAgentTurns, photoJpegBase64? } — connect a bot,
-// or replace the one the gemie had.
+// PUT /agents/:id/telegram-bot { token, ownerPaysAgentTurns } — connect a bot, or replace the one
+// the gemie had. Its profile follows at once, by itself.
 router.put('/:id/telegram-bot', authenticateToken, async (req: Request, res: Response) => {
   const parsed = connectSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -159,7 +156,7 @@ router.put('/:id/telegram-bot', authenticateToken, async (req: Request, res: Res
     const caller = await callerOf(req, res);
     if (!caller) return;
     const db = getDb();
-    const { token, ownerPaysAgentTurns, photoJpegBase64 } = parsed.data;
+    const { token, ownerPaysAgentTurns } = parsed.data;
     const botId = token.slice(0, token.indexOf(':'));
     if (botId && (await telegramBotTakenByAnother(db, botId, caller.gemie._id))) {
       return res
@@ -167,10 +164,7 @@ router.put('/:id/telegram-bot', authenticateToken, async (req: Request, res: Res
         .json({ error: 'This bot already belongs to another gemie', code: 'bot_taken' });
     }
     const previousToken = await findGemieBotToken(db, caller.gemie._id);
-    const setup = await setUpTelegramBot(
-      token,
-      await telegramProfileOf(caller.gemie, photoJpegBase64),
-    );
+    const setup = await setUpTelegramBot(token);
     const { bot, released } = await saveGemieBot(db, {
       agentId: caller.gemie._id,
       userId: caller.oxyUserId,
@@ -185,6 +179,7 @@ router.put('/:id/telegram-bot', authenticateToken, async (req: Request, res: Res
     if (previousToken && previousToken.split(':')[0] !== setup.botId) {
       await tearDownTelegramBot(previousToken);
     }
+    await syncGemieBotProfileNow(caller.gemie._id);
     res.status(201).json({
       bot: present(bot, caller, {
         username: setup.username,
@@ -195,7 +190,6 @@ router.put('/:id/telegram-bot', authenticateToken, async (req: Request, res: Res
         webhookError: null,
         pendingUpdates: 0,
       }),
-      profile: setup.profile,
     });
   } catch (err: unknown) {
     answerFailure(res, err, 'Connecting a gemie bot');
@@ -206,13 +200,12 @@ const settingsSchema = z
   .object({
     groupReplies: z.enum(BOT_GROUP_REPLIES).optional(),
     ownerPaysAgentTurns: z.boolean().optional(),
-    /** Give the bot the gemie's name, description and picture again. */
-    syncProfile: z.boolean().optional(),
-    photoJpegBase64: photoSchema,
+    /** Retry giving the bot its gemie's profile, after the editor showed it failed. */
+    retryProfileSync: z.literal(true).optional(),
   })
   .strict();
 
-// PATCH /agents/:id/telegram-bot — its settings, or its profile taken from the gemie again.
+// PATCH /agents/:id/telegram-bot — its settings, or a retry of its profile sync after a failure.
 router.patch('/:id/telegram-bot', authenticateToken, async (req: Request, res: Response) => {
   const parsed = settingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid settings' });
@@ -223,7 +216,7 @@ router.patch('/:id/telegram-bot', authenticateToken, async (req: Request, res: R
     const agentId = caller.gemie._id;
     let bot = await findGemieBot(db, agentId);
     if (!bot) return res.status(404).json({ error: 'This gemie has no Telegram bot' });
-    const { groupReplies, ownerPaysAgentTurns, syncProfile, photoJpegBase64 } = parsed.data;
+    const { groupReplies, ownerPaysAgentTurns, retryProfileSync } = parsed.data;
     if (ownerPaysAgentTurns !== undefined) {
       // Consent to be charged is the payer's own.
       if (bot.userId !== caller.oxyUserId) {
@@ -236,18 +229,8 @@ router.patch('/:id/telegram-bot', authenticateToken, async (req: Request, res: R
     if (groupReplies !== undefined) {
       bot = (await setGemieBotSettings(db, agentId, { groupReplies })) ?? bot;
     }
-    let profile: { name: boolean; description: boolean; photo: boolean } | undefined;
-    if (syncProfile) {
-      const token = await findGemieBotToken(db, agentId);
-      if (token) {
-        const updated = await updateTelegramBotProfile(
-          token,
-          await telegramProfileOf(caller.gemie, photoJpegBase64),
-        );
-        profile = updated.profile;
-      }
-    }
-    res.json({ bot: present(bot, caller, await liveStatus(agentId)), profile });
+    if (retryProfileSync) await syncGemieBotProfileNow(agentId);
+    res.json({ bot: present(bot, caller, await liveStatus(agentId)) });
   } catch (err: unknown) {
     answerFailure(res, err, 'Updating a gemie bot');
   }

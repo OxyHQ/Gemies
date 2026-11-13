@@ -6,7 +6,8 @@
  * set the bot up or stop it). Every other read leaves it out.
  */
 
-import { and, eq, gt, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
+import { decrypt } from '../../lib/crypto-utils.js';
 import type { ApiDatabase } from '../index';
 import { bots, type BotGroupReplies, type BotStatus } from '../schema/bots';
 
@@ -32,6 +33,8 @@ export interface GemieBotRow {
   oxyTaskId: string | null;
   totalMessages: number;
   lastMessageAt: Date | null;
+  /** The last failure to give the bot its gemie's profile, while it is still behind; else null. */
+  profileSyncError: string | null;
   createdAt: Date;
 }
 
@@ -49,6 +52,7 @@ const COLUMNS = {
   oxyTaskId: bots.oxyTaskId,
   totalMessages: bots.totalMessages,
   lastMessageAt: bots.lastMessageAt,
+  profileSyncError: bots.profileSyncError,
   createdAt: bots.createdAt,
 } as const;
 
@@ -163,9 +167,16 @@ export async function saveGemieBot(
       .delete(bots)
       .where(and(isGemieBot, eq(bots.agentId, input.agentId)))
       .returning({ oxyTaskId: bots.oxyTaskId });
+    // A new bot is behind its gemie until the first sync gives it the gemie's profile.
     const [row] = await tx
       .insert(bots)
-      .values({ platform: PLATFORM, status: 'active', ...input })
+      .values({
+        platform: PLATFORM,
+        status: 'active',
+        ...input,
+        profileDirtyAt: new Date(),
+        profileSyncAfter: new Date(),
+      })
       .returning(COLUMNS);
     if (!row) throw new Error('The gemie bot was not saved');
     return { bot: asGemieBot(row), released: previous?.oxyTaskId ?? null };
@@ -305,4 +316,146 @@ export async function recordGemieBotMessage(db: Executor, id: string): Promise<v
     .update(bots)
     .set({ totalMessages: sql`${bots.totalMessages} + 1`, lastMessageAt: new Date() })
     .where(eq(bots.id, id));
+}
+
+// ---------------------------------------------------------------------------
+// The bot's profile follows its gemie (`lib/gemie-telegram-bot-profile.ts`)
+// ---------------------------------------------------------------------------
+
+/**
+ * The gemie changed: its bot is behind until the next sync, which waits `debounceMs` so a burst of
+ * edits (an editor autosaving as someone types) becomes one. A new change resets the attempts.
+ * True when the gemie has a bot.
+ */
+export async function markGemieBotProfileBehind(
+  db: Executor,
+  agentId: string,
+  debounceMs: number,
+): Promise<boolean> {
+  const rows = await db
+    .update(bots)
+    .set({
+      profileDirtyAt: new Date(),
+      profileSyncAfter: new Date(Date.now() + debounceMs),
+      profileSyncAttempts: 0,
+    })
+    .where(and(isGemieBot, eq(bots.agentId, agentId)))
+    .returning({ id: bots.id });
+  return rows.length > 0;
+}
+
+/** A bot whose profile is due, claimed for one attempt. */
+export interface ClaimedProfileSync {
+  id: string;
+  agentId: string;
+  token: string;
+  /** When the gemie last changed, as claimed: a sync settles only that change. */
+  dirtyAt: Date;
+  attempts: number;
+  photoKey: string | null;
+}
+
+/**
+ * Claim the next bot whose profile is due, holding it for `leaseMs` so no other instance (or a
+ * second tick) takes it meanwhile; a claim that dies with its instance is due again after it.
+ */
+/** A bot whose token cannot be read is looked at again after this long. */
+const UNREADABLE_RETRY_MS = 6 * 60 * 60_000;
+
+export async function claimDueGemieBotProfile(
+  db: ApiDatabase,
+  leaseMs: number,
+): Promise<ClaimedProfileSync | 'unreadable' | null> {
+  return db.transaction(async (tx) => {
+    const [due] = await tx
+      .select({ id: bots.id })
+      .from(bots)
+      .where(
+        and(
+          isGemieBot,
+          eq(bots.status, 'active'),
+          isNotNull(bots.profileDirtyAt),
+          lte(bots.profileSyncAfter, new Date()),
+        ),
+      )
+      .orderBy(bots.profileSyncAfter)
+      .limit(1)
+      .for('update', { skipLocked: true });
+    if (!due) return null;
+    const [row] = await tx
+      .update(bots)
+      .set({ profileSyncAfter: new Date(Date.now() + leaseMs) })
+      .where(eq(bots.id, due.id))
+      .returning({
+        id: bots.id,
+        agentId: bots.agentId,
+        // Read as stored and decrypted here, so one token that cannot be read never stops the rest.
+        sealedToken: sql<string | null>`${bots.botToken}`,
+        dirtyAt: bots.profileDirtyAt,
+        attempts: bots.profileSyncAttempts,
+        photoKey: bots.profilePhotoKey,
+      });
+    if (!row?.agentId || !row.sealedToken || !row.dirtyAt) return null;
+    let token: string;
+    try {
+      token = decrypt(row.sealedToken);
+    } catch {
+      await tx
+        .update(bots)
+        .set({
+          profileSyncError: 'The bot’s token cannot be read; connect the bot again',
+          profileSyncAfter: new Date(Date.now() + UNREADABLE_RETRY_MS),
+        })
+        .where(eq(bots.id, row.id));
+      return 'unreadable';
+    }
+    return {
+      id: row.id,
+      agentId: row.agentId,
+      token,
+      dirtyAt: row.dirtyAt,
+      attempts: row.attempts,
+      photoKey: row.photoKey,
+    };
+  });
+}
+
+/**
+ * The bot shows its gemie as of the claim. It is up to date unless the gemie changed again while
+ * it synced; then that newer change is due after `debounceMs`.
+ */
+export async function settleGemieBotProfile(
+  db: Executor,
+  claim: ClaimedProfileSync,
+  photoKey: string | null,
+  debounceMs: number,
+): Promise<void> {
+  const unchanged = eq(bots.profileDirtyAt, claim.dirtyAt);
+  await db
+    .update(bots)
+    .set({
+      profilePhotoKey: photoKey,
+      profileSyncError: null,
+      profileSyncAttempts: 0,
+      profileDirtyAt: sql`case when ${unchanged} then null else ${bots.profileDirtyAt} end`,
+      profileSyncAfter: sql`case when ${unchanged} then null else ${new Date(Date.now() + debounceMs).toISOString()}::timestamptz end`,
+    })
+    .where(eq(bots.id, claim.id));
+}
+
+/** The attempt failed: said to the editor, and tried again at `retryAt`. */
+export async function deferGemieBotProfile(
+  db: Executor,
+  claim: ClaimedProfileSync,
+  input: { error: string; retryAt: Date; photoKey: string | null },
+): Promise<void> {
+  await db
+    .update(bots)
+    .set({
+      profileSyncError: input.error,
+      profileSyncAttempts: claim.attempts + 1,
+      profileSyncAfter: input.retryAt,
+      profilePhotoKey: input.photoKey,
+    })
+    .where(eq(bots.id, claim.id));
 }

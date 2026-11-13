@@ -16,6 +16,8 @@ const state = vi.hoisted(() => ({
   rows: new Map<string, Record<string, unknown>>(),
   updates: [] as Array<{ id: string; input: Record<string, unknown> }>,
   accountWrites: 0,
+  accountUpdates: [] as Array<{ accountId: string; patch: Record<string, unknown> }>,
+  botChanged: [] as string[],
 }));
 
 const LOCAL = {
@@ -85,8 +87,9 @@ vi.mock('../oxy.js', () => ({
             account: { id: accountId, kind: 'bot' },
             callerMembership: { status: 'active', role: 'owner', permissions: ['account:act_as'] },
           }),
-          update: async () => {
+          update: async (accountId: string, patch: Record<string, unknown>) => {
             state.accountWrites++;
+            state.accountUpdates.push({ accountId, patch });
           },
         },
       });
@@ -101,6 +104,11 @@ vi.mock('../oxy.js', () => ({
   },
 }));
 vi.mock('../chat-core.js', () => ({ resolveModel: async () => ({}) }));
+vi.mock('../gemie-telegram-bot-profile.js', () => ({
+  gemieProfileChanged: async (agentId: string) => {
+    state.botChanged.push(agentId);
+  },
+}));
 vi.mock('../logger.js', () => {
   const c = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   return { log: { general: c, agents: c, chat: c } };
@@ -121,6 +129,8 @@ beforeEach(() => {
   state.hydrated = [];
   state.updates = [];
   state.accountWrites = 0;
+  state.accountUpdates = [];
+  state.botChanged = [];
   state.rows = new Map<string, Record<string, unknown>>([
     [LOCAL._id, LOCAL],
     [OXY._id, OXY],
@@ -222,15 +232,54 @@ describe('its owner edits who it is on its row', () => {
     },
   );
 
-  it('refuses a colour for an Oxy gemie, whose colour is its account’s', async () => {
+  it('writes an Oxy gemie’s name and colour to its account, as the caller', async () => {
     const outcome = await applyAgentEdit({
       agentId: OXY._id,
       userId: 'owner-1',
       accessToken: 'token',
       edit: {},
-      identity: { color: 'blue' },
+      identity: { name: 'Nadia', color: '#ff8b67' },
     });
-    expect(outcome).toMatchObject({ ok: false, status: 400 });
+    expect(outcome.ok).toBe(true);
+    expect(state.accountUpdates).toEqual([
+      { accountId: 'bot-1', patch: { color: '#ff8b67' } },
+      { accountId: 'bot-1', patch: { name: { displayName: 'Nadia' } } },
+    ]);
+  });
+});
+
+/**
+ * Everything that mirrors a gemie follows it from the one place it is edited: its own Telegram bot
+ * (ADR 0037) is marked behind for what it shows (name, colour, look, tagline, description), and
+ * left alone for everything else.
+ */
+describe('its own Telegram bot follows what it shows', () => {
+  it.each([
+    [{ identity: { name: 'Nadia' } }],
+    [{ identity: { color: 'lagoon' } }],
+    [{ edit: { tagline: 'Finds more things' } }],
+    [{ edit: { description: 'It finds things.' } }],
+    [{ edit: { character: OXY.character as never } }],
+  ])('after %o', async (change) => {
+    const outcome = await applyAgentEdit({
+      agentId: OXY._id,
+      userId: 'owner-1',
+      accessToken: 'token',
+      edit: {},
+      ...change,
+    });
+    expect(outcome.ok).toBe(true);
+    expect(state.botChanged).toEqual([OXY._id]);
+  });
+
+  it('but not after a change it does not show', async () => {
+    await applyAgentEdit({
+      agentId: OXY._id,
+      userId: 'owner-1',
+      accessToken: 'token',
+      edit: { systemPrompt: 'Be brief.' },
+    });
+    expect(state.botChanged).toEqual([]);
   });
 });
 

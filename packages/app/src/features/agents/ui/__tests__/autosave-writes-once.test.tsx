@@ -715,7 +715,12 @@ describe('one save is one toast', () => {
  * owner's own credential, Oxy's own checks), once, and never to the agent row.
  */
 describe('the colour is the account’s', () => {
-  it('writes any chosen colour (a hex) to the account once, and no PATCH carries one', async () => {
+  /**
+   * Through the API, which writes it to the Oxy account as this person and has everything that
+   * mirrors the gemie follow (its own Telegram bot, Gemies ADR 0037): nothing is written to Oxy
+   * from the editor but a changed handle.
+   */
+  it('writes any chosen colour (a hex) once, through PATCH /agents/:id, with the name', async () => {
     const { renderer } = await renderEditor();
     const creator = renderer.root.findAllByType(
       'AgentCreator' as unknown as React.ComponentType,
@@ -733,12 +738,8 @@ describe('the colour is the account’s', () => {
     });
     await letTimePass(2);
 
-    expect(updateAccount).toHaveBeenCalledTimes(1);
-    expect(updateAccount).toHaveBeenCalledWith('acct-bot', {
-      name: { displayName: 'Pepe' },
-      color: '#ff8b67',
-    });
-    expect(patchRequest).not.toHaveBeenCalled();
+    expect(patchBodies()).toEqual([{ name: 'Pepe', color: '#ff8b67' }]);
+    expect(updateAccount).not.toHaveBeenCalled();
     await act(async () => {
       renderer.unmount();
     });

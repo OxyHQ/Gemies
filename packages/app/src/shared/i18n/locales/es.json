@@ -1405,7 +1405,7 @@
         "step1": "En Telegram, abre @BotFather y envía /newbot.",
         "openBotFather": "Abrir @BotFather",
         "step2": "Copia el token que te da y pégalo abajo.",
-        "step3": "Conéctalo. El bot toma el nombre, la descripción y la imagen de {{name}}.",
+        "step3": "Conéctalo. El bot toma el nombre, la descripción y la imagen de {{name}}, y sigue cada cambio por sí solo.",
         "token": "Token",
         "tokenInput": "Token del bot de @BotFather",
         "tokenPlaceholder": "123456789:AA…",
@@ -1424,12 +1424,6 @@
         "connected": "{{name}} ya responde en Telegram.",
         "connectFailed": "No se ha podido conectar el bot: {{reason}}",
         "tryAgain": "inténtalo de nuevo en un momento.",
-        "profilePartial": "Telegram no ha aceptado su {{parts}}. Prueba de nuevo «Sincronizar perfil».",
-        "part": {
-          "name": "nombre",
-          "description": "descripción",
-          "photo": "imagen"
-        },
         "status": {
           "ok": "Conectado",
           "failing": "Error",
@@ -1447,7 +1441,6 @@
         },
         "open": "Abrir en Telegram",
         "addToGroup": "Añadir a un grupo",
-        "sync": "Sincronizar perfil",
         "groups": "En grupos",
         "groupsLabel": "Cuándo responde {{name}} en grupos",
         "groupReplies": {
@@ -1455,7 +1448,6 @@
           "never": "Nunca"
         },
         "privacy": "En grupos solo ve las respuestas a sus mensajes y comandos como /ask@{{username}}. Para que responda también cuando alguien escribe @{{username}}, hazlo administrador del grupo o desactiva su privacidad en @BotFather (/setprivacy).",
-        "synced": "El bot muestra el nombre, la descripción y la imagen de {{name}}.",
         "saveFailed": "No se ha podido guardar: {{reason}}",
         "removeRow": "Quitar el bot",
         "removeHint": "{{name}} deja de responder en Telegram.",
@@ -1466,7 +1458,9 @@
         "removeFailed": "No se ha podido quitar. Inténtalo de nuevo.",
         "cancel": "Cancelar",
         "loadFailed": "No se ha podido cargar. Inténtalo de nuevo.",
-        "unavailable": "Ahora mismo no se puede conectar un bot de Telegram."
+        "unavailable": "Ahora mismo no se puede conectar un bot de Telegram.",
+        "syncFailed": "Telegram aún no muestra el último nombre, descripción o imagen de {{name}}. Lo sigue intentando solo.",
+        "retrySync": "Reintentar ahora"
       },
       "connectors": {
         "title": "Conectores",

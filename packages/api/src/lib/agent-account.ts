@@ -515,6 +515,20 @@ export async function setAgentAccountCharacter(params: {
   );
 }
 
+/**
+ * Set a bot account's colour (`User.color`: a Bloom preset key or a hex), as the caller, under
+ * Oxy's own checks of which colours the account may wear.
+ */
+export async function setAgentAccountColor(params: {
+  accessToken: string;
+  oxyAccountId: string;
+  color: string;
+}): Promise<void> {
+  await oxy.withUser(params.accessToken, (user) =>
+    user.accounts.update(params.oxyAccountId, { color: params.color }),
+  );
+}
+
 /** Rename a bot account (its display name), as the caller: the owner's, or an admin's. */
 export async function setAgentAccountName(params: {
   accessToken: string;

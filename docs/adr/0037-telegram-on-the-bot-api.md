@@ -132,3 +132,24 @@ capabilities through any channel as in the app.
 turn (a contact writing to the person's WhatsApp or Telegram Business) is not the person and does
 not get the session runtime or task creation. The base prompt asks every gemie to say how to grant
 what is missing instead of "I have no access".
+
+## Amendment (2026-11-13): the bot follows its gemie by itself
+
+The owner: "no tiene sentido el botón de sync profile, debería ya hacerlo instantáneamente
+automáticamente en cualquier cambio". The editor's "Sync profile" button is gone, and so is the photo
+the editor drew:
+
+- **Every change that a gemie's bot shows** (its name, colour, look, tagline or description) is made
+  on the server, by `applyAgentEdit`: an `oxy` gemie's name and colour are written to its Oxy account
+  there, as the person editing, rather than by the editor at Oxy. That edit marks the bot behind
+  (`bots.profile_dirty_at`); after a 3-second debounce the API gives the bot the new profile, and the
+  run reaper's sweep takes over what an instance left behind. Durable and coalesced.
+- **The photo is drawn on the server**, with one shared renderer, Bloom's
+  `@oxy.so/bloom/agent-avatar/svg` (`renderAgentAvatarPicture`): the character in its colour,
+  centred for Telegram's circular crop, on a much lighter tint of that colour that always keeps it
+  visible. It is uploaded only when the look or the colour changed (`profile_photo_key`), and a part
+  already as wanted is not set again, because Telegram rate-limits profile updates.
+- **Only a failure is shown**, with a retry (`PATCH … { retryProfileSync: true }`), the one manual
+  control left; failures are retried by themselves with a backoff, or after Telegram's
+  `retry_after`.
+

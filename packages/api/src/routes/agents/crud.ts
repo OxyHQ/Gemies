@@ -655,8 +655,7 @@ const primaryToolsSchema = z
  *
  * `name` and `color` are who the gemie is, written where that lives
  * (`applyAgentEdit`): a `local` gemie's row (ADR 0036), or an `oxy` gemie's
- * account for the name — its colour is edited at Oxy, by the editor, and is a
- * 400 here. No `avatar` (the `character` is the look) and no `creditBalance`,
+ * account, at Oxy, as the caller. No `avatar` (the `character` is the look) and no `creditBalance`,
  * which named a column nothing ever spent. `oxyAccountId` is absent too —
  * rebinding an agent to a different account is not an edit, it is a different
  * agent.
@@ -669,7 +668,7 @@ const updateAgentSchema = z
   .object({
     /** Its name, as for a person. */
     name: z.string().trim().min(1).max(100).optional(),
-    /** A `local` gemie's colour: what an account may wear (`lib/agent-color.ts`). */
+    /** Its colour: what an account may wear (`lib/agent-color.ts`). */
     color: z.string().refine(isAgentColor, { message: 'Not a colour a gemie may wear' }).optional(),
     /** The agent's look, replaced whole. */
     character: characterSchema.optional(),

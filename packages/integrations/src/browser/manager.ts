@@ -96,3 +96,26 @@ const idleContextCleanupTimer = setInterval(() => {
   }
 }, 60_000);
 idleContextCleanupTimer.unref?.();
+
+/**
+ * Draw an SVG document as a JPEG of `size`×`size`, on the same Chromium the browser sessions use
+ * (launched on first use). For pictures made on the server, like a gemie bot's profile photo.
+ */
+export async function renderSvgToJpeg(svg: string, size: number): Promise<Buffer> {
+  const b = await ensureBrowser();
+  const context = await b.newContext({ viewport: { width: size, height: size } });
+  try {
+    const page = await context.newPage();
+    await page.setContent(
+      `<!doctype html><html><body style="margin:0;background:#fff">${svg}</body></html>`,
+      { waitUntil: 'load' },
+    );
+    return await page.screenshot({
+      type: 'jpeg',
+      quality: 92,
+      clip: { x: 0, y: 0, width: size, height: size },
+    });
+  } finally {
+    await context.close();
+  }
+}

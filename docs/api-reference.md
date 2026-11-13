@@ -227,11 +227,14 @@ bot and each gemie's own. Relayed untouched to the private integrations process,
 Telegram's `secret_token`, stores the update and answers; its status is Telegram's.
 
 **`/agents/:id/telegram-bot`** — a gemie's own Telegram bot, for whoever may act as the gemie:
-`GET` (the bot, or `null`, with Telegram's live view of it), `PUT { token, ownerPaysAgentTurns,
-photoJpegBase64? }` (connect or replace; the bot takes the gemie's name, description and
-picture), `PATCH { groupReplies?, ownerPaysAgentTurns?, syncProfile?, photoJpegBase64? }`
-(`ownerPaysAgentTurns` only by the person who connected it) and `DELETE`. Its `personLinked` says
-whether that person linked their own Telegram to it.
+`GET` (the bot, or `null`, with Telegram's live view of it and `profileSyncError`, the last failure
+to give it the gemie's profile, while it is still behind), `PUT { token, ownerPaysAgentTurns }`
+(connect or replace), `PATCH { groupReplies?, ownerPaysAgentTurns?, retryProfileSync? }`
+(`ownerPaysAgentTurns` only by the person who connected it; `retryProfileSync: true` retries after a
+failure) and `DELETE`. The bot's name, description and photo follow the gemie by themselves: every
+`PATCH /agents/:id` that changes its name, colour, look, tagline or description updates the bot
+after a short debounce (ADR 0037). Its `personLinked` says whether that person linked their own
+Telegram to it.
 
 **`/agents/:id/telegram-bot/link`** — only for the person who connected the bot (ADR 0037,
 amendment): `POST` mints the Oxy task they grant the gemie for their own turns there and answers

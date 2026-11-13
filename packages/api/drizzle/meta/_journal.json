@@ -1149,6 +1149,20 @@
       "when": 1794594254344,
       "tag": "0163_gemie_bot_person_link",
       "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1794597471711,
+      "tag": "0164_gemie_bot_profile_follows_its_gemie",
+      "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "7",
+      "when": 1794597476068,
+      "tag": "0165_gemie_bots_take_their_server_drawn_photo",
+      "breakpoints": true
     }
   ]
 }
