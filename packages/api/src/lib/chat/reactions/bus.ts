@@ -1,3 +1,4 @@
+import type { MessageReactionEntry } from '../../../domain/message-reactions.js';
 import { publishAccountEvent } from '../../realtime/publish.js';
 
 /** The durable reaction state, for every surface of the owner (`message.reaction` on `rt`). */
@@ -5,6 +6,7 @@ export interface ConversationReactionUpdate {
   readonly conversationId: string;
   readonly messageId: string;
   readonly reactions: readonly string[];
+  readonly reactionEntries?: readonly MessageReactionEntry[];
   readonly revision: number;
   readonly mutationId: string;
 }
