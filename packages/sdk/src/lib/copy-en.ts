@@ -179,6 +179,7 @@ export const COPY_EN: Readonly<Record<string, CopyEntry>> = {
   'gemie.accounts.replies.everyone': 'Everyone who writes',
   'gemie.accounts.replies.nobody': 'Nobody: {{name}} only reads and sends when you ask',
   'gemie.accounts.repliesLabel': 'Who {{name}} answers',
+  'gemie.accounts.retry': 'Retry',
   'gemie.accounts.saveFailed': 'Could not save. Try again.',
   'gemie.accounts.scan.telegram':
     'Open Telegram on your phone, go to Settings > Devices > Link Desktop Device, and scan this code.',

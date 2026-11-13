@@ -89,3 +89,17 @@ Decided:
 Not adopted now: an approval step before the gemie sends (the tool is already `R2` and is used
 only when the person asks; an approval inbox is its own feature), and pairing codes instead of a
 QR (both platforms' QR flows are what their apps offer for a linked device).
+
+## Amendment (2026-11-13, later): Alia's editor, and failures a person can see
+
+- **Alia's gemie has an editor in the Gemies app**, opened from her sidebar row and her chat's
+  header. Her identity is shown, never editable: nobody but Oxy changes it (the API refuses any
+  `PATCH` of her row, since nobody acts as her account). What the person manages there is their own
+  connected accounts on her: an account is the (gemie, person) pair's, so on a gemie everybody
+  shares, each person sees and manages only theirs. The card says what the caller may do
+  (`viewer`), so the app never draws a control that would save nothing.
+- **A gateway failure is a `503` with a code**, shown in the panel with a Retry, because a `502`
+  reached the browser as a CORS error the panel could not read.
+- **The web app ships after the API**, and the API offers a platform only once the gateway answers
+  `GET /accounts/platforms` (the contract handshake), so no release order leaves the app calling a
+  route that is not deployed.

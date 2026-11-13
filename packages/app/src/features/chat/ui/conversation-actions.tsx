@@ -1,4 +1,4 @@
-import { buildConversationMarkdown, exportFilename } from '@gemies/sdk/model';
+import { ALIA_GEMIE_ID, buildConversationMarkdown, exportFilename } from '@gemies/sdk/model';
 import type { GemieChatState } from '@gemies/sdk';
 import { useDeleteConversation, useShareConversation } from '@gemies/sdk/runtime';
 import { confirm } from '@oxy.so/bloom/surfaces';
@@ -161,15 +161,14 @@ export function ConversationActions({
 
   const openAgentEditor = useOpenAgentEditor();
   const startGroup = useCallback(() => useUIStore.getState().setGroupPickerOpen(true), []);
-  // The agents taking part, as the header shows them (Alia has no editor), each editable from the menu.
+  // The agents taking part, as the header shows them, each opening its editor from the menu. Alia's
+  // opens on her gemie's id (her identity locked, her accounts the person's own: ADR 0035).
   const { lead, joined } = chat.participants;
   const agents = useMemo(
     () =>
-      [...(lead.isAlia ? [] : [lead]), ...joined].map(({ id, name, character }) => ({
-        id,
-        name,
-        character,
-      })),
+      [{ ...lead, id: lead.isAlia ? ALIA_GEMIE_ID : lead.id }, ...joined].map(
+        ({ id, name, character }) => ({ id, name, character }),
+      ),
     [lead, joined],
   );
 

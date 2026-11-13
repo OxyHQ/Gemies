@@ -17,6 +17,7 @@ import {
   listAgentsByAuthor,
 } from '../../db/agents/agentRepository.js';
 import {
+  isPersonsOwnAssistant,
   loadAgentForActor,
   refusalMessage,
   refusalStatus,
@@ -348,8 +349,15 @@ async function respondWithAgent(
           })
         ).permitted;
 
+  /**
+   * Who may manage their own connected accounts on it (ADR 0035): its editors, and on every
+   * person's own assistant (Alia) every person. Her card is theirs to read for that, though she is
+   * not listed (a draft-like `is_published = false` until her Oxy account exists).
+   */
+  const mayManageAccounts = mayEdit || isPersonsOwnAssistant(found);
+
   // A draft is not in the catalogue and not addressable by a stranger.
-  if (!found.isPublished && !mayEdit) {
+  if (!found.isPublished && !mayManageAccounts) {
     res.status(404).json({ error: 'Agent not found' });
     return;
   }
@@ -365,9 +373,13 @@ async function respondWithAgent(
 
   const agent = await withChildLists(found);
   res.json({
-    agent: await attachAgentIdentity(
-      withoutInternalAgentBindings(mayEdit ? agent : withoutSystemPrompt(agent)),
-    ),
+    agent: {
+      ...(await attachAgentIdentity(
+        withoutInternalAgentBindings(mayEdit ? agent : withoutSystemPrompt(agent)),
+      )),
+      /** What this caller may do with it, so a client offers only that (its editor, its accounts). */
+      viewer: { mayEdit, mayManageAccounts },
+    },
   });
 }
 

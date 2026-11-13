@@ -6,7 +6,10 @@ import {
   GEMIES_ACCOUNT_CONTEXT_HEADER,
   isGemiesWorkload,
 } from '@gemies/server/internal';
+import { createLogger } from './logger';
 import { oxy } from './oxy';
+
+const logger = createLogger('internal-auth');
 
 const verifiedRequests = new WeakSet<object>();
 
@@ -25,6 +28,7 @@ export async function requireAliaApi(
       (key) => req.headers[key] !== undefined,
     )
   ) {
+    logger.warn(`Refused ${req.method} ${req.path}: a user header on an internal request`);
     res.status(403).json({ error: 'Use internal account context for Alia operations' });
     return;
   }
@@ -38,6 +42,11 @@ export async function requireAliaApi(
         expectedWorkload(),
       )
     ) {
+      // Said in the log, never only to the caller: a refused API is otherwise a silent failure of
+      // every linking, chat and MCP call it makes.
+      logger.warn(
+        `Refused ${req.method} ${req.path}: not the API workload (app ${principal?.appId ?? 'none'}, credential ${principal?.credentialId ?? 'none'})`,
+      );
       res.status(403).json({ error: 'Alia API workload required' });
       return;
     }
@@ -54,6 +63,7 @@ export function internalAccount(req: Pick<Request, 'headers'>): string | undefin
 
 export function requireAccountContext(req: Request, res: Response, next: NextFunction): void {
   if (!internalAccount(req)) {
+    logger.warn(`Refused ${req.method} ${req.path}: no valid internal account context`);
     res.status(401).json({ error: 'Internal account context required' });
     return;
   }

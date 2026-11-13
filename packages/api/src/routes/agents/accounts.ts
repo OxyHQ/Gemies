@@ -91,15 +91,20 @@ async function accountOf(
   return { caller, account };
 }
 
-/** A gateway failure says what the gateway said; anything else is ours. */
+/**
+ * A failure as the panel reads it: `{ error, code }`. A gateway that could not be reached or refused
+ * is `503 accounts_gateway_unavailable` with what it said — never a `502`, which a CDN serves
+ * without the API's CORS headers and a browser reports as an opaque network error, so the panel
+ * could neither read nor show it.
+ */
 function answerFailure(res: Response, err: unknown, what: string): void {
   if (res.headersSent) return;
   if (err instanceof GatewayError) {
-    res.status(502).json({ error: err.message });
+    res.status(503).json({ error: err.message, code: 'accounts_gateway_unavailable' });
     return;
   }
   log.channels.error({ err }, `${what} failed`);
-  res.status(500).json({ error: 'Internal server error' });
+  res.status(500).json({ error: 'Internal server error', code: 'internal_error' });
 }
 
 /**
@@ -137,7 +142,9 @@ router.post('/:id/accounts', authenticateToken, async (req: Request, res: Respon
     const caller = await callerOf(req, res);
     if (!caller) return;
     if (!(await availablePlatforms(caller.scope.oxyUserId)).includes(platform)) {
-      return res.status(409).json({ error: `${platform} cannot be linked here` });
+      return res
+        .status(409)
+        .json({ error: `${platform} cannot be linked here`, code: 'platform_unavailable' });
     }
 
     account = await createPendingConnectedAccount(db, { ...caller.scope, platform });

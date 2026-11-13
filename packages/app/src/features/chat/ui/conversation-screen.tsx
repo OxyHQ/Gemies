@@ -6,6 +6,7 @@ import {
   type GemieParticipant,
   type GemieSuggestion,
 } from '@gemies/sdk';
+import { ALIA_GEMIE_ID } from '@gemies/sdk/model';
 import { useConversation } from '@gemies/sdk/runtime';
 import { ComposerPanelStatusTab } from '@oxy.so/bloom/composer-panel';
 import { useAuth } from '@oxy.so/services/ui/client';
@@ -164,11 +165,12 @@ export const ConversationScreen = ({
   const title = conversationDetails?.title || agentName;
   // The header is the conversation's participants — its lead and the agents that joined — drawn
   // by the SDK; the app draws no title of its own there.
-  // Pressing the participants opens the agent's editor; Alia has none, so her avatar just waves.
+  // Pressing the participants opens the lead's editor: an agent's, or Alia's on her gemie's id (her
+  // identity locked, her accounts the person's own: ADR 0035). A group has no one lead to open.
   const openAgentEditor = useOpenAgentEditor();
   const openAgent = useMemo(
-    () => (agentId === undefined ? undefined : () => openAgentEditor(agentId)),
-    [agentId, openAgentEditor],
+    () => (group !== undefined ? undefined : () => openAgentEditor(agentId ?? ALIA_GEMIE_ID)),
+    [agentId, group, openAgentEditor],
   );
   const chrome = useCallback(
     (chat: GemieChatState): GemieChatChrome => {

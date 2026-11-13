@@ -1349,6 +1349,8 @@
       }
     },
     "editor": {
+      "close": "Cerrar",
+      "lockedIdentity": "{{name}} es de Oxy: aquí no se puede cambiar quién es {{name}}. Lo que sí puedes es vincular tu propio WhatsApp o Telegram, y {{name}} responderá allí por ti.",
       "work": {
         "title": "Trabaja por su cuenta",
         "heartbeat": "Latido",
@@ -2342,7 +2344,8 @@
       "removed": "{{platform}} quitado",
       "removeFailed": "No se ha podido quitar. Inténtalo de nuevo.",
       "cancel": "Cancelar",
-      "saveFailed": "No se ha podido guardar. Inténtalo de nuevo."
+      "saveFailed": "No se ha podido guardar. Inténtalo de nuevo.",
+      "retry": "Reintentar"
     }
   }
 }

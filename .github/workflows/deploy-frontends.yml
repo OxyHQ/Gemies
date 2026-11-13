@@ -1,15 +1,18 @@
 name: Deploy Frontends
 
 on:
-  # After CI passes on a push to main, never alongside it — the same trigger and
-  # guards as deploy-aws.yml, owned by the `scope` job below. Until 2026-10 this
-  # ran on `push`, so a commit whose CI went red still shipped its frontends.
-  #
-  # Neither half waits for the other: the frontends are gated on CI, not on the
-  # API's rollout, exactly as unordered as they were on `push`. Ship both halves
-  # through the pipeline or both by hand (~/Oxy/docs/infra-and-deploys.md).
+  # After the API's release of the same commit, never ahead of it. A web app that
+  # calls a route the API does not serve yet fails for every person who opens it
+  # (2026-11-13: the accounts panel shipped at 05:08 and its routes at 05:42,
+  # because both waited only on CI and the API's deploy then failed and waited).
+  # `Deploy to AWS` completes successfully when it released the commit and when
+  # nothing of the API changed (its deploy job skipped); it fails when the API's
+  # rollout failed, and then nothing ships here. It itself runs on CI's
+  # `workflow_run`, so CI green on main is still the first gate
+  # (~/Oxy/docs/infra-and-deploys.md: a `workflow_run`-gated frontend deploy
+  # cannot ship ahead of the backend).
   workflow_run:
-    workflows: [CI]
+    workflows: [Deploy to AWS]
     types: [completed]
     branches: [main]
   # Releases the web app from main's head, and only once CI succeeded for it.
@@ -119,7 +122,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.event == 'workflow_run' &&
        github.event.workflow_run.head_repository.full_name == github.repository &&
        github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
@@ -134,8 +137,27 @@ jobs:
         with:
           ref: ${{ env.RELEASE_SHA }}
           sparse-checkout: .github/scripts
+      # Only a run of the API's that decided this commit (its `scope` job ran) releases it here; one
+      # that failed never arrives (`conclusion == 'success'` above). A run that skipped everything
+      # (a CI run that was not a push to main) says nothing about this commit's API: it holds.
+      - name: Hold unless the API released this commit
+        id: api
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          API_RUN: ${{ github.event.workflow_run.id }}
+        run: |
+          scope="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$API_RUN/jobs" \
+            --jq '.jobs[] | select(.name == "scope") | .conclusion')"
+          if [[ "$scope" == success ]]; then
+            echo "released=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "::notice::Deploy to AWS run $API_RUN did not decide $RELEASE_SHA (scope: ${scope:-none}); holding."
+            echo "released=false" >>"$GITHUB_OUTPUT"
+          fi
       - name: Release only CI-green main head
         id: gate
+        if: github.event_name != 'workflow_run' || steps.api.outputs.released == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/scripts/deploy-scope.sh gate
