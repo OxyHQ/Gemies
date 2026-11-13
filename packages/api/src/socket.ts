@@ -309,9 +309,9 @@ export interface AliaActivityEvent {
 }
 
 /**
- * `alia:activity`, the frame `@gemies/sdk` before 5.0 (and `@alia.onl/sdk`) listens for to animate
+ * `alia:activity`, the frame `@gemies/sdk` before 6.0 (and `@alia.onl/sdk`) listens for to animate
  * the "Ask Alia" button that every Oxy app embeds. It is a contract between Oxy products, kept until
- * those apps are on `@gemies/sdk` 5, which reads the same state from `activity` on `rt`
+ * those apps are on `@gemies/sdk` 6, which reads the same state from `activity` on `rt`
  * (`docs/realtime.mdx`, "Compatibility"); nothing in this repository listens for it.
  */
 export function emitLegacyAliaActivity(userId: string, data: AliaActivityEvent) {

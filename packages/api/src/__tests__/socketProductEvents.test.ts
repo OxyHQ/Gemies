@@ -195,7 +195,7 @@ describe('every product event is a typed `rt` frame, to its own room', () => {
     expect(frames()[0]?.frame.data).toMatchObject({ agentId: 'agent-ws13', type: 'tool_call' });
   });
 
-  it("keeps `alia:activity` for the Oxy apps on an SDK before 5.0, to the person's room only", () => {
+  it("keeps `alia:activity` for the Oxy apps on an SDK before 6.0, to the person's room only", () => {
     emitLegacyAliaActivity('user-ws13', {
       state: 'working',
       agentId: 'agent-ws13',

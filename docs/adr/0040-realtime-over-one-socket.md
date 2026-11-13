@@ -44,9 +44,9 @@ it was away until the next refetch; and nothing said that a gemie was writing.
 ## Consequences
 
 - `GemieRuntimeHost` loses `subscribeConversationMessages`, `subscribeConversationReactions` and
-  `subscribeRoomEvents`: the SDK owns the connection (`@gemies/sdk` 5.0.0, a major version).
+  `subscribeRoomEvents`: the SDK owns the connection (`@gemies/sdk` 6.0.0, a major version).
 - `alia:activity` is still emitted for the "Ask Alia" buttons of Oxy apps on an older SDK, until
-  they are on 5.0.
+  they are on 6.0.
 - Every new writer of a conversation calls `publishConversation` after its commit; a writer that
   forgets it is stale until the next read, which review and `docs/realtime.mdx` guard.
 - The local model runtime rides the same connection (`send`/`listen`), so a device offering its

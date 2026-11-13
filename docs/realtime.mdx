@@ -69,7 +69,7 @@ socket event by name.
 ## Catch-up: the account log
 
 `account_events` holds each durable frame with its number; `account_event_heads` holds each
-account's newest number (`db/schema/realtime.ts`, migration 0159).
+account's newest number (`db/schema/realtime.ts`, migration 0161).
 
 - **Numbers are 1, 2, 3… per account, in commit order, with no gaps.** The head row is updated in
   the same statement that inserts the event, so its row lock serialises one account's appends for
@@ -158,6 +158,6 @@ have no event source:
 ## Compatibility
 
 `alia:activity` is still emitted beside `activity` for agent runs: the "Ask Alia" button of every
-Oxy app on `@gemies/sdk` before 5.0 (and `@alia.onl/sdk`) listens for it. It goes when those apps
-are on 5.0 or later. Nothing else of the previous events (`notification`, `conversation:message`,
+Oxy app on `@gemies/sdk` before 6.0 (and `@alia.onl/sdk`) listens for it. It goes when those apps
+are on 6.0 or later. Nothing else of the previous events (`notification`, `conversation:message`,
 `conversation:reaction`, `group:event`, `show:progress`, `agent-activity`) is emitted any more.
