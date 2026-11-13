@@ -17,17 +17,10 @@ export type MessageVote = (typeof MESSAGE_VOTES)[number];
 /**
  * Where a conversation came from.
  *
- * ## `signal` is in the tuple because it is written
- *
- * `lib/channels/types.ts` declares five channels and `lib/channels/index.ts`
- * registers all five, so `routes/webhooks.ts` really does write
- * `source: 'signal'`.
- *
- * `conversations_source_check` checks it. Without `signal` in the tuple, every
- * Signal message would fail its upsert, be swallowed by the webhook's catch,
- * and reply "Sorry, an error occurred" forever — with the conversation never
- * persisted and no other symptom. `0027_signal_conversation_source` widened the
- * constraint to match.
+ * Every channel `lib/channels/index.ts` registers writes its own id here from
+ * `routes/webhooks.ts`, and `conversations_source_check` checks it: a channel
+ * missing from the tuple would fail every upsert of its messages, silently. Signal
+ * was a channel until ADR 0035 removed it (0142 narrowed the constraint).
  */
 export const CONVERSATION_SOURCES = [
   'app',
@@ -37,7 +30,6 @@ export const CONVERSATION_SOURCES = [
   'discord',
   'whatsapp',
   'slack',
-  'signal',
 ] as const;
 export type ConversationSource = (typeof CONVERSATION_SOURCES)[number];
 

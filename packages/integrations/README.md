@@ -36,7 +36,6 @@ API's encryption key for connector records. `API_BASE_URL` points to Alia's API;
 | Discord bot | `DISCORD_BOT_ENABLED`, `DISCORD_BOT_TOKEN` |
 | WhatsApp accounts | `WHATSAPP_ENABLED` |
 | Telegram accounts | `TELEGRAM_GATEWAY_ENABLED`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` |
-| Signal accounts | `SIGNAL_ENABLED` |
 
 Adapters are enabled by default; set the corresponding enabled value to false
 to disable one. External provider OAuth scopes and webhook signatures remain

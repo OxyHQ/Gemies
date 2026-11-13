@@ -14,7 +14,8 @@ Alia's reach comes from four layers:
    signed capability catalogs.
 3. **MCP servers and OAuth integrations** — connectors a person installs.
 4. **Channel integrations** — long-running connectors in `packages/integrations/`
-   for Telegram, WhatsApp, Signal, Gmail and Discord.
+   for Telegram, WhatsApp and Discord. A person's own WhatsApp or Telegram account is
+   linked to ONE gemie, which answers on it ([connected accounts](#connected-accounts)).
 
 Which of these an actor may use is in [Actors: Alia and agents](./actors.mdx).
 
@@ -252,8 +253,6 @@ resource, actor, account, run, step and tool.
 |--------------|---------|-------|
 | `accounts/telegram-gateway/` | Telegram user accounts | MTProto bridge |
 | `accounts/whatsapp/` | WhatsApp Web | Multi-device bridge with chat / message sync |
-| `accounts/signal/` | Signal | Bridge for Signal accounts |
-| `accounts/gmail/` | Gmail | IMAP / Gmail API sync |
 | `bots/telegram-bot/` | Telegram bot | Bot API bridge |
 | `bots/discord-bot/` | Discord | Bot user that mirrors guild channels |
 | `browser/` | Headless browser sessions | Not the agents' computer (that is `packages/alia-computer-host`); the API's web tools read pages through Clarity |
@@ -265,6 +264,18 @@ Inbound messages arrive at the API as either:
 - **Channel-bound conversations** — each chat becomes a conversation scoped to that channel and a user, so the autonomy loop can reuse the same context graph
 - **Oxy application events** — authenticated service publishers send normalized events to
   `/webhooks/oxy`, where structured automations match explicit app, event and resource fields
+
+### Connected accounts
+
+A person links their own WhatsApp or Telegram account to one gemie, from that gemie's editor
+(ADR 0035). The account is the gemie's: what arrives on it is answered by that gemie
+(`middleware/channel-auth.ts` names it in the channel context, and `resolveTurnGemie` loads it
+under the unattended rule), and only that gemie's turns for that person see its WhatsApp tools
+(`whatsAppReachable`). Routes, all under the gemie and for whoever may act as it (every person,
+for Alia): `GET|POST /agents/:id/accounts`, `GET /agents/:id/accounts/:accountId/status|qr`,
+`POST /agents/:id/accounts/:accountId/reauthorize`, `DELETE /agents/:id/accounts/:accountId`.
+Deleting a gemie ends its accounts' sessions and revokes their tasks first
+(`lib/gemie-accounts.ts`). Gmail and Signal are not platforms any more.
 
 Outbound tools (e.g. `sendTelegramMessage`, `sendWhatsAppMessage`) are `R2`: they run, flagged. Structured automation actions remain bound by their exact Oxy authority and Alia risk policy.
 

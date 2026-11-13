@@ -2,7 +2,7 @@
 # Alia Integrations — Production Dockerfile
 # ============================================
 # Unified service: messaging gateways + bots + browser + terminal
-# Includes: Node.js, Chromium (Playwright), Java 21 (Temurin), signal-cli
+# Includes: Node.js, Chromium (Playwright)
 
 # Base images are pinned by DIGEST: the digest is what the build pulls, and the
 # tag is only for readers (BuildKit ignores it when a digest is present). A bump
@@ -96,58 +96,6 @@ RUN cd "$(dirname "$(node -p "require.resolve('node-pty/package.json', { paths: 
     rm -rf /root/.cache/node-gyp && \
     cd /app/packages/integrations && node -e "require('node-pty')"
 
-# --- Java 21 + signal-cli ---
-# signal-cli 0.13.x needs Java 21 and bookworm's JRE is 17, so the runtime is
-# Eclipse Temurin's, pinned by checksum per architecture.
-#
-# The upstream libsignal-client jar has no linux-aarch64 JNI library; the one
-# embedded below comes from exquo/signal-libs-build (the build signal-cli's wiki
-# points to), pinned to the libsignal version the jar is, and needs glibc 2.30.
-# LIBSIGNAL_VERSION must follow SIGNAL_CLI_VERSION: the jar path below fails the
-# build if they drift.
-#
-# The checksums are literals in the RUN, not build args, so a `--build-arg`
-# cannot swap what is verified: overriding a version ARG alone fails the check.
-# A version bump edits its checksum below and re-pins `alia-integrations`.
-FROM toolchain AS signal-cli
-
-ARG TARGETARCH
-ARG TEMURIN_TAG=jdk-21.0.12.1+1
-ARG TEMURIN_VERSION=21.0.12.1_1
-ARG SIGNAL_CLI_VERSION=0.13.24
-ARG LIBSIGNAL_VERSION=0.87.0
-
-COPY packages/integrations/docker/libsignal-jar.py /tmp/libsignal-jar.py
-
-RUN set -eu; \
-    signal_cli_sha=5e0e37a662e2e64f87e7c5183a1b73628823b89590707c54e48b084be65dd43f; \
-    libsignal_sha_arm64=25df41f49e90b803492de25b18c6c006fc488bd55891537beafd87bd234e2f00; \
-    case "$TARGETARCH" in \
-      arm64) jdk_arch=aarch64; java_arch=aarch64; jdk_sha=14be1f35ebdbd1f6e8d57eb911a3ffb74d6d9aa255abc5daf2b1302002cf2cf2 ;; \
-      amd64) jdk_arch=x64; java_arch=amd64; jdk_sha=2413149700df0f7d440500a84a8f764c535f21e5a5e87d38328b64eec2c5b500 ;; \
-      *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
-    esac; \
-    tag="$(printf %s "$TEMURIN_TAG" | sed 's/+/%2B/')"; \
-    curl -fsSL -o /tmp/jre.tar.gz "https://github.com/adoptium/temurin21-binaries/releases/download/${tag}/OpenJDK21U-jre_${jdk_arch}_linux_hotspot_${TEMURIN_VERSION}.tar.gz"; \
-    echo "${jdk_sha}  /tmp/jre.tar.gz" | sha256sum -c -; \
-    mkdir -p /opt/java/openjdk; \
-    tar xzf /tmp/jre.tar.gz -C /opt/java/openjdk --strip-components=1; \
-    curl -fsSL -o /tmp/signal-cli.tar.gz "https://github.com/AsamK/signal-cli/releases/download/v${SIGNAL_CLI_VERSION}/signal-cli-${SIGNAL_CLI_VERSION}.tar.gz"; \
-    echo "${signal_cli_sha}  /tmp/signal-cli.tar.gz" | sha256sum -c -; \
-    mkdir -p /opt/signal-cli; \
-    tar xzf /tmp/signal-cli.tar.gz -C /opt/signal-cli --strip-components=1; \
-    jar="/opt/signal-cli/lib/libsignal-client-${LIBSIGNAL_VERSION}.jar"; \
-    test -f "$jar" || { echo "signal-cli ${SIGNAL_CLI_VERSION} does not ship $jar; bump LIBSIGNAL_VERSION" >&2; exit 1; }; \
-    if [ "$java_arch" = aarch64 ]; then \
-      curl -fsSL -o /tmp/libsignal.tar.gz "https://github.com/exquo/signal-libs-build/releases/download/libsignal_v${LIBSIGNAL_VERSION}/libsignal_jni.so-v${LIBSIGNAL_VERSION}-aarch64-unknown-linux-gnu.tar.gz"; \
-      echo "${libsignal_sha_arm64}  /tmp/libsignal.tar.gz" | sha256sum -c -; \
-      tar xzf /tmp/libsignal.tar.gz -C /tmp libsignal_jni.so; \
-      python3 /tmp/libsignal-jar.py "$jar" aarch64 /tmp/libsignal_jni.so; \
-    else \
-      python3 /tmp/libsignal-jar.py "$jar" "$java_arch"; \
-    fi; \
-    rm -f /tmp/*.tar.gz /tmp/libsignal_jni.so
-
 # --- Stage 2: Production Runtime ---
 FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS runtime
 
@@ -155,8 +103,7 @@ FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472
 # - curl: health checks
 # - chromium: Playwright browser automation
 # Nothing is compiled or installed with bun here: node_modules (with node-pty's
-# native build) comes from `production-deps`, Java and signal-cli from
-# `signal-cli`.
+# native build) comes from `production-deps`.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       curl \
@@ -164,12 +111,6 @@ RUN apt-get update && \
       ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-ENV JAVA_HOME=/opt/java/openjdk
-ENV PATH=/opt/java/openjdk/bin:$PATH
-COPY --from=signal-cli /opt/java/openjdk /opt/java/openjdk
-COPY --from=signal-cli /opt/signal-cli /opt/signal-cli
-RUN ln -s /opt/signal-cli/bin/signal-cli /usr/local/bin/signal-cli
 
 # Tell Playwright to use system Chromium
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
@@ -208,15 +149,11 @@ COPY --from=builder --chown=node:node /build/packages/server/dist ./packages/ser
 # `drizzle` directory, for exactly this reason.
 COPY --from=builder --chown=node:node /build/packages/integrations/drizzle ./packages/integrations/drizzle
 
-# Create signal-cli data directory, and fail the build rather than the feature
-# if the pty binding, Java or signal-cli cannot load. node-pty is resolved from
-# the package, as `dist/` resolves it: the image's install uses bun's isolated
-# linker (bunfig.toml is not in the build context), so /app/node_modules has no
-# top-level node-pty.
-RUN mkdir -p /app/signal-data && chown node:node /app/signal-data && \
-    cd packages/integrations && node -e "require('node-pty')" && \
-    java -version && \
-    signal-cli --version
+# Fail the build rather than the feature if the pty binding cannot load.
+# node-pty is resolved from the package, as `dist/` resolves it: the image's
+# install uses bun's isolated linker (bunfig.toml is not in the build context),
+# so /app/node_modules has no top-level node-pty.
+RUN cd packages/integrations && node -e "require('node-pty')"
 
 # Security: run as non-root
 USER node

@@ -78,9 +78,6 @@ vi.mock('../db/integrations/botRepository.js', () => ({
   findSystemBot: vi.fn(async () => null),
   findLinkedBotUser: vi.fn(async () => null),
 }));
-vi.mock('../db/integrations/connectedAccountRepository.js', () => ({
-  findConnectedAccountForChannel: vi.fn(async () => null),
-}));
 vi.mock('../lib/channels/outbound.js', () => ({ sendChannelMessage: vi.fn(async () => []) }));
 
 vi.mock('../lib/logger.js', () => {

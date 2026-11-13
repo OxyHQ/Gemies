@@ -13,6 +13,7 @@ import externalAgentsRouter from './external-agents.js';
 import featureGatesRouter from './feature-gates.js';
 import primaryToolsRouter from './primary-tools.js';
 import inboxRouter from './inbox.js';
+import accountsRouter from './accounts.js';
 
 const router = Router();
 
@@ -38,6 +39,7 @@ router.use('/', externalAgentsRouter);
 router.use('/', featureGatesRouter);
 router.use('/', primaryToolsRouter);
 router.use('/', inboxRouter);
+router.use('/', accountsRouter);
 
 // Session-specific routes (sessions/:sid/...) before parameterized /:id routes
 router.use('/', sessionsRouter);

@@ -1,8 +1,8 @@
 # Deploy the integrations service.
 #
 # A SECOND image out of this repository, not a second tag on `oxy/alia`: this one
-# carries Chromium for Playwright, a headless JRE for signal-cli and node-pty,
-# none of which the API image has any use for.
+# carries Chromium for Playwright and node-pty, neither of which the API image
+# has any use for.
 #
 # Deliberately separate from `deploy-aws.yml` rather than a second job inside it:
 # the two build different images against different Dockerfiles, migrate DIFFERENT
@@ -177,13 +177,10 @@ jobs:
       # never a retyped copy — `packages/integrations/src/db/__tests__/deployWiring.test.ts`
       # asserts this workflow contains that exact string, so the two cannot drift.
       #
-      # It resolves FALSE today: the package's single migration is `pre`. That is
-      # exactly why the step is here rather than added later. The API's equivalent
-      # comment claimed for months that its journal was all `pre` and the step
-      # therefore inert; that stopped being true the day `0016` landed, was
-      # corrected by nothing, and the deploys it governed were failing meanwhile.
-      # A step wired now and inert costs one grep; a step added the day it is
-      # first needed is a `post` migration applied by nothing at all.
+      # It resolves TRUE since `0001` (post: the Signal tables dropped, ADR 0035).
+      # The step was wired while the package's only migration was `pre` and it
+      # was inert, because a step added the day it is first needed is a `post`
+      # migration applied by nothing at all.
       #
       # There is no seeder counterpart to the API's — this package has none — so
       # with no post-phase file the output is EMPTY, and `deploy-ecs-image.sh`
@@ -219,7 +216,7 @@ jobs:
       # from the API's `alia`, and that is not a preference. @oxy.so/db fixes the
       # ledger at `drizzle.__drizzle_migrations` with no per-service namespacing
       # and applies a migration only when its journal `when` is strictly newer
-      # than the newest recorded one. This package's only migration carries
+      # than the newest recorded one. This package's first migration carries
       # `when=1786270502993`; the OLDEST of the API's 28 is `1786313719561`. In
       # one shared database this migrator would find a ledger already past its
       # entry and `planLedgerRun` would refuse the whole run.

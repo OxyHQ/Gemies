@@ -4,7 +4,7 @@
  * Delivers notifications to users via multiple channels:
  * - in_app: Socket.io real-time event
  * - push: Expo push notifications (mobile)
- * - telegram/discord/whatsapp/slack: via channel outbound system
+ * - telegram: the system bot, to the person's linked chat
  *
  * Each notification is persisted and can be delivered to multiple channels simultaneously.
  */
@@ -33,14 +33,12 @@ import type {
   NotificationPriority,
   NotificationTypeValue,
 } from '../db/schema/notifications.js';
-import { findConnectedAccountForChannel } from '../db/integrations/connectedAccountRepository.js';
 import { getStatusCode } from './errors/index.js';
 import { findLinkedBotUser, findSystemBot } from '../db/integrations/botRepository.js';
 import { sendChannelMessage } from './channels/outbound.js';
 import { webPush, VAPID_PUBLIC_KEY, isUnrecoverableSubscriptionError } from './web-push.js';
 import { getIO } from '../socket.js';
 import { log } from './logger.js';
-import type { ChannelId } from './channels/types.js';
 
 // ── Expo push singleton ──────────────────────────────────────────────
 const expo = new Expo();
@@ -78,7 +76,7 @@ async function resolveChannels(
   // Default: always in_app
   const channels: NotificationChannel[] = ['in_app'];
 
-  // Check push availability only. Telegram/WhatsApp/etc. are never inferred.
+  // Check push availability only. Telegram is never inferred.
   const [hasPushTokens, hasWebPushSubs] = await Promise.all([
     // Push: check if user has any active Expo push tokens
     hasActivePushToken(getDb(), userId).catch(() => false),
@@ -123,21 +121,6 @@ async function deliverTelegram(userId: string, notification: NotificationRow): P
 
   const text = formatNotificationText(notification);
   const results = await sendChannelMessage('telegram', botUser.chatId, text);
-  return results.length > 0 && results[0].ok;
-}
-
-async function deliverViaChannel(
-  channelId: ChannelId,
-  userId: string,
-  notification: NotificationRow,
-): Promise<boolean> {
-  // Find user's connected account for this channel
-  const account = await findConnectedAccountForChannel(getDb(), userId, channelId);
-
-  if (!account?.accountId) return false;
-
-  const text = formatNotificationText(notification);
-  const results = await sendChannelMessage(channelId, account.accountId, text);
   return results.length > 0 && results[0].ok;
 }
 
@@ -393,11 +376,6 @@ export async function sendNotification(options: SendNotificationOptions): Promis
           break;
         case 'telegram':
           success = await deliverTelegram(userId, notification);
-          break;
-        case 'discord':
-        case 'whatsapp':
-        case 'slack':
-          success = await deliverViaChannel(channel, userId, notification);
           break;
         case 'push': {
           // Deliver to both Expo (mobile) and web push in parallel

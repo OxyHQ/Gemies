@@ -988,6 +988,34 @@
       "when": 1794484300963,
       "tag": "0140_canvas_is_retired",
       "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1794543403508,
+      "tag": "0141_connected_accounts_belong_to_a_gemie",
+      "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1794544002698,
+      "tag": "0142_gemie_accounts_without_gmail_or_signal",
+      "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1794544030170,
+      "tag": "0143_conversations_without_signal",
+      "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1794544031397,
+      "tag": "0144_conversations_source_validate",
+      "breakpoints": true
     }
   ]
 }

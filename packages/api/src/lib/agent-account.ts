@@ -71,6 +71,7 @@ import {
   type HydratedAgent,
 } from './agent-identity.js';
 import { agentOpensOn } from './agent-availability.js';
+import { unattendedReach } from './automation-actors.js';
 import { log } from './logger.js';
 import { oxy } from './oxy.js';
 
@@ -323,6 +324,27 @@ export async function loadAgentForActor(
     return { ok: false, refusal: verdict.refusal };
   }
   return { ok: true, agent };
+}
+
+/**
+ * The gemie whose connected accounts a caller may link and manage (ADR 0035), or the reason not.
+ *
+ * Whoever may act as the gemie, which is {@link loadAgentForActor} — with one reading of "act as"
+ * that Oxy itself makes: a gemie with `reach = 'person'` (Alia) is the PERSON's own assistant, and
+ * Oxy's lane for her is the person's own (`lib/gemie-oxy-actor.ts`), so every person may link their
+ * own accounts to her when she is public and active. Their accounts on her are theirs alone: every
+ * read of `connected_accounts` is scoped to the person as well as the gemie.
+ */
+export async function loadAgentForAccounts(
+  db: Executor,
+  params: { agentId: string; oxyUserId: string; accessToken: string },
+): Promise<AgentForActor> {
+  const agent = await findAgentById(db, params.agentId);
+  if (agent === null) return { ok: false, refusal: 'agent_not_found' };
+  if (agent.reach === 'person' && agent.access === 'public' && agent.status === 'active') {
+    return { ok: true, agent };
+  }
+  return loadAgentForActor(db, { ...params, cache: false });
 }
 
 /**
@@ -681,6 +703,22 @@ export type TurnAgent =
   /** Alia could not load the selected agent. The caller may retry. */
   | { readonly kind: 'resolution_unavailable' };
 
+/**
+ * The gemie of a turn nobody present asked for — a connected account's (ADR 0035) — authorised by
+ * the unattended rule (`unattendedReach`): the person's own gemie or a public active one, in no app.
+ */
+export async function loadUnattendedTurnAgent(
+  db: Executor,
+  params: { agentId: string; oxyUserId: string },
+): Promise<TurnAgent> {
+  const agent = await findAgentById(db, params.agentId);
+  if (agent === null) return { kind: 'unavailable', reason: 'not_found' };
+  const unattended = await unattendedReach(agent, params.oxyUserId);
+  if (unattended === 'identity_unavailable') return { kind: 'identity_unavailable' };
+  if (unattended === 'out_of_reach') return { kind: 'unavailable', reason: 'out_of_reach' };
+  return { kind: 'agent', agent: await attachAgentIdentity(agent) };
+}
+
 export async function loadTurnAgent(
   db: Executor,
   params: {
@@ -693,9 +731,11 @@ export async function loadTurnAgent(
   const agent = await findAgentById(db, params.agentId);
   if (agent === null) return { kind: 'unavailable', reason: 'not_found' };
 
-  const reach = await canReachAgent(agent, params);
-  if (reach === 'identity_unavailable') return { kind: 'identity_unavailable' };
-  if (reach === 'out_of_reach') return { kind: 'unavailable', reason: 'out_of_reach' };
+  // `turnReach`, not `reach`: the rule that it is only compared matches the name across the file,
+  // and `agent.reach` is a gemie attribute (`reach-is-compared-not-negated.test.ts`).
+  const turnReach = await canReachAgent(agent, params);
+  if (turnReach === 'identity_unavailable') return { kind: 'identity_unavailable' };
+  if (turnReach === 'out_of_reach') return { kind: 'unavailable', reason: 'out_of_reach' };
 
   return { kind: 'agent', agent: await attachAgentIdentity(agent) };
 }

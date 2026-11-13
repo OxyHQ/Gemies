@@ -5,7 +5,7 @@
   "description": "Unified integrations service \u2014 messaging gateways, bots, browser, terminal",
   "main": "dist/index.js",
   "scripts": {
-    "db:check-locks": "oxy-db-check-migration-locks --migrations=drizzle --after=0 --hot-tables=signal_sessions,telegram_sessions,whatsapp_sessions",
+    "db:check-locks": "oxy-db-check-migration-locks --migrations=drizzle --after=0 --hot-tables=telegram_sessions,whatsapp_sessions",
     "dev": "bun --watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",

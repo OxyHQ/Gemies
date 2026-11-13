@@ -14,7 +14,7 @@ import { decrypt, encrypt } from '../../lib/crypto-utils.js';
 /**
  * `text` that cannot be stored in the clear.
  *
- * The OAuth access and refresh tokens on `integrations` and `connected_accounts`
+ * The OAuth access and refresh tokens on `integrations`
  * must be encrypted on EVERY write, whatever the call site. drizzle has no
  * getter/setter, and declaring those columns as plain `text` would quietly
  * demote that guarantee to "wherever whoever writes the repository remembers". Nothing would fail, no test would go red, and the symptom would be

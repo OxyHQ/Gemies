@@ -62,6 +62,7 @@ beforeEach(() => {
   fixture.connection.mockResolvedValue({
     id: 'connection',
     oxyUserId: ACCOUNT,
+    agentId: 'gemie-of-the-account',
     oxyTaskState: 'active',
     oxyTaskId: 'task',
   });
@@ -90,9 +91,20 @@ describe('channel workload identity', () => {
     expect(req.channelContext).toMatchObject({
       kind: 'account',
       accountId: ACCOUNT,
+      // The account's own gemie answers on it (ADR 0035).
+      gemieId: 'gemie-of-the-account',
       identityId: 'connection',
     });
     expect(fixture.connection).toHaveBeenCalledWith({}, 'whatsapp', 'connected-session');
+  });
+  it('resolves no account for a platform a gemie can no longer be linked to', async () => {
+    const { res, next } = await invoke({
+      'x-alia-channel': 'signal',
+      'x-alia-channel-session': 'connected-session',
+    });
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(fixture.connection).not.toHaveBeenCalled();
   });
   it.each(['external', 'wrong-workload', 'wrong-app'])(
     'rejects %s before reading any user link',

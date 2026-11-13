@@ -1,11 +1,11 @@
 import type { Router } from 'express';
 
 /**
- * Interface for account adapters (WhatsApp, Telegram, Signal, Gmail).
- * Account adapters manage personal user accounts — Alia monitors and responds passively.
+ * Interface for account adapters (WhatsApp, Telegram).
+ * Account adapters manage the accounts a person links to a gemie, which answers what arrives on them.
  */
 export interface AccountAdapter {
-  /** Platform identifier (e.g., 'whatsapp', 'telegram-gateway', 'signal') */
+  /** Platform identifier ('whatsapp', 'telegram-gateway') */
   name: string;
 
   /** Initialize the adapter (restore sessions, etc.) */

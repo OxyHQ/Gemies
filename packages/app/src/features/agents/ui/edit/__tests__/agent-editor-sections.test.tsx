@@ -48,6 +48,7 @@ vi.mock('@oxy.so/bloom/textarea', async () => hosts('Textarea'));
 vi.mock('@oxy.so/bloom/skeleton', async () => hosts('Box', 'Region'));
 vi.mock('@oxy.so/bloom/settings-modal', async () => hosts('SettingsCard'));
 vi.mock('@oxy.so/bloom/icons/RiDeleteBinLine', () => ({ RiDeleteBinLine: 'RiDeleteBinLine' }));
+vi.mock('react-native-qrcode-svg', async () => ({ default: (await hosts('QRCode')).QRCode }));
 vi.mock('@oxy.so/bloom/surfaces', () => ({ confirm }));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast }));
 vi.mock('@oxy.so/services/ui/client', () => ({
@@ -131,6 +132,8 @@ let alerts = {
   agents: [{ agentId: 'agent-1', name: 'Scout', handle: 'scout', color: null, enabled: false }],
 };
 let documents: { path: string }[] = [];
+let linkedAccounts: Record<string, unknown>[] = [];
+let qr: { status: string; qr: string | null } = { status: 'qr-pending', qr: 'QR-2' };
 
 beforeEach(() => {
   commitAccountProjection('A', 'session-A');
@@ -138,6 +141,8 @@ beforeEach(() => {
   items = [];
   lastHeartbeatAt = null;
   documents = [];
+  linkedAccounts = [];
+  qr = { status: 'qr-pending', qr: 'QR-2' };
   alerts = {
     alia: { enabled: true },
     agents: [{ agentId: 'agent-1', name: 'Scout', handle: 'scout', color: null, enabled: false }],
@@ -149,6 +154,9 @@ beforeEach(() => {
       if (url.endsWith('/inbox'))
         return { data: { items, heartbeat: { intervalMinutes: 60, lastHeartbeatAt } } };
       if (url.endsWith('/subscriptions')) return { data: { subscriptions } };
+      if (url === '/agents/agent-1/accounts') return { data: { accounts: linkedAccounts } };
+      if (url.endsWith('/qr')) return { data: qr };
+      if (url.endsWith('/status')) return { data: { account: {} } };
       if (url.endsWith('/memory'))
         return config?.params?.path
           ? {
@@ -441,5 +449,67 @@ describe('what the agent remembers', () => {
     await act(async () => forgetAll.props.onPress());
     await settle();
     expect(api.delete).toHaveBeenCalledWith('/agents/agent-1/memory', { params: {} });
+  });
+});
+
+describe('the accounts it answers on', () => {
+  const buttonLabelled = (tree: ReactTestRenderer, label: string) =>
+    all(tree, 'Button').find((node) => node.props.accessibilityLabel === label);
+
+  it('offers WhatsApp and Telegram only, and links one to this gemie showing its QR code', async () => {
+    api.post.mockImplementation(async (url: string) =>
+      url === '/agents/agent-1/accounts'
+        ? { data: { accountId: 'acc-1', status: 'qr-pending', qr: 'QR-1' } }
+        : { data: { subscription: subscription() } },
+    );
+    const tree = await render();
+    const offered = all(tree, 'Button')
+      .map((node) => node.props.accessibilityLabel)
+      .filter((label) => String(label).startsWith('Link a'));
+    expect(offered).toEqual(['Link a WhatsApp account', 'Link a Telegram account']);
+
+    await act(async () => buttonLabelled(tree, 'Link a WhatsApp account')?.props.onPress());
+    await settle();
+    expect(api.post).toHaveBeenCalledWith('/agents/agent-1/accounts', { platform: 'whatsapp' });
+    const code = all(tree, 'QRCode')[0];
+    expect(['QR-1', 'QR-2']).toContain(code?.props.value);
+    expect(texts(tree).some((text) => text.startsWith('Open WhatsApp on your phone'))).toBe(true);
+  });
+
+  it('closes the code and says so once the account is connected', async () => {
+    api.post.mockImplementation(async (url: string) =>
+      url === '/agents/agent-1/accounts'
+        ? { data: { accountId: 'acc-1', status: 'qr-pending', qr: 'QR-1' } }
+        : { data: {} },
+    );
+    qr = { status: 'connected', qr: null };
+    const tree = await render();
+    await act(async () => buttonLabelled(tree, 'Link a Telegram account')?.props.onPress());
+    await settle();
+    expect(api.get).toHaveBeenCalledWith('/agents/agent-1/accounts/acc-1/status');
+    expect(toast.success).toHaveBeenCalledWith('Telegram is linked. Scout answers there now.');
+    expect(all(tree, 'QRCode')).toHaveLength(0);
+  });
+
+  it('lists a linked account with its status and removes it after confirming', async () => {
+    linkedAccounts = [
+      { _id: 'acc-9', platform: 'whatsapp', phoneNumber: '+34 600', status: 'connected' },
+    ];
+    const tree = await render();
+    expect(texts(tree)).toContain('+34 600 · Connected');
+    await act(async () => buttonLabelled(tree, 'Remove the WhatsApp account')?.props.onPress());
+    await settle();
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ destructive: true, title: 'Remove WhatsApp' }),
+    );
+    expect(api.delete).toHaveBeenCalledWith('/agents/agent-1/accounts/acc-9');
+  });
+
+  it('renews a lapsed account task without a new link', async () => {
+    linkedAccounts = [
+      { _id: 'acc-7', platform: 'telegram', status: 'connected', oxyTaskState: 'reauth_required' },
+    ];
+    await render();
+    expect(api.post).toHaveBeenCalledWith('/agents/agent-1/accounts/acc-7/reauthorize');
   });
 });

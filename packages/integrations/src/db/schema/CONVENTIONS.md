@@ -103,10 +103,8 @@ mutation-tested: asserting a different constraint name turns it red.
 A CHECK is `DROP CONSTRAINT` / `ADD CONSTRAINT`; removing or renaming a pg enum
 value is not possible.
 
-**The three session-status tuples are deliberately NOT one shared union**, even
-though WhatsApp's and Telegram's are identical today. Signal's is genuinely
-different (`linking`/`unlinked` rather than `qr-pending`/`logged-out`) because it
-links a device rather than scanning into a web session. Two protocols agreeing is
+**The two session-status tuples are deliberately NOT one shared union**, even
+though WhatsApp's and Telegram's are identical today. Two protocols agreeing is
 not a shared contract, and one tuple would let a change to either silently widen
 the other.
 
@@ -128,16 +126,12 @@ invisible in the schema file and would overwrite historical values during a
 backfill.
 
 **Protocol timestamps stay integers.** `timestamp`, `conversation_timestamp` and
-`last_message_timestamp` are epoch values WhatsApp, Telegram and signal-cli
+`last_message_timestamp` are epoch values WhatsApp and Telegram
 produce, and the adapters echo them back verbatim. They are `bigint({ mode:
 'number' })`, not `timestamptz`: converting them would assert a unit (seconds vs
 milliseconds) that the protocols do not agree on, change what the value means,
 and not be reversible if the assumption is wrong. They are a foreign system's
 field, not a date this service owns.
-
-`signal_messages.message_timestamp` is `text` despite the name — it is Signal's
-send-timestamp used AS a message id. Renaming it would break the adapter's own
-vocabulary for no gain.
 
 ## `jsonb`, and what did not earn it
 

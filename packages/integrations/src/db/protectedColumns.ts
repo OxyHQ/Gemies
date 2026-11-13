@@ -28,11 +28,6 @@ export const PROTECTED_COLUMNS = {
    */
   telegram_sessions: ['sessionString', 'lastQr'],
   /**
-   * `dataDir` is not a secret, but it names the path holding signal-cli's key
-   * material and is host-local; nothing outside this process has any use for it.
-   */
-  signal_sessions: ['dataDir', 'lastQr'],
-  /**
    * Ciphertext, not plaintext — but ciphertext is a token to anyone who also has
    * `TOKEN_ENCRYPTION_KEY`, and the two travel together in an incident.
    */

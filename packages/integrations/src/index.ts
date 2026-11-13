@@ -57,18 +57,6 @@ async function loadAdapters(): Promise<void> {
     }
   }
 
-  // Signal
-  if (process.env.SIGNAL_ENABLED !== 'false') {
-    const { SignalAdapter } = await import('./accounts/signal/adapter');
-    accountAdapters.push(new SignalAdapter());
-  }
-
-  // Gmail
-  if (process.env.GMAIL_ENABLED !== 'false') {
-    const { GmailAdapter } = await import('./accounts/gmail/adapter');
-    accountAdapters.push(new GmailAdapter());
-  }
-
   // Bot Adapters — system bots (active sending + external user interaction)
 
   // Telegram Bot

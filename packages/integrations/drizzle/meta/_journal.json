@@ -8,6 +8,13 @@
       "when": 1786270502993,
       "tag": "0000_lumpy_firebrand",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794543962165,
+      "tag": "0001_signal_is_retired",
+      "breakpoints": true
     }
   ]
 }

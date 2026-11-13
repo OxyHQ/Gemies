@@ -30,7 +30,6 @@ import chatRouter from './routes/chat.js';
 import memoryRouter from './routes/memory.js';
 import creditsRouter from './routes/credits.js';
 import v1Router from './routes/v1.js';
-import accountsRouter from './routes/accounts.js';
 import botsRouter from './routes/bots.js';
 import mcpRouter from './routes/mcp.js';
 import integrationsOauthRouter from './routes/integrations-oauth.js';
@@ -321,7 +320,6 @@ app.use('/memory', memoryRouter);
 app.use('/credits', creditsRouter);
 app.use('/alia/chat', chatRouter);
 app.use('/v1', v1Router);
-app.use('/accounts', accountsRouter);
 app.use('/bots', botsRouter);
 app.use('/mcp', mcpRouter);
 app.use('/integrations', integrationsOauthRouter);
@@ -362,7 +360,6 @@ app.get('/', (_req, res) => {
       '/credits',
       '/alia/chat',
       '/v1',
-      '/accounts',
       '/bots',
       '/mcp',
       '/integrations',

@@ -16,7 +16,7 @@ import { getDb } from '../../db/index.js';
 import { findAgentSkills } from '../../db/agents/agentRepository.js';
 import { findUserMemory, type UserMemoryProfile } from '../../db/memory/userMemoryRepository.js';
 import { oxy } from '../oxy.js';
-import { loadTurnAgent } from '../agent-account.js';
+import { loadTurnAgent, loadUnattendedTurnAgent } from '../agent-account.js';
 import { loadAliaGemie } from '../alia-gemie.js';
 import type { HydratedAgent } from '../agent-identity.js';
 import { log } from '../logger.js';
@@ -33,6 +33,11 @@ export interface TurnIdentity {
   readonly isDirectUserSession: boolean;
   /** An exact gemie selector the caller already validated, or `undefined` for the default (Alia). */
   readonly requestedAgentId?: string;
+  /**
+   * The gemie a verified connected account belongs to (ADR 0035). It answers the turn, in place of
+   * any requested one, under the rule unattended work follows: no bearer is present to ask Oxy with.
+   */
+  readonly channelGemieId?: string;
   /** The app the turn comes from, by its verified app assertion (`lib/app-surface.ts`), or `null`. */
   readonly surfaceApplicationId: string | null;
   /** `false` when the person turned personalization off for this turn: no memory profile is read. */
@@ -103,8 +108,12 @@ export async function prefetchTurnInputs(
  * may use. A name without a person to authorise it is out of reach.
  */
 export async function resolveTurnGemie(identity: TurnIdentity): Promise<TurnAgentResolution> {
-  const { requestedAgentId, oxyUserId } = identity;
+  const { requestedAgentId, oxyUserId, channelGemieId } = identity;
   try {
+    if (channelGemieId !== undefined) {
+      if (oxyUserId === undefined) return { kind: 'unavailable', reason: 'out_of_reach' };
+      return await loadUnattendedTurnAgent(getDb(), { agentId: channelGemieId, oxyUserId });
+    }
     if (requestedAgentId === undefined) return { kind: 'agent', agent: await loadAliaGemie() };
     if (oxyUserId === undefined) return { kind: 'unavailable', reason: 'out_of_reach' };
     return await loadTurnAgent(getDb(), {

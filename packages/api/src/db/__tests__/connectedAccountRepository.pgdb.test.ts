@@ -1,32 +1,32 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { sql } from 'drizzle-orm';
-import { isCheckViolation, constraintNameOf } from '@oxy.so/db';
+import { eq, sql } from 'drizzle-orm';
+import { constraintNameOf, isCheckViolation } from '@oxy.so/db';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
+import { agents } from '../schema/agents';
 import { connectedAccounts } from '../schema/integrations';
 import {
-  completeGmailConnection,
   createPendingConnectedAccount,
   deleteConnectedAccount,
-  deleteConnectedAccountForUser,
   findConnectedAccountBySession,
-  findConnectedAccountForChannel,
-  findConnectedAccountForUser,
-  listConnectedAccountsForUser,
+  findConnectedGemieAccount,
+  findGemieAccount,
+  listAccountsOfGemie,
+  listGemieAccounts,
   setConnectedAccountSession,
   setConnectedAccountStatus,
-  updateConnectedAccountSettings,
 } from '../integrations/connectedAccountRepository';
+import { TEST_CHARACTER } from './support/agent-character';
 
 /**
- * Connected messaging accounts, against a REAL server.
+ * A gemie's connected accounts (ADR 0035), against a REAL server: an account belongs to one gemie
+ * and was linked by one person, and every reader that serves a person or a turn is scoped by both.
  *
- * Ids are prefixed `cau-` and every list is scoped to a user this file created.
+ * Ids are prefixed `cau-`, and every gemie is created here.
  */
 
 let db: ApiDatabase;
 
 beforeAll(() => {
-  process.env.TOKEN_ENCRYPTION_KEY ??= 'a'.repeat(64);
   const connected = connectPostgres(process.env.DATABASE_URL);
   if (!connected) throw new Error('DATABASE_URL is not set; vitest.pg.globalSetup.ts must run.');
   db = connected;
@@ -36,152 +36,116 @@ afterAll(async () => {
   await closePostgres();
 });
 
-async function pending(oxyUserId: string, platform = 'whatsapp') {
+async function gemie(id: string): Promise<string> {
+  await db.insert(agents).values({
+    id,
+    oxyAccountId: `cau-bot-${id}`,
+    character: TEST_CHARACTER,
+    tagline: 'answers messages',
+    description: 'a gemie with accounts',
+    authorOxyUserId: 'cau-owner',
+    category: 'general',
+  });
+  return id;
+}
+
+async function pending(
+  agentId: string,
+  oxyUserId: string,
+  platform: 'whatsapp' | 'telegram' = 'whatsapp',
+) {
   return createPendingConnectedAccount(db, {
+    agentId,
     oxyUserId,
     platform,
     capabilities: ['read_messages', 'send_messages'],
   });
 }
 
-describe('the OAuth tokens never reach a response, which is a CHANGE', () => {
-  it('stores them encrypted and serves a shape that has no token field', async () => {
-    /**
-     * The source's `oauthTokens` sub-document was `{ toJSON: { getters: true } }`
-     * with NO `select: false`, so `res.json({ account })` put a `gmail.send`
-     * scoped access token on the wire in the CLEAR. Measured against the real
-     * model before this port: the stored value is ciphertext and the serialized
-     * document contains the plaintext.
-     *
-     * The safe projection has no token field, so the leak closes by
-     * construction rather than by remembering a `.select()`. Nothing read what
-     * it drops — `packages/app/src/features/connections/runtime/use-connected-accounts.ts:6` declares
-     * the DTO and `oauthTokens` is not in it.
-     */
-    const account = await pending('cau-gmail', 'gmail');
-    const connected = await completeGmailConnection(db, account.id, {
-      email: 'a@b.c',
-      displayName: 'A',
-      accessToken: 'PLAINTEXT-GMAIL-ACCESS',
-      refreshToken: 'PLAINTEXT-GMAIL-REFRESH',
-      scope: 'gmail.send',
-    });
-    if (!connected) throw new Error('gmail completion returned null');
+describe('an account belongs to one gemie and one person', () => {
+  it('lists, finds and reaches only the caller’s accounts on that gemie', async () => {
+    const a = await gemie('cau-g-a');
+    const b = await gemie('cau-g-b');
+    const mine = await pending(a, 'cau-p1');
+    await pending(a, 'cau-p1', 'telegram');
+    const otherGemie = await pending(b, 'cau-p1');
+    const otherPerson = await pending(a, 'cau-p2');
 
-    // Encrypted at rest.
-    const raw = await db.execute<{ at: string; rt: string }>(
-      sql`select oauth_access_token as at, oauth_refresh_token as rt
-          from ${connectedAccounts} where id = ${account.id}`,
+    const listed = await listGemieAccounts(db, { agentId: a, oxyUserId: 'cau-p1' });
+    expect(listed.map((account) => account.platform).sort()).toEqual(['telegram', 'whatsapp']);
+    expect(listed.every((account) => account.agentId === a)).toBe(true);
+    expect(listed[0]?.createdAt.getTime()).toBeGreaterThanOrEqual(
+      listed[listed.length - 1]?.createdAt.getTime() ?? 0,
     );
-    expect(raw[0]?.at).toMatch(/^[0-9a-f]{24}:[0-9a-f]{32}:[0-9a-f]+$/);
-    expect(raw[0]?.rt).toMatch(/^[0-9a-f]{24}:[0-9a-f]{32}:[0-9a-f]+$/);
 
-    // And absent from every shape a caller can obtain. Structural, because
-    // `toBeUndefined()` on a column that was never selected passes identically
-    // against a leak of `null`.
-    for (const shape of [
-      connected,
-      (await listConnectedAccountsForUser(db, 'cau-gmail'))[0],
-      await findConnectedAccountForUser(db, account.id, 'cau-gmail'),
-    ]) {
-      const keys = Object.keys(shape ?? {});
-      expect(keys).not.toContain('oauthAccessToken');
-      expect(keys).not.toContain('oauthRefreshToken');
-      expect(keys).not.toContain('oauthTokens');
+    const scope = { agentId: a, oxyUserId: 'cau-p1' };
+    expect((await findGemieAccount(db, mine.id, scope))?.id).toBe(mine.id);
+    expect(await findGemieAccount(db, otherGemie.id, scope)).toBeNull();
+    expect(await findGemieAccount(db, otherPerson.id, scope)).toBeNull();
+    expect(await findGemieAccount(db, 'not-an-id', scope)).toBeNull();
+  });
+
+  it('gives a turn only the gemie’s CONNECTED account of its person', async () => {
+    const a = await gemie('cau-g-turn');
+    const b = await gemie('cau-g-turn-other');
+    const scope = { agentId: a, oxyUserId: 'cau-turn' };
+    const account = await pending(a, 'cau-turn');
+    const elsewhere = await pending(b, 'cau-turn');
+    await setConnectedAccountStatus(db, elsewhere.id, { status: 'connected' });
+
+    // `connecting` has no live session; another gemie's connected WhatsApp is never this turn's.
+    expect(await findConnectedGemieAccount(db, scope, 'whatsapp')).toBeNull();
+    await setConnectedAccountStatus(db, account.id, { status: 'connected' });
+    expect((await findConnectedGemieAccount(db, scope, 'whatsapp'))?.id).toBe(account.id);
+    expect(await findConnectedGemieAccount(db, scope, 'telegram')).toBeNull();
+    await setConnectedAccountStatus(db, account.id, { status: 'disconnected' });
+    expect(await findConnectedGemieAccount(db, scope, 'whatsapp')).toBeNull();
+  });
+
+  it('goes with its gemie, and the gemie lists all of them first, whoever linked them', async () => {
+    const a = await gemie('cau-g-delete');
+    await pending(a, 'cau-d1');
+    await pending(a, 'cau-d2', 'telegram');
+    const all = await listAccountsOfGemie(db, a);
+    expect(all.map((account) => account.oxyUserId).sort()).toEqual(['cau-d1', 'cau-d2']);
+
+    await db.delete(agents).where(eq(agents.id, a));
+    expect(await listAccountsOfGemie(db, a)).toEqual([]);
+  });
+
+  it('refuses a platform other than WhatsApp and Telegram, and an account with no gemie', async () => {
+    const a = await gemie('cau-g-platform');
+    for (const platform of ['gmail', 'signal']) {
+      let caught: unknown;
+      try {
+        await db.execute(
+          sql`insert into ${connectedAccounts} (id, oxy_user_id, agent_id, platform, account_id)
+              values (${`cau-${platform}`}, 'cau-platform', ${a}, ${platform}, 'pending')`,
+        );
+      } catch (err) {
+        caught = err;
+      }
+      expect(isCheckViolation(caught)).toBe(true);
+      expect(constraintNameOf(caught)).toBe('connected_accounts_platform_check');
     }
-
-    // The floor: the projection really did return the row, so the absences above
-    // are a column list and not an empty result.
-    expect(connected.email).toBe('a@b.c');
-    expect(connected.status).toBe('connected');
-    expect(connected._id).toBe(connected.id);
-  });
-
-  it('refuses a HALF-WRITTEN OAuth group', async () => {
-    /**
-     * A refresh token with no access token is not a state any writer means to
-     * produce. The CHECK makes the group atomic — asserted by constraint NAME, so a different
-     * failure cannot pass as this one.
-     */
-    const account = await pending('cau-halfoauth', 'gmail');
-
-    let caught: unknown;
-    try {
-      await db
-        .update(connectedAccounts)
-        .set({ oauthRefreshToken: 'orphan-refresh' })
-        .where(sql`${connectedAccounts.id} = ${account.id}`);
-    } catch (err) {
-      caught = err;
-    }
-
-    expect(isCheckViolation(caught)).toBe(true);
-    expect(constraintNameOf(caught)).toBe('connected_accounts_oauth_pair_check');
-  });
-});
-
-describe('a settings patch can CLEAR a field, which `undefined` no longer does', () => {
-  it('clears the auto-reply agent when the client sends null', async () => {
-    /**
-     * In drizzle `.set({ x: undefined })` is a silent no-op, so the agent would
-     * have stayed bound while the UI showed it cleared — the plausible wrong
-     * answer, with nothing raised.
-     */
-    const account = await pending('cau-settings');
-    await updateConnectedAccountSettings(db, account.id, 'cau-settings', {
-      autoReplyAgentId: 'agent-1',
-      autoReply: true,
+    await expect(
+      db.execute(
+        sql`insert into ${connectedAccounts} (id, oxy_user_id, platform, account_id)
+            values ('cau-no-gemie', 'cau-platform', 'whatsapp', 'pending')`,
+      ),
+    ).rejects.toSatisfy((error: unknown) => {
+      // 23502: not_null_violation, on `agent_id`.
+      const cause = (error as { cause?: { code?: string; column_name?: string } }).cause;
+      expect(cause?.code).toBe('23502');
+      expect(cause?.column_name).toBe('agent_id');
+      return true;
     });
-    expect(
-      (await findConnectedAccountForUser(db, account.id, 'cau-settings'))?.autoReplyAgentId,
-    ).toBe('agent-1');
-
-    const cleared = await updateConnectedAccountSettings(db, account.id, 'cau-settings', {
-      autoReplyAgentId: null,
-    });
-
-    expect(cleared?.autoReplyAgentId).toBeNull();
-    // And a field the patch did NOT mention survives.
-    expect(cleared?.autoReply).toBe(true);
-  });
-
-  it('clears the tool lists the same way', async () => {
-    const account = await pending('cau-tools');
-    await updateConnectedAccountSettings(db, account.id, 'cau-tools', {
-      allowedTools: ['a', 'b'],
-      blockedTools: ['c'],
-      allowedSkillIds: ['s1'],
-    });
-
-    const cleared = await updateConnectedAccountSettings(db, account.id, 'cau-tools', {
-      allowedTools: null,
-      allowedSkillIds: null,
-    });
-
-    expect(cleared?.allowedTools).toBeNull();
-    expect(cleared?.allowedSkillIds).toBeNull();
-    // Untouched.
-    expect(cleared?.blockedTools).toEqual(['c']);
-  });
-
-  it('answers the current row for an EMPTY patch rather than raising', async () => {
-    const account = await pending('cau-emptypatch');
-    const same = await updateConnectedAccountSettings(db, account.id, 'cau-emptypatch', {});
-    expect(same?.id).toBe(account.id);
-  });
-
-  it("will not patch another user's account", async () => {
-    const account = await pending('cau-owner');
-    expect(
-      await updateConnectedAccountSettings(db, account.id, 'cau-intruder', { autoReply: true }),
-    ).toBeNull();
-    expect((await findConnectedAccountForUser(db, account.id, 'cau-owner'))?.autoReply).toBe(false);
   });
 });
 
 describe('a status sync does not erase what the poll omitted', () => {
   it('keeps a stored display name when the reply carries none', async () => {
-    const account = await pending('cau-sync');
+    const account = await pending(await gemie('cau-g-sync'), 'cau-sync');
     await setConnectedAccountStatus(db, account.id, {
       status: 'connected',
       displayName: 'Known Name',
@@ -193,80 +157,25 @@ describe('a status sync does not erase what the poll omitted', () => {
     expect(later?.status).toBe('expired');
     expect(later?.displayName).toBe('Known Name');
     expect(later?.phoneNumber).toBe('+100');
-  });
-});
-
-describe('the readers are scoped as the routes need', () => {
-  it('lists newest first, and filters by platform when asked', async () => {
-    const user = 'cau-list';
-    await pending(user, 'whatsapp');
-    await pending(user, 'telegram');
-    await pending(user, 'telegram');
-
-    const all = await listConnectedAccountsForUser(db, user);
-    expect(all).toHaveLength(3);
-    expect(all[0]?.createdAt.getTime()).toBeGreaterThanOrEqual(
-      all[all.length - 1]?.createdAt.getTime() ?? 0,
-    );
-
-    const telegram = await listConnectedAccountsForUser(db, user, 'telegram');
-    expect(telegram).toHaveLength(2);
-    expect(telegram.every((a) => a.platform === 'telegram')).toBe(true);
-  });
-
-  it('gives outbound delivery only a CONNECTED account', async () => {
-    const user = 'cau-channel';
-    const account = await pending(user, 'whatsapp');
-
-    // `connecting` — there is no live session to send through.
-    expect(await findConnectedAccountForChannel(db, user, 'whatsapp')).toBeNull();
-
-    await setConnectedAccountStatus(db, account.id, { status: 'connected' });
-    expect((await findConnectedAccountForChannel(db, user, 'whatsapp'))?.id).toBe(account.id);
-
-    await setConnectedAccountStatus(db, account.id, { status: 'disconnected' });
-    expect(await findConnectedAccountForChannel(db, user, 'whatsapp')).toBeNull();
-  });
-
-  it("deletes only the caller's own account, and cleans up an orphan by id", async () => {
-    const account = await pending('cau-del');
-    expect(await deleteConnectedAccountForUser(db, account.id, 'cau-someone-else')).toBeNull();
-    expect(await findConnectedAccountForUser(db, account.id, 'cau-del')).not.toBeNull();
-
-    const removed = await deleteConnectedAccountForUser(db, account.id, 'cau-del');
-    expect(removed?.id).toBe(account.id);
-
-    // The connect-failure cleanup path is NOT user-scoped — the caller created
-    // the row moments earlier and holds its id.
-    const orphan = await pending('cau-orphan');
-    await deleteConnectedAccount(db, orphan.id);
-    expect(await findConnectedAccountForUser(db, orphan.id, 'cau-orphan')).toBeNull();
-  });
-
-  it('attaches a session id and answers null for an id of any shape', async () => {
-    const account = await pending('cau-session');
-    await setConnectedAccountSession(db, account.id, 'sess-1');
-    expect((await findConnectedAccountForUser(db, account.id, 'cau-session'))?.sessionId).toBe(
-      'sess-1',
-    );
-
-    expect(await findConnectedAccountForUser(db, 'not-an-object-id', 'cau-session')).toBeNull();
+    expect(later?._id).toBe(later?.id);
   });
 });
 
 describe('workload channel account resolution', () => {
-  it('requires a unique connected row for the exact provider session', async () => {
-    const account = await pending('cau-channel-owner');
+  it('requires a unique connected row for the exact provider session, and names its gemie', async () => {
+    const a = await gemie('cau-g-session');
+    const account = await pending(a, 'cau-channel-owner');
     await setConnectedAccountSession(db, account.id, 'channel-reader-session');
     expect(
       await findConnectedAccountBySession(db, 'whatsapp', 'channel-reader-session'),
     ).toBeNull();
     await setConnectedAccountStatus(db, account.id, { status: 'connected' });
-    expect(await findConnectedAccountBySession(db, 'signal', 'channel-reader-session')).toBeNull();
+    expect(
+      await findConnectedAccountBySession(db, 'telegram', 'channel-reader-session'),
+    ).toBeNull();
     const found = await findConnectedAccountBySession(db, 'whatsapp', 'channel-reader-session');
-    expect(found).toMatchObject({ id: account.id, oxyUserId: 'cau-channel-owner' });
-    expect(found).not.toHaveProperty('oauthAccessToken');
-    const ambiguous = await pending('cau-other-channel-owner');
+    expect(found).toMatchObject({ id: account.id, oxyUserId: 'cau-channel-owner', agentId: a });
+    const ambiguous = await pending(a, 'cau-other-channel-owner');
     await setConnectedAccountSession(db, ambiguous.id, 'channel-reader-session');
     await setConnectedAccountStatus(db, ambiguous.id, { status: 'connected' });
     expect(

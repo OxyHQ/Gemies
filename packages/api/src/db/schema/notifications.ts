@@ -57,14 +57,13 @@ export const NOTIFICATION_TYPES = [
 ] as const;
 export type NotificationTypeValue = (typeof NOTIFICATION_TYPES)[number];
 
-export const NOTIFICATION_CHANNELS = [
-  'push',
-  'telegram',
-  'discord',
-  'whatsapp',
-  'slack',
-  'in_app',
-] as const;
+/**
+ * Where a notification is delivered. A person's WhatsApp, Discord or Slack were
+ * channels here once, reached through a connected account of the PERSON's; an
+ * account belongs to a gemie now (ADR 0035) and no notification ever named them,
+ * so 0142 narrowed them away.
+ */
+export const NOTIFICATION_CHANNELS = ['push', 'telegram', 'in_app'] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 export const NOTIFICATION_STATUSES = ['pending', 'sent', 'read', 'dismissed'] as const;
 export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];

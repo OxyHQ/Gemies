@@ -6,8 +6,6 @@
 **/.env
 **/.env.*
 *.log
-# signal-cli account state (keys) if a local run left it in the tree.
-**/signal-data
 .git
 .github
 .vscode
