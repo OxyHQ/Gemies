@@ -1,5 +1,6 @@
+import { EditorScreenFrame } from '@/features/agents/ui/edit/editor-screen-frame';
 import { AgentEditorSurface } from '@/features/agents/ui/edit/lazy-agent-editor';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 /**
  * `/agents/edit/<id>` — the editor as a screen, for a phone, of a gemie with no handle to address
@@ -13,13 +14,12 @@ export default function EditAgentByIdScreen() {
   const toList = () => router.replace('/(app)/agents');
 
   return (
-    <>
-      <Stack.Screen options={{ headerShown: false }} />
+    <EditorScreenFrame>
       <AgentEditorSurface
         agentId={id}
         onClose={() => (router.canGoBack() ? router.back() : toList())}
         onBackToList={toList}
       />
-    </>
+    </EditorScreenFrame>
   );
 }

@@ -40,10 +40,15 @@ permission, enforced by Oxy per call.
 
 ## Main Routes
 
-- `app/(app)/index.tsx` - entry chat
-- `app/(app)/c/[id].tsx` - conversation view
+- `app/(app)/(own-header)/index.tsx` - entry chat
+- `app/(app)/(own-header)/c/[id]/index.tsx` - conversation view
+- `app/(app)/(own-header)/[username]/index.tsx`, `agents/[id].tsx` - an agent's thread (or a person's profile)
 - `app/(app)/agents.tsx` - agent directory
-- `app/(app)/agents/[id].tsx` - agent detail/activity
+
+A screen that draws its own frame and header (a chat, the agent editor's screen) lives in the
+`(own-header)` route group, which adds nothing to its URL; the layout gives every other screen the
+shell's container and header. `app/(app)/__tests__/one-header.test.ts` fails when a file is on the
+wrong side.
 - `app/(app)/automations.tsx` - automation list and controls
 - `app/(app)/notifications.tsx` - notification feed
 - `app/(app)/settings/*` - settings area

@@ -1,13 +1,16 @@
 /**
  * `/@pepe` must not have swallowed the rest of the app.
  *
- * What `/@pepe` names lives under `app/(app)/[username]/` — a DYNAMIC segment at
- * the top of the group, because Expo Router cannot mix static text with a
+ * What `/@pepe` names lives under `[username]/` — a DYNAMIC segment at the top
+ * of the `(app)` group, because Expo Router cannot mix static text with a
  * dynamic segment and so there is no `@[username]`. The `@` rides inside the
  * parameter value. The directory holds `index` (the agent's thread, or a person's
  * profile), `details` (an agent's page) and `edit` (its editor screen), so the
- * dynamic route at the root is the directory `[username]` as a whole: its routes
- * are named `[username]/index`, `[username]/details` and `[username]/edit`.
+ * dynamic route at the root is the directory `[username]` as a whole. `index` and
+ * `edit` draw their own frame, so their files are in the `(own-header)` route
+ * group (`app/(app)/_layout.tsx`), which adds nothing to a URL: the routes are
+ * `(own-header)/[username]/index`, `[username]/details` and
+ * `(own-header)/[username]/edit`, all of them at the `[username]` root.
  *
  * A dynamic segment at the top of a group matches EVERY single-segment path.
  * Twelve static routes and eight directories sit at that same level, and the
@@ -144,8 +147,13 @@ function resolveRoute(path, config) {
 
 /** The dynamic route at the group root: the directory `[username]`, whose routes are `[username]/…`. */
 const DYNAMIC = '[username]';
-/** The root a route belongs to: `[username]/details` → `[username]`, `settings/general` → `settings`. */
-const rootOf = (name) => name.split('/')[0];
+/** A route group's segment, `(own-header)`: it names a layout's share of the routes, never a URL's. */
+const isGroup = (segment) => /^\(.*\)$/.test(segment);
+/**
+ * The root a route belongs to: `[username]/details` → `[username]`, `settings/general` → `settings`,
+ * `(own-header)/[username]/index` → `[username]` (a group adds nothing to the address).
+ */
+const rootOf = (name) => name.split('/').find((segment) => !isGroup(segment));
 /** Whether a resolved chain landed in the dynamic route, whichever of its routes it is. */
 const inDynamic = (chain) => chain.some((name) => rootOf(name) === DYNAMIC);
 const failures = [];
@@ -164,7 +172,14 @@ function declaredPaths(screens, prefix = '') {
   const paths = [];
   for (const [name, value] of Object.entries(screens)) {
     if (typeof value === 'string') {
-      paths.push({ name, pattern: [prefix, value].filter(Boolean).join('/') });
+      const pattern = [prefix, value].filter(Boolean).join('/');
+      paths.push({
+        name,
+        pattern: pattern
+          .split('/')
+          .filter((s) => !isGroup(s))
+          .join('/'),
+      });
     } else {
       paths.push(...declaredPaths(value.screens, [prefix, value.path].filter(Boolean).join('/')));
     }
@@ -248,10 +263,10 @@ for (const route of others) {
  * dynamic directory's own: a static two-segment route resolving there is caught by the loop above.
  */
 const EXPECTED = [
-  ['/@pepe', '[username]/index'],
-  ['/pepe', '[username]/index'],
+  ['/@pepe', '(own-header)/[username]/index'],
+  ['/pepe', '(own-header)/[username]/index'],
   ['/@pepe/details', '[username]/details'],
-  ['/@pepe/edit', '[username]/edit'],
+  ['/@pepe/edit', '(own-header)/[username]/edit'],
 ];
 for (const [path, route] of EXPECTED) {
   const chain = resolveRoute(path, config);
@@ -316,7 +331,7 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  ${failure}`);
   console.error('');
   console.error(
-    '  `app/(app)/[username]/` matches every single-segment path that no static\n' +
+    '  `[username]/` matches every single-segment path that no static\n' +
       '  route claims. Restore the route, or move the agent profile off the group root.',
   );
   process.exit(1);

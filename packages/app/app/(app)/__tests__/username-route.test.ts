@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
  * These read the source, so they pin the decision without rendering the thread's whole tree.
  */
 const source = readFileSync(
-  fileURLToPath(new URL('../[username]/index.tsx', import.meta.url)),
+  fileURLToPath(new URL('../(own-header)/[username]/index.tsx', import.meta.url)),
   'utf8',
 );
 /** The thread itself, the same screen `/agents/<id>` opens for a gemie with no handle. */
