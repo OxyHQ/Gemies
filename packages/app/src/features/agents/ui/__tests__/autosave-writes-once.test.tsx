@@ -715,30 +715,28 @@ describe('one save is one toast', () => {
  * owner's own credential, Oxy's own checks), once, and never to the agent row.
  */
 describe('the colour is the account’s', () => {
-  it('writes a chosen colour to the account once, and no PATCH carries one', async () => {
+  it('writes any chosen colour (a hex) to the account once, and no PATCH carries one', async () => {
     const { renderer } = await renderEditor();
     const creator = renderer.root.findAllByType(
       'AgentCreator' as unknown as React.ComponentType,
     )[0];
     const props = creator.props as {
       agent: Record<string, unknown>;
-      colors: readonly string[];
       onChange: (next: Record<string, unknown>) => void;
     };
-    // It shows the account's colour, and offers what Oxy accepts on a bot.
+    // It shows the account's colour, and the picker is free: nothing narrows it to presets.
     expect(props.agent.color).toBe('blue');
-    expect(props.colors).toContain('lagoon');
-    expect(props.colors).not.toContain('oxy');
+    expect(props).not.toHaveProperty('colors');
 
     await act(async () => {
-      props.onChange({ ...props.agent, color: 'lagoon' });
+      props.onChange({ ...props.agent, color: '#ff8b67' });
     });
     await letTimePass(2);
 
     expect(updateAccount).toHaveBeenCalledTimes(1);
     expect(updateAccount).toHaveBeenCalledWith('acct-bot', {
       name: { displayName: 'Pepe' },
-      color: 'lagoon',
+      color: '#ff8b67',
     });
     expect(patchRequest).not.toHaveBeenCalled();
     await act(async () => {

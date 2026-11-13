@@ -11,7 +11,7 @@ export interface GemieParticipant {
   handle?: string;
   /** The character it is drawn as, painted in its colour. */
   character: AvatarCharacter;
-  /** Its colour: its Oxy account's (`User.color`, a Bloom preset key). */
+  /** Its colour: its Oxy account's (`User.color`, a Bloom preset key or any hex). */
   color?: string;
 }
 

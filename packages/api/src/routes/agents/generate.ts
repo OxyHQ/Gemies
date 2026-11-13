@@ -48,7 +48,7 @@ Return ONLY valid JSON with these fields:
 - "description": A detailed description of the agent's purpose and behavior (2-3 sentences)
 - "systemPrompt": Detailed instructions for the agent including its role, goals, behavior guidelines, and how it should interact with users. This should be comprehensive and specific.
 - "category": Exactly one of: "Assistant", "Creative", "Developer", "Research", "Business", "Education"
-- "color": Exactly one of: ${AGENT_COLORS.map((c) => `"${c}"`).join(', ')}. It is the colour of the agent’s account: its avatar and its chat are painted in it, so pick the one that suits what it does.
+- "color": One of ${AGENT_COLORS.map((c) => `"${c}"`).join(', ')}, or any "#rrggbb". It is the colour of the agent’s account: its avatar and its chat are painted in it, so pick the one that suits what it does.
 - "tags": An array of 3-5 relevant lowercase tags
 - "capabilityGrants": An array of capability families this agent may reach. Choose from: ${FIXED_CAPABILITY_FAMILIES.map((f) => `"${f}"`).join(', ')}. The agent gets NOTHING it is not granted, so pick every family its purpose needs and none it does not.
 - "accountCategory": What the agent is ABOUT, exactly one of: ${accountCategoryChoices}. This is the SUBJECT and "category" above is the KIND of agent: answer each on its own, they need not agree. Omit the field entirely if none of them fits — no category is better than a wrong one.

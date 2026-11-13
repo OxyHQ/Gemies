@@ -6,28 +6,25 @@
  * its character carries none (`lib/agent-character.ts`): the avatar's body, the chat's tint, the
  * sidebar, the catalogue and every other app paint a gemie in its account's colour.
  *
- * ## The vocabulary is Oxy's, which takes it from Bloom
+ * ## Any colour: a Bloom preset key or a hex
  *
- * `User.color` holds a Bloom colour preset KEY — `"blue"`, `"lagoon"`, `"bronze-neon"` — never a hex.
- * Oxy's `users_color_check` accepts every preset in `USER_PROFILE_COLOR_PRESETS`, which
- * `@oxy.so/contracts` generates from Bloom's registry, and its write policy (`utils/profileColor.ts`
- * there) refuses the gated ones on an account that has no claim to them: a brand preset (`oxy`,
- * `faircoin`) is its own account's, and `mono` is a personal benefit a bot never holds. What a bot
- * may be given is therefore exactly `FREE_USER_PROFILE_COLOR_PRESETS`, and it is imported rather
- * than restated, so the colours this service offers and the editor's picker (which imports the same
- * list) are the ones Oxy saves, now and after Bloom adds one.
+ * `User.color` holds a Bloom colour preset KEY — `"blue"`, `"lagoon"` — or any hex colour
+ * (`"#ff8b67"`), both first-class: Oxy's `users_color_check` stores either and its write policy
+ * accepts either (a gated preset aside: a brand preset is its own account's, `mono` a personal
+ * benefit), and Bloom paints a gemie in either (`avatarCharacterInColor`). The gemie editor's picker
+ * is free — any colour — and writes it to the account with the owner's own credential.
  *
- * ## It proposes, and Oxy decides
+ * ## What this service offers
  *
- * A colour is written to Oxy and checked there: this list is what a new gemie may be OFFERED
- * (`POST /agents/generate`, the chat tool that creates one, an external agent's account). A colour
- * already stored is never re-validated here; a legacy hex an old account still carries renders as
- * its seed.
+ * A new gemie is OFFERED a colour by name (`POST /agents/generate`, the chat tool that creates one,
+ * an external agent's account): the presets Oxy accepts on a bot, `FREE_USER_PROFILE_COLOR_PRESETS`,
+ * imported rather than restated. A model may also answer a hex, which is just as good a colour. A
+ * colour already stored is never re-validated here: Oxy decides.
  */
 
 import { FREE_USER_PROFILE_COLOR_PRESETS } from '@oxy.so/contracts';
 
-/** The colours a gemie may be given: every preset Oxy accepts on a bot account. */
+/** The colours a new gemie is offered by name: every preset Oxy accepts on a bot account. */
 export const AGENT_COLORS = FREE_USER_PROFILE_COLOR_PRESETS as unknown as readonly [
   AgentColor,
   ...AgentColor[],
@@ -35,8 +32,15 @@ export const AGENT_COLORS = FREE_USER_PROFILE_COLOR_PRESETS as unknown as readon
 
 export type AgentColor = (typeof FREE_USER_PROFILE_COLOR_PRESETS)[number];
 
-export function isAgentColor(value: unknown): value is AgentColor {
-  return typeof value === 'string' && (AGENT_COLORS as readonly string[]).includes(value);
+/** A hex colour, `#rrggbb`: an account colour as good as a preset. */
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+/** A colour a new gemie may be given: an offered preset, or any hex. */
+export function isAgentColor(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    ((AGENT_COLORS as readonly string[]).includes(value) || HEX_COLOR.test(value))
+  );
 }
 
 /**

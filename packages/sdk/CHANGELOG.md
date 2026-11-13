@@ -1,5 +1,11 @@
 # @gemies/sdk
 
+## 3.0.1
+
+- **A gemie's account colour may be any hex, not only a Bloom preset key.** `readAgentCharacter`
+  paints either through Bloom's `avatarCharacterInColor`; the docs said "a preset key". The gemie
+  editor's picker is free again (Bloom 21), and Oxy stores the colour it writes as a hex.
+
 ## 3.0.0
 
 - **Breaking: a gemie is painted in its Oxy account's colour, and nothing else.**

@@ -2,7 +2,6 @@ import type { AgentDraft, IdentityDraft } from '@/features/agents/runtime/use-ag
 import { AgentEditorSections } from '@/features/agents/ui/edit/sections/agent-editor-sections';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { AgentCreator, AgentCreatorField } from '@oxy.so/bloom/agent-creator';
-import { FREE_USER_PROFILE_COLOR_PRESETS } from '@oxy.so/contracts/client';
 import { TextFieldInput } from '@oxy.so/bloom/text-field';
 
 /**
@@ -15,8 +14,7 @@ import { TextFieldInput } from '@oxy.so/bloom/text-field';
  * saved to Alia. The editor hands back one agent, and each field is routed to the draft it belongs
  * to. No voice: Alia's agents have none.
  *
- * The colour control offers exactly what Oxy accepts on a bot account
- * (`FREE_USER_PROFILE_COLOR_PRESETS`), the list the API offers new gemies from (`lib/agent-color.ts`).
+ * The colour control is Bloom's free picker: any colour, written to the account as a hex.
  */
 export function AgentProfileFields({
   id,
@@ -42,7 +40,6 @@ export function AgentProfileFields({
       onClose={onClose}
       showPreferences={false}
       sections={<AgentEditorSections agentId={id} name={identity.name} />}
-      colors={FREE_USER_PROFILE_COLOR_PRESETS}
       agent={{
         id,
         name: identity.name,

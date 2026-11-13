@@ -6,7 +6,7 @@ import {
 
 /**
  * The colour a gemie is painted in when its account's is not known: an account Oxy did not resolve,
- * an agent that has since been deleted. A Bloom colour preset key, like every account colour.
+ * an agent that has since been deleted. A Bloom colour preset key; an account colour may also be a hex.
  */
 export const DEFAULT_AGENT_COLOR = 'gray';
 
@@ -53,7 +53,7 @@ export function readAgentLook(value: unknown): AvatarCharacter {
 
 /**
  * The character a gemie is drawn as: its look (`readAgentLook`) painted in its account's colour
- * (`color`, `User.color`, a Bloom preset key). A gemie's colour is its Oxy account's and nothing
+ * (`color`, `User.color`, a Bloom preset key or any hex). A gemie's colour is its Oxy account's and nothing
  * else, so `color` is required: every surface that draws a gemie has it beside the character.
  */
 export function readAgentCharacter(

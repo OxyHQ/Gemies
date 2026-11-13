@@ -31,7 +31,7 @@ export function AgentThemeScope({ children }: { children: ReactNode }) {
     () => activeAgentFor({ pathname, agents: agents ?? [], conversations }),
     [pathname, agents, conversations],
   );
-  // A preset key, or the seed of a legacy hex an old account still holds.
+  // A preset key, or a hex colour as its seed.
   const color = useMemo(() => resolveProfileColor(agent?.color), [agent?.color]);
   // The editor beside the chat edits the agent you are with: another agent's chat, another agent.
   useEditorFollowsAgent(agent?._id);
