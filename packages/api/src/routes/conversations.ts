@@ -59,8 +59,13 @@ import type { Request, Response } from 'express';
 import { log } from '../lib/logger.js';
 import { z } from 'zod';
 import { ALIA_GEMIE_ID, publicAgentId } from '../domain/alia-gemie.js';
+import { collectionsRouter, patchConversationMarks } from './conversation-collections.js';
+import { publishCollections } from '../lib/realtime/collections.js';
 
 const router = Router();
+
+// The person's folders and projects; before `/:id`, which would otherwise take `collections`.
+router.use('/collections', collectionsRouter);
 
 /** The largest page `GET /` will serve, whatever the caller asks for. */
 const MAX_PAGE = 50;
@@ -803,6 +808,8 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
       return res.status(404).json({ error: 'Conversation not found' });
     }
     void publishConversationDeleted(req.user.id, conversationId, existing?.agentId);
+    // Its pin, favourite and folders went with it: every surface files without it.
+    void publishCollections(req.user.id).catch(() => undefined);
 
     res.json({ success: true });
   } catch (error: unknown) {
@@ -816,6 +823,9 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
  * (WhatsApp's blue ticks, from the reader's side). Sent by a client showing the conversation when
  * something arrived; reading moves nothing in the list. 404 for a conversation that is not theirs.
  */
+// The conversation's own marks: pinned, favourite (`routes/conversation-collections.ts`).
+router.patch('/:id', authenticateToken, patchConversationMarks);
+
 router.post('/:id/read', authenticateToken, async (req: Request, res: Response) => {
   try {
     if (!req.user?.id) {

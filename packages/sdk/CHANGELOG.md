@@ -1,5 +1,15 @@
 # @gemies/sdk
 
+## 6.1.0
+
+- **New: a person's folders, projects, pins and favourites are their account's**, the same on every
+  device ([Realtime](../../docs/realtime.mdx#collections-folders-projects-pins-and-favourites)).
+  `useConversationCollections()` reads the snapshot (`{ collections, pinned, favorites }`), kept by
+  the realtime `collections` event; `useCollectionActions()` creates, edits, deletes and files, and
+  pins and favourites a conversation, drawing each change at once; `importCollections(api, local)`
+  brings what a device kept in its storage into the account, merging by name.
+- `API_ROUTES.collections` and `API_ROUTES.conversations.marks`; `gemieQueryKeys.collections`.
+
 ## 6.0.0
 
 - **Breaking: realtime over one socket ([Realtime](../../docs/realtime.mdx), Gemies ADR 0040).**

@@ -34,6 +34,8 @@ export const ALIA_ACCOUNT_QUERIES = {
     'conversation',
     'alia-agent-profile',
     'skills',
+    // Folders, projects, pins and favourites: the sidebar files by them from the first frame.
+    'conversation-collections',
   ],
   mutationKeys: [EMAIL_ALERTS_MUTATION_KEY],
   dataVersion: PERSISTED_DATA_STAMP,

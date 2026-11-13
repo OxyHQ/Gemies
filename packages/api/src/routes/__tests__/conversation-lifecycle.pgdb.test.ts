@@ -702,6 +702,7 @@ describe('every stage of the lifecycle is scoped to the owner (#139 ws6)', () =>
         ['post', '/:id/share'],
         ['delete', '/:id/share'],
         ['post', '/:id/read'],
+        ['patch', '/:id'],
         ['delete', '/:id'],
       ].sort(),
     );

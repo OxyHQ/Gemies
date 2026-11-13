@@ -41,3 +41,4 @@ export * from './spaces';
 export * from './agent-work';
 export * from './message-reactions';
 export * from './realtime';
+export * from './collections';

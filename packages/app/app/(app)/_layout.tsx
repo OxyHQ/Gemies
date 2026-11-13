@@ -22,11 +22,7 @@ import { useAccountLifecycle } from '@/shell/account-lifecycle';
 import { AgentThemeScope } from '@/features/agents/ui/agent-theme-scope';
 import { LazyAgentEditorLoader } from '@/features/agents/ui/edit/lazy-agent-editor';
 import { usePreloadWhenIdle } from '@/shared/platform/preloadable';
-import { useFavoritesStore } from '@/features/projects/runtime/favorites-store';
 import { useSpacesOpenStore } from '@/features/spaces/runtime/spaces-open-store';
-import { useFoldersStore } from '@/features/projects/runtime/folders-store';
-import { usePinnedStore } from '@/features/projects/runtime/pinned-store';
-import { useProjectsStore } from '@/features/projects/runtime/projects-store';
 import { useUIStore } from '@/features/chat/runtime/ui-store';
 import { AiChatContainer, AiChatShell } from '@oxy.so/bloom/ai-chat';
 import type { SidebarProps } from '@oxy.so/bloom/sidebar';
@@ -68,11 +64,7 @@ const PAGE_TITLES: Record<string, string> = {
 export default function AppLayout() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const loadProjects = useProjectsStore((state) => state.loadProjects);
-  const loadFolders = useFoldersStore((state) => state.loadFolders);
   const loadSpacesOpen = useSpacesOpenStore((state) => state.loadSpacesOpen);
-  const loadFavorites = useFavoritesStore((state) => state.loadFavorites);
-  const loadPinned = usePinnedStore((state) => state.loadPinned);
   const rightPanel = useUIStore((state) => state.rightPanel);
   const setRightPanel = useUIStore((state) => state.setRightPanel);
   const rightPanelWidth = useUIStore((state) => state.rightPanelWidth);
@@ -91,26 +83,21 @@ export default function AppLayout() {
   // Push notification registration and tap handling
   useNotificationSetup();
 
-  // Load projects, folders, favorites, and pinned for the signed-in account,
-  // and again whenever it changes. Each store namespaces its storage by this
-  // id and discards a load that resolves after the id moved on, so switching
-  // profiles never shows one account's collections under another (#547).
+  // The device-local state of the signed-in account, rebound whenever it changes, so switching
+  // profiles never shows one account's state under another (#547). Folders, projects, pins and
+  // favourites are the account's and come from the server (`useAccountCollections`).
   const { user, activeSessionId } = useOxy();
   const userId = user?.id ?? null;
   // The agent editor is its own chunk; fetched once the page is idle, it opens without waiting.
   usePreloadWhenIdle(LazyAgentEditorLoader, userId !== null);
   useEffect(() => {
-    loadProjects(userId);
-    loadFolders(userId);
     loadSpacesOpen(userId);
-    loadFavorites(userId);
-    loadPinned(userId);
     // Composer drafts too: another account's half-written message and files
     // are not this one's (the SDK's `composer-draft-store`).
     useComposerDraftStore.getState().bindAccount(userId);
     // And the offline copy of the conversations (`offline-conversations.ts`).
     offlineConversations.bind(userId);
-  }, [userId, loadProjects, loadFolders, loadSpacesOpen, loadFavorites, loadPinned]);
+  }, [userId, loadSpacesOpen]);
 
   // Everything else the previous account left in memory, on a sign-out or a
   // switch (`src/shell/account-lifecycle.ts`).

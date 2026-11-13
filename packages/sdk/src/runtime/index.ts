@@ -100,6 +100,19 @@ export {
   useSaveConversation,
 } from './conversations';
 export { useConversationThread, mergeEditedContent } from './use-conversation-thread';
+export {
+  importCollections,
+  useCollectionActions,
+  useConversationCollections,
+} from './collections';
+export type {
+  CollectionActions,
+  CollectionFields,
+  ConversationCollection,
+  ConversationCollectionKind,
+  ConversationCollections,
+  LocalCollections,
+} from './collections';
 export type {
   ConversationThread,
   EditedContent,

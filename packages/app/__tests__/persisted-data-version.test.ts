@@ -24,10 +24,11 @@ const SHAPES: Record<string, string[]> = {
   conversation: ['../sdk/src/runtime/types.ts', 'src/shared/api/persisted-conversations.ts'],
   'alia-agent-profile': ['../sdk/src/runtime/agents.ts'],
   skills: ['src/features/skills/runtime/use-skills.ts'],
+  'conversation-collections': ['../sdk/src/runtime/collections-model.ts'],
 };
 
 /** Bump both together: `PERSISTED_DATA_VERSION`, and this to what the failure prints. */
-const RECORDED = { version: 2, fingerprint: '5ce42f068474c505' };
+const RECORDED = { version: 3, fingerprint: '7c954d9bcffd4427' };
 
 /** Every `export interface|type` declaration, and every exported `const` that shapes the blob. */
 function declarations(source: string): string[] {
