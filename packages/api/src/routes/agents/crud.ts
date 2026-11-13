@@ -361,10 +361,12 @@ async function respondWithAgent(
     res.status(404).json({ error: 'Agent not found' });
     return;
   }
-  // Nor is an agent Oxy confines to another app (ADR 0021). Its editors still
-  // load it to edit it: editing is not opening.
+  // Nor is an agent Oxy confines to another app (ADR 0021). Whoever may edit it
+  // or manage their accounts on it still loads it for that: editing is not
+  // opening. (Alia's account does not exist in Oxy yet, so Oxy places her
+  // nowhere; her card is for managing the person's own accounts on her.)
   if (
-    !mayEdit &&
+    !mayManageAccounts &&
     (await agentOpensOn(found.oxyAccountId, await appSurfaceOf(req))) !== 'reachable'
   ) {
     res.status(404).json({ error: 'Agent not found' });

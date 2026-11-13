@@ -41,8 +41,12 @@ class NotFound extends Error {
   status = 404;
 }
 
-// Where an agent opens (ADR 0021) is `app-confined-agents.test.ts`'s subject, not this file's.
-vi.mock('../../../lib/agent-availability.js', () => ({ agentOpensOn: async () => 'reachable' }));
+// Where an agent opens (ADR 0021) is `app-confined-agents.test.ts`'s subject, not this file's; one
+// case here needs an agent Oxy places nowhere (Alia, whose Oxy account does not exist yet).
+const availability = vi.hoisted(() => ({ opens: 'reachable' as 'reachable' | 'out_of_reach' }));
+vi.mock('../../../lib/agent-availability.js', () => ({
+  agentOpensOn: async () => availability.opens,
+}));
 vi.mock('@oxy.so/core', async () => {
   const actual = await vi.importActual<typeof import('@oxy.so/core')>('@oxy.so/core');
   return {
@@ -197,6 +201,7 @@ beforeEach(() => {
   state.accessToken = undefined;
   state.account = null;
   repository.findAgentById.mockResolvedValue({ ...AGENT_ROW });
+  availability.opens = 'reachable';
 });
 
 async function card(): Promise<{
@@ -352,6 +357,8 @@ describe('what a caller may do with a gemie, as its card says (ADR 0035)', () =>
 
   it('opens Alia to every person for their own accounts, never for her identity', async () => {
     repository.findAgentById.mockResolvedValue({ ...ALIA_ROW });
+    // Oxy places her nowhere: she has no Oxy account yet.
+    availability.opens = 'out_of_reach';
     state.userId = 'oxy-person';
     state.accessToken = 'token';
     // Oxy knows no account for her yet: nobody acts as it.
