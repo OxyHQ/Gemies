@@ -129,7 +129,11 @@ vi.mock('@oxy.so/bloom/agent-progress', async () => ({
   AgentProgress: await stub('AgentProgress')(),
 }));
 vi.mock('@oxy.so/bloom/chat-screen', async () => ({ ChatDateHeader: await stub('DayHeader')() }));
-vi.mock('@oxy.so/bloom/agent-avatar', async () => ({ AgentAvatar: await stub('AgentAvatar')() }));
+vi.mock('@oxy.so/bloom/agent-avatar', async () => ({
+  AgentAvatar: await stub('AgentAvatar')(),
+  avatarCharacterInColor: (character: unknown) => character,
+  parseAvatarCharacter: (value: unknown) => value,
+}));
 vi.mock('@oxy.so/bloom/divider', async () => ({ Divider: await stub('Divider')() }));
 vi.mock('@oxy.so/bloom/task-list', async () => ({ TaskList: await stub('TaskList')() }));
 vi.mock('@oxy.so/bloom/web-search', async () => ({ WebSearch: await stub('WebSearch')() }));

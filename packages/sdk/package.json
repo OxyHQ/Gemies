@@ -1,6 +1,6 @@
 {
   "name": "@gemies/sdk",
-  "version": "2.0.1",
+  "version": "3.0.0",
   "description": "The Gemies SDK: the conversation runtime, chat UI, voice calls and dictation for Oxy apps that talk to a gemie",
   "main": "src/index.ts",
   "react-native": "src/index.ts",
@@ -58,7 +58,7 @@
     "react": "^19.2.3",
     "react-native": "^0.86.0 || ^0.88.0",
     "@expo/vector-icons": "^15.1.1",
-    "@oxy.so/bloom": ">=17.41.0",
+    "@oxy.so/bloom": ">=20.0.0",
     "@oxy.so/core": ">=7.1.0 <8",
     "@oxy.so/services": ">=14.19.1 <15",
     "@tanstack/react-query": "^5.101",

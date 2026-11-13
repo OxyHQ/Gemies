@@ -310,7 +310,7 @@ const VALUE_FOR: Readonly<Record<string, unknown>> = {
   status: 'active',
   scheduleInterval: 60,
   modelId: 'acme/chat-1',
-  character: { shape: 'heart', eyes: 'oval', eyewear: 'none', accessory: 'bow', color: 'pink' },
+  character: { shape: 'heart', eyes: 'oval', eyewear: 'none', accessory: 'bow' },
   starters: [{ title: 'Pisos en Gràcia', prompt: 'Busca pisos en Gràcia' }],
 };
 
@@ -393,6 +393,22 @@ describe('the editor and the route agree on what a save contains', () => {
     );
     expect(missing, `${missing.join(', ')} never reached the repository`).toEqual([]);
     expect(written.capabilityGrants).toEqual(['web', 'mcp:conn-1']);
+  });
+
+  /**
+   * A character carries no colour: the gemie's is its account's. A paint is refused, not stripped,
+   * so a client that still edits one hears it rather than having the colour it showed dropped, and
+   * nothing reaches the row or the account.
+   */
+  it.each([
+    ['a named paint', { color: 'pink' }],
+    ['a free hex', { bodyColor: '#ff8b67' }],
+  ])('refuses a character with %s', async (_label, paint) => {
+    const res = await patch({ character: { ...(VALUE_FOR.character as object), ...paint } });
+
+    expect(res.status).toBe(400);
+    expect(repository.updateAgent).not.toHaveBeenCalled();
+    expect(accountLook).not.toHaveBeenCalled();
   });
 
   /**

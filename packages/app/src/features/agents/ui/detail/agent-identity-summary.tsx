@@ -31,7 +31,7 @@ export function AgentIdentitySummary({ agent }: { agent: Agent }) {
         <Badge dot color={STATUS_TONE[agent.status]} placement="bottom-right">
           <AgentAvatar
             size={80}
-            character={readAgentCharacter(agent.character)}
+            character={readAgentCharacter(agent.character, agent.color)}
             label={agentDisplayName(agent)}
           />
         </Badge>

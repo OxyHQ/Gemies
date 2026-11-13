@@ -1,5 +1,22 @@
 # @gemies/sdk
 
+## 3.0.0
+
+- **Breaking: a gemie is painted in its Oxy account's colour, and nothing else.**
+  `readAgentCharacter(character, color)` takes the gemie's `color` (its account's `User.color`, a
+  Bloom preset key, which every response that carries a `character` carries beside it) and paints
+  the character in it through Bloom's `avatarCharacterInColor`; a paint the character may still
+  carry is never drawn. A gemie whose account colour is not known is drawn in one neutral preset
+  (`gray`). Every surface the SDK draws a gemie on (the chat's lead and participants, a consulted
+  agent's reply, the exchange view) paints it this way, so the avatar, the chat and the other apps
+  agree with the account.
+- **New: `readAgentLook(character)`**, the stored look without a colour (its shape and features),
+  for an editor that saves it back: the API refuses a character that carries a paint.
+- **Breaking: `DEFAULT_AGENT_CHARACTER` has no paint**, like every gemie's character.
+- **Breaking: the Bloom peer is `>=20.0.0`**, the first Bloom with `avatarCharacterInColor`.
+- Alia keeps her orchid until her gemie has an Oxy account (Gemies ADR 0034 phase 2); then she
+  is painted in its colour like every gemie.
+
 ## 2.0.1
 
 - **`GemieAccounts` says when the API does not answer**, with a Retry (`gemie.accounts.retry`), and

@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../src/lib/agent-character', () => ({
-  readAgentCharacter: (value: unknown) => ({ drawn: value ?? 'default' }),
+  readAgentCharacter: (value: unknown, color: unknown) => ({
+    drawn: value ?? 'default',
+    in: color ?? 'default',
+  }),
 }));
 vi.mock('../../src/lib/alia-character', () => ({ ALIA_AVATAR: { preset: 'alia' } }));
 vi.mock('@oxy.so/services/ui/client', () => ({ useOxy: () => ({}) }));
@@ -35,7 +38,8 @@ describe('the lead', () => {
       id: 'sindi',
       name: 'Sindi',
       handle: 'sindibot',
-      character: { drawn: { shape: 'heart' } },
+      // Painted in its account's colour, the profile's `color`.
+      character: { drawn: { shape: 'heart' }, in: 'teal' },
       color: 'teal',
       isAlia: false,
       greeting: 'Hola, ¿buscas piso?',
@@ -46,7 +50,7 @@ describe('the lead', () => {
   it('flies from the greeting into the header’s participants as the lead it is', () => {
     const spec = leadToProfile(leadOf(readAgentProfile({ id: 's', name: 'S' })));
     expect(spec).toMatchObject({ from: ANCHORS.welcome, to: ANCHORS.profile });
-    expect(spec.character).toEqual({ drawn: 'default' });
+    expect(spec.character).toEqual({ drawn: 'default', in: 'default' });
   });
 
   it('refuses a profile without an id or a name', () => {

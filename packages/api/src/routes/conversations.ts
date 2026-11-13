@@ -4,7 +4,8 @@ import { applyConversationReaction } from '../lib/chat/reactions/mutation.js';
 import { publishConversationReaction } from '../lib/chat/reactions/bus.js';
 import { checkWindowLimit } from '../lib/sliding-window-limiter.js';
 import { channelAccountOf } from '../middleware/channel-auth.js';
-import { parseAvatarCharacter } from '@oxy.so/contracts';
+import { parseAvatarCharacter, type AvatarCharacter } from '@oxy.so/contracts';
+import { gemieCharacterOf } from '../lib/agent-character.js';
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import { getDb } from '../db/index.js';
@@ -174,6 +175,12 @@ function toolInvocationsFromBody(value: unknown): { toolInvocations: ToolInvocat
   return { toolInvocations: invocations };
 }
 
+/** Who said a message, as its snapshot keeps it: the look without a paint (the colour is `color`). */
+function snapshotCharacter(value: unknown): AvatarCharacter | null {
+  const character = parseAvatarCharacter(value);
+  return character === null ? null : gemieCharacterOf(character);
+}
+
 /** `agent_info`'s four columns, or nothing. Partial sub-documents are dropped. */
 function agentInfoFromBody(value: unknown): { agentInfo: AgentInfo } | null {
   if (value === null || typeof value !== 'object') return null;
@@ -190,7 +197,7 @@ function agentInfoFromBody(value: unknown): { agentInfo: AgentInfo } | null {
       id: raw.id,
       name: raw.name,
       color: typeof raw.color === 'string' ? raw.color : null,
-      character: parseAvatarCharacter(raw.character),
+      character: snapshotCharacter(raw.character),
       handle: raw.handle,
     },
   };

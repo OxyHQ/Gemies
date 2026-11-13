@@ -18,15 +18,13 @@
  * lookup decide whether a marketplace listing can be displayed at all, when the
  * listing itself — the tagline, the rating, the price — is stored right here.
  *
- * ## An agent has no avatar, and the colour is what replaced it
+ * ## The colour is the account's, and it paints the character
  *
- * Agent avatars were generated images stored as Oxy assets and resolved to a
- * URL here. They are gone: an agent is drawn as a glyph tinted with its own
- * colour, so what a client needs is `User.color` — a Bloom preset key Oxy
- * already stores for every account — and not an address. The consequence is
- * accepted and stated once: an agent renders with Oxy's placeholder anywhere
- * Alia's own client does not reach, Mention included, and the colour is what
- * lets those surfaces tint a placeholder without an image existing.
+ * A gemie's colour is `User.color` — a Bloom preset key Oxy already stores for every account — and
+ * nothing else: the character this service stores keeps its shape and features and carries no paint
+ * (`lib/agent-character.ts`). Every response that draws a gemie therefore carries this `color`
+ * beside its `character`, and a client paints the one in the other (`readAgentCharacter` in
+ * `@gemies/sdk`), as Bloom does for a bot account anywhere Alia's own client does not reach.
  */
 
 import { randomUUID } from 'crypto';
@@ -54,13 +52,12 @@ export interface AgentIdentity {
   /** The Oxy username. Globally unique across the whole account graph. */
   handle: string | null;
   /**
-   * A Bloom colour preset key — `"blue"`, `"lagoon"` — never a hex.
+   * The gemie's colour: a Bloom colour preset key — `"blue"`, `"lagoon"` — never a hex (an old
+   * account may still hold a legacy hex, which renders as its seed). Its character is painted in it.
    *
-   * Null far more often than the other two: an owner who never picked one, an
-   * Oxy that does not serve the field, and an account that failed to resolve
-   * all arrive here the same way, so a client's fallback is the NORMAL path
-   * rather than an edge case. `domain/agent-color.ts` says why this service
-   * proposes colours and validates none.
+   * Oxy gives every account one, so null means the account did not resolve (or Oxy did not serve
+   * the field), and a client paints the gemie in its fallback. `lib/agent-color.ts` says what
+   * this service may offer.
    */
   color: string | null;
   /**

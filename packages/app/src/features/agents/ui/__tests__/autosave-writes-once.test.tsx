@@ -98,8 +98,8 @@ vi.mock('@oxy.so/services/ui/client', () => ({
   useOxy: () => ({
     isAuthenticated: true,
     oxyServices: {
-      updateAccount,
-      checkUsernameAvailability: async () => ({ available: true }),
+      accounts: { update: updateAccount },
+      auth: { checkUsername: async () => ({ available: true }) },
     },
   }),
 }));
@@ -231,6 +231,7 @@ vi.mock('@gemies/sdk', async () => {
     IdentityMark: (props: Record<string, unknown>) =>
       ReactModule.createElement('IdentityMark', props),
     readAgentCharacter: () => ({ preset: 'blue_beret' }),
+    readAgentLook: () => ({ preset: 'blue_beret' }),
   };
 });
 /**
@@ -703,6 +704,43 @@ describe('one save is one toast', () => {
     // And a refusal does not become a retry storm either.
     expect(patchRequest).toHaveBeenCalledTimes(1);
 
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+});
+
+/**
+ * A gemie's colour is its account's: choosing one in the editor writes it to the Oxy account (the
+ * owner's own credential, Oxy's own checks), once, and never to the agent row.
+ */
+describe('the colour is the account’s', () => {
+  it('writes a chosen colour to the account once, and no PATCH carries one', async () => {
+    const { renderer } = await renderEditor();
+    const creator = renderer.root.findAllByType(
+      'AgentCreator' as unknown as React.ComponentType,
+    )[0];
+    const props = creator.props as {
+      agent: Record<string, unknown>;
+      colors: readonly string[];
+      onChange: (next: Record<string, unknown>) => void;
+    };
+    // It shows the account's colour, and offers what Oxy accepts on a bot.
+    expect(props.agent.color).toBe('blue');
+    expect(props.colors).toContain('lagoon');
+    expect(props.colors).not.toContain('oxy');
+
+    await act(async () => {
+      props.onChange({ ...props.agent, color: 'lagoon' });
+    });
+    await letTimePass(2);
+
+    expect(updateAccount).toHaveBeenCalledTimes(1);
+    expect(updateAccount).toHaveBeenCalledWith('acct-bot', {
+      name: { displayName: 'Pepe' },
+      color: 'lagoon',
+    });
+    expect(patchRequest).not.toHaveBeenCalled();
     await act(async () => {
       renderer.unmount();
     });

@@ -128,18 +128,19 @@ export const agents = pgTable(
      */
     ownerOxyAccountId: text(),
     /**
-     * What the agent looks like: a Bloom avatar character, stored whole (`shape`, `eyes`, `eyewear`,
-     * `accessory`, a paint, an optional `preset` and `eyeSpacing`).
+     * What the agent looks like apart from its colour: a Bloom avatar character, stored whole
+     * (`shape` or `preset`, `eyes`, `eyewear`, `accessory`, an optional `eyeSpacing`) and WITHOUT a
+     * paint. The colour is the bot account's `User.color`, and a client paints the character in it
+     * (`lib/agent-character.ts`); migration 0147 removed the paints rows used to carry.
      *
-     * It is Alia's, not Oxy's: the bot account owns the name, the handle and the colour of the
-     * ACCOUNT, but what an agent looks like in Alia's chat, sidebar and catalogue is chosen in the
-     * agent editor and read from here. NOT NULL, with no "legacy" shape to fall back on: a new agent
-     * gets one picked by `avatarCharacterFor`, and every existing one was given one by the migration.
+     * It is put on the Oxy account too (`users.character`), so another app draws the bot from the
+     * account alone. NOT NULL, with no "legacy" shape to fall back on: a new agent gets one picked by
+     * `avatarCharacterFor`, and every existing one was given one by the migration.
      *
-     * Not validated against Bloom's id catalogue here, for the reason `domain/agent-color.ts` gives
-     * for colours: `@oxy.so/bloom` is a React Native package and this service does not depend on it,
-     * so a stored id this copy does not know must not start being refused. The write path checks the
-     * SHAPE (known keys, short ids, a hex paint, a bounded spacing); the client resolves the ids.
+     * Not validated against Bloom's id catalogue here: `@oxy.so/bloom` is a React Native package and
+     * this service does not depend on it, so a stored id this copy does not know must not start
+     * being refused. The write path checks the SHAPE (known keys, short ids, a bounded spacing, no
+     * paint); the client resolves the ids.
      */
     character: jsonb().notNull().$type<AvatarCharacter>(),
     /** One line. It is also the agent's greeting in an empty chat (`GET /v1/agents/:id/profile`). */

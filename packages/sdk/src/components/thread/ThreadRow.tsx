@@ -475,7 +475,7 @@ function ReplyTurn({
           {agent && agentAnchor ? (
             <View className="mb-0.5">
               <AgentReplyIdentity
-                character={readAgentCharacter(agent.character)}
+                character={readAgentCharacter(agent.character, agent.color)}
                 name={agent.name}
                 thinking={agentLive && text.length === 0}
                 workingKey={agent.id}

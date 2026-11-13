@@ -51,17 +51,18 @@ export interface ArchetypeConfig {
  * They are also READ-ONLY. `AgentUpdate` cannot carry them and `PATCH /agents`
  * refuses them outright: editing an agent's name is `updateAccount` at Oxy.
  *
- * What an agent LOOKS like is its `character`, Alia's own (a Bloom avatar
- * character chosen in the agent editor, drawn by `AgentAvatar` everywhere the
- * agent appears); the account's `color` is the account's and draws nothing here.
+ * What an agent LOOKS like is its `character` (a Bloom avatar character chosen in the agent editor:
+ * its shape and features) painted in its `color`, the account's: the character carries no colour
+ * of its own, and `readAgentCharacter(character, color)` is how every surface draws it. The editor
+ * writes the colour to the account, as it writes the name.
  */
 export interface Agent {
   _id: string;
   /** The Oxy `bot` account this agent IS. */
   oxyAccountId: string;
   /**
-   * What the agent looks like, as the server stores it: JSON, parsed where it is drawn
-   * (`readAgentCharacter`). Never absent: every agent has one.
+   * What the agent looks like apart from its colour, as the server stores it: JSON, parsed and
+   * painted in `color` where it is drawn (`readAgentCharacter`). Never absent: every agent has one.
    */
   character: unknown;
   /** The bot's parent in Oxy's account graph; null until a legacy row is reconciled. */

@@ -35,8 +35,10 @@ interface AgentThreadIdentity {
   _id: string;
   name: string | null;
   handle: string | null;
-  /** The agent's look, as the server stores it (JSON). It also seeds the page's theme. */
+  /** The agent's look apart from its colour, as the server stores it (JSON). */
   character: unknown;
+  /** Its colour, its account's: it paints the character and themes the page. */
+  color: string | null;
   tagline: string;
   description: string;
 }

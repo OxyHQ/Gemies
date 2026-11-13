@@ -465,7 +465,7 @@ function useSidebarProps() {
       leading: (
         <AgentRowAvatar
           agentId={agent._id}
-          character={readAgentCharacter(agent.character)}
+          character={readAgentCharacter(agent.character, agent.color)}
           size={AGENT_ROW_AVATAR}
         />
       ),
@@ -511,7 +511,7 @@ function useSidebarProps() {
           agents={members.slice(0, 3).map((agent) => ({
             id: agent._id,
             name: agentDisplayName(agent),
-            avatar: readAgentCharacter(agent.character),
+            avatar: readAgentCharacter(agent.character, agent.color),
           }))}
         />
       ),
@@ -547,7 +547,7 @@ function useSidebarProps() {
               {
                 id,
                 name: agentDisplayName(agent),
-                avatar: readAgentCharacter(agent.character),
+                avatar: readAgentCharacter(agent.character, agent.color),
               },
             ];
       });
@@ -891,7 +891,7 @@ function useSidebarProps() {
             agents={(myAgents ?? []).slice(0, 3).map((agent) => ({
               id: agent._id,
               name: agentDisplayName(agent),
-              avatar: readAgentCharacter(agent.character),
+              avatar: readAgentCharacter(agent.character, agent.color),
             }))}
           />
         ),

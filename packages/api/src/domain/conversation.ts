@@ -97,11 +97,10 @@ export interface ToolInvocation {
  * `db/schema/chat.ts` flattens it onto four columns rather than storing it as
  * `jsonb`.
  *
- * `color` stands where `avatar` did. An agent has no avatar: it is drawn as a
- * glyph tinted with its own Bloom colour preset, read from its Oxy account by
- * `lib/agent-identity.ts`. It is nullable for the reason that field is —
- * an account with no colour, an Oxy that does not serve one and an account that
- * failed to resolve are the same answer to a client.
+ * `color` is the gemie's colour, its Oxy account's (`lib/agent-identity.ts`), and `character` is
+ * painted in it: the character carries no colour of its own. It is nullable for the reason that
+ * field is — an account that failed to resolve and an Oxy that does not serve one are the same
+ * answer to a client.
  */
 export interface AgentInfo {
   id: string;

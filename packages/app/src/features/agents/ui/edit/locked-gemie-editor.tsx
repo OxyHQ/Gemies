@@ -33,7 +33,7 @@ export function LockedGemieEditor({ agent, onClose }: { agent: Agent; onClose?: 
         {isAlia ? (
           <GemieAvatar size={AVATAR} portrait />
         ) : (
-          <AgentAvatar character={readAgentCharacter(agent.character)} size={AVATAR} />
+          <AgentAvatar character={readAgentCharacter(agent.character, agent.color)} size={AVATAR} />
         )}
         <View className="flex-1 gap-0.5">
           <Text variant="body-2-semibold">{name}</Text>

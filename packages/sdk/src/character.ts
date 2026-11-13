@@ -1,1 +1,1 @@
-export { DEFAULT_AGENT_CHARACTER, readAgentCharacter } from './lib/agent-character';
+export { DEFAULT_AGENT_CHARACTER, readAgentCharacter, readAgentLook } from './lib/agent-character';

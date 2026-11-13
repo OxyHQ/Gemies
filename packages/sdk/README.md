@@ -208,8 +208,9 @@ loads with the first `ask` (fetched in the background once the person is signed 
 stays out of the app's entry bundle. The root entry exports the same two, with the whole chat
 (its provider imports the sheet statically).
 For hosts that need that exact eager behavior without the root barrel, import the provider and
-hook from `@gemies/sdk/ask/eager`. The character entry exports `readAgentCharacter`,
-and `DEFAULT_AGENT_CHARACTER` without the chat.
+hook from `@gemies/sdk/ask/eager`. The character entry exports `readAgentCharacter`
+(a gemie's stored character painted in its account's `color`), `readAgentLook` (the stored
+character without a colour, for an editor) and `DEFAULT_AGENT_CHARACTER` without the chat.
 
 **On web, load the chat through ONE async boundary.** Expo's Metro serializer hoists every module
 two async chunks share into `__common.js`, which loads at first paint. The SDK draws no async chunk

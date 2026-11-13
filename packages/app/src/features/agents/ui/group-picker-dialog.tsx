@@ -44,7 +44,9 @@ export function GroupPickerDialog() {
                 name: agentDisplayName(agent),
                 label: '',
                 description: '',
-                avatar: readAgentCharacter(agent.character),
+                avatar: readAgentCharacter(agent.character, agent.color),
+                // Already painted in it; an account colour that did not resolve leaves that paint.
+                color: agent.color ?? '',
               },
             ]
           : [];
@@ -100,7 +102,11 @@ export function GroupPickerDialog() {
               pressed={selected.includes(agent._id)}
               accessibilityLabel={agentDisplayName(agent)}
               leading={
-                <AgentAvatar character={readAgentCharacter(agent.character)} size={20} portrait />
+                <AgentAvatar
+                  character={readAgentCharacter(agent.character, agent.color)}
+                  size={20}
+                  portrait
+                />
               }
               onPress={() => toggle(agent._id)}
             >

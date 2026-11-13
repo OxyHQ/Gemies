@@ -218,9 +218,9 @@ export const messages = pgTable(
     agentInfoName: text(),
     agentInfoColor: text(),
     /**
-     * The agent's look when it said this, a Bloom avatar character (`@oxy.so/contracts` (`avatarCharacter`)).
-     * NULL for an agent that has since been deleted: there is nothing to copy from, and a client draws
-     * its default look. It stands beside `agent_info_color`, which is the ACCOUNT's colour.
+     * The agent's look when it said this, a Bloom avatar character (`@oxy.so/contracts` (`avatarCharacter`))
+     * without a paint. NULL for an agent that has since been deleted: there is nothing to copy from, and
+     * a client draws its default look. It is painted in `agent_info_color`, the ACCOUNT's colour.
      */
     agentInfoCharacter: jsonb().$type<AvatarCharacter>(),
     agentInfoHandle: text(),

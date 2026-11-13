@@ -23,6 +23,8 @@ export function GemieGroupWelcome({ members }: { members: readonly GemieParticip
         label: '',
         description: '',
         avatar: member.character,
+        // Already painted in it; a colour the member does not have leaves that paint.
+        color: member.color ?? '',
       })),
     [members],
   );

@@ -106,12 +106,16 @@ is not exempt: a confined agent is invisible outside its app to everybody.
 What runs with no person's app around it — an automation, a delegation inside
 an agent session — has no surface, so a confined agent never runs there.
 
-  **An agent has no picture.** It is drawn as a glyph tinted with its Oxy
-  account's `User.color`, a Bloom preset key — so `AgentIdentity` carries
-  `color` where it used to carry `avatar`, and there is no image-generation step
-  between the generator and the account. `domain/agent-color.ts` records why
-  Alia PROPOSES a colour (one of the free Bloom presets, offered by
-  `POST /agents/generate` beside the name) and validates none.
+  **A gemie's colour is its account's.** It is drawn as a Bloom avatar character
+  painted in its Oxy account's `User.color`, a Bloom preset key: the avatar's body,
+  the chat's tint, the sidebar, the catalogue and every other app. The character
+  (`agents.character`, also put on the account) keeps its shape and features and
+  carries no paint (`packages/api/src/lib/agent-character.ts`), so `AgentIdentity`
+  carries `color` beside it and a client paints the one in the other
+  (`readAgentCharacter` in `@gemies/sdk`). The editor writes the colour to the
+  account with the owner's own credential, as it writes the name.
+  `packages/api/src/lib/agent-color.ts` records what a gemie may be given: every
+  preset Oxy accepts on a bot account (`FREE_USER_PROFILE_COLOR_PRESETS`).
 
   **Known dependency: a new agent is DISCOVERABLE in Oxy immediately.** Every
   Oxy account is born public — `createAccountRequestSchema` carries no privacy

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { generateText } from 'ai';
 import { AGENT_ARCHETYPES } from '../../domain/agent.js';
-import { AGENT_COLORS, agentColorFor, isAgentColor } from '../../domain/agent-color.js';
+import { AGENT_COLORS, agentColorFor, isAgentColor } from '../../lib/agent-color.js';
 import { FIXED_CAPABILITY_FAMILIES } from '../../domain/capability-grants.js';
 import { accountCategoryChoices, isOfferedAccountCategory } from '../../lib/account-category.js';
 import { fallbackAgentUsername, suggestAgentUsername } from '../../lib/agent-identity.js';
@@ -48,7 +48,7 @@ Return ONLY valid JSON with these fields:
 - "description": A detailed description of the agent's purpose and behavior (2-3 sentences)
 - "systemPrompt": Detailed instructions for the agent including its role, goals, behavior guidelines, and how it should interact with users. This should be comprehensive and specific.
 - "category": Exactly one of: "Assistant", "Creative", "Developer", "Research", "Business", "Education"
-- "color": Exactly one of: ${AGENT_COLORS.map((c) => `"${c}"`).join(', ')}. The agent has no picture — it is drawn as a glyph in this colour — so pick the one that suits what it does.
+- "color": Exactly one of: ${AGENT_COLORS.map((c) => `"${c}"`).join(', ')}. It is the colour of the agent’s account: its avatar and its chat are painted in it, so pick the one that suits what it does.
 - "tags": An array of 3-5 relevant lowercase tags
 - "capabilityGrants": An array of capability families this agent may reach. Choose from: ${FIXED_CAPABILITY_FAMILIES.map((f) => `"${f}"`).join(', ')}. The agent gets NOTHING it is not granted, so pick every family its purpose needs and none it does not.
 - "accountCategory": What the agent is ABOUT, exactly one of: ${accountCategoryChoices}. This is the SUBJECT and "category" above is the KIND of agent: answer each on its own, they need not agree. Omit the field entirely if none of them fits — no category is better than a wrong one.
@@ -155,7 +155,7 @@ Do not include any text outside the JSON object.`,
        * unoffered colour falls back rather than travelling to Oxy.
        *
        * The fallback is derived from the handle rather than random, so asking
-       * twice for the same agent proposes the same colour — `domain/agent-color.ts`
+       * twice for the same agent proposes the same colour — `lib/agent-color.ts`
        * says why this service offers colours and validates none.
        */
       color: isAgentColor(parsed.color) ? parsed.color : agentColorFor(suggestedUsername),

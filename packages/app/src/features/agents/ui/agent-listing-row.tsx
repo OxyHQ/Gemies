@@ -31,7 +31,13 @@ export const AgentListingRow = React.memo(function AgentListingRow({
       role="listitem"
       accessibilityLabel={name}
       onPress={() => onPress(agent._id)}
-      leading={<AgentAvatar size={32} character={readAgentCharacter(agent.character)} portrait />}
+      leading={
+        <AgentAvatar
+          size={32}
+          character={readAgentCharacter(agent.character, agent.color)}
+          portrait
+        />
+      }
       title={
         <Text numberOfLines={1} className="text-sm font-medium text-text-primary">
           {name}
