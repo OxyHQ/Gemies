@@ -172,7 +172,31 @@ if (voice.hits.length === 0) {
   );
 }
 
+// The QR encoder is drawn by the connected-accounts panel alone (`@gemies/sdk/accounts`, ADR 0035):
+// no other entry reaches it, and that one does (otherwise this would pass for the wrong reason).
+const QR_ENCODER = 'react-native-qrcode-svg';
+for (const entry of [
+  'index.ts',
+  'voice.ts',
+  'runtime/index.ts',
+  'avatar.ts',
+  'ask.ts',
+  'text.ts',
+]) {
+  const { hits, importedBy } = walk(entry, QR_ENCODER, { exact: true });
+  if (hits.length > 0) {
+    failures.push(
+      `src/${entry} reaches ${QR_ENCODER}; only src/accounts.ts may draw a QR code.\n` +
+        hits.map((file) => `    ${chainTo(file, importedBy)}`).join('\n'),
+    );
+  }
+}
+if (walk('accounts.ts', QR_ENCODER, { exact: true }).hits.length === 0) {
+  failures.push(`src/accounts.ts no longer reaches ${QR_ENCODER}: the walker or the panel broke.`);
+}
+
 const SERVICES_ENTRY_ENTRIES = [
+  'accounts.ts',
   'index.ts',
   'voice.ts',
   'runtime/index.ts',

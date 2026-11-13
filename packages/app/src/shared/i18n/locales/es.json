@@ -1365,52 +1365,6 @@
         "computerOwn": "El ordenador propio de {{name}}",
         "computerNote": "El de Alia es el espacio de trabajo compartido de todos tus Gemies, así que lo que crea uno lo tiene el siguiente. Solo lo ves tú: cualquier otra persona que use a {{name}} tiene una máquina propia y separada."
       },
-      "accounts": {
-        "title": "Cuentas conectadas",
-        "description": "Vincula una cuenta de WhatsApp o Telegram y {{name}} responderá los mensajes que lleguen a ella, como elijas abajo. Solo {{name}} puede leer o enviar por ella.",
-        "loadFailed": "No se ha podido cargar. Inténtalo de nuevo.",
-        "link": "Vincular una cuenta",
-        "linkNamed": "Vincular una cuenta de {{platform}}",
-        "linkFailed": "No se ha podido vincular {{platform}}: {{reason}}",
-        "tryAgain": "inténtalo de nuevo en un momento.",
-        "linkExpired": "El código de {{platform}} caducó antes de escanearlo. Vuelve a vincularlo.",
-        "unavailable": "Ahora mismo no se puede vincular WhatsApp ni Telegram.",
-        "linked": "{{platform}} está vinculado. {{name}} ya responde allí.",
-        "scanTitle": "Escanea con {{platform}}",
-        "scan": {
-          "whatsapp": "Abre WhatsApp en tu teléfono, ve a Ajustes > Dispositivos vinculados > Vincular un dispositivo y escanea este código.",
-          "telegram": "Abre Telegram en tu teléfono, ve a Ajustes > Dispositivos > Vincular dispositivo de escritorio y escanea este código."
-        },
-        "status": {
-          "qr-pending": "Esperando el escaneo",
-          "connected": "Conectada",
-          "disconnected": "Reconectando",
-          "logged-out": "Desvinculada desde el teléfono. Quítala y vuelve a vincularla.",
-          "failed": "No se ha podido reconectar. Quítala y vuelve a vincularla."
-        },
-        "lastMessage": "Último mensaje: {{when}}",
-        "noMessagesYet": "Aún no hay mensajes",
-        "repliesLabel": "A quién responde {{name}}",
-        "replies": {
-          "everyone": "A todo el que escriba",
-          "chosen": "Solo a los chats que elija",
-          "nobody": "A nadie: {{name}} solo lee y envía cuando se lo pides"
-        },
-        "groupRepliesLabel": "En grupos",
-        "groupReplies": {
-          "mentions": "Solo cuando le mencionan o le responden",
-          "never": "Nunca"
-        },
-        "noChats": "Aún no hay chats. Aparecen aquí cuando llegan mensajes.",
-        "groupChat": "{{name}} (grupo)",
-        "answerChat": "Responder a {{name}}",
-        "remove": "Quitar",
-        "removeNamed": "Quitar la cuenta de {{platform}}",
-        "removeTitle": "Quitar {{platform}}",
-        "removeDescription": "{{name}} dejará de responder en esta cuenta de {{platform}} y se borrarán sus chats sincronizados. Puedes volver a vincularla escaneando un código nuevo.",
-        "removed": "{{platform}} quitado",
-        "removeFailed": "No se ha podido quitar. Inténtalo de nuevo."
-      },
       "hears": {
         "title": "De qué se entera",
         "newEmailOwner": "Tu email",
@@ -2339,6 +2293,56 @@
       "body": "Si tienes Ollama, LM Studio o similar, tus Gemies pueden responder con ellos. No se toca tu máquina hasta que digas que sí.",
       "accept": "Buscarlos",
       "decline": "Ahora no"
+    }
+  },
+  "gemie": {
+    "accounts": {
+      "title": "Cuentas conectadas",
+      "description": "Vincula una cuenta de WhatsApp o Telegram y {{name}} responderá los mensajes que lleguen a ella, como elijas abajo. Solo {{name}} puede leer o enviar por ella.",
+      "loadFailed": "No se ha podido cargar. Inténtalo de nuevo.",
+      "link": "Vincular una cuenta",
+      "linkNamed": "Vincular una cuenta de {{platform}}",
+      "linkFailed": "No se ha podido vincular {{platform}}: {{reason}}",
+      "tryAgain": "inténtalo de nuevo en un momento.",
+      "linkExpired": "El código de {{platform}} caducó antes de escanearlo. Vuelve a vincularlo.",
+      "unavailable": "Ahora mismo no se puede vincular WhatsApp ni Telegram.",
+      "linked": "{{platform}} está vinculado. {{name}} ya responde allí.",
+      "scanTitle": "Escanea con {{platform}}",
+      "scan": {
+        "whatsapp": "Abre WhatsApp en tu teléfono, ve a Ajustes > Dispositivos vinculados > Vincular un dispositivo y escanea este código.",
+        "telegram": "Abre Telegram en tu teléfono, ve a Ajustes > Dispositivos > Vincular dispositivo de escritorio y escanea este código."
+      },
+      "status": {
+        "qr-pending": "Esperando el escaneo",
+        "connected": "Conectada",
+        "disconnected": "Reconectando",
+        "logged-out": "Desvinculada desde el teléfono. Quítala y vuelve a vincularla.",
+        "failed": "No se ha podido reconectar. Quítala y vuelve a vincularla."
+      },
+      "lastMessage": "Último mensaje: {{when}}",
+      "noMessagesYet": "Aún no hay mensajes",
+      "repliesLabel": "A quién responde {{name}}",
+      "replies": {
+        "everyone": "A todo el que escriba",
+        "chosen": "Solo a los chats que elija",
+        "nobody": "A nadie: {{name}} solo lee y envía cuando se lo pides"
+      },
+      "groupRepliesLabel": "En grupos",
+      "groupReplies": {
+        "mentions": "Solo cuando le mencionan o le responden",
+        "never": "Nunca"
+      },
+      "noChats": "Aún no hay chats. Aparecen aquí cuando llegan mensajes.",
+      "groupChat": "{{name}} (grupo)",
+      "answerChat": "Responder a {{name}}",
+      "remove": "Quitar",
+      "removeNamed": "Quitar la cuenta de {{platform}}",
+      "removeTitle": "Quitar {{platform}}",
+      "removeDescription": "{{name}} dejará de responder en esta cuenta de {{platform}} y se borrarán sus chats sincronizados. Puedes volver a vincularla escaneando un código nuevo.",
+      "removed": "{{platform}} quitado",
+      "removeFailed": "No se ha podido quitar. Inténtalo de nuevo.",
+      "cancel": "Cancelar",
+      "saveFailed": "No se ha podido guardar. Inténtalo de nuevo."
     }
   }
 }

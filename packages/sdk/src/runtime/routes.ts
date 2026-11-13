@@ -78,4 +78,8 @@ export const AGENT_ROUTES = {
   threadSearch: (thread: GemieThreadAddress) => `${threadPath(thread)}/search`,
   /** What a run of an agent has done so far, to hydrate the live feed. */
   sessionStatus: (sessionId: string) => `/agents/sessions/${sessionId}/status`,
+  /** The caller's WhatsApp and Telegram accounts linked to a gemie (ADR 0035), and one of them. */
+  accounts: (gemieId: string) => `/agents/${encodeURIComponent(gemieId)}/accounts`,
+  account: (gemieId: string, accountId: string) =>
+    `/agents/${encodeURIComponent(gemieId)}/accounts/${encodeURIComponent(accountId)}`,
 } as const;
