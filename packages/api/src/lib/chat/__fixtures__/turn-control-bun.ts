@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
-import { OxyInferenceClient } from '@oxy.so/core/inference';
+import { Kaana } from '@kaana.ai/sdk';
 import { connectPostgres, closePostgres, getDb } from '../../../db';
 import { turnControlRepository } from '../../../db/chat/turnControlRepository';
 import {
@@ -63,9 +63,14 @@ try {
       res.on('close', () => {
         if (!res.writableEnded) cancelled.get(id)?.resolve();
       });
-      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'X-Oxy-Request-Id': id });
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Kaana-Routing-Policy-Id': 'fixture',
+        'Kaana-Routing-Policy-Version': '1',
+        'Kaana-Request-Id': id,
+      });
       res.write(
-        `event: start\ndata: ${JSON.stringify({ schemaVersion: 1, type: 'start', requestId: id, sequence: 0, generationId: id, resolvedModelReference: 'fixture/model@1', servingProvider: 'fixture', startedAt: new Date().toISOString() })}\n\n`,
+        `event: start\ndata: ${JSON.stringify({ schemaVersion: 1, type: 'start', requestId: id, sequence: 0, generationId: id, model: 'fixture/model@1', startedAt: new Date().toISOString() })}\n\n`,
       );
       started.get(id)?.resolve();
       await released.get(id)?.promise;
@@ -75,7 +80,7 @@ try {
       );
     }),
   );
-  const inference = new OxyInferenceClient({ baseURL: provider, credential: 'synthetic-local' });
+  const inference = new Kaana({ baseURL: `${provider}/v1`, credential: 'synthetic-local' });
   const replica = async () => {
     const app = express();
     app.use(express.json());
@@ -106,7 +111,7 @@ try {
         // Deliberately no res.close -> abort: this is the durable disconnect contract.
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         res.write('data: admitted\n\n');
-        for await (const event of inference.stream(
+        for await (const event of inference.responses.stream(
           { model: 'fixture/model', input: identity.id },
           { signal: abort.signal },
         )) {
