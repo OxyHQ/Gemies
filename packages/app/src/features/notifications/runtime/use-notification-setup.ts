@@ -17,8 +17,14 @@ import { acquireNotificationsSocket } from '@/features/notifications/runtime/not
 import { queryKeys } from '@/shared/api/query-keys';
 
 // ── Constants ──────────────────────────────────────────────────────
-const PROJECT_ID =
-  Constants.expoConfig?.extra?.eas?.projectId ?? 'ca1a1ca1-2469-4ceb-8387-e43d6832bbab';
+/**
+ * Gemies' own Expo project (`extra.eas.projectId`, written by `eas init`), which
+ * Expo's push service needs to issue a token and to route it through the app's
+ * FCM credentials. Never another app's: a token minted under Alia's project would
+ * be routed with Alia's credentials. Without one the app registers no push token
+ * (the in-app notifications over the socket still work).
+ */
+const PROJECT_ID: string | undefined = Constants.expoConfig?.extra?.eas?.projectId;
 
 export function useNotificationSetup() {
   const { user, isAuthenticated } = useOxy();
@@ -45,7 +51,7 @@ export function useNotificationSetup() {
   useEffect(() => {
     if (Platform.OS === 'web') return;
     const Notifications = require('expo-notifications') as typeof import('expo-notifications');
-    if (!isAuthenticated || !user?.id) return;
+    if (!isAuthenticated || !user?.id || !PROJECT_ID) return;
 
     let cancelled = false;
 

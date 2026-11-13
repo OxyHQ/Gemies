@@ -75,7 +75,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   return {
     ...config,
     name: APP_NAME,
-    slug: config.slug ?? 'alia',
+    slug: 'gemies',
     ios: { ...config.ios, bundleIdentifier: APP_ID },
     android,
     plugins,
