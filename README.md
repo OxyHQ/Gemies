@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="packages/app/assets/images/gemies-welcome.png" alt="Three gemies: a pink one, a green frog and a paperclip with eyes" width="360">
+  <img src="docs/assets/gemies-welcome.png" alt="Three gemies: a pink one, a green frog and a paperclip with eyes" width="320">
 </p>
 
 <h1 align="center">Gemies</h1>
