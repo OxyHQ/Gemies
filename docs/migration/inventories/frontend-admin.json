@@ -357,14 +357,14 @@
       "id": "app-chat-screen-default",
       "kind": "model-alias",
       "name": "Chat screen default model",
-      "currentPath": "packages/app/app/(app)/c/[id]/index.tsx",
+      "currentPath": "packages/app/app/(app)/(own-header)/c/[id]/index.tsx",
       "summary": "useState('route:auto') seeding the conversation screen's selected model.",
       "exposesProviderSecret": false,
       "proposedOwner": "alia",
       "targetPath": "keep-as-alia-product-setting",
       "dependsOn": ["app-model-store"],
       "removalGate": "Keep; should read the persisted store or the server default instead of a literal.",
-      "evidence": "packages/app/app/(app)/c/[id]/index.tsx:20"
+      "evidence": "packages/app/app/(app)/(own-header)/c/[id]/index.tsx:20"
     },
     {
       "id": "app-personality-sample-alias",
