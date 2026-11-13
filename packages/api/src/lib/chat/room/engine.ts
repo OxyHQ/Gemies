@@ -22,6 +22,7 @@ import { validateRoomDecision } from './decision.js';
 import { randomUUID } from 'node:crypto';
 import type { HydratedAgent } from '../../agent-identity.js';
 import type { AgentInfo, ToolInvocation } from '../../../domain/conversation.js';
+import type { MessageReactionEntry } from '../../../domain/message-reactions.js';
 import { getErrorMessage } from '../../errors/index.js';
 import { log } from '../../logger.js';
 import type { AgentTurnResult, runAgentTurn } from '../../tools/agent-turn.js';
@@ -43,6 +44,8 @@ import {
 } from './policy.js';
 import { type GroupInputMessage, historyForMembers, memberMessages, textOf } from './transcript.js';
 import { GROUP_REPLY_MESSAGE_ID_PREFIX } from '../../../domain/conversation.js';
+import { agentReactionTurnId } from '../reactions/agent-tool.js';
+import type { prepareAgentReactionTurn } from '../reactions/agent-runtime.js';
 
 /** One step of a chain, as the queue carries it. JSON only: it crosses Redis. */
 export interface RoomJobData {
@@ -89,6 +92,7 @@ export interface TranscriptRow {
   readonly seq?: number | null;
   readonly createdAt?: Date;
   readonly reactions?: readonly string[];
+  readonly reactionEntries?: readonly MessageReactionEntry[];
   readonly agentInfo?: AgentInfo;
 }
 
@@ -99,6 +103,19 @@ interface StoredReply {
 }
 
 export interface RoomEngineDeps {
+  readonly prepareReaction?: typeof prepareAgentReactionTurn;
+  readonly reactionCompleted?: (
+    userId: string,
+    conversationId: string,
+    actorId: string,
+    turnId: string,
+  ) => Promise<boolean>;
+  readonly replayReactions?: (
+    userId: string,
+    conversationId: string,
+    actorId: string,
+    turnId: string,
+  ) => Promise<void>;
   readonly select?: (input: RoomSelectionInput) => Promise<RoomDecision>;
   readonly lock: RoomLock;
   readonly publish: (event: RoomEvent) => Promise<void> | void;
@@ -267,7 +284,11 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
   const replyId = replyIdOf(triggerId, data.turns);
   const alreadyStored = rows.find((row) => row.clientMessageId === replyId);
 
-  let reply: string | null = null;
+  const reactionTurnId = agentReactionTurnId(replyId, {
+    id: rows[triggerIndex]!.clientMessageId ?? triggerId,
+    content: rows[triggerIndex]!.content,
+  });
+  let reply: string | { reactionOnly: true } | null = null;
   if (alreadyStored) {
     // A retried step whose reply was stored before the failure: it spoke, do not answer twice.
     if (data.version === 2 && alreadyStored.agentId !== data.speakerId)
@@ -298,6 +319,19 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
         },
       });
     }
+  } else if (
+    data.version === 2 &&
+    member &&
+    (await deps.reactionCompleted?.(userId, conversationId, member.info.id, reactionTurnId))
+  ) {
+    await deps.replayReactions?.(userId, conversationId, member.info.id, reactionTurnId);
+    await emit('alia.agent_start', {
+      consultId: replyId,
+      agent: member.info,
+      task: textOf(rows[triggerIndex]?.content),
+    });
+    await emit('alia.agent_end', { consultId: replyId, status: 'completed', reactionOnly: true });
+    reply = { reactionOnly: true };
   } else if (member) {
     reply = await speak({ data, deps, member, rows, triggerIndex, replyId, emit });
   }
@@ -331,7 +365,7 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
   const next = planNext({
     roster: data.roster.map((m) => m.info),
     speakerId: data.speakerId,
-    reply,
+    reply: typeof reply === 'string' ? reply : null,
     state,
   });
   const [nextSpeaker, ...rest] = next.queue;
@@ -360,7 +394,7 @@ async function speak(input: {
   readonly triggerIndex: number;
   readonly replyId: string;
   readonly emit: (event: RoomEvent['event'], body: Record<string, unknown>) => Promise<void>;
-}): Promise<string | null> {
+}): Promise<string | { reactionOnly: true } | null> {
   const { data, deps, member, rows, triggerIndex, replyId, emit } = input;
   const { info } = member;
   const consultId = data.version === 2 ? replyId : randomUUID();
@@ -395,6 +429,27 @@ async function speak(input: {
       task: personText,
     });
     if (agent === null) return await fail({ code: 'agent_unavailable' });
+    const trigger = rows[triggerIndex]!;
+    const conversationReaction =
+      data.version === 2
+        ? await deps.prepareReaction?.({
+            userId: data.userId,
+            conversationId: data.conversationId,
+            agent,
+            turnId: agentReactionTurnId(replyId, {
+              id: trigger.clientMessageId ?? trigger.id,
+              content: trigger.content,
+            }),
+            expectedLatestUserMessage: {
+              id: trigger.clientMessageId ?? trigger.id,
+              content: trigger.content,
+            },
+            surfaceApplicationId: data.surfaceApplicationId,
+            allowedActorIds: data.roster
+              .filter((candidate) => candidate.available !== false)
+              .map((candidate) => candidate.info.id),
+          })
+        : undefined;
 
     const handedBy =
       data.handedByAgentId === null
@@ -403,6 +458,7 @@ async function speak(input: {
     const asRow = (row: TranscriptRow): GroupInputMessage => ({
       id: row.clientMessageId ?? row.id,
       reactions: row.reactions,
+      reactionEntries: row.reactionEntries,
       role: row.role,
       content: row.content,
       agentInfo:
@@ -421,6 +477,7 @@ async function speak(input: {
     });
     const outcome: AgentTurnResult = await deps.runTurn({
       agent,
+      ...(conversationReaction ? { conversationReaction } : {}),
       task:
         data.version === 2
           ? personText
@@ -474,7 +531,7 @@ async function speak(input: {
     });
     const passed = data.version !== 2 && gate.finish();
 
-    if (outcome.error !== undefined || outcome.response.trim() === '') {
+    if (outcome.error !== undefined || (outcome.response.trim() === '' && !outcome.reactionOnly)) {
       return await fail({ code: 'agent_unavailable' });
     }
     if (data.version !== 2 && (passed || isPass(outcome.response))) {
@@ -493,6 +550,10 @@ async function speak(input: {
       return null;
     }
     const content = outcome.response.trim();
+    if (outcome.reactionOnly && content === '') {
+      await emit('alia.agent_end', { consultId, status: 'completed', reactionOnly: true });
+      return { reactionOnly: true };
+    }
     const stored = await storeWithRetry(deps, {
       userId: data.userId,
       conversationId: data.conversationId,
