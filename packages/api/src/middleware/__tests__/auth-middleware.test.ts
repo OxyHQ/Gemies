@@ -65,7 +65,6 @@ function mockRes(): MockResponse {
 describe('auth middleware', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    delete process.env.TELEGRAM_BOT_SECRET;
   });
 
   describe('authenticateTokenOrApiKey', () => {

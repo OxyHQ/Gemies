@@ -48,6 +48,15 @@ async function requireIntegrations(req: Request, res: Response, next: NextFuncti
   });
 }
 
+/** Routes only the integrations process calls, acting for no channel account. */
+export async function authenticateIntegrations(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  await requireIntegrations(req, res, next);
+}
+
 /** Administrative bot endpoints are private to the integrations process. */
 export function authenticateChannelBot(channelType: ChannelId) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -92,11 +101,7 @@ async function resolveChannelAccount(
       return;
     }
     let context: VerifiedChannelContext | undefined;
-    if (
-      ['telegram', 'discord'].includes(platform) &&
-      typeof platformUserId === 'string' &&
-      platformUserId.length > 0
-    ) {
+    if (platform === 'discord' && typeof platformUserId === 'string' && platformUserId.length > 0) {
       const bot = await findSystemBot(getDb(), platform);
       const link =
         bot?.status === 'active' ? await findBotUser(getDb(), bot.id, platformUserId) : null;
@@ -110,15 +115,11 @@ async function resolveChannelAccount(
         };
       }
     } else if (
-      (platform === 'whatsapp' || platform === 'telegram-gateway') &&
+      (platform === 'whatsapp' || platform === 'telegram') &&
       typeof sessionId === 'string' &&
       sessionId.length > 0
     ) {
-      const connection = await findConnectedAccountBySession(
-        getDb(),
-        platform === 'telegram-gateway' ? 'telegram' : platform,
-        sessionId,
-      );
+      const connection = await findConnectedAccountBySession(getDb(), platform, sessionId);
       if (connection && isLiveEntityId(connection.oxyUserId)) {
         context = {
           kind: 'account',

@@ -1419,6 +1419,57 @@
         "forgotten": "Forgotten",
         "forgetFailed": "Could not forget it. Try again.",
         "changedMeanwhile": "The Gemie changed this note while you were editing. Its latest version is shown."
+      },
+      "telegramBot": {
+        "title": "Telegram bot",
+        "description": "Give {{name}} a Telegram bot of its own: people talk to {{name}} there, and you can add it to groups. Its chats appear in {{name}}’s conversations.",
+        "howTo": "How",
+        "step1": "1. In Telegram, open @BotFather, send /newbot and follow the steps.",
+        "step2": "2. Paste here the token it gives you. The bot takes {{name}}’s name, description and picture.",
+        "token": "Bot token",
+        "tokenPlaceholder": "123456789:AA…",
+        "pays": "Pay for its answers with my credits when {{name}} has none",
+        "connect": "Connect the bot",
+        "connected": "{{name}} answers on Telegram now.",
+        "connectFailed": "Could not connect the bot: {{reason}}",
+        "tryAgain": "try again in a moment.",
+        "profilePartial": "Telegram did not take its {{parts}}. Try “Update from the gemie” again.",
+        "part": {
+          "name": "name",
+          "description": "description",
+          "photo": "picture"
+        },
+        "bot": "Bot",
+        "state": {
+          "ok": "Live: Telegram delivers its messages",
+          "failing": "Telegram cannot deliver its messages right now; it keeps retrying",
+          "missing": "Reconnecting with Telegram",
+          "unknown": "Telegram could not be asked right now"
+        },
+        "answered": {
+          "one": "{{count}} message answered",
+          "other": "{{count}} messages answered"
+        },
+        "open": "Open in Telegram",
+        "addToGroup": "Add to a group",
+        "groups": "In groups",
+        "groupReplies": {
+          "mentions": "Only when mentioned or replied to",
+          "never": "Never"
+        },
+        "privacy": "In groups the bot sees only replies to it and commands that name it (/ask@{{username}}). To also answer when someone writes @{{username}}, make it a group admin or turn off its privacy in @BotFather (/setprivacy).",
+        "conversations": "Its chats appear in {{name}}’s conversations.",
+        "sync": "Update from {{name}}",
+        "synced": "The bot shows {{name}}’s name, description and picture.",
+        "saveFailed": "Could not save: {{reason}}",
+        "remove": "Remove",
+        "removeTitle": "Remove the Telegram bot",
+        "removeDescription": "{{name}} stops answering on @{{username}}. The bot stays yours in @BotFather.",
+        "removed": "Telegram bot removed",
+        "removeFailed": "Could not remove it. Try again.",
+        "cancel": "Cancel",
+        "loadFailed": "Could not load this. Try again.",
+        "unavailable": "A Telegram bot cannot be connected here right now."
       }
     },
     "threads": "Threads",
@@ -1442,7 +1493,6 @@
     "linkFailed": "Link Failed",
     "failedToLink": "Failed to link your account. Please try again.",
     "returnToApp": "You can now return to %{app} and start chatting with Alia!",
-    "requestNewLink": "Request New Link",
     "invalidToken": "Invalid authentication token. The link you followed is not valid.",
     "tokenExpired": "This link has expired. Please request a new one.",
     "invalidOrExpiredToken": "Invalid or expired token. Please request a new link.",
@@ -2311,15 +2361,15 @@
       "linked": "{{platform}} is linked. {{name}} answers there now.",
       "scanTitle": "Scan with {{platform}}",
       "scan": {
-        "whatsapp": "Open WhatsApp on your phone, go to Settings > Linked devices > Link a device, and scan this code.",
-        "telegram": "Open Telegram on your phone, go to Settings > Devices > Link Desktop Device, and scan this code."
+        "whatsapp": "Open WhatsApp on your phone, go to Settings > Linked devices > Link a device, and scan this code."
       },
       "status": {
         "qr-pending": "Waiting for the scan",
         "connected": "Connected",
         "disconnected": "Reconnecting",
         "logged-out": "Unlinked from the phone. Remove it and link it again.",
-        "failed": "Could not reconnect. Remove it and link it again."
+        "failed": "Could not reconnect. Remove it and link it again.",
+        "paused": "Paused"
       },
       "lastMessage": "Last message: {{when}}",
       "noMessagesYet": "No messages yet",
@@ -2345,7 +2395,24 @@
       "removeFailed": "Could not remove it. Try again.",
       "cancel": "Cancel",
       "saveFailed": "Could not save. Try again.",
-      "retry": "Retry"
+      "retry": "Retry",
+      "telegram": {
+        "cannotReply": "Telegram does not let {{name}} reply yet: allow \"Reply to messages\" for the bot in Telegram › Settings › Telegram Business › Chatbots.",
+        "linkTitle": "Connect Telegram",
+        "note": "Telegram Business needs Telegram Premium, and covers your private chats only (not groups or channels). It stays connected until you remove it in Telegram.",
+        "open": "Open Telegram",
+        "removeDescription": "{{name}} stops answering on your Telegram and what it read there is deleted. To disconnect it in Telegram too, remove the bot in Telegram › Settings › Telegram Business › Chatbots.",
+        "status": {
+          "disconnected": "Reconnecting",
+          "failed": "Telegram could not be reached. It retries on its own.",
+          "logged-out": "Revoked: this Telegram now answers through another gemie. Remove it, or link it again.",
+          "paused": "Paused in Telegram. It resumes on its own when you turn the bot back on there.",
+          "qr-pending": "Waiting for you in Telegram"
+        },
+        "step1": "1. Open the Gemies bot in Telegram and press Start (or scan this code with your phone).",
+        "step2": "2. In Telegram, go to Settings › Telegram Business › Chatbots, add the bot and choose which chats it may answer.",
+        "waitingBusiness": "Telegram knows it is you. Now go to Telegram › Settings › Telegram Business › Chatbots and add the bot you just opened."
+      }
     }
   }
 }

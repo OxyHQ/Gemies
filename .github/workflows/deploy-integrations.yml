@@ -103,6 +103,32 @@ jobs:
             fi
           done
 
+      # The shared Telegram bot (ADR 0037) is bound only once its token exists in SSM: the owner
+      # writes `/oxy/alia-integrations/TELEGRAM_BOT_TOKEN` (oxy-infra runbook 68) and the next
+      # deploy carries it. A task naming a parameter that does not exist fails at start, so until
+      # then the service runs without it, and Telegram is simply not offered as an account.
+      # Metadata only: decryption stays disabled, and only Name and Type are read.
+      - name: Bind the shared Telegram bot when its token exists
+        id: telegram
+        run: |
+          parameter_name=/oxy/alia-integrations/TELEGRAM_BOT_TOKEN
+          metadata="$(aws ssm get-parameter \
+            --name "$parameter_name" \
+            --no-with-decryption \
+            --query 'Parameter.[Name,Type]' \
+            --output text 2>/dev/null)" || metadata=''
+          read -r actual_name actual_type <<<"$metadata"
+          if [ "$actual_name" = "$parameter_name" ] && [ "$actual_type" = "SecureString" ]; then
+            overrides="$(jq -cn \
+              --arg arn "arn:aws:ssm:${AWS_REGION}:237343248947:parameter${parameter_name}" \
+              '{TELEGRAM_BOT_TOKEN: $arn}')"
+            echo "the shared Telegram bot is bound"
+          else
+            overrides=''
+            echo "::notice::$parameter_name is not in SSM yet (or its metadata cannot be read); Telegram Business accounts stay off"
+          fi
+          printf 'secret_overrides=%s\n' "$overrides" >>"$GITHUB_OUTPUT"
+
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
@@ -234,6 +260,7 @@ jobs:
           MIGRATION_ENTRYPOINT: packages/integrations/dist/db/migrate.js
           MIGRATION_TARGET_DATABASE: ${{ env.MIGRATION_DATABASE }}
           POST_DEPLOY_TASK_COMMAND_JSON: ${{ steps.phases.outputs.post_command }}
+          TASK_SECRET_OVERRIDES_JSON: ${{ steps.telegram.outputs.secret_overrides }}
           # Registered task-role identity is the only own process credential.
           # Explicitly remove inherited legacy bindings from the running revision;
           # this does not delete SSM parameters or external provider credentials.

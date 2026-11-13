@@ -122,7 +122,10 @@ and finished from the store:
   dispatched in the background. `reapStalledAutomationEvents` (`lib/automation-event-dispatch.ts`, in
   the run reaper's minute sweep) re-dispatches any event still `received` or `matched` after two
   minutes, up to a day old. Dispatching is idempotent by event id.
-- **Messaging-platform messages** (Telegram, Slack, ...) are stored in `channel_inbound` before the
+- **Telegram updates** are stored in the integrations process's `telegram_updates` before Telegram is
+  acknowledged (its own update id is the dedup), and swept at startup and every minute until handled
+  (ADR 0037).
+- **Other messaging-platform messages** (Slack, Discord, ...) are stored in `channel_inbound` before the
   platform is acked, claimed by whichever instance answers, and swept by `reapStalledChannelInbound`
   (`lib/channels/inbound-sweep.ts`) if it died: one retry at most, because a second reply is worse
   than a quiet failure. The dedup is the table's unique key with the same 60-second window, so it holds
@@ -130,6 +133,10 @@ and finished from the store:
   answers 500 so the platform retries.
 - **A retried run does not repeat an undoable effect**: inside a run, `sendTelegramMessage` claims
   (run, person, message) in Redis before sending and releases the claim if the send fails.
+- **Nobody needs to be present to write on Telegram.** A task, a watch or a notification writes to
+  the person through the Telegram they linked to the gemie (`sendTelegramMessage`), and from their
+  Telegram Business account to a contact (`sendAccountMessage`, where Telegram allows it). The link
+  never expires on Gemies' side (ADR 0037).
 - Redis is required in production: the API refuses to boot without `REDIS_URL`
   (`lib/boot-guards.ts`), because without it every queue runs jobs inline and a restart loses them.
 

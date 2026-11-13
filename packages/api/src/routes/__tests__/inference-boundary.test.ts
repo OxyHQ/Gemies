@@ -271,13 +271,14 @@ describe('every unauthenticated inbound entry point is replay-protected (#139 ws
     expect(verifyAt).toBeLessThan(claimAt);
   });
 
-  it('the per-bot dedup key is scoped to the receiving bot', () => {
-    // Without the scope, one person messaging two bots the same text inside the
-    // window loses the second — and the same key shape is what makes a replay
-    // of bot A's update visible when it arrives at bot B.
+  it('the dedup key is the message, and a Telegram delivery is never answered here', () => {
+    // A system bot's retry is recognised by its content within the window.
     const webhooks = code('routes/webhooks.ts');
-    expect(webhooks).toMatch(/scope \? `\$\{scope\}:` : ''/);
     expect(webhooks).toContain("createHash('md5').update(message.text)");
+    // Telegram's own update id is the dedup key, in the integrations inbox (ADR 0037): this
+    // route only relays it there.
+    expect(webhooks).toContain("router.post('/telegram/:botId'");
+    expect(webhooks).toContain('integrationsServiceFetch(`/telegram/updates/${botId}`');
   });
 });
 

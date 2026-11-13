@@ -1,32 +1,22 @@
 /**
- * Platform bots (Telegram and friends) and the people who talk to them.
+ * Platform bots and the people who talk to them.
  *
- * ## Two secrets on one table, and only ONE of them may be encrypted
+ * Two kinds of bot share this table:
  *
- * `bots.bot_token` and `bots.webhook_secret` are both credentials. They get
- * opposite treatment, and the difference is
- * not a judgement call:
+ *  - a SYSTEM bot (`user_id` null): the platform's global one, configured from the environment
+ *    (Discord today), whose people link their own Oxy account through `bot_users`;
+ *  - a GEMIE's own Telegram bot (`agent_id` set, ADR 0037): its owner pasted a @BotFather token in
+ *    the gemie's editor, and anybody on Telegram talks to the gemie there. `user_id` is the person
+ *    who connected it, who pays for its turns when the gemie cannot and alone may say so.
  *
- *  - **`bot_token` is `encryptedText`.** It is only ever read to call the platform, and nothing looks a row up
- *    by it. This is the codec's second customer after `integrations`.
- *  - **`webhook_secret` stays PLAINTEXT and indexed.** `routes/webhooks.ts` does
- *    `Bot.findOne({ webhookSecret: perBotSecret, … })` on every inbound update —
- *    it is a LOOKUP KEY. `encryptedText` is AES-GCM with a random IV, so the same
- *    plaintext encrypts to a different value every time (pinned by
- *    `integrations.pgdb.test.ts`), and an equality lookup against it can never
- *    match. Encrypting this column does not weaken security slightly; it breaks
- *    inbound bot routing completely, and the failure is a silent 404 on every
- *    message rather than an error at write time.
+ * ## `bot_token` is `encryptedText`, and stays out of every projection that does not need it
  *
- * If that lookup ever has to go, the replacement is a deterministic keyed digest
- * stored beside the secret — not encryption of the secret itself.
+ * It is only ever read to speak as the bot (the integrations process asks for it, over the
+ * internal workload channel), and nothing looks a row up by it. drizzle has no projection default:
+ * a bare `select()` returns it, so every read names its columns.
  *
- * ## There is no projection default
- *
- * drizzle has no projection default: a bare `select()` returns both secrets.
- * Name columns, and leave these out of every projection but the call that must
- * use them. It is the setter rule's sibling: a guarantee that holds only by
- * discipline.
+ * There is no webhook secret here: each bot's is derived from its id and the encryption key by the
+ * integrations process (`telegram/webhook.ts` there), so it is never stored.
  */
 
 import { boolean, index, integer, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
@@ -36,6 +26,10 @@ import type { ChannelInboundMessage } from '../../lib/channels/types';
 import { checkOneOf, encryptedText } from './columns';
 
 export const BOT_STATUSES = ['active', 'inactive', 'error'] as const;
+
+/** In a Telegram group, a gemie's bot answers only when mentioned or replied to, or never. */
+export const BOT_GROUP_REPLIES = ['mentions', 'never'] as const;
+export type BotGroupReplies = (typeof BOT_GROUP_REPLIES)[number];
 export type BotStatus = (typeof BOT_STATUSES)[number];
 
 /** Whether a pending bot auth token links an existing account or signs one in. */
@@ -44,10 +38,6 @@ export type BotUserAuthTokenMode = (typeof BOT_USER_AUTH_TOKEN_MODES)[number];
 
 /**
  * A bot registered against a messaging platform.
- *
- * `user_id` absent means the system/global bot configured from the environment
- * rather than one a person registered — which is why the webhook lookup above
- * additionally filters `userId: { $exists: true }`.
  *
  * `platform` has no CHECK: the value comes from the channel registry, a runtime
  * list this schema does not own.
@@ -70,13 +60,7 @@ export const bots = pgTable(
     userId: text(),
     /** Encrypted at rest. Never select into a response. See the table comment. */
     botToken: encryptedText(),
-    /**
-     * PLAINTEXT and indexed, deliberately — it is the key inbound webhooks are
-     * matched on. Encrypting it would break routing outright. Still a credential:
-     * never log it, never select it into a response.
-     */
-    webhookSecret: text(),
-    /** An `agents` row. No foreign key — that table is batch 9. */
+    /** The gemie whose own bot this is. No foreign key: deleting a gemie removes its bot first. */
     agentId: text(),
     /**
      * Whether this bot's OWNER (`user_id`) agreed to pay for its agent's turns
@@ -87,7 +71,7 @@ export const bots = pgTable(
      * the account being charged. The payer of an agent-bot turn is this row's
      * `user_id`; `agents` is writable by anyone the agent's owner grants
      * `account:act_as`, so a flag there would let a colleague commit the bot
-     * owner's credits. Only `user_id` can change this one (`PATCH /bots/:id`).
+     * owner's credits. Only `user_id` can change this one (`PATCH /agents/:id/telegram-bot`).
      *
      * Defaults to false: an agent whose owner has neither funded it nor
      * authorised the fallback does not run. Migration 0071 set it true for
@@ -96,9 +80,12 @@ export const bots = pgTable(
      * word would silence their bots mid-conversation.
      */
     ownerPaysAgentTurns: boolean().notNull().default(false),
+    /** A gemie bot in a Telegram group: see {@link BOT_GROUP_REPLIES}. */
+    groupReplies: text({ enum: BOT_GROUP_REPLIES as unknown as [string, ...string[]] })
+      .$type<BotGroupReplies>()
+      .notNull()
+      .default('mentions'),
     defaultModel: text(),
-    platformConfigWebhookUrl: text(),
-    platformConfigPublicKey: text(),
     totalUsers: integer().notNull().default(0),
     totalMessages: integer().notNull().default(0),
     lastMessageAt: timestamptz(),
@@ -107,10 +94,14 @@ export const bots = pgTable(
   },
   (t) => [
     uniqueIndex('bots_platform_bot_id_key').on(t.platform, t.botId),
-    // The inbound-webhook lookup. Partial: only bots with a webhook secret.
-    index('bots_webhook_secret_idx').on(t.webhookSecret).where(sql`${t.webhookSecret} is not null`),
+    // A gemie has at most one bot of its own per platform. A system bot names Alia's gemie with
+    // no owner (0136), and is not one.
+    uniqueIndex('bots_agent_platform_key')
+      .on(t.agentId, t.platform)
+      .where(sql`${t.agentId} is not null and ${t.userId} is not null`),
     index('bots_user_id_idx').on(t.userId).where(sql`${t.userId} is not null`),
     checkOneOf('bots_status_check', t.status, BOT_STATUSES),
+    checkOneOf('bots_group_replies_check', t.groupReplies, BOT_GROUP_REPLIES),
   ],
 );
 
@@ -170,7 +161,7 @@ export const botUsers = pgTable(
   ],
 );
 
-export const CHANNEL_INBOUND_KINDS = ['system', 'agent_bot'] as const;
+export const CHANNEL_INBOUND_KINDS = ['system'] as const;
 export const CHANNEL_INBOUND_STATUSES = ['received', 'processing', 'done', 'failed'] as const;
 
 /**

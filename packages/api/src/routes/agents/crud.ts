@@ -1,5 +1,6 @@
 import { establishAgentWork, stopAgentWork } from '../../lib/agent/work.js';
 import { releaseGemieAccounts } from '../../lib/gemie-accounts.js';
+import { releaseGemieTelegramBot } from '../../lib/gemie-telegram-bot-setup.js';
 import { listExternalLinks } from '../../db/agents/externalAgentRepository.js';
 import { externalAgentPresence } from '../../lib/external-agents/presence.js';
 import { avatarCharacterFor, type AvatarCharacter } from '@oxy.so/contracts';
@@ -800,6 +801,8 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
     // Its connected accounts go with it (ADR 0035): their sessions end and their tasks are revoked
     // first, and the rows cascade with the gemie's.
     await releaseGemieAccounts(id);
+    // Its own Telegram bot stops answering for it (ADR 0037).
+    await releaseGemieTelegramBot(id);
     const deleted = await deleteAgent(getDb(), id);
     if (deleted === 0) {
       return res.status(404).json({ error: 'Agent not found' });

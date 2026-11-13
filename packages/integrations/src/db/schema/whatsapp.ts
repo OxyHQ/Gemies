@@ -21,12 +21,7 @@ import {
 import { createdAt, generatedId, timestamptz, updatedAt } from '@oxy.so/db';
 import { checkOneOf } from './columns';
 
-/**
- * Baileys' connection lifecycle. Shared verbatim with Telegram (GramJS reports
- * the same five states) but deliberately NOT a shared tuple: they are two
- * protocols that happen to agree today, and merging them would make a change to
- * one silently widen the other.
- */
+/** Baileys' connection lifecycle, as the gateway reports it to the API. */
 export const WHATSAPP_SESSION_STATUSES = [
   'qr-pending',
   'connected',

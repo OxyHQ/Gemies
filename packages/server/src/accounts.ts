@@ -14,16 +14,19 @@ export type GemieAccountPlatform = (typeof GEMIE_ACCOUNT_PLATFORMS)[number];
 /**
  * Where a provider session is.
  *
- *  - `qr-pending`: waiting for the person to scan its code;
+ *  - `qr-pending`: waiting for the person to finish linking it (scan its code, open its link);
  *  - `connected`: live;
  *  - `disconnected`: dropped, and the gateway is reconnecting it;
- *  - `logged-out`: unlinked (from the phone, or removed here), and over;
+ *  - `paused`: the person turned it off in the platform (Telegram Business); it comes back by
+ *    itself when they turn it on again;
+ *  - `logged-out`: unlinked (from the phone, or linked to another gemie), and over;
  *  - `failed`: it could not reconnect, and needs linking again.
  */
 export const GEMIE_ACCOUNT_STATUSES = [
   'qr-pending',
   'connected',
   'disconnected',
+  'paused',
   'logged-out',
   'failed',
 ] as const;
@@ -34,9 +37,17 @@ export interface GemieAccountSession {
   readonly status: GemieAccountStatus;
   readonly phoneNumber?: string | null;
   readonly displayName?: string | null;
+  /**
+   * Whether the platform lets the gemie write from the account. Telegram Business grants it per
+   * connection ("Reply to messages"); absent where the platform has no such grant.
+   */
+  readonly canReply?: boolean | null;
 }
 
-/** `POST /accounts/:platform/sessions/connect`: the new session and its first code. */
+/**
+ * `POST /accounts/:platform/sessions/connect`: the new session and its first code. For WhatsApp
+ * the code is scanned in the app; for Telegram it is a `https://t.me/…` link to open (or scan).
+ */
 export interface GemieAccountLink {
   readonly sessionId: string;
   readonly qr: string;
@@ -75,6 +86,11 @@ export interface GemieAccountInbound {
   readonly chatKind: 'direct' | 'group';
   /** Whether a group message mentions the linked account (or replies to it). */
   readonly mentionsAccount: boolean;
+}
+
+/** `POST …/sessions/:id/notify`: write to the person who linked the account, not to a contact. */
+export interface GemieAccountNotify {
+  readonly text: string;
 }
 
 /** The API's answer to {@link GemieAccountInbound}. */

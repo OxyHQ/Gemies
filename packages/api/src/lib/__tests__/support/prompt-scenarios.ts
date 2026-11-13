@@ -22,6 +22,7 @@ import { wireToolParameters } from '../../inference/kaana-language-model.js';
 import { SystemPromptBuilder } from '../../system-prompt-builder.js';
 import { ToolPipeline } from '../../tool-pipeline.js';
 import { buildIdentityGuard } from '../../identity-guard.js';
+import { DEFAULT_CHANNEL_PROMPT } from '../../channels/channel-prompt.js';
 import { loadPrompt } from '../../prompt-loader.js';
 import { buildSystemPrompt as buildRunnerPrompt } from '../../agent/runner.js';
 import { buildRuntimeTools } from '../../agent/actions.js';
@@ -159,17 +160,16 @@ export async function measureScenarios(): Promise<ScenarioMeasure[]> {
     out.push(await finish('2 voice', system, sections, tools));
   }
 
-  // 3. The shared Telegram bot: identity guard + channel prompt, no tools.
+  // 3. A system bot (Discord): identity guard + channel prompt, no tools.
   {
     const guard = buildIdentityGuard();
-    const channel = await loadPrompt('alia-telegram');
     out.push(
       await finish(
-        '3 telegram',
-        `${guard}\n\n---\n\n${channel}`,
+        '3 system bot',
+        `${guard}\n\n---\n\n${DEFAULT_CHANNEL_PROMPT}`,
         [
           ['identity guard', tokens(guard)],
-          ['prompts/alia-telegram.md', tokens(channel)],
+          ['channel prompt', tokens(DEFAULT_CHANNEL_PROMPT)],
         ],
         {},
       ),

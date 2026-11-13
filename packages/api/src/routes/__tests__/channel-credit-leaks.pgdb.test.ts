@@ -3,7 +3,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { eq } from 'drizzle-orm';
 
 /**
- * The two inbound chat handlers in `routes/webhooks.ts`, against a REAL
+ * The two inbound chat handlers — the system bot's (`routes/webhooks.ts`) and a
+ * gemie's own Telegram bot's (`lib/gemie-telegram-bot.ts`) — against a REAL
  * Postgres server, for one property: **the reservation is charged or given
  * back, never neither.**
  *
@@ -12,8 +13,8 @@ import { eq } from 'drizzle-orm';
  * Both handlers reserve a credit before they do anything, then walk a series of
  * exits that answer a problem by messaging the user and returning — no model
  * available, an exception anywhere — and none of them gave the credit back. A
- * Telegram user whose message arrived while every model was down was charged
- * for the apology.
+ * person whose message arrived while every model was down was charged for the
+ * apology.
  *
  * These handlers are fire-and-forget from the route: it acks the platform and
  * drops the promise. So there is no status code to assert and no caller to
@@ -66,6 +67,7 @@ vi.mock('../../lib/logger.js', () => {
       credits: child,
       v1: child,
       providers: child,
+      channels: child,
     },
   };
 });
@@ -79,15 +81,17 @@ vi.mock('../../lib/chat-core.js', () => ({
 }));
 
 import { generateText } from 'ai';
-import { sendChannelMessage } from '../../lib/channels/outbound.js';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../../db/index.js';
 import { agents } from '../../db/schema/agents.js';
 import { userCredits } from '../../db/schema/billing.js';
 import { getOrCreateUserCredits } from '../../db/billing/userCreditsRepository.js';
 import { resolveStoredModel } from '../../lib/chat-core.js';
-import type { BotUserRow, InboundUserBotRow } from '../../db/integrations/botRepository.js';
+import type { BotUserRow } from '../../db/integrations/botRepository.js';
+import type { GemieBotRow } from '../../db/integrations/gemieBotRepository.js';
 import type { ChannelInboundMessage } from '../../lib/channels/types.js';
-import { processAgentBotMessage, processChannelMessage } from '../webhooks.js';
+import { answerGemieTelegramMessage } from '../../lib/gemie-telegram-bot.js';
+import type { GemieTelegramBotMessage } from '@gemies/server/internal';
+import { processChannelMessage } from '../webhooks.js';
 
 let db: ApiDatabase;
 
@@ -135,7 +139,7 @@ function linkedBotUser(oxyUserId: string): BotUserRow {
   return {
     id: `${SUITE}-botuser-${seq++}`,
     botId: `${SUITE}-bot`,
-    platform: 'telegram',
+    platform: 'discord',
     platformUserId: 'tg-1',
     chatId: 'chat-1',
     oxyUserId,
@@ -156,18 +160,27 @@ function linkedBotUser(oxyUserId: string): BotUserRow {
   };
 }
 
+const botMessage: GemieTelegramBotMessage = {
+  chatId: 'chat-1',
+  chatKind: 'direct',
+  chatTitle: null,
+  messageId: '1',
+  from: { id: 'tg-1', username: null, name: 'A stranger' },
+  text: 'hello there',
+  mentionsBot: false,
+};
+
 /**
- * A user-registered bot bound to a fresh agent.
+ * A gemie's own Telegram bot, on a fresh gemie.
  *
- * `ownerPaysAgentTurns` defaults to true — the value migration 0071 gave every
- * bot that was already bound — so the pre-existing cases below keep asserting
- * what they always did: the owner pays. `agentAccountId` defaults to an account
- * with NO balance row, which is what every agent has unless its owner funded it.
+ * `ownerPaysAgentTurns` defaults to true, so the first cases assert that the
+ * person who connected it pays. `agentAccountId` defaults to an account with NO
+ * balance row, which is what every gemie has unless someone funded it.
  */
-async function userOwnedBot(
+async function gemieBot(
   ownerUserId: string,
   opts: { ownerPaysAgentTurns?: boolean; agentAccountId?: string } = {},
-): Promise<InboundUserBotRow> {
+): Promise<GemieBotRow> {
   const agentId = `${SUITE}-agent-${seq++}`;
   await db.insert(agents).values({
     id: agentId,
@@ -181,24 +194,18 @@ async function userOwnedBot(
     systemPrompt: 'Be helpful.',
   });
   return {
-    _id: `${SUITE}-bot-${seq++}`,
     id: `${SUITE}-bot-${seq++}`,
-    platform: 'telegram',
-    botId: 'tg-bot',
-    name: 'Helper',
-    username: null,
-    avatarUrl: null,
-    status: 'active',
-    userId: ownerUserId,
+    botId: `${seq++}`,
     agentId,
+    userId: ownerUserId,
+    name: 'Helper',
+    username: 'helper_bot',
+    status: 'active',
+    groupReplies: 'mentions',
     ownerPaysAgentTurns: opts.ownerPaysAgentTurns ?? true,
-    defaultModel: null,
-    totalUsers: 0,
     totalMessages: 0,
     lastMessageAt: null,
     createdAt: new Date(),
-    updatedAt: new Date(),
-    botToken: 'token',
   };
 }
 
@@ -206,7 +213,7 @@ describe('processChannelMessage — the system bot', () => {
   it('charges the turn when it answers', async () => {
     const userId = await account(100, 0);
 
-    await processChannelMessage('telegram', linkedBotUser(userId), message);
+    await processChannelMessage('discord', linkedBotUser(userId), message);
 
     // The positive control. 20 tokens settles at the 1-credit minimum, which is
     // exactly what was reserved — so a handler that refunded unconditionally
@@ -218,7 +225,7 @@ describe('processChannelMessage — the system bot', () => {
     const userId = await account(100, 0);
     vi.mocked(resolveStoredModel).mockRejectedValueOnce(new Error('no model'));
 
-    await processChannelMessage('telegram', linkedBotUser(userId), message);
+    await processChannelMessage('discord', linkedBotUser(userId), message);
 
     expect(await balanceOf(userId)).toEqual({ free: 100, paid: 0 });
   });
@@ -227,7 +234,7 @@ describe('processChannelMessage — the system bot', () => {
     const userId = await account(100, 0);
     vi.mocked(generateText).mockRejectedValueOnce(new Error('every provider is down'));
 
-    await processChannelMessage('telegram', linkedBotUser(userId), message);
+    await processChannelMessage('discord', linkedBotUser(userId), message);
 
     expect(await balanceOf(userId)).toEqual({ free: 100, paid: 0 });
   });
@@ -236,22 +243,17 @@ describe('processChannelMessage — the system bot', () => {
     const userId = await account(0, 100);
     vi.mocked(resolveStoredModel).mockRejectedValueOnce(new Error('no model'));
 
-    await processChannelMessage('telegram', linkedBotUser(userId), message);
+    await processChannelMessage('discord', linkedBotUser(userId), message);
 
     expect(await balanceOf(userId)).toEqual({ free: 0, paid: 100 });
   });
 });
 
-describe('processAgentBotMessage — a user-registered bot', () => {
+describe('a gemie’s own Telegram bot', () => {
   it("charges the OWNER's turn when it answers", async () => {
     const ownerId = await account(100, 0);
 
-    await processAgentBotMessage(
-      await userOwnedBot(ownerId),
-      linkedBotUser(ownerId),
-      message,
-      'telegram',
-    );
+    await answerGemieTelegramMessage(await gemieBot(ownerId), botMessage).catch(() => null);
 
     expect(await balanceOf(ownerId)).toEqual({ free: 99, paid: 0 });
   });
@@ -260,12 +262,7 @@ describe('processAgentBotMessage — a user-registered bot', () => {
     const ownerId = await account(100, 0);
     vi.mocked(resolveStoredModel).mockRejectedValueOnce(new Error('no model'));
 
-    await processAgentBotMessage(
-      await userOwnedBot(ownerId),
-      linkedBotUser(ownerId),
-      message,
-      'telegram',
-    );
+    await answerGemieTelegramMessage(await gemieBot(ownerId), botMessage).catch(() => null);
 
     expect(await balanceOf(ownerId)).toEqual({ free: 100, paid: 0 });
   });
@@ -274,12 +271,7 @@ describe('processAgentBotMessage — a user-registered bot', () => {
     const ownerId = await account(100, 0);
     vi.mocked(generateText).mockRejectedValueOnce(new Error('every provider is down'));
 
-    await processAgentBotMessage(
-      await userOwnedBot(ownerId),
-      linkedBotUser(ownerId),
-      message,
-      'telegram',
-    );
+    await answerGemieTelegramMessage(await gemieBot(ownerId), botMessage).catch(() => null);
 
     expect(await balanceOf(ownerId)).toEqual({ free: 100, paid: 0 });
   });
@@ -293,7 +285,7 @@ describe('processAgentBotMessage — a user-registered bot', () => {
  * gives: a double debit looks exactly like the right answer from either side
  * alone.
  */
-describe("processAgentBotMessage — who pays for the agent's turn", () => {
+describe("a gemie’s own Telegram bot — who pays for the gemie's turn", () => {
   async function rowExists(id: string): Promise<boolean> {
     const [row] = await db.select().from(userCredits).where(eq(userCredits.id, id));
     return row !== undefined;
@@ -303,11 +295,8 @@ describe("processAgentBotMessage — who pays for the agent's turn", () => {
     const ownerId = await account(100, 0);
     const agentAccountId = await account(0, 20);
 
-    await processAgentBotMessage(
-      await userOwnedBot(ownerId, { agentAccountId }),
-      linkedBotUser(ownerId),
-      message,
-      'telegram',
+    await answerGemieTelegramMessage(await gemieBot(ownerId, { agentAccountId }), botMessage).catch(
+      () => null,
     );
 
     expect(await balanceOf(agentAccountId)).toEqual({ free: 0, paid: 19 });
@@ -319,11 +308,8 @@ describe("processAgentBotMessage — who pays for the agent's turn", () => {
     const agentAccountId = await account(0, 20);
     vi.mocked(generateText).mockRejectedValueOnce(new Error('every provider is down'));
 
-    await processAgentBotMessage(
-      await userOwnedBot(ownerId, { agentAccountId }),
-      linkedBotUser(ownerId),
-      message,
-      'telegram',
+    await answerGemieTelegramMessage(await gemieBot(ownerId, { agentAccountId }), botMessage).catch(
+      () => null,
     );
 
     expect(await balanceOf(agentAccountId)).toEqual({ free: 0, paid: 20 });
@@ -334,12 +320,10 @@ describe("processAgentBotMessage — who pays for the agent's turn", () => {
     const ownerId = await account(100, 0);
     const agentAccountId = `${SUITE}-unfunded-agent-${seq++}`;
 
-    await processAgentBotMessage(
-      await userOwnedBot(ownerId, { agentAccountId, ownerPaysAgentTurns: true }),
-      linkedBotUser(ownerId),
-      message,
-      'telegram',
-    );
+    await answerGemieTelegramMessage(
+      await gemieBot(ownerId, { agentAccountId, ownerPaysAgentTurns: true }),
+      botMessage,
+    ).catch(() => null);
 
     expect(await balanceOf(ownerId)).toEqual({ free: 99, paid: 0 });
     // The free-credit farm stays shut: running a turn gave the agent no row.
@@ -350,20 +334,16 @@ describe("processAgentBotMessage — who pays for the agent's turn", () => {
     const ownerId = await account(100, 0);
     const agentAccountId = await account(0, 0);
     vi.mocked(generateText).mockClear();
-    vi.mocked(sendChannelMessage).mockClear();
 
-    await processAgentBotMessage(
-      await userOwnedBot(ownerId, { agentAccountId, ownerPaysAgentTurns: false }),
-      linkedBotUser(ownerId),
-      message,
-      'telegram',
+    const text = await answerGemieTelegramMessage(
+      await gemieBot(ownerId, { agentAccountId, ownerPaysAgentTurns: false }),
+      botMessage,
     );
 
     expect(await balanceOf(ownerId)).toEqual({ free: 100, paid: 0 });
     expect(await balanceOf(agentAccountId)).toEqual({ free: 0, paid: 0 });
     expect(generateText).not.toHaveBeenCalled();
     // The stranger is told it is a PERMISSION, not a balance.
-    const text = vi.mocked(sendChannelMessage).mock.calls.at(-1)?.[2];
     expect(text).toContain('has not allowed it to use their credits');
     expect(text).not.toContain('out of credits');
   });
@@ -371,18 +351,14 @@ describe("processAgentBotMessage — who pays for the agent's turn", () => {
   it('refuses with the out-of-credits message when neither balance covers it', async () => {
     const ownerId = await account(0, 0);
     vi.mocked(generateText).mockClear();
-    vi.mocked(sendChannelMessage).mockClear();
 
-    await processAgentBotMessage(
-      await userOwnedBot(ownerId, { ownerPaysAgentTurns: true }),
-      linkedBotUser(ownerId),
-      message,
-      'telegram',
+    const text = await answerGemieTelegramMessage(
+      await gemieBot(ownerId, { ownerPaysAgentTurns: true }),
+      botMessage,
     );
 
     expect(await balanceOf(ownerId)).toEqual({ free: 0, paid: 0 });
     expect(generateText).not.toHaveBeenCalled();
-    const text = vi.mocked(sendChannelMessage).mock.calls.at(-1)?.[2];
     expect(text).toContain('out of credits');
   });
 });

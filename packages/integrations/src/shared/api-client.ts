@@ -4,8 +4,14 @@ import {
   GEMIES_CHANNEL_SESSION_HEADER,
   type GemieAccountInbound,
   type GemieAccountInboundDecision,
+  type GemieAccountSession,
   type GemieChannelIdentity,
+  type GemieTelegramBot,
+  type GemieTelegramBotAnswer,
+  type GemieTelegramBotMessage,
 } from '@gemies/server/internal';
+
+export type TelegramBotMessage = GemieTelegramBotMessage;
 import { aliaApiFetch } from './oxy';
 import { errorStatus } from './utils';
 import { parseCatalogue, resolveRequestModel, type Catalogue } from './catalogue';
@@ -160,6 +166,35 @@ export class APIClient {
       headers: this.accountHeaders(identity),
     });
     return response.data as GemieAccountInboundDecision;
+  }
+
+  /** A connected account's session moved (`POST /channel-accounts/session`): the API stores it. */
+  async reportAccountSession(sessionId: string, session: GemieAccountSession): Promise<void> {
+    await this.client.post('/channel-accounts/session', session, {
+      headers: this.accountHeaders({ kind: 'account', sessionId }),
+    });
+  }
+
+  /** Every gemie's own Telegram bot, with the token to speak as it (`GET /channel-bots/telegram`). */
+  async listTelegramBots(): Promise<GemieTelegramBot[]> {
+    const response = await this.client.get('/channel-bots/telegram', { headers: this.authHeaders });
+    return (response.data as { bots: GemieTelegramBot[] }).bots;
+  }
+
+  /**
+   * What a gemie answers to a message its own Telegram bot received, or `null` when it does not
+   * answer it. The turn runs in the API, so this waits for it.
+   */
+  async answerTelegramBotMessage(
+    botId: string,
+    message: GemieTelegramBotMessage,
+  ): Promise<GemieTelegramBotAnswer> {
+    const response = await this.client.post(
+      `/channel-bots/telegram/${encodeURIComponent(botId)}/messages`,
+      message,
+      { headers: this.authHeaders, timeout: 150_000 },
+    );
+    return response.data as GemieTelegramBotAnswer;
   }
 
   async getConversation(

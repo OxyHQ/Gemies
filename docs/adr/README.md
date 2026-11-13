@@ -89,5 +89,6 @@ ADR 0019 applies Oxy ADR 0043 to Alia: who owns each kind of stored bytes, how e
 - [0034 — Gemies and Alia: agents become Gemies, and Alia is one of them](./0034-gemies-and-alia.md).
 - [0035 — A connected account belongs to one gemie; Gmail and Signal are retired](./0035-connected-accounts-belong-to-a-gemie.md).
 - [0036 — An external agent has no Oxy account; its identity is its own row](./0036-external-agents-have-no-oxy-account.md).
+- [0037 — Telegram runs on its official Bot API: a person's account through Telegram Business, and a gemie's own bot](./0037-telegram-on-the-bot-api.md).
 
 - [0033 — Durable autonomous work](./0033-durable-autonomous-work.md).

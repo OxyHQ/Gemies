@@ -3,7 +3,7 @@
  *
  * There is no projection default — `db.select().from(t)` returns EVERY
  * column, so a naive query is the first time
- * a Telegram session string or a Baileys credential can be serialized into an
+ * a Baileys credential or a pending link code can be serialized into an
  * HTTP response nobody audited.
  *
  * Read through `publicColumns(table, PROTECTED_COLUMNS)` from `@oxy.so/db/assert`.
@@ -23,10 +23,10 @@ export const PROTECTED_COLUMNS = {
    */
   whatsapp_sessions: ['authState', 'authKeys', 'lastQr'],
   /**
-   * `sessionString` is a GramJS `StringSession` — a full account credential that
-   * needs no second factor to reuse.
+   * `linkCode` is the one-time code the panel's Telegram link carries: whoever
+   * sends it to the shared bot links their Telegram account to the session.
    */
-  telegram_sessions: ['sessionString', 'lastQr'],
+  telegram_business_sessions: ['linkCode'],
   /**
    * Ciphertext, not plaintext — but ciphertext is a token to anyone who also has
    * `TOKEN_ENCRYPTION_KEY`, and the two travel together in an incident.

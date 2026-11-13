@@ -1,5 +1,5 @@
 /**
- * Connected messaging accounts (WhatsApp, Telegram), on Postgres.
+ * Connected messaging accounts (WhatsApp, Telegram Business), on Postgres.
  *
  * An account belongs to ONE gemie and was linked by one person (ADR 0035). Every reader that serves
  * a person or a turn is scoped by BOTH: the gemie whose accounts they are, and the person whose they
@@ -8,7 +8,7 @@
  */
 
 import type { GemieAccountPlatform, GemieAccountStatus } from '@gemies/server/internal';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { ApiDatabase } from '../index';
 import {
   connectedAccounts,
@@ -26,6 +26,8 @@ export interface ConnectedAccountRow {
   displayName: string | null;
   phoneNumber: string | null;
   status: GemieAccountStatus;
+  /** Whether the platform lets the gemie write from it; `null` where it grants no such right. */
+  canReply: boolean | null;
   sessionId: string | null;
   oxyTaskId: string | null;
   oxyTaskState: 'active' | 'reauth_required';
@@ -45,6 +47,7 @@ const COLUMNS = {
   displayName: connectedAccounts.displayName,
   phoneNumber: connectedAccounts.phoneNumber,
   status: connectedAccounts.status,
+  canReply: connectedAccounts.canReply,
   sessionId: connectedAccounts.sessionId,
   oxyTaskId: connectedAccounts.oxyTaskId,
   oxyTaskState: connectedAccounts.oxyTaskState,
@@ -85,6 +88,31 @@ export async function listGemieAccounts(
     .where(inScope(scope))
     .orderBy(desc(connectedAccounts.createdAt));
   return rows.map(withLegacyId);
+}
+
+/**
+ * A person's newest account of one platform on ANY gemie that still has its session: where a
+ * notification of theirs (not a gemie's turn) reaches them.
+ */
+export async function findPersonAccountOf(
+  db: ApiDatabase,
+  oxyUserId: string,
+  platform: GemieAccountPlatform,
+): Promise<ConnectedAccountRow | null> {
+  const [row] = await db
+    .select(COLUMNS)
+    .from(connectedAccounts)
+    .where(
+      and(
+        eq(connectedAccounts.oxyUserId, oxyUserId),
+        eq(connectedAccounts.platform, platform),
+        isNotNull(connectedAccounts.sessionId),
+        ne(connectedAccounts.status, 'logged-out'),
+      ),
+    )
+    .orderBy(desc(connectedAccounts.createdAt))
+    .limit(1);
+  return row ? withLegacyId(row) : null;
 }
 
 /** One of this person's accounts on this gemie, or `null`. */
@@ -165,6 +193,7 @@ export interface ConnectedAccountSessionPatch {
   readonly status: GemieAccountStatus;
   readonly phoneNumber?: string | null | undefined;
   readonly displayName?: string | null | undefined;
+  readonly canReply?: boolean | null | undefined;
 }
 
 /**
@@ -182,6 +211,7 @@ export async function setConnectedAccountSessionState(
       status: patch.status,
       ...(patch.phoneNumber ? { phoneNumber: patch.phoneNumber } : {}),
       ...(patch.displayName ? { displayName: patch.displayName } : {}),
+      ...(typeof patch.canReply === 'boolean' ? { canReply: patch.canReply } : {}),
       ...(patch.status === 'connected'
         ? { connectedAt: sql`coalesce(${connectedAccounts.connectedAt}, now())` }
         : {}),

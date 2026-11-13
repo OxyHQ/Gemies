@@ -23,7 +23,7 @@ export { getCurrentDateTool } from './date.js';
 export { webSearchTool } from './web-search.js';
 export { createSearchThreadTool } from './thread-search.js';
 export { createSuggestNewConversationTool } from './suggest-new-conversation.js';
-export { createSendTelegramTool } from './telegram.js';
+export { buildSendTelegramTool } from './telegram.js';
 export { buildAccountTools } from './accounts.js';
 export { webScraperTool } from './web-scraper.js';
 export { generateFileTool } from './file-generator.js';

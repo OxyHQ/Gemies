@@ -3,8 +3,8 @@
  * checks is invisible at runtime.
  *
  * **No implicit whole-row read.** `publicColumns` cannot defend against not
- * being called: a bare `db.select().from(telegramSessions)` returns every
- * column, `sessionString` included, and nothing at the call site names what it
+ * being called: a bare `db.select().from(whatsappSessions)` returns every
+ * column, `authState` included, and nothing at the call site names what it
  * just handed out. Only a scan of the call sites catches that.
  *
  * The gate has a positive control beside it, because a scan that reports zero
@@ -63,8 +63,8 @@ describe('no read returns a protected column without naming it', () => {
     await writeFile(
       join(directory, 'leak.ts'),
       [
-        "import { telegramSessions } from '../db/schema';",
-        'export const rows = () => db.select().from(telegramSessions);',
+        "import { whatsappSessions } from '../db/schema';",
+        'export const rows = () => db.select().from(whatsappSessions);',
         '',
       ].join('\n'),
     );

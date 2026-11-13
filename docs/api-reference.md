@@ -213,6 +213,20 @@ per-service HMAC route, `POST /webhooks/oxy/:serviceId`, returns `410 Gone`.
 **`/webhooks`** — channel bot inbound (`routes/webhooks.ts`) plus the CrowdSource webhook
 routes mounted at `packages/api/src/index.ts:194`.
 
+**`POST /webhooks/telegram/:botId`** — every Telegram bot's webhook (ADR 0037): the shared Gemies
+bot and each gemie's own. Relayed untouched to the private integrations process, which checks
+Telegram's `secret_token`, stores the update and answers; its status is Telegram's.
+
+**`/agents/:id/telegram-bot`** — a gemie's own Telegram bot, for whoever may act as the gemie:
+`GET` (the bot, or `null`, with Telegram's live view of it), `PUT { token, ownerPaysAgentTurns,
+photoJpegBase64? }` (connect or replace; the bot takes the gemie's name, description and
+picture), `PATCH { groupReplies?, ownerPaysAgentTurns?, syncProfile?, photoJpegBase64? }`
+(`ownerPaysAgentTurns` only by the person who connected it) and `DELETE`.
+
+**`/channel-bots/telegram`** and **`POST /channel-accounts/session`** — called by the integrations
+workload only: the gemies' bots it speaks as and a bot's turn, and a connected account's session
+that moved.
+
 **`POST /internal/trigger`** — autonomous processing for internal Oxy services
 (`routes/internal.ts:123`). Oxy service tokens only, user delegation via the
 `X-Oxy-User-Id` header, no credits charged.

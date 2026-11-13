@@ -3,25 +3,18 @@ import crypto from 'node:crypto';
 import { verifySecret } from '@oxy.so/core/server';
 import { getChannel } from '../lib/channels/registry.js';
 import { getDb } from '../db/index.js';
-import {
-  findActiveUserBotByWebhookSecret,
-  findSystemBot,
-  upsertBotUser,
-  type BotRow,
-} from '../db/integrations/botRepository.js';
+import { findSystemBot, upsertBotUser, type BotRow } from '../db/integrations/botRepository.js';
+import { integrationsServiceFetch } from '../lib/integrations-client.js';
 import type { ChannelId, ChannelInboundMessage } from '../lib/channels/types.js';
 import { log } from '../lib/logger.js';
-import { processAgentBotMessage, processChannelMessage } from '../lib/channels/inbound-handlers.js';
+import { processChannelMessage } from '../lib/channels/inbound-handlers.js';
 import { processAcceptedChannelInbound } from '../lib/channels/inbound-sweep.js';
-import {
-  acceptChannelInbound,
-  settleChannelInbound,
-} from '../db/integrations/channelInboundRepository.js';
+import { acceptChannelInbound } from '../db/integrations/channelInboundRepository.js';
 
-export { processAgentBotMessage, processChannelMessage };
+export { processChannelMessage };
 
 /**
- * The dedup key of an inbound message: `${channelType}:${scope}:${platformUserId}:${hash(text)}`.
+ * The dedup key of an inbound message: `${channelType}:${platformUserId}:${hash(text)}`.
  *
  * Stored in `channel_inbound` (`acceptChannelInbound`), so a platform retry is
  * recognised on ANY instance and across a restart, within the 60-second window.
@@ -29,56 +22,42 @@ export { processAgentBotMessage, processChannelMessage };
 export function getDeduplicationKey(
   channelType: ChannelId,
   message: ChannelInboundMessage,
-  scope?: string,
 ): string {
   const contentHash = crypto.createHash('md5').update(message.text).digest('hex').slice(0, 12);
-  // `scope` isolates per-bot dedup: platformUserId is the same Telegram user id
-  // across all bots, so without the receiving bot's id in the key, one person
-  // texting two different bots the same thing within 60s would drop the second.
-  return `${channelType}:${scope ? `${scope}:` : ''}${message.platformUserId}:${contentHash}`;
+  return `${channelType}:${message.platformUserId}:${contentHash}`;
 }
-
-/**
- * Per-(bot, end-user) inbound rate limit for user-registered agent bots.
- *
- * A user's agent bot is public: anyone on Telegram can message it, and every
- * reply is billed to the bot OWNER. Credits already bound total spend, but this
- * stops a single sender from rapidly burning the owner's balance. Excess is
- * dropped silently (acked, never processed → no credit spend). In-memory /
- * per-instance (an owner's bot across ECS tasks gets N× this); a Redis-backed
- * limiter would make it exact — a fine future upgrade, but credits are the hard
- * cap either way.
- */
-const BOT_RL_WINDOW_MS = 60_000;
-const BOT_RL_MAX_PER_USER = 15;
-const botUserHits = new Map<string, number[]>();
-
-export function isBotUserRateLimited(botId: string, platformUserId: string): boolean {
-  const key = `${botId}:${platformUserId}`;
-  const now = Date.now();
-  const recent = (botUserHits.get(key) ?? []).filter((t) => t > now - BOT_RL_WINDOW_MS);
-  if (recent.length >= BOT_RL_MAX_PER_USER) {
-    botUserHits.set(key, recent);
-    return true;
-  }
-  recent.push(now);
-  botUserHits.set(key, recent);
-  return false;
-}
-
-// Sweep stale keys so the map can't grow unbounded. unref() so this housekeeping
-// timer never keeps the process (or jest) alive.
-const botRlSweep = setInterval(() => {
-  const cutoff = Date.now() - BOT_RL_WINDOW_MS;
-  for (const [key, hits] of botUserHits) {
-    const recent = hits.filter((t) => t > cutoff);
-    if (recent.length === 0) botUserHits.delete(key);
-    else botUserHits.set(key, recent);
-  }
-}, BOT_RL_WINDOW_MS);
-botRlSweep.unref?.();
 
 const router = express.Router();
+
+/**
+ * POST /webhooks/telegram/:botId — where Telegram delivers every update of our bots: the shared
+ * Gemies bot and each gemie's own (ADR 0037).
+ *
+ * The integrations process speaks Telegram and is private (oxy-infra `app-alia-integrations.tf`),
+ * so this public API is its ingress: the delivery is relayed there as it came, body and Telegram's
+ * secret header, as the API workload. That process checks the secret (derived per bot, never
+ * stored), stores the update and answers; its answer is Telegram's, so a failure to store makes
+ * Telegram deliver it again.
+ */
+router.post('/telegram/:botId', async (req: express.Request<{ botId: string }>, res) => {
+  const { botId } = req.params;
+  const secret = req.headers['x-telegram-bot-api-secret-token'];
+  if (!/^\d{5,20}$/.test(botId) || typeof secret !== 'string' || secret.length === 0) {
+    return res.sendStatus(401);
+  }
+  try {
+    const relayed = await integrationsServiceFetch(`/telegram/updates/${botId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': secret },
+      body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(15_000),
+    });
+    res.sendStatus(relayed.status === 401 || relayed.ok ? relayed.status : 503);
+  } catch (error: unknown) {
+    log.webhook.error({ err: error, botId }, 'Could not relay a Telegram update');
+    res.sendStatus(503);
+  }
+});
 
 // WhatsApp GET verification (hub.challenge)
 router.get('/whatsapp', (req, res) => {
@@ -110,87 +89,6 @@ router.post('/:type', async (req, res) => {
   if (!channel.webhook) {
     log.webhook.warn({ channelType }, 'Channel has no webhook adapter');
     return res.sendStatus(404);
-  }
-
-  // ── NEW: per-bot inbound routing (user-registered bots) ─────────────────────
-  // A user-registered bot echoes ITS OWN webhook secret in this header. When it
-  // matches an active user-owned bot, the update belongs to that bot and the secret
-  // match IS the signature verification, so we handle it here with the bound agent +
-  // owner's tools + the bot's own token, then return. When nothing matches (header
-  // absent, or it carries the global bot's secret), we fall straight through to the
-  // UNCHANGED global-bot code path below.
-  const perBotSecret = req.headers['x-telegram-bot-api-secret-token'] as string | undefined;
-  if (perBotSecret) {
-    try {
-      // The BY-VALUE lookup on `bots.webhook_secret`, which is why that column
-      // is plaintext and indexed rather than `encryptedText`: a randomized IV
-      // would make this match nothing and every inbound update would answer 200
-      // having done nothing.
-      const userBot = await findActiveUserBotByWebhookSecret(getDb(), perBotSecret, channelType);
-
-      if (userBot?.userId) {
-        const message = channel.webhook.parseMessage(req.body);
-        if (!message) {
-          return res.sendStatus(200);
-        }
-
-        // One statement instead of read-then-branch: two messages from the same
-        // person arriving together raced the source's insert.
-        const botUser = await upsertBotUser(getDb(), {
-          botId: userBot.id,
-          platform: channelType,
-          platformUserId: message.platformUserId,
-          chatId: message.chatId,
-          username: message.username,
-          displayName: message.displayName,
-        });
-
-        // Durable, and BEFORE the ack: the platform never redelivers an acked
-        // update, so a process that died after acking would lose the message.
-        // Scoped by the receiving bot so the same Telegram user texting two
-        // different bots the same thing is not collapsed to one.
-        const inboundId = await acceptChannelInbound(getDb(), {
-          dedupeKey: getDeduplicationKey(channelType, message, userBot.id),
-          kind: 'agent_bot',
-          channelType,
-          botId: userBot.id,
-          botUserId: botUser.id,
-          message,
-        });
-        if (!inboundId) {
-          log.webhook.info(
-            { channelType, platformUserId: message.platformUserId },
-            'Duplicate per-bot message skipped',
-          );
-          return res.sendStatus(200);
-        }
-
-        // Drop (silently, no credit spend) when a single sender floods the bot,
-        // so a stranger can't rapidly burn the owner's credits.
-        if (isBotUserRateLimited(userBot.id, message.platformUserId)) {
-          log.webhook.info(
-            { channelType, platformUserId: message.platformUserId },
-            'Per-bot message rate-limited',
-          );
-          await settleChannelInbound(getDb(), inboundId, 'done');
-          return res.sendStatus(200);
-        }
-
-        // Ack immediately (Telegram retries on non-2xx), then answer asynchronously.
-        res.sendStatus(200);
-        processAcceptedChannelInbound(inboundId).catch((error: unknown) => {
-          log.webhook.error({ err: error, channelType }, 'Async per-bot processing error');
-        });
-        return;
-      }
-      // No user-owned bot matched — fall through to the global-bot path unchanged.
-    } catch (error: unknown) {
-      // A DB error here must not leave the request hanging (Telegram would retry
-      // forever). Respond 500 so the platform retries cleanly; never fall through
-      // to the global path on an error, since we don't know if this was a user bot.
-      log.webhook.error({ err: error, channelType }, 'Per-bot inbound routing error');
-      return res.sendStatus(500);
-    }
   }
 
   // Slack URL verification challenge

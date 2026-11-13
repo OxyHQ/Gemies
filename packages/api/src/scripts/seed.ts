@@ -82,9 +82,8 @@
  *
  * ## What is deliberately NOT seeded here
  *
- *  - **`bots`.** The system-bot seeder derived the bot id from
- *    `TELEGRAM_BOT_TOKEN` / `DISCORD_APP_ID`, neither of which the task
- *    definition sets, so it could only write placeholder rows keyed on ids that
+ *  - **`bots`.** The system-bot seeder derived the bot id from the platform's
+ *    credentials (`DISCORD_APP_ID`), which the task definition does not set, so it could only write placeholder rows keyed on ids that
  *    change the moment real credentials arrive. It was never wired here and has
  *    been deleted.
  */

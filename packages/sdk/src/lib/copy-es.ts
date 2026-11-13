@@ -177,17 +177,38 @@ export const COPY_ES: Readonly<Record<string, CopyEntry>> = {
   'gemie.accounts.repliesLabel': 'A quién responde {{name}}',
   'gemie.accounts.retry': 'Reintentar',
   'gemie.accounts.saveFailed': 'No se ha podido guardar. Inténtalo de nuevo.',
-  'gemie.accounts.scan.telegram':
-    'Abre Telegram en tu teléfono, ve a Ajustes > Dispositivos > Vincular dispositivo de escritorio y escanea este código.',
   'gemie.accounts.scan.whatsapp':
     'Abre WhatsApp en tu teléfono, ve a Ajustes > Dispositivos vinculados > Vincular un dispositivo y escanea este código.',
   'gemie.accounts.scanTitle': 'Escanea con {{platform}}',
   'gemie.accounts.status.connected': 'Conectada',
   'gemie.accounts.status.disconnected': 'Reconectando',
   'gemie.accounts.status.failed': 'No se ha podido reconectar. Quítala y vuelve a vincularla.',
+  'gemie.accounts.status.paused': 'En pausa',
   'gemie.accounts.status.logged-out':
     'Desvinculada desde el teléfono. Quítala y vuelve a vincularla.',
   'gemie.accounts.status.qr-pending': 'Esperando el escaneo',
+  'gemie.accounts.telegram.cannotReply':
+    'Telegram aún no deja responder a {{name}}: permite «Responder a mensajes» al bot en Telegram › Ajustes › Telegram Business › Chatbots.',
+  'gemie.accounts.telegram.linkTitle': 'Conectar Telegram',
+  'gemie.accounts.telegram.note':
+    'Telegram Business necesita Telegram Premium y solo cubre tus chats privados (no grupos ni canales). Sigue conectado hasta que lo quites en Telegram.',
+  'gemie.accounts.telegram.open': 'Abrir Telegram',
+  'gemie.accounts.telegram.removeDescription':
+    '{{name}} deja de responder en tu Telegram y se borra lo que leyó allí. Para desconectarlo también en Telegram, quita el bot en Telegram › Ajustes › Telegram Business › Chatbots.',
+  'gemie.accounts.telegram.status.disconnected': 'Reconectando',
+  'gemie.accounts.telegram.status.failed':
+    'No se ha podido contactar con Telegram. Lo reintenta solo.',
+  'gemie.accounts.telegram.status.logged-out':
+    'Revocado: este Telegram ahora responde a través de otro gemie. Quítalo o vuelve a vincularlo.',
+  'gemie.accounts.telegram.status.paused':
+    'En pausa en Telegram. Se reanuda solo cuando vuelvas a activar el bot allí.',
+  'gemie.accounts.telegram.status.qr-pending': 'Esperándote en Telegram',
+  'gemie.accounts.telegram.step1':
+    '1. Abre el bot de Gemies en Telegram y pulsa Iniciar (o escanea este código con el teléfono).',
+  'gemie.accounts.telegram.step2':
+    '2. En Telegram, ve a Ajustes › Telegram Business › Chatbots, añade el bot y elige qué chats puede responder.',
+  'gemie.accounts.telegram.waitingBusiness':
+    'Telegram ya sabe que eres tú. Ahora ve a Telegram › Ajustes › Telegram Business › Chatbots y añade el bot que acabas de abrir.',
   'gemie.accounts.title': 'Cuentas conectadas',
   'gemie.accounts.tryAgain': 'inténtalo de nuevo en un momento.',
   'gemie.accounts.unavailable': 'Ahora mismo no se puede vincular WhatsApp ni Telegram.',

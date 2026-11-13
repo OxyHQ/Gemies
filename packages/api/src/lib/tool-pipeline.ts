@@ -65,7 +65,7 @@ import {
   webScraperTool,
   generateFileTool,
   createSearchThreadTool,
-  createSendTelegramTool,
+  buildSendTelegramTool,
   buildAccountTools,
   createSearchAgentsTool,
   createAgentTool,
@@ -612,20 +612,14 @@ export class ToolPipeline {
         aliaTools.searchThread = createSearchThreadTool(userId, agent._id);
       }
       if (grants.allows('messaging')) {
-        Object.assign(aliaTools, {
-          /**
-           * ONE name. It was `sendTelegram` here and `sendTelegramMessage` on the
-           * other three paths, for the same factory — so a prompt or a skill
-           * naming one silently did nothing on the other. The three-way spelling
-           * wins, and it is the one `lib/agent/tool-router.ts` already maps.
-           */
-          sendTelegramMessage: createSendTelegramTool(userId, runId),
-        });
         // Only the accounts this person linked to THIS gemie (ADR 0035), and only those that are
-        // connected: a tool the model is shown is a tool it keeps trying.
+        // connected: a tool the model is shown is a tool it keeps trying. `sendTelegramMessage`
+        // writes to the person themselves, through the Telegram they linked here (ADR 0037).
+        const scope = { agentId: agent._id, oxyUserId: userId };
         Object.assign(
           aliaTools,
-          await buildAccountTools({ agentId: agent._id, oxyUserId: userId }),
+          await buildSendTelegramTool(scope, runId),
+          await buildAccountTools(scope),
         );
       }
       if (grants.allows('automation') && !nested) {

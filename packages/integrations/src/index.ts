@@ -49,6 +49,17 @@ function lifecycles(): Array<{
       shutdown: () => gateway.shutdown(),
     })),
     ...botAdapters,
+    {
+      name: 'telegram',
+      initialize: async () => {
+        const { startTelegram } = await import('./telegram');
+        await startTelegram();
+      },
+      shutdown: async () => {
+        const { stopTelegram } = await import('./telegram');
+        await stopTelegram();
+      },
+    },
   ];
 }
 
@@ -59,24 +70,13 @@ async function loadAdapters(): Promise<void> {
     const { whatsAppGateway } = await import('./accounts/whatsapp/gateway');
     accountGateways.push(whatsAppGateway);
   }
-  if (process.env.TELEGRAM_GATEWAY_ENABLED !== 'false') {
-    const telegramApiId = Number(process.env.TELEGRAM_API_ID);
-    const telegramApiHash = process.env.TELEGRAM_API_HASH;
-    if (!telegramApiId || Number.isNaN(telegramApiId) || !telegramApiHash) {
-      logger.warn('Telegram accounts disabled: valid TELEGRAM_API_ID / TELEGRAM_API_HASH not set');
-    } else {
-      const { telegramGateway } = await import('./accounts/telegram-gateway/gateway');
-      accountGateways.push(telegramGateway);
-    }
+  // Telegram accounts are Telegram Business connections to the shared bot (ADR 0037).
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    const { telegramBusinessGateway } = await import('./telegram/business/gateway');
+    accountGateways.push(telegramBusinessGateway);
   }
 
   // Bot Adapters — system bots (active sending + external user interaction)
-
-  // Telegram Bot
-  if (process.env.TELEGRAM_BOT_ENABLED !== 'false' && process.env.TELEGRAM_BOT_TOKEN) {
-    const { TelegramBotAdapter } = await import('./bots/telegram-bot/adapter');
-    botAdapters.push(new TelegramBotAdapter());
-  }
 
   // Discord Bot
   if (process.env.DISCORD_BOT_ENABLED !== 'false' && process.env.DISCORD_BOT_TOKEN) {
@@ -118,7 +118,8 @@ async function main() {
   // `oxyTrustProxy` in @oxy.so/core.
   app.set('trust proxy', oxyTrustProxy);
   if (activity) app.use(activity.observeHttp);
-  app.use(express.json());
+  // A gemie bot's profile carries its avatar as a JPEG (`telegram/gemie-bots.ts`).
+  app.use(express.json({ limit: '2mb' }));
 
   // Health check
   app.get('/health', async (_req, res) => {
@@ -179,7 +180,12 @@ async function main() {
     logger.info(`Mounted account routes: /accounts/${gateway.platform}`);
   }
 
-  // Bot adapters don't expose REST routes (they use polling/websockets)
+  // Telegram (ADR 0037): the API relays every bot's webhook here, and manages gemies' own bots.
+  const { telegramRoutes } = await import('./telegram');
+  const telegram = telegramRoutes();
+  app.use('/telegram/updates', requireAliaApi, telegram.updates);
+  app.use('/telegram/bots', requireAliaApi, telegram.bots);
+  logger.info('Mounted routes: /telegram');
 
   // MCP server management routes
   const { mcpRouter } = await import('./mcp/routes');

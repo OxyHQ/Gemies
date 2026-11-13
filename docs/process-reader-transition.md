@@ -26,7 +26,7 @@ B processes emit the final protocol. C must never deploy directly over A or A2.
   authenticated visit. Keep inspecting the unresolved-link counts.
 - Both HTTP and socket readers reject the former process secrets, including when
   the previous secret value and provider/account metadata are correct.
-- External Telegram webhook signatures and external OAuth credentials remain
+- Telegram's own webhook `secret_token` and external OAuth credentials remain
   independently verified. Connector encryption keys are not process identity and
   remain in use.
 

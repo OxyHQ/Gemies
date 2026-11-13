@@ -181,16 +181,36 @@ export const COPY_EN: Readonly<Record<string, CopyEntry>> = {
   'gemie.accounts.repliesLabel': 'Who {{name}} answers',
   'gemie.accounts.retry': 'Retry',
   'gemie.accounts.saveFailed': 'Could not save. Try again.',
-  'gemie.accounts.scan.telegram':
-    'Open Telegram on your phone, go to Settings > Devices > Link Desktop Device, and scan this code.',
   'gemie.accounts.scan.whatsapp':
     'Open WhatsApp on your phone, go to Settings > Linked devices > Link a device, and scan this code.',
   'gemie.accounts.scanTitle': 'Scan with {{platform}}',
   'gemie.accounts.status.connected': 'Connected',
   'gemie.accounts.status.disconnected': 'Reconnecting',
   'gemie.accounts.status.failed': 'Could not reconnect. Remove it and link it again.',
+  'gemie.accounts.status.paused': 'Paused',
   'gemie.accounts.status.logged-out': 'Unlinked from the phone. Remove it and link it again.',
   'gemie.accounts.status.qr-pending': 'Waiting for the scan',
+  'gemie.accounts.telegram.cannotReply':
+    'Telegram does not let {{name}} reply yet: allow "Reply to messages" for the bot in Telegram › Settings › Telegram Business › Chatbots.',
+  'gemie.accounts.telegram.linkTitle': 'Connect Telegram',
+  'gemie.accounts.telegram.note':
+    'Telegram Business needs Telegram Premium, and covers your private chats only (not groups or channels). It stays connected until you remove it in Telegram.',
+  'gemie.accounts.telegram.open': 'Open Telegram',
+  'gemie.accounts.telegram.removeDescription':
+    '{{name}} stops answering on your Telegram and what it read there is deleted. To disconnect it in Telegram too, remove the bot in Telegram › Settings › Telegram Business › Chatbots.',
+  'gemie.accounts.telegram.status.disconnected': 'Reconnecting',
+  'gemie.accounts.telegram.status.failed': 'Telegram could not be reached. It retries on its own.',
+  'gemie.accounts.telegram.status.logged-out':
+    'Revoked: this Telegram now answers through another gemie. Remove it, or link it again.',
+  'gemie.accounts.telegram.status.paused':
+    'Paused in Telegram. It resumes on its own when you turn the bot back on there.',
+  'gemie.accounts.telegram.status.qr-pending': 'Waiting for you in Telegram',
+  'gemie.accounts.telegram.step1':
+    '1. Open the Gemies bot in Telegram and press Start (or scan this code with your phone).',
+  'gemie.accounts.telegram.step2':
+    '2. In Telegram, go to Settings › Telegram Business › Chatbots, add the bot and choose which chats it may answer.',
+  'gemie.accounts.telegram.waitingBusiness':
+    'Telegram knows it is you. Now go to Telegram › Settings › Telegram Business › Chatbots and add the bot you just opened.',
   'gemie.accounts.title': 'Connected accounts',
   'gemie.accounts.tryAgain': 'try again in a moment.',
   'gemie.accounts.unavailable': 'Linking WhatsApp or Telegram is not available right now.',

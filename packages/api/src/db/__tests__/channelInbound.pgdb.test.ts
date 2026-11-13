@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
-import { registerBot, upsertBotUser } from '../integrations/botRepository';
+import { upsertBotUser } from '../integrations/botRepository';
 import {
   acceptChannelInbound,
   CHANNEL_DEDUPE_WINDOW_MS,
@@ -10,7 +10,7 @@ import {
   purgeChannelInbound,
   settleChannelInbound,
 } from '../integrations/channelInboundRepository';
-import { channelInbound } from '../schema/bots';
+import { bots, channelInbound } from '../schema/bots';
 
 /**
  * The durable inbound queue, against a REAL server. What matters here is what a
@@ -28,15 +28,19 @@ beforeAll(async () => {
   const connected = connectPostgres(process.env.DATABASE_URL);
   if (!connected) throw new Error('DATABASE_URL is not set; vitest.pg.globalSetup.ts must run.');
   db = connected;
-  const bot = await registerBot(db, {
-    platform: 'ci-telegram',
-    botId: 'ci-1',
-    name: 'Inbound Bot',
-    userId: 'ci-owner',
-    botToken: 'tok',
-    webhookSecret: 'ci-secret',
-    platformConfigWebhookUrl: 'https://api.test/webhooks/telegram',
-  });
+  const bot = (
+    await db
+      .insert(bots)
+      .values({
+        platform: 'ci-telegram',
+        botId: 'ci-1',
+        name: 'Inbound Bot',
+        userId: 'ci-owner',
+        botToken: 'tok',
+        status: 'active',
+      })
+      .returning({ id: bots.id })
+  )[0];
   if (!bot) throw new Error('bot not registered');
   botId = bot.id;
   const user = await upsertBotUser(db, {
@@ -55,7 +59,7 @@ function input(text = 'hola') {
   n += 1;
   return {
     dedupeKey: `ci:${n}:${Math.random()}`,
-    kind: 'agent_bot' as const,
+    kind: 'system' as const,
     channelType: 'ci-telegram',
     botId,
     botUserId,

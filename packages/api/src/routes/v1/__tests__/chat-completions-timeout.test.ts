@@ -135,7 +135,7 @@ vi.mock('../../../lib/tools/index.js', () => ({
   forgetUserMemoryTool: vi.fn(() => ({ execute: vi.fn() })),
   updateUserPreferencesTool: vi.fn(() => ({ execute: vi.fn() })),
   updateUserContextTool: vi.fn(() => ({ execute: vi.fn() })),
-  createSendTelegramTool: vi.fn(() => ({ execute: vi.fn() })),
+  buildSendTelegramTool: vi.fn(async () => ({})),
   buildAccountTools: vi.fn(async () => ({})),
   webScraperTool: { execute: vi.fn() },
   generateFileTool: { execute: vi.fn() },

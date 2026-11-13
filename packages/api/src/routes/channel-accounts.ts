@@ -7,10 +7,11 @@
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import { z } from 'zod';
-import type { GemieAccountInboundDecision } from '@gemies/server/internal';
+import { GEMIE_ACCOUNT_STATUSES, type GemieAccountInboundDecision } from '@gemies/server/internal';
 import { getDb } from '../db/index.js';
 import {
   findConnectedAccount,
+  setConnectedAccountSessionState,
   touchConnectedAccount,
 } from '../db/integrations/connectedAccountRepository.js';
 import { shouldAnswer } from '../lib/gemie-accounts.js';
@@ -46,6 +47,36 @@ router.post('/inbound', authenticateToken, async (req: Request, res: Response) =
     res.json(decision);
   } catch (err: unknown) {
     log.channels.error({ err }, 'Inbound decision failed');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const sessionSchema = z
+  .object({
+    status: z.enum(GEMIE_ACCOUNT_STATUSES),
+    phoneNumber: z.string().max(64).nullish(),
+    displayName: z.string().max(256).nullish(),
+    canReply: z.boolean().nullish(),
+  })
+  .strict();
+
+/**
+ * POST /channel-accounts/session — the account's provider session moved (Telegram reported the
+ * connection turned off or on again, or its rights changed): stored now, so its gemie's tools and
+ * the panel follow it with nobody opening Gemies.
+ */
+router.post('/session', authenticateToken, async (req: Request, res: Response) => {
+  const context = req.channelContext;
+  if (context?.kind !== 'account') {
+    return res.status(403).json({ error: 'A connected account channel is required' });
+  }
+  const parsed = sessionSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid session' });
+  try {
+    await setConnectedAccountSessionState(getDb(), context.identityId, parsed.data);
+    res.status(204).end();
+  } catch (err: unknown) {
+    log.channels.error({ err }, 'Storing an account session failed');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

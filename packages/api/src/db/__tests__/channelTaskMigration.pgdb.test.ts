@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index.js';
 import { bots, botUsers } from '../schema/bots.js';
 import { connectedAccounts } from '../schema/integrations.js';
-import { registerBot, upsertBotUser, findBotUser } from '../integrations/botRepository.js';
+import { upsertBotUser, findBotUser } from '../integrations/botRepository.js';
 import {
   migrateChannelTaskAuthority,
   channelTaskAuthorityInventory,
@@ -24,15 +24,19 @@ afterAll(closePostgres);
 let sequence = 0;
 async function legacy(token: string, linked = true) {
   const id = `channel-task-${process.pid}-${sequence++}`;
-  const bot = await registerBot(db, {
-    platform: id,
-    botId: id,
-    name: id,
-    userId: 'bot-owner',
-    botToken: 'synthetic',
-    webhookSecret: id,
-    platformConfigWebhookUrl: 'https://test.invalid',
-  });
+  const bot = (
+    await db
+      .insert(bots)
+      .values({
+        platform: id,
+        botId: id,
+        name: id,
+        userId: 'bot-owner',
+        botToken: 'synthetic',
+        status: 'active',
+      })
+      .returning({ id: bots.id })
+  )[0];
   if (!bot) throw new Error('bot creation failed');
   const row = await upsertBotUser(db, {
     botId: bot.id,

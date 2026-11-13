@@ -1,6 +1,7 @@
 import type { Request } from 'express';
 
-export type ChannelId = 'telegram' | 'discord' | 'whatsapp' | 'slack';
+/** The platforms with a system bot. Telegram is not one: its bots are gemies' (ADR 0037). */
+export type ChannelId = 'discord' | 'whatsapp' | 'slack';
 
 interface ChannelMeta {
   id: ChannelId;
@@ -39,12 +40,6 @@ export interface OutboundContext {
   to: string;
   text: string;
   accountId?: string;
-  /**
-   * Optional per-bot outbound token. When set, the channel plugin sends using this
-   * bot's own credentials (a user-registered bot) instead of the global env token.
-   * Absent = use the platform's default env-based system bot.
-   */
-  botToken?: string;
   replyToId?: string;
   threadId?: string;
   metadata?: Record<string, any>;

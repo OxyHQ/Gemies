@@ -26,3 +26,4 @@ export type GemieChannelIdentity =
   | { kind: 'account'; sessionId: string };
 
 export * from './accounts.js';
+export * from './telegram-bots.js';

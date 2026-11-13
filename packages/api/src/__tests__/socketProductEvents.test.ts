@@ -94,13 +94,7 @@ vi.mock('../lib/logger.js', () => {
   };
 });
 
-import {
-  emitAgentActivity,
-  emitAliaActivity,
-  emitAudioJobUpdate,
-  emitTelegramLinked,
-  initSocket,
-} from '../socket.js';
+import { emitAgentActivity, emitAliaActivity, emitAudioJobUpdate, initSocket } from '../socket.js';
 import { publishRoomEvent } from '../lib/chat/room/bus.js';
 import { publishConversationReaction } from '../lib/chat/reactions/bus.js';
 import type { Server } from 'socket.io';
@@ -200,18 +194,15 @@ describe('each product event is emitted under its own name, to its own room', ()
     });
   });
 
-  it('audio job and telegram link, each on its own room', () => {
+  it('an audio job, on its own room', () => {
     emitAudioJobUpdate('user-ws13', {
       jobId: 'job-1',
       status: 'completed',
       audioUrl: 'https://x.test/a.mp3',
     });
-    emitTelegramLinked('user-ws13', { linked: true });
 
     expect(broadcasts.map((entry) => ({ event: entry.event, rooms: entry.rooms }))).toEqual([
       { event: 'audio:job-update', rooms: ['user:user-ws13'] },
-      // The person who linked it, never a room named by a client-chosen string.
-      { event: 'telegram-linked', rooms: ['user:user-ws13'] },
     ]);
   });
 
@@ -327,7 +318,6 @@ describe('every socket event the app listens for is one the API emits', () => {
     emitAgentActivity('a', { type: 'system', content: '', timestamp: 1, sessionId: 's' });
     emitAliaActivity('u', { state: 'working', agentId: 'a', sessionId: 's', timestamp: 1 });
     emitAudioJobUpdate('u', { jobId: 'j', status: 'completed' });
-    emitTelegramLinked('t', {});
     // A group room's event, through the real publisher: `group:event` reaches the person's sockets
     // (lib/chat/room/bus.ts, publishRoomEvent()).
     await publishRoomEvent({

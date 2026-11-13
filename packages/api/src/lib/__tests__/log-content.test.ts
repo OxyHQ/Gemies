@@ -389,7 +389,6 @@ describe('no logger call carries message content (#139 ws15)', () => {
     `${PACKAGE_PREFIX}/lib/crowdsource/config.ts | value | candidate`,
     `${PACKAGE_PREFIX}/lib/notification-service.ts | message | message`,
     `${PACKAGE_PREFIX}/lib/observability/log-observer.ts | value | metric.value`,
-    `${PACKAGE_PREFIX}/routes/bots.ts | description | swData.description`,
   ];
 
   const contentKeys = new Set(CONTENT_KEYS);
@@ -402,7 +401,7 @@ describe('no logger call carries message content (#139 ws15)', () => {
   it('found some, so the equality above is not two empty lists', () => {
     // The failure this guards against: a scan that read nothing agrees with an
     // exemption list that has been emptied, and both look like success.
-    expect(found.length).toBeGreaterThanOrEqual(4);
+    expect(found.length).toBeGreaterThanOrEqual(3);
   });
 
   it('the key list itself cannot silently shrink', () => {
