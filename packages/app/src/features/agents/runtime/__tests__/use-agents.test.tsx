@@ -174,11 +174,25 @@ describe('the sidebar’s list, after a write', () => {
     expect(harness.names()).toEqual(['Keep', 'Drop']);
 
     await act(async () => {
-      await harness.remove.mutateAsync('drop');
+      await harness.remove.mutateAsync({ _id: 'drop', external: null });
     });
     await settle();
 
     expect(harness.names()).toEqual(['Keep']);
+  });
+
+  it('removes a gemie connected from a computer by revoking its link, which deletes it too', async () => {
+    server.mine = [{ _id: 'cli', name: 'Laptop' }];
+    const harness = await mount();
+
+    await act(async () => {
+      await harness.remove.mutateAsync({ _id: 'cli', external: { cli: 'claude', online: true } });
+    });
+    await settle();
+
+    const { default: apiClient } = await import('@/shared/api/client');
+    expect(apiClient.delete).toHaveBeenLastCalledWith('/agents/external/cli');
+    expect(harness.names()).toEqual([]);
   });
 
   it('shows the new name after a rename', async () => {

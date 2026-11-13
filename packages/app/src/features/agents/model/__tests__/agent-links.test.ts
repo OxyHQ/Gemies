@@ -1,15 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// The share builder lives beside the screen's hooks; only its pure half is
-// under test, so the hooks' own dependencies are not loaded for real.
-vi.mock('@/features/agents/runtime/use-agent-thread-actions', () => ({}));
-vi.mock('@oxy.so/bloom/toast', () => ({ toast: {} }));
-vi.mock('expo-router', () => ({ useRouter: () => ({}) }));
-vi.mock('react-native', () => ({ Share: { share: async () => ({}) } }));
+// The share content is pure; what hands it to the platform is not loaded for real.
+vi.mock('@/features/chat/runtime/conversation-share', () => ({ deliverShareLink: vi.fn() }));
 
 import { agentCategoryLabel } from '@/features/agents/model/category';
 import { agentChatRoute, agentThreadHref } from '@/shared/routing/agent-address';
-import { agentShareMessage } from '@/features/agents/runtime/use-agent-detail-actions';
+import { agentShareContent } from '@/features/agents/runtime/share-agent';
 import { translator } from '@/shared/testing/translate';
 
 /**
@@ -37,24 +33,31 @@ describe('Chat, on a catalogue card', () => {
 
 describe('Share', () => {
   it('links to the gemie on the Gemies domain', () => {
-    const message = agentShareMessage({
+    const content = agentShareContent({
       _id: 'a1',
       name: 'Pepe',
       handle: 'pepe',
       tagline: 'Finds flights',
     });
-    expect(message).toBe('Pepe — Finds flights\nhttps://gemies.ai/@pepe/details');
-    expect(message).not.toContain('alia.app');
+    expect(content).toEqual({
+      url: 'https://gemies.ai/@pepe/details',
+      title: 'Pepe',
+      text: 'Pepe — Finds flights',
+    });
+    expect(content?.url).not.toContain('alia.app');
   });
 
-  it('shares an agent with no handle by who it is alone: it has no page to link to', () => {
-    const message = agentShareMessage({ _id: 'a1', name: 'Pepe', handle: null, tagline: '' });
-    expect(message).toBe('Pepe');
+  it('has nothing to share for a gemie with no handle: it has no page to link to', () => {
+    expect(agentShareContent({ _id: 'a1', name: 'Pepe', handle: null, tagline: '' })).toBeNull();
   });
 
   it('never prints a null name', () => {
-    const message = agentShareMessage({ _id: 'a1', name: null, handle: 'pepe', tagline: '' });
-    expect(message).toBe('pepe\nhttps://gemies.ai/@pepe/details');
+    const content = agentShareContent({ _id: 'a1', name: null, handle: 'pepe', tagline: '' });
+    expect(content).toEqual({
+      url: 'https://gemies.ai/@pepe/details',
+      title: 'pepe',
+      text: 'pepe',
+    });
   });
 });
 

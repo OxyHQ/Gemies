@@ -189,9 +189,18 @@ export function useDeleteAgent() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string): Promise<string> => {
-      await apiClient.delete(API_ROUTES.agents.delete(id));
-      return id;
+    /**
+     * A gemie connected from someone's computer (`codea connect`) is removed by revoking its link:
+     * the API then deletes the gemie too, and the computer stops answering for it. Deleting the row
+     * alone would leave the link pointing at nothing.
+     */
+    mutationFn: async (agent: Pick<Agent, '_id' | 'external'>): Promise<string> => {
+      await apiClient.delete(
+        agent.external
+          ? API_ROUTES.agents.external.remove(agent._id)
+          : API_ROUTES.agents.delete(agent._id),
+      );
+      return agent._id;
     },
     onSuccess: (id) => {
       // The agent is gone, so its own entry is not merely stale.

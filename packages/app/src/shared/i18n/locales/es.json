@@ -1442,7 +1442,17 @@
         "changedMeanwhile": "El Gemie cambió esta nota mientras la editabas. Se muestra su última versión."
       }
     },
-    "threads": "Hilos"
+    "threads": "Hilos",
+    "options": "Opciones de {{name}}",
+    "viewProfile": "Ver perfil",
+    "pause": "Pausar",
+    "resume": "Reanudar",
+    "delete": "Eliminar Gemie",
+    "deleteTitle": "¿Eliminar a {{name}}?",
+    "deleteDescription": "Se elimina {{name}}, con su memoria y su bandeja de entrada. No se puede deshacer.",
+    "deleted": "{{name}} se ha eliminado",
+    "linkCopied": "Enlace copiado",
+    "shareFailed": "No se ha podido compartir el Gemie"
   },
   "authorize": {
     "linkingAccount": "Vinculando cuenta...",
@@ -1927,7 +1937,6 @@
     "deleteTitle": "¿Eliminar este espacio?",
     "deleteDescription": "Se elimina «{{name}}» y su conversación General. Sus Gemies se conservan y vuelven a la lista de Gemies.",
     "deleteFailed": "No se pudo eliminar el espacio. Inténtalo de nuevo.",
-    "agentOptions": "Opciones de {{name}}",
     "moveToSpace": "Mover a un espacio…",
     "noSpace": "Sin espacio",
     "full": "Un espacio admite hasta {{count}} Gemies.",
