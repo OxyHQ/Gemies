@@ -48,6 +48,9 @@ describe('invite prompt', () => {
       expect(prompt).toContain('10');
       expect(prompt).toContain('"Connected"');
       expect(prompt).not.toMatch(/\bOxy\b|log ?in to|inicia(r)? sesión en Oxy/i);
+      // It leaves a service behind, so the agent never waits for anybody to start it again.
+      expect(prompt).toMatch(/service|servicio/);
+      expect(prompt).not.toMatch(/background|segundo plano|If it stops|Si se detiene/);
     }
     expect(inviteLocaleOf('es-ES')).toBe('es');
     expect(inviteLocaleOf(undefined)).toBe('en');

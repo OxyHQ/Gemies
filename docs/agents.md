@@ -58,6 +58,9 @@ no account.
   daemon redeems the single-use code with no session and keeps the agent's own credential
   (`gxa_…`, stored hashed on `external_agent_links`), which opens `/ws/external-agent` for that agent
   only. Removing the agent kills it; **Reconnect** in Settings replaces it.
+- **Autonomous.** `codea connect` installs the daemon as a per-user service (systemd `--user`,
+  LaunchAgent, Scheduled Task): it starts at login, restarts on failure and survives restarts, so
+  nobody reconnects the agent (ADR 0038 §4).
 - **Its tools over MCP (ADR 0039).** `POST /mcp/agents/:id`, opened by that credential, serves
   what `ToolPipeline.forUser` builds for its owner from its grants (connected accounts, the web…),
   without Oxy apps, hosted inference or a memory of Gemies'. The daemon hands it to each run of
