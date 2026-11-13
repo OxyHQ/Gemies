@@ -1,7 +1,7 @@
 /** Interrupted turns reconcile the existing ledger from Kaana's public receipts, never from lost stream bytes. */
 import { and, asc, eq, isNotNull, lte, sql } from 'drizzle-orm';
 import { resolveOxyDeploymentEnvironment } from './inference/workload-identity-config.js';
-import { GEMIES_APPLICATION_ID } from '@gemies/server';
+import { OXY_ALIA_RESOURCE_APPLICATION_ID } from '@oxy.so/core/server';
 import type { Kaana } from '@kaana.ai/sdk';
 import { getDb } from '../db';
 import {
@@ -143,7 +143,9 @@ export async function reconcileChatCreditOperation(
     });
     if (
       record.schemaVersion !== 1 ||
-      record.applicationId !== GEMIES_APPLICATION_ID ||
+      // Workload identity comes from the deployed ECS role binding, which is
+      // still Alia's application. Renaming the product/SDK cannot rebind it.
+      record.applicationId !== OXY_ALIA_RESOURCE_APPLICATION_ID ||
       record.delegatedUserId !== operation.userId ||
       record.environment !== resolveOxyDeploymentEnvironment() ||
       !record.requestId ||
