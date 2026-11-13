@@ -18,22 +18,25 @@ vi.mock('../../logger.js', () => {
   return { log: { v1: child, chat: child, general: child, agents: child, providers: child } };
 });
 
-vi.mock('../oxy-inference.js', () => ({
-  getOxyInferenceClient: () => ({
-    stream: (_request: unknown, options: { idempotencyKey?: string }) => {
-      mocks.keys.push(options.idempotencyKey);
-      const script = mocks.scripts[mocks.calls++] ?? [];
-      return (async function* () {
-        for (const step of script) {
-          if (step instanceof Error) throw step;
-          yield step;
-        }
-      })();
+vi.mock('../../kaana/transport.js', () => ({
+  getHostedKaanaClient: () => ({
+    responses: {
+      stream: (_request: unknown, options: { idempotencyKey?: string }) => {
+        mocks.keys.push(options.idempotencyKey);
+        const script = mocks.scripts[mocks.calls++] ?? [];
+        return (async function* () {
+          for (const step of script) {
+            if (step instanceof Error) throw step;
+            yield step;
+          }
+        })();
+      },
     },
   }),
+  disposeHostedKaanaClient: vi.fn(),
 }));
 
-import { OxyInferenceError } from '@oxy.so/core/inference';
+import { KaanaError } from '@kaana.ai/sdk';
 import { AliaError } from '../../errors/error-codes.js';
 import { toAliaError } from '../../errors/failover-error.js';
 import { kaanaLanguageModel } from '../kaana-language-model.js';
@@ -111,7 +114,7 @@ describe('a connection reset before the first output', () => {
   });
 
   it('stops with a typed error when the retry meets idempotency_conflict', async () => {
-    const conflict = new OxyInferenceError({
+    const conflict = new KaanaError({
       code: 'idempotency_conflict',
       message: 'key already bound',
       retryable: false,
@@ -129,7 +132,7 @@ describe('a connection reset before the first output', () => {
   });
 
   it('does not retry a refusal the server asserted', async () => {
-    const refusal = new OxyInferenceError({
+    const refusal = new KaanaError({
       code: 'rate_limited',
       message: 'slow down',
       retryable: true,
