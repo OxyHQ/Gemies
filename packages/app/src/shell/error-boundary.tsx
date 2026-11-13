@@ -1,9 +1,8 @@
 import { useTranslation } from '@/shared/i18n/use-translation';
-import { EmptyState } from '@oxy.so/bloom/empty-state';
+import { EmptyState } from '@/shared/ui/empty-state';
 import { ErrorBoundary } from '@oxy.so/bloom/error-boundary';
-import { RiErrorWarningLine } from '@oxy.so/bloom/icons/RiErrorWarningLine';
 import { Screen } from '@oxy.so/bloom/screen';
-import React from 'react';
+import type React from 'react';
 import { View } from 'react-native';
 
 interface AppErrorBoundaryProps {
@@ -35,9 +34,10 @@ function reportError(error: Error, errorInfo: React.ErrorInfo) {
 /**
  * Bloom's `ErrorBoundary`, with Alia's reporting and a themed recovery screen.
  *
- * The fallback is Bloom's `EmptyState` on a `Screen`, so it paints in the
- * theme rather than in the boundary's literal white. The error message itself
- * is never shown: it is written for us and cannot be acted on.
+ * The fallback is the app's `EmptyState` (the downcast gemie) on a `Screen`,
+ * so it paints in the theme rather than in the boundary's literal white. The
+ * error message itself is never shown: it is written for us and cannot be
+ * acted on.
  */
 export function AppErrorBoundary({ children, fallback: Fallback }: AppErrorBoundaryProps) {
   return (
@@ -59,8 +59,6 @@ function ErrorFallback({ onRetry }: { onRetry: () => void }) {
     <Screen scroll="content">
       <View className="flex-1 items-center justify-center p-6">
         <EmptyState
-          icon={RiErrorWarningLine}
-          media="circle"
           title={t('dialogs.errorBoundary.title')}
           description={t('dialogs.errorBoundary.message')}
           action={{ label: t('common.tryAgain'), onPress: onRetry }}

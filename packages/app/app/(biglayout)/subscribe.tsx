@@ -21,8 +21,7 @@ import {
   type SubscriptionPlan,
 } from '@/features/billing/runtime/use-billing';
 import { useTranslation } from '@/shared/i18n/use-translation';
-import { EmptyState } from '@oxy.so/bloom/empty-state';
-import { RiErrorWarningLine } from '@oxy.so/bloom/icons/RiErrorWarningLine';
+import { EmptyState } from '@/shared/ui/empty-state';
 import { CardsSkeleton } from '@/shared/ui/skeletons';
 import { Text } from '@oxy.so/bloom/typography';
 import { Screen, ScreenScrollView } from '@oxy.so/bloom/screen';
@@ -269,11 +268,7 @@ function SubscribeContent() {
           {plansLoading && tiers.length === 0 ? (
             <CardsSkeleton />
           ) : plansError ? (
-            <EmptyState
-              variant="compact"
-              icon={RiErrorWarningLine}
-              title={t('subscribe.loadError')}
-            />
+            <EmptyState variant="compact" title={t('subscribe.loadError')} />
           ) : (
             <PlanGrid
               canCheckout={(planId) =>

@@ -138,38 +138,10 @@ vi.mock('@oxy.so/bloom/item', async () => {
   };
 });
 
-// The sticker above an empty state is the catalogue's: no network, no player.
-vi.mock('@/shared/stickers/empty-state-sticker', () => ({ EmptyStateSticker: () => null }));
-
-/** The empty state's actions, drawn as buttons so they can be pressed. */
-vi.mock('@oxy.so/bloom/empty-state', async () => {
-  const ReactModule = await import('react');
-  type Action = { label: string; onPress?: () => void; accessibilityLabel?: string };
-  return {
-    EmptyState: ({
-      title,
-      action,
-      secondaryAction,
-    }: {
-      title?: string;
-      action?: Action;
-      secondaryAction?: Action;
-    }) =>
-      ReactModule.createElement(
-        'EmptyState',
-        { title },
-        [action, secondaryAction]
-          .filter((entry): entry is Action => entry !== undefined)
-          .map((entry) =>
-            ReactModule.createElement('Button', {
-              key: entry.label,
-              accessibilityLabel: entry.accessibilityLabel ?? entry.label,
-              onPress: entry.onPress,
-            }),
-          ),
-      ),
-  };
-});
+/** The empty state's actions, drawn as buttons so they can be pressed (no gemie: no renderer). */
+vi.mock('@/shared/ui/empty-state', async () =>
+  (await import('@/shared/testing/empty-state-stub')).emptyStateModule(),
+);
 
 vi.mock('@oxy.so/bloom/button', async () => {
   const ReactModule = await import('react');

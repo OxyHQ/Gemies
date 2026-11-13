@@ -3,7 +3,7 @@ import { useAgentReviews } from '@/features/agents/runtime/use-agent-reviews';
 import { useAgentThreads } from '@/features/agents/runtime/use-agent-threads';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import type { Agent } from '@/shared/contracts/agents';
-import { EmptyState } from '@/shared/stickers/empty-state';
+import { EmptyState } from '@/shared/ui/empty-state';
 import { DetailSkeleton } from '@/shared/ui/skeletons';
 import { Stack, useRouter } from 'expo-router';
 import { View } from 'react-native';
@@ -41,7 +41,6 @@ export function AgentDetailsPage({
       <>
         <Stack.Screen options={{ headerBackVisible: true }} />
         <EmptyState
-          sticker="agentNotFound"
           title={t('agents.notFound')}
           action={{ label: t('agents.backToAgents'), onPress: () => router.back() }}
         />

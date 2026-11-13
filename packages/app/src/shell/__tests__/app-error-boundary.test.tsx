@@ -43,17 +43,11 @@ vi.mock('@oxy.so/bloom/screen', async () => {
       ReactModule.createElement('Screen', null, children),
   };
 });
-vi.mock('@oxy.so/bloom/empty-state', async () => {
-  const ReactModule = await import('react');
-  return {
-    EmptyState: (props: {
-      title?: string;
-      description?: string;
-      action?: { label: string; onPress?: () => void };
-    }) => ReactModule.createElement('EmptyState', props),
-  };
-});
-vi.mock('@oxy.so/bloom/icons/RiErrorWarningLine', () => ({ RiErrorWarningLine: () => null }));
+vi.mock('@/shared/ui/empty-state', async () =>
+  (await import('@/shared/testing/empty-state-stub')).emptyStateModule(),
+);
+/** Bloom's panel boundary, in the same entry, draws Bloom's own; it is never shown here. */
+vi.mock('@oxy.so/bloom/empty-state', () => ({ EmptyState: () => null }));
 
 import { AppErrorBoundary } from '../error-boundary';
 

@@ -1,8 +1,7 @@
 import { errorStatus, errorMessage as getErrorMessage } from '@/shared/api/error-utils';
 import { useTranslation } from '@/shared/i18n/use-translation';
-import { Button } from '@oxy.so/bloom/button';
+import { EmptyState } from '@/shared/ui/empty-state';
 import * as Skeleton from '@oxy.so/bloom/skeleton';
-import { Muted, Text } from '@oxy.so/bloom/typography';
 import { View } from 'react-native';
 
 /**
@@ -29,34 +28,18 @@ export function AgentEditorLoadFailed({
   const notFound = notYours || errorStatus(error) === 404;
 
   return (
-    <View className="flex-1 items-center justify-center gap-3 p-6">
-      <Text className="text-center text-base font-semibold leading-[22px] text-foreground">
-        {notFound ? t('agents.notFound') : t('agents.loadFailed')}
-      </Text>
-      <Muted className="text-center text-sm text-muted-foreground">
-        {notFound ? t('agents.notFoundDetail') : getErrorMessage(error, t('agents.loadFailed'))}
-      </Muted>
-      {notFound ? (
-        <Button
-          tone="neutral"
-          appearance="subtle"
-          accessibilityRole="button"
-          accessibilityLabel={t('agents.backToAgents')}
-          onPress={onBackToList}
-        >
-          {t('agents.backToAgents')}
-        </Button>
-      ) : (
-        <Button
-          tone="neutral"
-          appearance="subtle"
-          accessibilityRole="button"
-          accessibilityLabel={t('agents.retry')}
-          onPress={onRetry}
-        >
-          {t('agents.retry')}
-        </Button>
-      )}
+    <View className="flex-1 justify-center p-6">
+      <EmptyState
+        title={notFound ? t('agents.notFound') : t('agents.loadFailed')}
+        description={
+          notFound ? t('agents.notFoundDetail') : getErrorMessage(error, t('agents.loadFailed'))
+        }
+        action={
+          notFound
+            ? { label: t('agents.backToAgents'), onPress: onBackToList }
+            : { label: t('agents.retry'), onPress: onRetry }
+        }
+      />
     </View>
   );
 }

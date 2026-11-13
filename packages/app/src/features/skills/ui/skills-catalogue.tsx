@@ -7,9 +7,9 @@ import {
   type Skill,
 } from '@/features/skills/runtime/use-skills';
 import { useTranslation } from '@/shared/i18n/use-translation';
+import { EmptyState } from '@/shared/ui/empty-state';
 import { Button } from '@oxy.so/bloom/button';
 import { ButtonGroup, ButtonGroupItem } from '@oxy.so/bloom/button-group';
-import { EmptyState } from '@oxy.so/bloom/empty-state';
 import { RiAddLine } from '@oxy.so/bloom/icons/RiAddLine';
 import { RiCheckLine } from '@oxy.so/bloom/icons/RiCheckLine';
 import { RiDownloadLine } from '@oxy.so/bloom/icons/RiDownloadLine';

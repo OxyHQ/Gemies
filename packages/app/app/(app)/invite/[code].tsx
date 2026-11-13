@@ -3,6 +3,7 @@ import { AuthLogo } from '@/features/onboarding/ui/auth-logo';
 import { errorMessage } from '@/shared/api/error-utils';
 import { useRedeemInviteCode } from '@/features/onboarding/runtime/use-referrals';
 import { useTranslation } from '@/shared/i18n/use-translation';
+import { EmptyState as GemieEmptyState } from '@/shared/ui/empty-state';
 import { StatusSkeleton } from '@/shared/ui/skeletons';
 import { EmptyState } from '@oxy.so/bloom/empty-state';
 import { RiArrowRightLine } from '@oxy.so/bloom/icons/RiArrowRightLine';
@@ -84,8 +85,7 @@ export default function InviteScreen() {
               }}
             />
           ) : error ? (
-            <EmptyState
-              icon={RiUserHeartLine}
+            <GemieEmptyState
               title={t('invitePage.redeemErrorTitle')}
               description={error}
               action={{

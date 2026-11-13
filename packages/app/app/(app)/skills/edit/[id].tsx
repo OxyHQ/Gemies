@@ -7,9 +7,9 @@ import {
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { Button } from '@oxy.so/bloom/button';
 import { ButtonGroup, ButtonGroupItem } from '@oxy.so/bloom/button-group';
-import { EmptyState } from '@oxy.so/bloom/empty-state';
 import { Field } from '@oxy.so/bloom/field';
 import { RiDeleteBinLine } from '@oxy.so/bloom/icons/RiDeleteBinLine';
+import { EmptyState } from '@/shared/ui/empty-state';
 import { DetailSkeleton } from '@/shared/ui/skeletons';
 import { SettingsListGroup, SettingsListItem } from '@oxy.so/bloom/settings-list';
 import { ResponsiveGrid } from '@oxy.so/bloom/grid';
