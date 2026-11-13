@@ -485,6 +485,39 @@ Telegram runs on its official Bot API only, in one layer in `packages/integratio
   created in a conversation delivers each result to it (`inputs.deliverTo`, set by the server from
   the turn), so a reminder asked on Telegram arrives on Telegram.
 
+### What a channel message carries
+
+Every channel (a gemie's own bot, Telegram Business, WhatsApp) reads a message into one shared model,
+`GemieChannelMessage` in `@gemies/server` (`telegram/inbound.ts`, `accounts/whatsapp/inbound.ts`),
+and the API turns it into the turn's user message the same way for all of them
+(`lib/channel-messages.ts`):
+
+- **Media is kept like an app attachment**: as a private Oxy file of the person whose conversation it
+  is (`storeChannelMedia`), with a `file` part in the stored message. A photo (Telegram's largest
+  size), a sticker (its image, emoji and set; an animated one by its still) and a document are the
+  file; a video, a round video or a GIF is its first frame. Documents are read as attachments are
+  (`readFileForModel`); a type no model reads is named, not kept.
+- **A voice note or audio is transcribed** on the dictation path (`transcribeDictation`, on the account
+  whose turn it is), and its transcript travels with its file part (`transcript`), so a later turn
+  reads it without the audio being heard again.
+- **Everything else is words**: a location or venue (with a map link), a contact, a poll, a die, the
+  message it replies to (quoted), who it was forwarded from, and a kind that cannot be read ("A
+  game"). What could not be fetched (over the per-file 5 MB or per-message 7 MB cap, or a failed
+  download), kept or transcribed is said in the message; nothing is dropped.
+- **Media is read on the turn it arrived; later turns read it in words** (`turnContentText`: the text,
+  and a line per file with its transcript). A turn through `/alia/chat` (a connected account's, or a
+  bot's person's) resends the whole stored conversation unchanged, parts included, so the saver
+  appends to it; as a channel turn it reads only its newest message's files, with the channel's task
+  (`filePartsOf(…, { latestTurnOnly })`), and is given earlier ones in words.
+- **Who prepares it.** A connected account's gateway asks `POST /channel-accounts/messages` for the
+  content, and a gemie bot's answer carries it (`personTurn.content`, stored under the Telegram
+  message's id) or runs the third party's turn with it. The media is kept as the person who
+  connected the account or the bot.
+- **A gemie's own bot** also takes edits (`edited_message`: the stored message's words follow, nothing
+  is answered again), can react to the message with an emoji in a third party's turn
+  (`reactToMessage`, set with `setMessageReaction`), and sends an image an answer shows
+  (`![alt](https://…)`) as a photo, as the shared Business bot does.
+
 ## Structured Automations
 
 Background tasks — who runs them, their triggers and how a run executes — are in

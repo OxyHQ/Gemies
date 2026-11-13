@@ -29,8 +29,11 @@ export const SHARED_BOT_UPDATES = [
   'deleted_business_messages',
 ] as const;
 
-/** What a gemie's own bot is sent: the messages people write to it, alone or in groups. */
-export const GEMIE_BOT_UPDATES = ['message'] as const;
+/**
+ * What a gemie's own bot is sent: the messages people write to it, alone or in groups, and their
+ * edits (the stored message follows). Every kind of message arrives as `message`.
+ */
+export const GEMIE_BOT_UPDATES = ['message', 'edited_message'] as const;
 
 let shared: BotApi | null | undefined;
 

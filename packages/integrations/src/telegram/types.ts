@@ -38,6 +38,48 @@ export interface TelegramMessageEntity {
   user?: TelegramUser;
 }
 
+/** A file Telegram holds, fetched with `getFile` (a bot may download up to 20 MB). */
+export interface TelegramFileRef {
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+}
+
+export interface TelegramPhotoSize extends TelegramFileRef {
+  width: number;
+  height: number;
+}
+
+export interface TelegramSticker extends TelegramFileRef {
+  type: 'regular' | 'mask' | 'custom_emoji';
+  is_animated: boolean;
+  is_video: boolean;
+  emoji?: string;
+  set_name?: string;
+  thumbnail?: TelegramPhotoSize;
+}
+
+export interface TelegramMediaFile extends TelegramFileRef {
+  duration?: number;
+  mime_type?: string;
+  file_name?: string;
+  title?: string;
+  performer?: string;
+  thumbnail?: TelegramPhotoSize;
+}
+
+export interface TelegramLocation {
+  latitude: number;
+  longitude: number;
+}
+
+/** Who a forwarded message came from (`MessageOrigin`). */
+export type TelegramMessageOrigin =
+  | { type: 'user'; date: number; sender_user: TelegramUser }
+  | { type: 'hidden_user'; date: number; sender_user_name: string }
+  | { type: 'chat'; date: number; sender_chat: TelegramChat }
+  | { type: 'channel'; date: number; chat: TelegramChat };
+
 export interface TelegramMessage {
   message_id: number;
   date: number;
@@ -48,9 +90,35 @@ export interface TelegramMessage {
   entities?: TelegramMessageEntity[];
   caption_entities?: TelegramMessageEntity[];
   reply_to_message?: TelegramMessage;
+  /** Part of a message quoted in a reply, when the person quoted only part of it. */
+  quote?: { text: string };
+  forward_origin?: TelegramMessageOrigin;
+  photo?: TelegramPhotoSize[];
+  sticker?: TelegramSticker;
+  voice?: TelegramMediaFile;
+  audio?: TelegramMediaFile;
+  video?: TelegramMediaFile;
+  video_note?: TelegramMediaFile;
+  animation?: TelegramMediaFile;
+  document?: TelegramMediaFile;
+  location?: TelegramLocation;
+  venue?: { location: TelegramLocation; title: string; address: string };
+  contact?: { phone_number: string; first_name: string; last_name?: string };
+  poll?: { question: string; options: Array<{ text: string }> };
+  dice?: { emoji: string; value: number };
+  /** Kinds this service does not read; named so the gemie can say so. */
+  game?: unknown;
+  story?: unknown;
+  invoice?: unknown;
+  paid_media?: unknown;
   business_connection_id?: string;
   /** The bot that sent an outgoing business message on the account's behalf. */
   sender_business_bot?: TelegramUser;
+}
+
+/** `getFile`: where a file can be downloaded from, for an hour. */
+export interface TelegramFile extends TelegramFileRef {
+  file_path?: string;
 }
 
 /** A Telegram Business account's grant to the bot. Only the right this service uses is typed. */
@@ -78,6 +146,7 @@ export interface TelegramBusinessMessagesDeleted {
 export interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
+  edited_message?: TelegramMessage;
   business_connection?: TelegramBusinessConnection;
   business_message?: TelegramMessage;
   edited_business_message?: TelegramMessage;

@@ -5,11 +5,14 @@ import {
   GEMIES_CHANNEL_SESSION_HEADER,
   type GemieAccountInbound,
   type GemieAccountInboundDecision,
+  type GemieAccountIncoming,
   type GemieAccountSession,
+  type GemieAccountTurnContent,
   type GemieChannelIdentity,
   type GemieTelegramBot,
   type GemieTelegramBotAnswer,
   type GemieTelegramBotMessage,
+  type GemieTurnContentPart,
 } from '@gemies/server/internal';
 
 export type TelegramBotMessage = GemieTelegramBotMessage;
@@ -17,11 +20,8 @@ import { aliaApiFetch } from './oxy';
 import { errorStatus } from './utils';
 import { parseCatalogue, resolveRequestModel, type Catalogue } from './catalogue';
 
-/** OpenAI-compatible message content — plain string or multi-part array */
-export type MessageContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } };
-export type MessageContent = string | MessageContentPart[];
+/** A message's content: plain text, or its parts (words, and Oxy Files `file` parts). */
+export type MessageContent = string | readonly GemieTurnContentPart[];
 
 /** A bot user record linking a platform identity to an Oxy account. */
 export interface BotUser {
@@ -170,6 +170,21 @@ export class APIClient {
     return response.data as GemieAccountInboundDecision;
   }
 
+  /**
+   * A message the account's gemie answers, as its turn carries it (`POST /channel-accounts/messages`):
+   * the API keeps its media in the person's Oxy Files and answers the user message's content.
+   */
+  async prepareAccountMessage(
+    identity: GemieChannelIdentity,
+    incoming: GemieAccountIncoming,
+  ): Promise<GemieAccountTurnContent> {
+    const response = await this.client.post('/channel-accounts/messages', incoming, {
+      headers: this.accountHeaders(identity),
+      timeout: 120_000,
+    });
+    return response.data as GemieAccountTurnContent;
+  }
+
   /** A connected account's session moved (`POST /channel-accounts/session`): the API stores it. */
   async reportAccountSession(sessionId: string, session: GemieAccountSession): Promise<void> {
     await this.client.post('/channel-accounts/session', session, {
@@ -301,7 +316,7 @@ export class APIClient {
   /** Shared product chat transport; channel identity is resolved live by Alia. */
   async chatCompletion(
     identity: GemieChannelIdentity,
-    messages: Array<{ role: string; content: MessageContent }>,
+    messages: Array<{ id?: string; role: string; content: MessageContent }>,
     options: { model?: string; conversationId?: string } = {},
   ): Promise<{ content: string; finishReason: string }> {
     const response = await aliaApiFetch(`/alia/chat`, {
@@ -342,104 +357,5 @@ export class APIClient {
       content: choice?.message?.content || '',
       finishReason: choice?.finish_reason || 'stop',
     };
-  }
-
-  /**
-   * Transcribe audio to text via the voice/transcribe API endpoint.
-   */
-  async transcribe(
-    identity: GemieChannelIdentity,
-    audio: string,
-    format?: string,
-  ): Promise<string> {
-    const response = await this.client.post(
-      '/v1/voice/transcribe',
-      { audio, format },
-      {
-        headers: this.accountHeaders(identity),
-        timeout: 30000,
-      },
-    );
-    return response.data.text;
-  }
-
-  /**
-   * Streaming chat completion — async generator yielding text deltas (Telegram).
-   * Tools execute server-side; only text content is yielded.
-   *
-   * `/alia/chat` for the reason given on `chatCompletion` above. The SSE frames
-   * parsed below are the same frames, from the same handler; `/alia/chat` is
-   * additionally the mount that gets `setNoDelay(true)` and `setTimeout(0)`
-   * (`packages/api/src/index.ts`), which is what a long stream wants.
-   */
-  async *chatCompletionStream(
-    identity: GemieChannelIdentity,
-    messages: Array<{ role: string; content: MessageContent }>,
-    options: { model?: string; conversationId?: string } = {},
-  ): AsyncGenerator<string, void, undefined> {
-    const response = await aliaApiFetch(`/alia/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.accountHeaders(identity),
-      },
-      body: JSON.stringify({
-        // Omitted when unset — see `chatCompletion` above.
-        messages,
-        model: options.model,
-        stream: true,
-        conversationId: options.conversationId,
-        temperature: 0.7,
-        max_tokens: 2048,
-      }),
-    });
-
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-      const err: Error & { status?: number; code?: unknown } = new Error(
-        `Alia request failed (${response.status})`,
-      );
-      err.status = response.status;
-      err.code = body.error?.code;
-      throw err;
-    }
-
-    if (!response.body) {
-      throw new Error('No response body for streaming request');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop()!;
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith(':')) continue;
-          if (!trimmed.startsWith('data: ')) continue;
-
-          const data = trimmed.slice(6);
-          if (data === '[DONE]') return;
-
-          try {
-            const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) yield content;
-          } catch {
-            // skip malformed chunks
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
   }
 }

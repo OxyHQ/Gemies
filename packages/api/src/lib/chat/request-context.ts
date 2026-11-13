@@ -136,6 +136,11 @@ export interface ChatRequestContext {
    */
   files: ResolvedFiles;
   /**
+   * A channel turn reads only its newest message's files; an earlier `file`
+   * part is given to the model in words (`convertToAISDKMessages`).
+   */
+  earlierFilesInWords: boolean;
+  /**
    * Everything this turn uses that an agent can gate (`turnFeatureUsesOf`). A
    * consulted agent's gates are applied to its attachments (`consultAgent`).
    */
@@ -401,7 +406,7 @@ export async function buildChatRequestContext(
    */
   let fileRefs: Map<string, FilePartRef>;
   try {
-    fileRefs = filePartsOf(messages);
+    fileRefs = filePartsOf(messages, { latestTurnOnly: req.channelContext !== undefined });
   } catch (error: unknown) {
     if (!(error instanceof FilePartError)) throw error;
     clearTimeout(globalTimer);
@@ -1215,6 +1220,7 @@ export async function buildChatRequestContext(
       personalization,
       toolsEnabled,
       files: admitted.files,
+      earlierFilesInWords: req.channelContext !== undefined,
       featureUses,
       deepResearch,
       webSearch,

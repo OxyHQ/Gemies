@@ -140,6 +140,8 @@ const PUBLIC_TOOLS = new Set([
   'getWeather',
   'getMarketQuote',
   'getFairCoin',
+  // Reacting to the message it answers reaches nothing of anybody's.
+  'reactToMessage',
 ]);
 
 const PERSON = '570038640';
@@ -166,16 +168,19 @@ function bot(over: Partial<GemieBotRow> = {}): GemieBotRow {
 }
 
 let sender = 0;
-function message(over: Partial<GemieTelegramBotMessage> = {}): GemieTelegramBotMessage {
+function message(
+  over: Partial<GemieTelegramBotMessage> & { text?: string } = {},
+): GemieTelegramBotMessage {
   const from = over.from ?? { id: PERSON, username: 'NateIsern', name: 'Nate' };
+  const { text = '¿Qué hay en mi email?', ...rest } = over;
   return {
     chatId: from.id,
     chatKind: 'direct',
     chatTitle: null,
     messageId: `m-${Date.now()}-${Math.random()}`,
-    text: '¿Qué hay en mi email?',
+    message: { text },
     mentionsBot: false,
-    ...over,
+    ...rest,
     from,
   };
 }
@@ -206,9 +211,15 @@ beforeEach(() => {
 
 describe('the person who connected the bot', () => {
   it('writing in private from their linked Telegram, gets their own turn, as in the app', async () => {
-    expect(await answerGemieTelegramMessage(bot(), message())).toEqual({
+    const sent = message();
+    expect(await answerGemieTelegramMessage(bot(), sent)).toEqual({
       reply: null,
-      personTurn: { conversationId: `telegram:8988966019:${PERSON}` },
+      personTurn: {
+        conversationId: `telegram:8988966019:${PERSON}`,
+        // Stored under the Telegram message, so an edit finds it again.
+        messageId: `telegram:${PERSON}:${sent.messageId}`,
+        content: [{ type: 'text', text: '¿Qué hay en mi email?' }],
+      },
     });
     // Nothing ran here: their turn is the chat route's.
     expect(state.model).toEqual([]);
@@ -219,7 +230,7 @@ describe('the person who connected the bot', () => {
       bot(),
       message({ chatId: '-100', chatKind: 'group', chatTitle: 'Family', mentionsBot: true }),
     );
-    expect(answer).toEqual({ reply: 'Hola' });
+    expect(answer).toEqual({ reply: 'Hola', reaction: null });
     expectThirdPartyTurn();
   });
 
@@ -235,7 +246,7 @@ describe('the person who connected the bot', () => {
 describe('a stranger on the bot', () => {
   it('never gets anything private: no Oxy apps, connectors, accounts, memory or tasks', async () => {
     const answer = await answerGemieTelegramMessage(bot(), message({ from: stranger() }));
-    expect(answer).toEqual({ reply: 'Hola' });
+    expect(answer).toEqual({ reply: 'Hola', reaction: null });
     expect(answer.personTurn).toBeUndefined();
     expectThirdPartyTurn();
     // Kept in the person's conversation for that chat, as the gemie's own exchange.

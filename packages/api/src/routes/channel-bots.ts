@@ -6,7 +6,8 @@
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import { z } from 'zod';
-import type { GemieTelegramBotAnswer } from '@gemies/server/internal';
+import { channelMessageIsEmpty, type GemieTelegramBotAnswer } from '@gemies/server/internal';
+import { channelMessageSchema } from '../lib/channel-messages.js';
 import { getDb } from '../db/index.js';
 import {
   findActiveGemieBotByTelegramId,
@@ -40,8 +41,9 @@ const messageSchema = z
       name: z.string().max(256),
       languageCode: z.string().max(35).nullish(),
     }),
-    text: z.string().min(1).max(16_384),
+    message: channelMessageSchema,
     mentionsBot: z.boolean(),
+    edited: z.boolean().optional(),
   })
   .strict();
 
@@ -54,7 +56,9 @@ router.post(
     const parsed = messageSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'Invalid message' });
     const bot = await findActiveGemieBotByTelegramId(getDb(), req.params.botId).catch(() => null);
-    if (!bot) return res.json({ reply: null } satisfies GemieTelegramBotAnswer);
+    if (!bot || channelMessageIsEmpty(parsed.data.message)) {
+      return res.json({ reply: null } satisfies GemieTelegramBotAnswer);
+    }
     try {
       res.json(
         (await answerGemieTelegramMessage(bot, parsed.data)) satisfies GemieTelegramBotAnswer,

@@ -19,6 +19,7 @@ import { APIClient } from '../../shared/api-client';
 import { handleIncomingMessage } from '../../shared/chat-handler';
 import { createLogger } from '../../shared/logger';
 import type { BotApi } from '../bot-api';
+import { readTelegramMessage, telegramMessageLabel } from '../inbound';
 import { sendText, whileTyping } from '../send';
 import type {
   TelegramBusinessConnection,
@@ -149,7 +150,8 @@ async function onBusinessMessage(api: BotApi, message: TelegramMessage) {
   const found = await sessionOfConnection(message.business_connection_id);
   if (!found || message.chat.type !== 'private') return;
   const { session, connection } = found;
-  const text = message.text ?? message.caption ?? '';
+  // What the gemies granted the account read of the chat later: its words, or what it was.
+  const text = message.text ?? message.caption ?? `[${telegramMessageLabel(message)}]`;
   // The account's own messages: the person, from their phone, or the gemie on their behalf.
   const fromMe =
     Boolean(message.sender_business_bot) || String(message.from?.id) === connection.telegramUserId;
@@ -165,7 +167,7 @@ async function onBusinessMessage(api: BotApi, message: TelegramMessage) {
     text,
     at: message.date,
   });
-  if (fromMe || !text || message.from?.is_bot) return;
+  if (fromMe || message.from?.is_bot) return;
   if (!connection.isEnabled || !connection.canReply) return;
 
   const target = { chatId, businessConnectionId: connection.connectionId };
@@ -175,7 +177,7 @@ async function onBusinessMessage(api: BotApi, message: TelegramMessage) {
         platform: 'telegram',
         sessionId: session.sessionId,
         inbound: { chatId, chatKind: 'direct', mentionsAccount: false },
-        messageText: text,
+        readMessage: () => readTelegramMessage(api, message, { selfId: connection.telegramUserId }),
         sendResponse: async (reply) => {
           await sendAsAccount({
             sessionId: session.sessionId,
@@ -201,7 +203,7 @@ async function onEditedBusinessMessage(message: TelegramMessage) {
     sessionId: found.session.sessionId,
     chatId: String(message.chat.id),
     messageId: String(message.message_id),
-    text: message.text ?? message.caption ?? '',
+    text: message.text ?? message.caption ?? `[${telegramMessageLabel(message)}]`,
   });
 }
 

@@ -118,6 +118,13 @@ describe('filePartsOf', () => {
     expect([...refs.keys()]).toEqual(['a', 'b']);
   });
 
+  it('reads only the newest message’s files for a channel turn, which resends its whole history', () => {
+    const history: ChatMessage[] = Array.from({ length: 12 }, (_, i) => message(`old-${i}`));
+    const refs = filePartsOf([...history, message('new')], { latestTurnOnly: true });
+    expect([...refs.keys()]).toEqual(['new']);
+    expect(() => filePartsOf([...history, message('new')])).toThrow(FilePartError);
+  });
+
   it('refuses a malformed part, a file outside a user message, and too many files', () => {
     expect(() =>
       filePartsOf([{ role: 'user', content: [{ type: 'file', file: { file_id: '' } }] }]),
@@ -198,6 +205,30 @@ describe('resolveFileParts', () => {
       resolveFileParts(filePartsOf([message('sheet')]), { ...person, modelAcceptsFiles: false }),
     ).rejects.toMatchObject({ code: 'file_type_unsupported' });
     expect(seen.downloads).toEqual([]);
+  });
+
+  it('reads a voice note that arrived on a channel as its transcript, without downloading it', async () => {
+    files.set('voice', { mime: 'audio/ogg', size: 10, bytes: new Uint8Array(10) });
+    const turn: ChatMessage = {
+      role: 'user',
+      content: [
+        { type: 'text', text: '[Voice note, 0:03]' },
+        { type: 'file', file: { file_id: 'voice', filename: 'voice.ogg', transcript: 'hola' } },
+      ],
+    };
+    const resolved = await resolveFileParts(filePartsOf([turn]), {
+      ...person,
+      modelAcceptsFiles: false,
+    });
+    expect(resolved.get('voice')).toEqual([
+      { type: 'text', text: '[Attached audio: voice.ogg. It says: hola]' },
+    ]);
+    expect(seen.downloads).toEqual([]);
+    // Audio with no transcript is still refused by a model that cannot hear it.
+    files.set('song', { mime: 'audio/mpeg', size: 10, bytes: new Uint8Array(10) });
+    await expect(
+      resolveFileParts(filePartsOf([message('song')]), { ...person, modelAcceptsFiles: false }),
+    ).rejects.toMatchObject({ code: 'file_type_unsupported' });
   });
 
   it('refuses a file the person cannot open, a trashed one and an oversized one, without downloading', async () => {

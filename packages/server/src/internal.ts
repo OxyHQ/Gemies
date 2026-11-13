@@ -31,3 +31,4 @@ export type GemieChannelIdentity =
 
 export * from './accounts.js';
 export * from './telegram-bots.js';
+export * from './channel-messages.js';

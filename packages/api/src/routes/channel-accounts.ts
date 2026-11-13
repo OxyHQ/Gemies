@@ -7,7 +7,13 @@
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import { z } from 'zod';
-import { GEMIE_ACCOUNT_STATUSES, type GemieAccountInboundDecision } from '@gemies/server/internal';
+import {
+  GEMIE_ACCOUNT_STATUSES,
+  type GemieAccountInboundDecision,
+  type GemieAccountTurnContent,
+  turnContentText,
+} from '@gemies/server/internal';
+import { channelMessageSchema, prepareChannelTurn } from '../lib/channel-messages.js';
 import { getDb } from '../db/index.js';
 import {
   findConnectedAccount,
@@ -50,6 +56,39 @@ router.post('/inbound', authenticateToken, async (req: Request, res: Response) =
     res.json(decision);
   } catch (err: unknown) {
     log.channels.error({ err }, 'Inbound decision failed');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const incomingSchema = z
+  .object({ chatId: z.string().min(1).max(200), message: channelMessageSchema })
+  .strict();
+
+/**
+ * POST /channel-accounts/messages — a message the account's gemie will answer, as its turn carries
+ * it: its media kept in the person's Oxy Files and its voice transcribed on their account, both
+ * theirs, as an attachment they made in the app would be (`lib/channel-messages.ts`).
+ */
+router.post('/messages', authenticateToken, async (req: Request, res: Response) => {
+  const context = req.channelContext;
+  if (context?.kind !== 'account' || typeof context.gemieId !== 'string') {
+    return res.status(403).json({ error: 'A connected account its gemie answers is required' });
+  }
+  const parsed = incomingSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid message' });
+  try {
+    const turn = await prepareChannelTurn({
+      message: parsed.data.message,
+      ownerUserId: context.accountId,
+      payerAccountId: context.accountId,
+    });
+    // Files are read on the turn with the account's task; without one, the turn reads their words.
+    const content: GemieAccountTurnContent['content'] = context.taskId
+      ? turn.content
+      : [{ type: 'text', text: turnContentText(turn.content) }];
+    res.json({ content } satisfies GemieAccountTurnContent);
+  } catch (err: unknown) {
+    log.channels.error({ err }, 'A connected account message could not be prepared');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

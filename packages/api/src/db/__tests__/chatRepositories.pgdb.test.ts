@@ -723,25 +723,39 @@ describe('the wire shape', () => {
   });
 });
 
-describe('the text-only reads the bots and the style refiner use', () => {
-  it('returns turns oldest-first and drops non-string bodies', async () => {
+describe('the text reads the bots and the style refiner use', () => {
+  it('returns turns oldest-first, a parts array said in words', async () => {
     /**
-     * `jsonb_typeof(content) = 'string'`, which `lib/style/style-refiner.ts`
-     * relies on. A parts array
-     * cannot be rendered as a chat line, and picking one up puts
-     * `[object Object]` into a model's context.
-     *
-     * `#>> '{}'` is what unwraps a jsonb string to text — reading the column
-     * directly would hand back a QUOTED `"hello"`.
+     * A channel message is a parts array (its words, and a file part per piece
+     * of media): the history reads its text and a line per file, never
+     * `[object Object]`. A body with nothing to say is left out.
      */
     await rawMessage('turn-0', 'turn-user', 'turn-conv', 0, 'first', 'user');
     await rawMessage('turn-1', 'turn-user', 'turn-conv', 1, 'second', 'assistant');
-    await rawMessage('turn-2', 'turn-user', 'turn-conv', 2, [{ type: 'image' }], 'user');
+    await rawMessage(
+      'turn-2',
+      'turn-user',
+      'turn-conv',
+      2,
+      [
+        { type: 'text', text: '[Voice note, 0:04]' },
+        {
+          type: 'file',
+          file: { file_id: 'f1', filename: 'voice.ogg', mime: 'audio/ogg', transcript: 'hola' },
+        },
+      ],
+      'user',
+    );
+    await rawMessage('turn-3', 'turn-user', 'turn-conv', 3, [{ type: 'image' }], 'user');
 
     const turns = await listRecentTurns(db, 'turn-user', 'turn-conv', 20);
     expect(turns).toEqual([
       { role: 'user', content: 'first' },
       { role: 'assistant', content: 'second' },
+      {
+        role: 'user',
+        content: '[Voice note, 0:04]\n[Attached audio: voice.ogg. It says: hola]',
+      },
     ]);
   });
 

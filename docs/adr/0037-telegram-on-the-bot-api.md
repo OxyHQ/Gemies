@@ -153,3 +153,21 @@ the editor drew:
   control left; failures are retried by themselves with a backoff, or after Telegram's
   `retry_after`.
 
+## Amendment (2026-11-13): every kind of message reaches the gemie
+
+A sticker sent to a gemie's bot never reached it: only text and captions were read. Every channel
+now reads a message into one shared model (`GemieChannelMessage`, `@gemies/server`), so Telegram and
+WhatsApp carry the same things the same way:
+
+- Photos, stickers (static, or an animated one's still), documents and a video's, round video's or
+  GIF's first frame are kept as the person's private Oxy files and stored as `file` parts of the
+  message, like an app attachment. Voice notes and audio are transcribed through the dictation path,
+  and the transcript travels with the file part.
+- Locations, venues, contacts, polls, dice, replies (quoted) and forwards (their origin) are said in
+  words; a kind that cannot be read, or media that could not be fetched, kept or transcribed, is
+  named in the message rather than dropped.
+- A gemie's bot is subscribed to `edited_message` too (the webhook heals to the new
+  `allowed_updates` by itself): an edit updates the stored message and is not answered again. The
+  gemie may react to a message with an emoji (`setMessageReaction`), and an image its answer shows is
+  sent as a photo.
+

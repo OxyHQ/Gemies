@@ -24,6 +24,8 @@ import { oxy } from '../oxy.js';
  *   A power level never knows its model in advance, so it gets the text. A PDF
  *   with no text (a scan) gives instead its first pages as images, with a line
  *   saying which pages they are, and the model reads them (`pdf-documents.ts`).
+ * - An audio file whose part carries its `transcript` (a voice note that
+ *   arrived on a channel, `lib/channel-messages.ts`): its transcript.
  * - Anything else: the file itself when the model takes files; otherwise the
  *   turn is refused (`file_type_unsupported`) rather than answered about a
  *   document the model never saw.
@@ -40,7 +42,7 @@ import { TTLCache } from '../ttl-cache.js';
 import { officeKindOf, officeText, OfficeDocumentError } from './office-documents.js';
 import { readPdf, type PdfReading } from './pdf-documents.js';
 
-type ResolvedFilePart = FilePart | ImagePart | TextPart;
+export type ResolvedFilePart = FilePart | ImagePart | TextPart;
 
 /** Each attached file's model parts, by Oxy Files id: one, or a scan's line and its pages. */
 export type ResolvedFiles = ReadonlyMap<string, readonly ResolvedFilePart[]>;
@@ -51,6 +53,8 @@ export const MAX_FILES_PER_REQUEST = 10;
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 /** The most text one document contributes to the model's context. */
 const MAX_DOCUMENT_CHARS = 100_000;
+/** The longest transcript a file part may carry. */
+const MAX_TRANSCRIPT_CHARS = 50_000;
 
 export type FilePartErrorCode =
   | 'invalid_file_part'
@@ -85,17 +89,28 @@ function isFilePartRef(value: unknown): value is FilePartRef {
     ref.file_id.length <= 128 &&
     (ref.filename === undefined ||
       (typeof ref.filename === 'string' && ref.filename.length <= 255)) &&
-    (ref.mime === undefined || (typeof ref.mime === 'string' && ref.mime.length <= 255))
+    (ref.mime === undefined || (typeof ref.mime === 'string' && ref.mime.length <= 255)) &&
+    (ref.transcript === undefined ||
+      (typeof ref.transcript === 'string' && ref.transcript.length <= MAX_TRANSCRIPT_CHARS))
   );
 }
 
 /**
  * Every `file` part of the request's user messages, by id, or a
- * {@link FilePartError} for a malformed one. Distinct ids, history included.
+ * {@link FilePartError} for a malformed one. Distinct ids, history included —
+ * or, for a channel turn (`latestTurnOnly`), the newest user message's alone:
+ * a channel resends its whole stored history, and media is read on the turn it
+ * arrived (earlier files are said in words, `convertToAISDKMessages`).
  */
-export function filePartsOf(messages: readonly ChatMessage[]): Map<string, FilePartRef> {
+export function filePartsOf(
+  messages: readonly ChatMessage[],
+  options: { latestTurnOnly?: boolean } = {},
+): Map<string, FilePartRef> {
   const refs = new Map<string, FilePartRef>();
-  for (const message of messages) {
+  const latest = options.latestTurnOnly
+    ? [...messages].reverse().find((message) => message.role === 'user')
+    : undefined;
+  for (const message of options.latestTurnOnly ? (latest ? [latest] : []) : messages) {
     if (!Array.isArray(message.content)) continue;
     for (const part of message.content) {
       if (part?.type !== 'file') continue;
@@ -172,6 +187,65 @@ function unavailable(fileId: string): FilePartError {
   return new FilePartError('file_unavailable', `The file ${fileId} could not be opened.`);
 }
 
+/** Whether every model reads a file of this type: an image, a PDF, an Office document or text. */
+export function readableByEveryModel(mime: string): boolean {
+  const type = mime.toLowerCase();
+  return (
+    type.startsWith('image/') ||
+    type === 'application/pdf' ||
+    officeKindOf(type) !== undefined ||
+    TEXT_MIME.test(type)
+  );
+}
+
+/** Whether a file of this type is read as text rather than handed to the model as a file. */
+function readAsText(mime: string, modelAcceptsFiles: boolean): boolean {
+  return mime === 'application/pdf'
+    ? !modelAcceptsFiles
+    : officeKindOf(mime) !== undefined || TEXT_MIME.test(mime);
+}
+
+/**
+ * What the model receives of a file's bytes: an image part, a document's text (or a scan's pages),
+ * or the file itself. The one reading every attachment takes, whether a person attached it in the
+ * app or it arrived on a channel. Throws {@link FilePartError} when a document cannot be read.
+ */
+export async function readFileForModel(
+  bytes: Uint8Array,
+  file: { mime: string; name: string; id: string },
+  options: { modelAcceptsFiles: boolean; cacheKey?: string },
+): Promise<ResolvedFilePart[]> {
+  const mime = file.mime.toLowerCase();
+  if (mime.startsWith('image/')) return [{ type: 'image', image: bytes, mediaType: mime }];
+  if (!readAsText(mime, options.modelAcceptsFiles)) {
+    return [{ type: 'file', data: bytes, mediaType: mime, filename: file.name }];
+  }
+  const office = officeKindOf(mime);
+  let reading: PdfReading;
+  try {
+    reading =
+      mime === 'application/pdf'
+        ? await readPdf(bytes)
+        : {
+            kind: 'text',
+            text: office
+              ? officeText(office, bytes, MAX_DOCUMENT_CHARS)
+              : new TextDecoder().decode(bytes),
+          };
+  } catch (error: unknown) {
+    log.v1.warn(
+      {
+        err: error instanceof OfficeDocumentError ? error.message : error,
+        fileId: file.id,
+      },
+      'Could not read the text of a file part',
+    );
+    throw new FilePartError('file_unavailable', `The document ${file.name} could not be read.`);
+  }
+  if (options.cacheKey) readCache.set(options.cacheKey, reading);
+  return documentParts(file.name, reading);
+}
+
 async function resolveOne(
   assets: Pick<OxyServices['assets'], 'get' | 'blob'>,
   ref: FilePartRef,
@@ -187,20 +261,19 @@ async function resolveOne(
     throw unavailable(ref.file_id);
   }
   if (record.status !== 'active') throw unavailable(ref.file_id);
+  // Oxy's record decides what the file is; the part's own `mime` is only a hint.
+  const mime = record.mime.toLowerCase();
+  const name = record.originalName ?? ref.filename ?? ref.file_id;
+  if (mime.startsWith('audio/') && ref.transcript !== undefined) {
+    return [{ type: 'text', text: `[Attached audio: ${name}. It says: ${ref.transcript}]` }];
+  }
   if (record.size > MAX_FILE_BYTES) {
     throw new FilePartError(
       'file_too_large',
       `The file ${ref.file_id} is larger than ${MAX_FILE_BYTES / (1024 * 1024)} MiB.`,
     );
   }
-  // Oxy's record decides what the file is; the part's own `mime` is only a hint.
-  const mime = record.mime.toLowerCase();
-  const name = record.originalName ?? ref.filename ?? ref.file_id;
-  const office = officeKindOf(mime);
-  const asText =
-    mime === 'application/pdf'
-      ? !options.modelAcceptsFiles
-      : office !== undefined || TEXT_MIME.test(mime);
+  const asText = readAsText(mime, options.modelAcceptsFiles);
   const cacheKey = `${options.personAccountId}:${ref.file_id}`;
   if (asText) {
     const cached = readCache.get(cacheKey);
@@ -219,33 +292,11 @@ async function resolveOne(
     log.v1.warn({ err: error, fileId: ref.file_id }, 'Could not download a file part');
     throw unavailable(ref.file_id);
   }
-
-  if (mime.startsWith('image/')) return [{ type: 'image', image: bytes, mediaType: mime }];
-  if (!asText) return [{ type: 'file', data: bytes, mediaType: mime, filename: name }];
-
-  let reading: PdfReading;
-  try {
-    reading =
-      mime === 'application/pdf'
-        ? await readPdf(bytes)
-        : {
-            kind: 'text',
-            text: office
-              ? officeText(office, bytes, MAX_DOCUMENT_CHARS)
-              : new TextDecoder().decode(bytes),
-          };
-  } catch (error: unknown) {
-    log.v1.warn(
-      {
-        err: error instanceof OfficeDocumentError ? error.message : error,
-        fileId: ref.file_id,
-      },
-      'Could not read the text of a file part',
-    );
-    throw new FilePartError('file_unavailable', `The document ${name} could not be read.`);
-  }
-  readCache.set(cacheKey, reading);
-  return documentParts(name, reading);
+  return readFileForModel(
+    bytes,
+    { mime, name, id: ref.file_id },
+    { modelAcceptsFiles: options.modelAcceptsFiles, cacheKey },
+  );
 }
 
 /**

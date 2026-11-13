@@ -29,6 +29,7 @@ import { hydrateReactionRows, mutateMessageReaction } from './reactionRepository
 import { messageReactionStates, reactionEvents } from '../schema/message-reactions.js';
 import type { AvatarCharacter } from '@oxy.so/contracts';
 import { and, asc, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
+import { turnContentText } from '@gemies/server/internal';
 import type {
   AgentInfo,
   MessageContent,
@@ -230,27 +231,17 @@ export async function listMessagesFromSeq(
 }
 
 /**
- * The newest `limit` turns of a thread, oldest first, text only.
+ * The newest `limit` turns of a thread, oldest first, as text.
  *
- * Serves the bot webhooks, which feed the history straight to a model as
- * `{ role, content: string }`. The string narrowing is done by the DATABASE —
- * `jsonb_typeof(content) = 'string'` — for the same reason
- * `lib/style/style-refiner.ts` needs it: a parts array cannot be rendered as a chat line, and picking one up here would
- * put `[object Object]` in a model's context. Bot threads are written only by
- * the webhook path, which stores strings, so this filter removes nothing that
- * exists today.
+ * Serves the bots and channels, which feed the history straight to a model as
+ * `{ role, content: string }`. A parts array (a channel message with its media,
+ * `lib/channel-messages.ts`) is said in words by `turnContentText`: its text,
+ * and a line per file with its transcript, so a later turn knows what was sent
+ * without the media being read again.
  *
  * The `desc` + reverse is the source's own shape. `created_at DESC` alone is not
  * a total order — two turns of one exchange can land in the same millisecond —
  * so `seq DESC NULLS LAST` breaks the tie ahead of it, and the webhook writers give their two turns distinct timestamps.
- *
- * `#>> '{}'` unwraps the jsonb string to `text`. Measured: selecting the column
- * bare returns the same JS string, because postgres.js `JSON.parse`s `jsonb` and
- * a JSON string parses to a string — so this is not what makes the assertions
- * pass, and no test here can distinguish the two. It stays because it makes the
- * declared `string` true of the SQL EXPRESSION rather than a consequence of the
- * `WHERE` clause above it: without the cast, deleting that clause would hand
- * back objects typed as strings.
  */
 export async function listRecentTurns(
   db: ApiDatabase,
@@ -259,18 +250,44 @@ export async function listRecentTurns(
   limit: number,
 ): Promise<{ role: string; content: string }[]> {
   const rows = await db
-    .select({ role: messages.role, content: sql<string>`${messages.content} #>> '{}'` })
+    .select({ role: messages.role, content: messages.content })
+    .from(messages)
+    .where(and(eq(messages.oxyUserId, oxyUserId), eq(messages.conversationId, conversationId)))
+    .orderBy(desc(messages.createdAt), sql`${messages.seq} desc nulls last`)
+    .limit(limit);
+  return rows
+    .reverse()
+    .map((row) => ({ role: row.role, content: turnContentText(row.content) }))
+    .filter((row) => row.content !== '');
+}
+
+/**
+ * A person edited a message they sent on a channel: its words become `text`, and whatever media
+ * it carries (its `file` parts) stays. False when the message is not stored.
+ */
+export async function replaceChannelMessageWords(
+  db: ApiDatabase,
+  key: { oxyUserId: string; conversationId: string; clientMessageId: string },
+  text: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: messages.id, content: messages.content })
     .from(messages)
     .where(
       and(
-        eq(messages.oxyUserId, oxyUserId),
-        eq(messages.conversationId, conversationId),
-        sql`jsonb_typeof(${messages.content}) = 'string'`,
+        eq(messages.oxyUserId, key.oxyUserId),
+        eq(messages.conversationId, key.conversationId),
+        eq(messages.clientMessageId, key.clientMessageId),
+        eq(messages.role, 'user'),
       ),
     )
-    .orderBy(desc(messages.createdAt), sql`${messages.seq} desc nulls last`)
-    .limit(limit);
-  return rows.reverse();
+    .limit(1);
+  if (!row) return false;
+  const content: MessageContent = Array.isArray(row.content)
+    ? [{ type: 'text', text }, ...row.content.filter((part) => part.type !== 'text')]
+    : text;
+  await db.update(messages).set({ content }).where(eq(messages.id, row.id));
+  return true;
 }
 
 /**
