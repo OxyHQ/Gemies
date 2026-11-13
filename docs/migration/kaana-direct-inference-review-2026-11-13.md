@@ -100,11 +100,14 @@ from executing or charging twice. First-party enrollment must bind the verified
 workload, with reviewed terms; it cannot be inferred from a brand name.
 Gemies product credits remain separate from this upstream inference ledger.
 
-A bounded, read-only November 13 lookup in Peable found no production merchant
-for Kaana's exact application. Its task completed successfully without writes.
-Seller creation, fiscal settings, payment setup and migration of funded
-balances are therefore not established by the transport change. Do not borrow
-another product's merchant or claim invoice readiness from SDK availability.
+Read-only November 13 checks confirmed an approved, active Oxy platform merchant
+with tax configuration already present, while Kaana's own production application
+mapping was absent. That missing mapping does not imply a missing legal seller:
+Peable's existing first-party platform/MoR configuration is the source to reuse.
+The transport change creates neither that application mapping nor customer
+bindings, invoice-close/payment reconciliation or a migration of funded balances.
+Use Kaana's own authorized mapping; do not borrow another product's authority or
+claim commercial invoice readiness from SDK availability.
 
 ## Candidate and acceptance status
 
