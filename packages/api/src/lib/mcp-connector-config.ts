@@ -7,12 +7,16 @@
  * connection (`packages/integrations/src/mcp/connector-fetch.ts`). Nothing a
  * person names is ever started as a process.
  *
- * ## A registry connector is the registry's
+ * ## A curated connector is the catalogue's
  *
- * A connector from the catalogue is reached at the catalogue's address with the
- * catalogue's OAuth settings, whatever its row says, so an edited URL never
- * receives a client secret Gemies holds for a provider. A custom connector is
- * the person's: its URL and headers.
+ * A connector from the curated catalogue (`lib/mcp-registry.ts`) is reached at
+ * the catalogue's address with the catalogue's OAuth settings, whatever its row
+ * says, so an edited URL never receives a client secret Gemies holds for a
+ * provider. A connector from the synced store is reached at the address it was
+ * connected at, with its own sign-in (none, or OAuth with Dynamic Client
+ * Registration): Gemies holds nothing for it. A custom connector is the
+ * person's: its URL and headers. Only a custom connector's address can be
+ * edited (`PATCH /mcp/:id`).
  */
 
 import { z } from 'zod';
@@ -23,7 +27,7 @@ import {
 } from '../db/integrations/mcpServerRepository.js';
 import { MCP_SERVER_TRANSPORTS, type McpServerTransport } from '../db/schema/integrations.js';
 import { connectorCallbackUrl } from './connector-return.js';
-import { findRegistryEntry, type McpRegistryEntry } from './mcp-registry.js';
+import { MCP_REGISTRY, type McpRegistryEntry } from './mcp-registry.js';
 
 export interface IntegrationsMcpConfig extends McpServerConfig {
   /** Where the provider returns an authorization (`connectorCallbackUrl`): one URI, from the API. */
@@ -84,9 +88,12 @@ export function patchedCustomConnector(row: McpServerRow, patch: unknown): Custo
   });
 }
 
-export function registryEntryOf(row: Pick<McpServerRow, 'source' | 'registryId'>) {
+/** The curated entry a connection belongs to; `undefined` for a synced or a custom one. */
+export function curatedEntryOf(
+  row: Pick<McpServerRow, 'source' | 'registryId'>,
+): McpRegistryEntry | undefined {
   if (row.source !== 'registry' || !row.registryId) return undefined;
-  return findRegistryEntry(row.registryId);
+  return MCP_REGISTRY.find((entry) => entry.id === row.registryId);
 }
 
 /**
@@ -138,7 +145,7 @@ export function integrationsConfigFor(
   row: McpServerRow,
   env: NodeJS.ProcessEnv = process.env,
 ): IntegrationsMcpConfig {
-  const entry = registryEntryOf(row);
+  const entry = curatedEntryOf(row);
   return entry
     ? registryIntegrationsConfig(entry, env)
     : { ...toMcpServerConfig(row), oauthCallbackUrl: connectorCallbackUrl(env) };

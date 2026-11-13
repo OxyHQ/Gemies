@@ -16,6 +16,7 @@ import {
   boolean,
   check,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -213,7 +214,7 @@ export const mcpServers = pgTable(
     oxyUserId: text().notNull(),
     /**
      * The connector's slug, unique per person: its tools are `mcp_<name>__<tool>`.
-     * A registry connector's first account is its registry id (`notion`), and each
+     * A store connector's first account is its entry's slug (`notion`), and each
      * further account of the same entry the next free `notion_2`, `notion_3`.
      */
     name: text().notNull(),
@@ -308,10 +309,11 @@ export const connectorLogos = pgTable(
 );
 
 /**
- * The logo of each catalogue entry, before anyone connects it (a provider's
- * server answers `initialize` only with a token). Refreshed by
- * `lib/connector-logos.ts` from the entry's MCP Registry record, then its
- * website; `source_url` is where the bytes were read, for the owner and support.
+ * The logo of each store entry, curated or synced (`registry_id`), before anyone
+ * connects it. Kept by `lib/connector-logos.ts` from the server's own icons (a
+ * synced server that needs no sign-in publishes them to its health check), its
+ * MCP Registry icons, then its website; `source_url` is where the bytes were
+ * read, for the owner and support.
  */
 export const mcpRegistryLogos = pgTable(
   'mcp_registry_logos',
@@ -328,6 +330,142 @@ export const mcpRegistryLogos = pgTable(
   },
   (t) => [checkOneOf('mcp_registry_logos_source_check', t.source, CONNECTOR_LOGO_SOURCES)],
 );
+
+/** One icon as MCP describes it (`Icon`): a URL or a `data:` URI, with optional hints. */
+export interface ConnectorIcon {
+  src: string;
+  mimeType?: string;
+  sizes?: string[];
+}
+
+/** The store's categories, for the curated entries and the synced ones alike. */
+export const CONNECTOR_CATEGORIES = [
+  'productivity',
+  'development',
+  'communication',
+  'data',
+  'design',
+  'finance',
+  'marketing',
+  'commerce',
+  'search',
+  'other',
+] as const;
+export type ConnectorCategory = (typeof CONNECTOR_CATEGORIES)[number];
+
+/** The public registries the store is synced from (`lib/connector-catalogue/`). */
+export const MCP_CATALOGUE_SOURCES = ['mcp_registry'] as const;
+export type McpCatalogueSource = (typeof MCP_CATALOGUE_SOURCES)[number];
+
+/**
+ * Who stands behind a synced server, as the store's badge says it:
+ *
+ * - `official` — its publisher proved a domain to the registry (a reverse-DNS namespace) and the
+ *   server is reached on that domain: the provider's own server.
+ * - `verified` — its publisher proved a domain, and the server is reached somewhere else.
+ * - `community` — its publisher proved only a GitHub account (`io.github.*`).
+ */
+export const MCP_CATALOGUE_TRUST = ['official', 'verified', 'community'] as const;
+export type McpCatalogueTrust = (typeof MCP_CATALOGUE_TRUST)[number];
+
+/**
+ * How a person signs in to a synced server, as its health check found: `none`, OAuth with Dynamic
+ * Client Registration (`oauth`), or OAuth whose provider admits only clients it issued
+ * (`needs_provider_app`, not offered). `unknown` until it is checked.
+ */
+export const MCP_CATALOGUE_AUTH = ['unknown', 'none', 'oauth', 'needs_provider_app'] as const;
+export type McpCatalogueAuth = (typeof MCP_CATALOGUE_AUTH)[number];
+
+/** `pending` until its first health check; `failing` after two failed checks in a row. */
+export const MCP_CATALOGUE_HEALTH = ['pending', 'healthy', 'failing'] as const;
+export type McpCatalogueHealth = (typeof MCP_CATALOGUE_HEALTH)[number];
+
+/**
+ * A remote MCP server synced from a public registry into the store, beside the curated entries of
+ * `lib/mcp-registry.ts` (which never come from here and are never overridden by a row).
+ *
+ * Every text column is the registry's, sanitised (`lib/untrusted-text.ts`): somebody else wrote it.
+ * A row is offered in the store only while it is present upstream (`removed_at` null), its health
+ * check passed and its sign-in is one Gemies supports (`lib/connector-catalogue/catalogue.ts`).
+ */
+export const mcpCatalogueEntries = pgTable(
+  'mcp_catalogue_entries',
+  {
+    /** `<source>:<upstream name>` (`mcp_registry:com.example/mcp`): never a curated entry's id. */
+    id: text().primaryKey(),
+    source: text({ enum: MCP_CATALOGUE_SOURCES as unknown as [string, ...string[]] })
+      .$type<McpCatalogueSource>()
+      .notNull(),
+    /** The server's name in its registry (`com.example/mcp`), and the version synced. */
+    upstreamName: text().notNull(),
+    upstreamVersion: text().notNull(),
+    upstreamUpdatedAt: timestamptz(),
+    /** The base of a connection's slug, which names its tools (`mcp_<slug>__<tool>`). */
+    slug: text().notNull(),
+    name: text().notNull(),
+    description: text().notNull(),
+    category: text({ enum: CONNECTOR_CATEGORIES as unknown as [string, ...string[]] })
+      .$type<ConnectorCategory>()
+      .notNull(),
+    trust: text({ enum: MCP_CATALOGUE_TRUST as unknown as [string, ...string[]] })
+      .$type<McpCatalogueTrust>()
+      .notNull(),
+    /** The server's remote endpoint: https, never a command. */
+    url: text().notNull(),
+    transport: text({ enum: MCP_SERVER_TRANSPORTS as unknown as [string, ...string[]] })
+      .$type<McpServerTransport>()
+      .notNull(),
+    websiteUrl: text(),
+    repositoryUrl: text(),
+    /** The registry's icons, read into the logo pipeline (`lib/connector-logos.ts`). */
+    icons: jsonb().$type<ConnectorIcon[]>().notNull().default([]),
+    auth: text({ enum: MCP_CATALOGUE_AUTH as unknown as [string, ...string[]] })
+      .$type<McpCatalogueAuth>()
+      .notNull()
+      .default('unknown'),
+    health: text({ enum: MCP_CATALOGUE_HEALTH as unknown as [string, ...string[]] })
+      .$type<McpCatalogueHealth>()
+      .notNull()
+      .default('pending'),
+    /** Why the last check failed, for the owner and support. Never shown to a person. */
+    healthMessage: text(),
+    healthCheckedAt: timestamptz(),
+    consecutiveFailures: integer().notNull().default(0),
+    /** How many tools it answered `tools/list` with, when it needs no sign-in. */
+    toolCount: integer(),
+    firstSeenAt: timestamptz().notNull(),
+    /** When a complete pass of its registry stopped listing it. */
+    removedAt: timestamptz(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('mcp_catalogue_entries_source_name_key').on(t.source, t.upstreamName),
+    index('mcp_catalogue_entries_health_checked_at_idx').on(t.healthCheckedAt),
+    checkOneOf('mcp_catalogue_entries_source_check', t.source, MCP_CATALOGUE_SOURCES),
+    checkOneOf('mcp_catalogue_entries_category_check', t.category, CONNECTOR_CATEGORIES),
+    checkOneOf('mcp_catalogue_entries_trust_check', t.trust, MCP_CATALOGUE_TRUST),
+    checkOneOf('mcp_catalogue_entries_transport_check', t.transport, MCP_SERVER_TRANSPORTS),
+    checkOneOf('mcp_catalogue_entries_auth_check', t.auth, MCP_CATALOGUE_AUTH),
+    checkOneOf('mcp_catalogue_entries_health_check', t.health, MCP_CATALOGUE_HEALTH),
+    check('mcp_catalogue_entries_https_check', sql`${t.url} like 'https://%'`),
+  ],
+);
+
+/**
+ * Where each registry's sync stands. `last_report` is the last complete pass's counts (imported,
+ * updated, removed, and every refusal by reason), for the owner and support; `retry_after` is when
+ * the registry said to come back after a rate limit, honoured by whichever task leads next.
+ */
+export const mcpCatalogueSyncState = pgTable('mcp_catalogue_sync_state', {
+  source: text().primaryKey(),
+  lastSuccessAt: timestamptz(),
+  lastAttemptAt: timestamptz(),
+  retryAfter: timestamptz(),
+  lastError: text(),
+  lastReport: jsonb().$type<Record<string, unknown>>(),
+  updatedAt: updatedAt(),
+});
 
 /**
  * How long an abandoned MCP OAuth handshake survives.

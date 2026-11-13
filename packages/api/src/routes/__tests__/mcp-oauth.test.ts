@@ -34,6 +34,10 @@ vi.mock('../../db/integrations/mcpOAuthStateRepository.js', () => ({
   deleteMcpOAuthStateByToken: vi.fn(),
 }));
 
+vi.mock('../../db/integrations/mcpCatalogueRepository.js', () => ({
+  listOfferedCatalogueRows: vi.fn(async () => []),
+}));
+
 vi.mock('../../db/agents/agentRepository.js', () => ({
   listAgentsGrantedConnectors: vi.fn(async () => []),
 }));
@@ -93,10 +97,7 @@ vi.mock('../../lib/mcp-registry.js', () => {
       },
     },
   ];
-  return {
-    MCP_REGISTRY,
-    findRegistryEntry: (id: string) => MCP_REGISTRY.find((entry) => entry.id === id),
-  };
+  return { MCP_REGISTRY };
 });
 
 import {
@@ -115,6 +116,11 @@ import {
   findLiveMcpOAuthState,
 } from '../../db/integrations/mcpOAuthStateRepository.js';
 import { listAgentsGrantedConnectors } from '../../db/agents/agentRepository.js';
+import {
+  listOfferedCatalogueRows,
+  type McpCatalogueRow,
+} from '../../db/integrations/mcpCatalogueRepository.js';
+import { invalidateCatalogue } from '../../lib/connector-catalogue/catalogue.js';
 import router from '../mcp.js';
 
 const mockFindServer = vi.mocked(findMcpServerForUser);
@@ -128,6 +134,7 @@ const mockFindState = vi.mocked(findLiveMcpOAuthState);
 const mockDeleteState = vi.mocked(deleteMcpOAuthState);
 const mockDeleteStateByToken = vi.mocked(deleteMcpOAuthStateByToken);
 const mockGranted = vi.mocked(listAgentsGrantedConnectors);
+const mockOffered = vi.mocked(listOfferedCatalogueRows);
 
 const USER_A = 'user-a';
 const USER_B = 'user-b';
@@ -154,6 +161,38 @@ function serverRow(overrides: Partial<McpServerRow> = {}): McpServerRow {
     logoId: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+/** A server synced from the official MCP Registry, healthy and offered. */
+function syncedRow(overrides: Partial<McpCatalogueRow> = {}): McpCatalogueRow {
+  return {
+    id: 'mcp_registry:com.weather/mcp',
+    source: 'mcp_registry',
+    upstreamName: 'com.weather/mcp',
+    upstreamVersion: '1.0.0',
+    upstreamUpdatedAt: new Date('2026-10-01T00:00:00Z'),
+    slug: 'weather',
+    name: 'Weather',
+    description: 'Forecasts for any city',
+    category: 'other',
+    trust: 'official',
+    url: 'https://mcp.weather.test/mcp',
+    transport: 'streamable-http',
+    websiteUrl: 'https://weather.test',
+    repositoryUrl: null,
+    icons: [],
+    auth: 'none',
+    health: 'healthy',
+    healthMessage: null,
+    healthCheckedAt: new Date('2026-10-02T00:00:00Z'),
+    consecutiveFailures: 0,
+    toolCount: 3,
+    firstSeenAt: new Date('2026-10-01T00:00:00Z'),
+    removedAt: null,
+    createdAt: new Date('2026-10-01T00:00:00Z'),
+    updatedAt: new Date('2026-10-01T00:00:00Z'),
     ...overrides,
   };
 }
@@ -211,6 +250,8 @@ beforeEach(() => {
   mockFetch = vi.fn();
   vi.stubGlobal('fetch', mockFetch);
   mockList.mockResolvedValue([]);
+  mockOffered.mockResolvedValue([]);
+  invalidateCatalogue();
 });
 
 /** The body integrations received on its Nth call. */
@@ -221,29 +262,94 @@ function sentBody(call = 0) {
 describe('the catalogue', () => {
   it('lists what this deployment can connect, with its logo, and nothing of its configuration', async () => {
     const res = makeMockRes();
-    await getRouteHandler('get', '/registry')({}, res);
+    await getRouteHandler('get', '/registry')({ query: {} }, res);
 
-    expect(res.body.servers).toEqual([
-      {
-        id: 'notion',
-        name: 'Notion',
-        description: 'Notion connector',
-        category: 'productivity',
-        featured: true,
-        docsUrl: 'https://notion.test/docs',
-        logoUrl: `/mcp/logos/${'a'.repeat(64)}`,
-      },
-    ]);
+    expect(res.body).toEqual({
+      servers: [
+        {
+          id: 'notion',
+          name: 'Notion',
+          description: 'Notion connector',
+          category: 'productivity',
+          featured: true,
+          trust: 'official',
+          source: 'curated',
+          signIn: 'oauth',
+          toolCount: null,
+          docsUrl: 'https://notion.test/docs',
+          logoUrl: `/mcp/logos/${'a'.repeat(64)}`,
+        },
+      ],
+      total: 1,
+      nextOffset: null,
+      categories: [{ id: 'productivity', count: 1 }],
+    });
   });
 
   it('lists an entry once its provider client is configured', async () => {
     vi.stubEnv('VENDOR_MCP_CLIENT_ID', 'vendor-id');
     vi.stubEnv('VENDOR_MCP_CLIENT_SECRET', 'vendor-secret');
     const res = makeMockRes();
-    await getRouteHandler('get', '/registry')({}, res);
+    await getRouteHandler('get', '/registry')({ query: {} }, res);
 
     expect(res.body.servers.map((entry: { id: string }) => entry.id)).toEqual(['notion', 'vendor']);
     expect(JSON.stringify(res.body)).not.toContain('VENDOR_MCP');
+  });
+
+  it('lists the synced servers after the curated ones, with their badge and sign-in', async () => {
+    mockOffered.mockResolvedValue([
+      syncedRow(),
+      syncedRow({
+        id: 'mcp_registry:io.github.ana/notes',
+        upstreamName: 'io.github.ana/notes',
+        name: 'Notes',
+        trust: 'community',
+        auth: 'oauth',
+        url: 'https://notes.ana.test/mcp',
+      }),
+    ]);
+    const res = makeMockRes();
+    await getRouteHandler('get', '/registry')({ query: {} }, res);
+
+    expect(
+      res.body.servers.map((entry: { id: string; trust: string; signIn: string }) => [
+        entry.id,
+        entry.trust,
+        entry.signIn,
+      ]),
+    ).toEqual([
+      ['notion', 'official', 'oauth'],
+      ['mcp_registry:com.weather/mcp', 'official', 'none'],
+      ['mcp_registry:io.github.ana/notes', 'community', 'oauth'],
+    ]);
+  });
+
+  it('searches, filters by badge and sign-in, and pages', async () => {
+    mockOffered.mockResolvedValue([
+      syncedRow(),
+      syncedRow({
+        id: 'mcp_registry:io.github.ana/weather-eu',
+        upstreamName: 'io.github.ana/weather-eu',
+        name: 'Weather EU',
+        trust: 'community',
+        url: 'https://weather-eu.ana.test/mcp',
+      }),
+    ]);
+    const search = makeMockRes();
+    await getRouteHandler('get', '/registry')({ query: { q: 'weather', limit: '1' } }, search);
+    expect(search.body.servers.map((entry: { id: string }) => entry.id)).toEqual([
+      'mcp_registry:com.weather/mcp',
+    ]);
+    expect(search.body).toMatchObject({ total: 2, nextOffset: 1 });
+
+    const community = makeMockRes();
+    await getRouteHandler('get', '/registry')(
+      { query: { trust: 'community', signIn: 'none' } },
+      community,
+    );
+    expect(community.body.servers.map((entry: { id: string }) => entry.id)).toEqual([
+      'mcp_registry:io.github.ana/weather-eu',
+    ]);
   });
 });
 
@@ -323,6 +429,91 @@ describe('POST /connect — a new account of a catalogue entry', () => {
       oauthRevocation: { url: 'https://vendor.test/oauth/revoke', clientAuth: 'basic' },
       oauthCallbackUrl: 'https://api.test/mcp/oauth/callback',
     });
+  });
+
+  it('connects a synced server that needs no sign-in at once, under its slug', async () => {
+    mockOffered.mockResolvedValue([syncedRow()]);
+    mockInsert.mockImplementation(async (_db, _slug, input) =>
+      serverRow({
+        id: input.id,
+        name: 'weather',
+        registryId: input.registryId ?? null,
+        configUrl: input.config.url ?? null,
+        configRequiresOauth: input.config.requiresOAuth ?? null,
+      }),
+    );
+    mockFetch.mockResolvedValue(
+      answer({ success: true, tools: [{ name: 'forecast', description: 'x', inputSchema: {} }] }),
+    );
+    const res = makeMockRes();
+    await getRouteHandler('post', '/connect')(
+      { userId: USER_A, body: { registryId: 'mcp_registry:com.weather/mcp' } },
+      res,
+    );
+
+    expect(res.statusCode).toBe(201);
+    expect(mockFetch.mock.calls[0]?.[0]).toMatch(/\/mcp\/servers\/[^/]+\/start$/);
+    expect(sentBody().config).toEqual({
+      url: 'https://mcp.weather.test/mcp',
+      requiresOAuth: false,
+      oauthCallbackUrl: 'https://api.test/mcp/oauth/callback',
+    });
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.anything(),
+      'weather',
+      expect.objectContaining({
+        source: 'registry',
+        registryId: 'mcp_registry:com.weather/mcp',
+        config: { url: 'https://mcp.weather.test/mcp', requiresOAuth: false },
+      }),
+    );
+    expect(mockCreateState).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing when a synced server does not answer', async () => {
+    mockOffered.mockResolvedValue([syncedRow()]);
+    mockFetch.mockResolvedValue(answer({ error: 'timeout' }, 500));
+    const res = makeMockRes();
+    await getRouteHandler('post', '/connect')(
+      { userId: USER_A, body: { registryId: 'mcp_registry:com.weather/mcp' } },
+      res,
+    );
+    expect(res.statusCode).toBe(502);
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("signs in to a synced OAuth server with Dynamic Client Registration, at the store's address", async () => {
+    mockOffered.mockResolvedValue([syncedRow({ auth: 'oauth', transport: 'sse' })]);
+    mockFetch.mockResolvedValue(
+      answer({ authorizationUrl: 'https://auth.weather.test/authorize' }),
+    );
+    const res = makeMockRes();
+    await getRouteHandler('post', '/connect')(
+      { userId: USER_A, body: { registryId: 'mcp_registry:com.weather/mcp' } },
+      res,
+    );
+    expect(res.body).toEqual({ authorizationUrl: 'https://auth.weather.test/authorize' });
+    expect(sentBody()).toMatchObject({
+      transport: 'sse',
+      config: {
+        url: 'https://mcp.weather.test/mcp',
+        requiresOAuth: true,
+        oauthCallbackUrl: 'https://api.test/mcp/oauth/callback',
+      },
+    });
+    expect(mockCreateState.mock.calls[0]?.[1]).toMatchObject({
+      registryId: 'mcp_registry:com.weather/mcp',
+    });
+  });
+
+  it('does not connect a synced server the store no longer offers', async () => {
+    const res = makeMockRes();
+    await getRouteHandler('post', '/connect')(
+      { userId: USER_A, body: { registryId: 'mcp_registry:com.gone/mcp' } },
+      res,
+    );
+    expect(res.statusCode).toBe(404);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('removes the state when the provider did not start the sign-in', async () => {

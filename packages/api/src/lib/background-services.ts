@@ -50,7 +50,10 @@ import {
 import { initRoomQueue, shutdownRoomQueue, startRoomWorker } from './chat/room/queue.js';
 import { reactionDispatcher } from './chat/reactions/dispatcher.js';
 import { startSkillRegistrySync, stopSkillRegistrySync } from './skills/scheduler.js';
-import { startConnectorLogoRefresh, stopConnectorLogoRefresh } from './connector-logo-refresh.js';
+import {
+  startConnectorCatalogue,
+  stopConnectorCatalogue,
+} from './connector-catalogue/scheduler.js';
 import { startTriggerEngine, stopTriggerEngine } from './trigger-engine.js';
 
 /**
@@ -103,9 +106,9 @@ export function startBackgroundServices(): void {
   // Keep the shared skill catalogue in step with the repositories it is synced
   // from. Leader-gated, because it writes rows every account reads.
   startSkillRegistrySync();
-  // Keep the connector catalogue's logos read from their providers. Leader-gated,
-  // for the same reason.
-  startConnectorLogoRefresh();
+  // Keep the connectors store in step with the official MCP Registry: sync, health
+  // checks and logos. Leader-gated, for the same reason.
+  startConnectorCatalogue();
 }
 
 /**
@@ -128,7 +131,7 @@ export async function stopBackgroundServices(): Promise<void> {
   // Same for the skill catalogue's own lease.
   await stopSkillRegistrySync();
   log.general.info('Skill registry sync stopped');
-  await stopConnectorLogoRefresh();
+  await stopConnectorCatalogue();
 
   // Stop claiming moderation work, but let the event already in flight reach a
   // durable state — an abandoned claim is reclaimable, a half-applied one is not.

@@ -6,6 +6,10 @@
  * described as `[Notion · <account>] …`. The model chooses the account by the
  * tool it calls, and an agent reaches only the accounts it was granted
  * (`mcp:<id>`, one row at a time); nothing picks an account behind its back.
+ *
+ * A tool's description is its server's text, offered to the model as it is
+ * described: made plain text and cut to `MAX_TOOL_DESCRIPTION` first
+ * (`untrustedPlainText`), so nothing invisible or outsized reaches the prompt.
  */
 
 import { integrationsFetch } from '../integrations-client.js';
@@ -19,10 +23,12 @@ import { integrationsConfigFor } from '../mcp-connector-config.js';
 import type { McpServerTool } from '../../db/schema/integrations.js';
 import { log } from '../logger.js';
 import { TTLCache } from '../ttl-cache.js';
+import { untrustedPlainText } from '../untrusted-text.js';
 import { jsonSchemaToZod } from './mcp-schema.js';
 
 const INTEGRATIONS_URL = process.env.INTEGRATIONS_URL;
 const TOOL_CALL_TIMEOUT_MS = 60_000;
+const MAX_TOOL_DESCRIPTION = 1_024;
 
 /** Response shape returned by the integrations service tool-call endpoint. */
 interface McpToolCallResult {
@@ -125,7 +131,9 @@ function createServerTool(
   }
 
   return tool({
-    description: `[${displayName}] ${mcpTool.description || mcpTool.name}`,
+    description: `[${untrustedPlainText(displayName, 120)}] ${
+      untrustedPlainText(mcpTool.description, MAX_TOOL_DESCRIPTION) || mcpTool.name
+    }`,
     inputSchema,
     execute: async (args: unknown) => {
       return callServerTool(oxyUserId, server, mcpTool.name, args as Record<string, any>);

@@ -234,7 +234,7 @@
     },
     "packages/sdk": {
       "name": "@gemies/sdk",
-      "version": "4.1.0",
+      "version": "5.0.0",
       "dependencies": {
         "clsx": "^2.1.1",
         "socket.io-client": "^4.8.3",

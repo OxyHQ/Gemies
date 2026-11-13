@@ -2329,7 +2329,13 @@
         "communication": "Comunicación",
         "data": "Datos",
         "development": "Desarrollo",
-        "productivity": "Productividad"
+        "productivity": "Productividad",
+        "design": "Diseño",
+        "finance": "Finanzas",
+        "marketing": "Marketing",
+        "commerce": "Comercio",
+        "search": "Búsqueda e investigación",
+        "other": "Otros"
       },
       "connected": {
         "browse": "Explorar conectores",
@@ -2384,7 +2390,7 @@
         "categories": "Categorías",
         "connect": "Conectar",
         "connectAnother": "Añadir cuenta",
-        "description": "Conecta las apps con las que trabajas. Cada una es el servidor MCP del propio proveedor: inicias sesión con ellos y Gemies nunca ve tu contraseña.",
+        "description": "Conecta las apps con las que trabajas: los servidores MCP de los propios proveedores y cientos más del registro oficial de MCP. Oficial significa que lo publica el proveedor; Comunidad, que lo publica un desarrollador. Si alguno te pide iniciar sesión, la inicias con ellos y Gemies nunca ve tu contraseña.",
         "docs": "Más información",
         "empty": "Ahora mismo no hay conectores disponibles.",
         "featured": "Destacados",
@@ -2396,6 +2402,31 @@
         "connectedCount": {
           "one": "Conectado",
           "other": "{{count}} cuentas conectadas"
+        },
+        "allCount": {
+          "one": "Todos los conectores · 1",
+          "other": "Todos los conectores · {{count}}"
+        },
+        "results": {
+          "zero": "Sin resultados",
+          "one": "1 resultado",
+          "other": "{{count}} resultados"
+        },
+        "more": {
+          "one": "Mostrar 1 más",
+          "other": "Mostrar más (quedan {{count}})"
+        },
+        "filters": "Filtros",
+        "filter": {
+          "official": "Oficiales",
+          "verified": "Verificados",
+          "noSignIn": "Sin inicio de sesión"
+        },
+        "sort": "Ordenar por",
+        "sortBy": {
+          "featured": "Destacados",
+          "name": "Nombre",
+          "recent": "Actualizados recientemente"
         }
       },
       "usedBy": "Lo usan {{names}}",
@@ -2403,6 +2434,11 @@
         "zero": "Sin herramientas",
         "one": "1 herramienta",
         "other": "{{count}} herramientas"
+      },
+      "trust": {
+        "official": "Oficial",
+        "verified": "Verificado",
+        "community": "Comunidad"
       }
     }
   }

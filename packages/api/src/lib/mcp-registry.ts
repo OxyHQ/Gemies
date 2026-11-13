@@ -1,9 +1,11 @@
 /**
- * The connectors catalogue: each entry is a provider's OWN hosted MCP server,
- * reached over streamable HTTP and authorized by the person through OAuth. No
- * connector runs code of ours against a provider's API, and none is a command:
- * a provider without an official remote MCP server is not in the catalogue.
- * A person may still add their own remote MCP server by URL (a custom connector).
+ * The curated connectors: each entry is a provider's OWN hosted MCP server,
+ * reached over streamable HTTP and authorized by the person through OAuth, with
+ * what Gemies holds for it (an issued client, its scopes). No connector runs code
+ * of ours against a provider's API, and none is a command. The store adds the
+ * servers synced from the official MCP Registry (`lib/connector-catalogue/`),
+ * which never override an entry here; a person may still add their own remote
+ * MCP server by URL (a custom connector).
  *
  * How Gemies authenticates, beyond what the MCP SDK finds on its own
  * (RFC 9728 → RFC 8414 → Dynamic Client Registration → PKCE):
@@ -22,6 +24,8 @@
  * Registry record (`mcpRegistryName`), then its `website`'s brand mark; once
  * connected, the server's own `serverInfo.icons`.
  */
+import type { ConnectorCategory } from '../db/schema/integrations.js';
+
 interface McpRegistryOAuth {
   scope?: string;
   client?: { envClientId: string; envClientSecret?: string };
@@ -33,19 +37,11 @@ interface McpRegistryOAuth {
   enabledBy?: string;
 }
 
-export const MCP_REGISTRY_CATEGORIES = [
-  'productivity',
-  'development',
-  'communication',
-  'data',
-] as const;
-export type McpRegistryCategory = (typeof MCP_REGISTRY_CATEGORIES)[number];
-
 export interface McpRegistryEntry {
   id: string;
   name: string;
   description: string;
-  category: McpRegistryCategory;
+  category: ConnectorCategory;
   /** The provider's hosted MCP endpoint (streamable HTTP). */
   url: string;
   oauth?: McpRegistryOAuth;
@@ -212,7 +208,7 @@ export const MCP_REGISTRY: readonly McpRegistryEntry[] = [
     id: 'figma',
     name: 'Figma',
     description: 'Read designs, components and variables, and create FigJam diagrams',
-    category: 'productivity',
+    category: 'design',
     url: 'https://mcp.figma.com/mcp',
     // Figma registers only clients in its MCP catalog (by client name).
     oauth: { scope: 'mcp:connect', enabledBy: 'FIGMA_MCP_APPROVED' },
@@ -224,7 +220,7 @@ export const MCP_REGISTRY: readonly McpRegistryEntry[] = [
     id: 'canva',
     name: 'Canva',
     description: 'Search, create, edit and export your Canva designs',
-    category: 'productivity',
+    category: 'design',
     url: 'https://api.canva.com/connect/v1/mcp',
     oauth: {
       client: { envClientId: 'CANVA_MCP_CLIENT_ID', envClientSecret: 'CANVA_MCP_CLIENT_SECRET' },
@@ -327,7 +323,3 @@ export const MCP_REGISTRY: readonly McpRegistryEntry[] = [
       'https://developer.salesforce.com/docs/platform/hosted-mcp-servers/guide/servers-reference.html',
   },
 ];
-
-export function findRegistryEntry(id: string): McpRegistryEntry | undefined {
-  return MCP_REGISTRY.find((entry) => entry.id === id);
-}

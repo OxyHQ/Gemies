@@ -1114,6 +1114,13 @@
       "when": 1794578746858,
       "tag": "0158_external_agent_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "7",
+      "when": 1794581017612,
+      "tag": "0159_connector_catalogue_sync",
+      "breakpoints": true
     }
   ]
 }
