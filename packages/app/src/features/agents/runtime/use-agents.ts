@@ -53,9 +53,14 @@ export interface AgentCatalogueParams {
  * The catalogue: everything published, by anybody, narrowed by the screen's
  * filters. NOT the same question as `useMyAgents`, which asks for the ones this
  * person made whether published or not.
+ *
+ * Public, as `GET /agents` is (`optionalAuth`, the same list for every caller):
+ * asked once the session is resolved, signed in or not. It was gated on
+ * `isAuthenticated`, so a signed-out visitor of gemies.ai/agents looked at its
+ * skeleton forever and never asked.
  */
 export function useAgentCatalogue(params?: AgentCatalogueParams) {
-  const { isAuthenticated } = useOxy();
+  const { isPrivateApiPending } = useOxy();
 
   return useQuery({
     queryKey: queryKeys.agents.catalogue(params),
@@ -66,7 +71,7 @@ export function useAgentCatalogue(params?: AgentCatalogueParams) {
       );
       return { agents: response.data.agents, total: response.data.total };
     },
-    enabled: isAuthenticated,
+    enabled: !isPrivateApiPending,
     staleTime: 1000 * 60 * 5,
   });
 }
