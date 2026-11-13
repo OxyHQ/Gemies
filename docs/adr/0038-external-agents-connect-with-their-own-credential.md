@@ -33,23 +33,30 @@ Since ADR 0036 an external agent has no Oxy account, so nothing about it is Oxy'
 3. **The daemon keeps it and nothing else.** Codea stores it beside the agent it serves, in a file
    readable by its owner only (0600), and presents it on every connection: a restart reconnects
    with no sign-in. `codea connect` asks for no Oxy session, and has no device flow.
-4. **Revoking kills it.** `DELETE /agents/external/:agentId` revokes the link, which is the only
+4. **The agent is autonomous: nobody reconnects it.** `codea connect` (Codea 4.2) installs the
+   daemon as a per-user service and returns once the agent is connected. On Linux it is a systemd
+   `--user` unit, with lingering when Linux allows it; on macOS a LaunchAgent; on Windows a
+   Scheduled Task. It starts at login, restarts on failure and outlives the session that ran it and
+   a restart of the machine. An unreachable Gemies is retried for as long as it takes; only a
+   refusal ends it. `codea status` shows the service and `codea disconnect` removes it. The pasted
+   text says so, and asks nothing more of the person.
+5. **Revoking kills it.** `DELETE /agents/external/:agentId` revokes the link, which is the only
    place the credential is checked, disconnects the daemon and deletes the agent (ADR 0032).
-5. **Reconnecting replaces it.** A code minted for an existing agent (`pair` with `{ agentId }`,
+6. **Reconnecting replaces it.** A code minted for an existing agent (`pair` with `{ agentId }`,
    only for a live external agent of the caller's) carries `external_agent_pairings.agent_id`;
    redeeming it points the link at the new machine (CLI, computer, credential) instead of creating a
    gemie, and cuts off any socket opened with another credential, on whichever instance holds it.
    Its daemon is refused with `invalid_credential` on reconnecting and stops without forgetting
    anything another daemon on the same machine has since stored. The app offers it as
    **Reconnect** on each connected agent: a new machine, a lost credential, a suspected leak.
-6. **Redemption is rate limited and logged.** Ten attempts a minute per address, used codes or not
+7. **Redemption is rate limited and logged.** Ten attempts a minute per address, used codes or not
    (`checkWindowLimit`, a Redis outage degrades to a per-instance limit); five codes a minute per
    account. Each redemption is logged with the agent, the owner, the CLI, the computer and the
    address; each refusal with the address. Consuming the code and creating the agent and its link
    happen in one transaction, so our failure does not burn the person's code.
-7. **The pasted text is self-sufficient**: one command,
-   `npx -y @alia-codea/cli@latest connect <code> --cli <claude|codex|opencode>`, how to keep it
-   running, what to report and when to stop. It says no sign-in is needed.
+8. **The pasted text is self-sufficient**: one command,
+   `npx -y @alia-codea/cli@latest connect <code> --cli <claude|codex|opencode>`, what it leaves
+   running (the service of §4), what to report and when to stop. It says no sign-in is needed.
 
 ## Migration
 
