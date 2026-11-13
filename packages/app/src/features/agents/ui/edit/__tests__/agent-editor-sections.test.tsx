@@ -49,6 +49,14 @@ vi.mock('@oxy.so/bloom/textarea', async () => hosts('Textarea'));
 vi.mock('@oxy.so/bloom/skeleton', async () => hosts('Box', 'Region'));
 vi.mock('@oxy.so/bloom/settings-modal', async () => hosts('SettingsCard'));
 vi.mock('@oxy.so/bloom/icons/RiDeleteBinLine', () => ({ RiDeleteBinLine: 'RiDeleteBinLine' }));
+vi.mock('@oxy.so/bloom/icons/RiExternalLinkLine', () => ({
+  RiExternalLinkLine: 'RiExternalLinkLine',
+}));
+vi.mock('@oxy.so/bloom/icons/RiGroupLine', () => ({ RiGroupLine: 'RiGroupLine' }));
+vi.mock('@oxy.so/bloom/icons/RiRefreshLine', () => ({ RiRefreshLine: 'RiRefreshLine' }));
+vi.mock('@oxy.so/bloom/icons/RiTelegramFill', () => ({ RiTelegramFill: 'RiTelegramFill' }));
+vi.mock('@oxy.so/bloom/admonition', async () => hosts('Admonition'));
+vi.mock('@oxy.so/bloom/badge', async () => hosts('Badge'));
 vi.mock('@gemies/sdk/accounts', async () => hosts('GemieAccounts'));
 vi.mock('@gemies/sdk', async () => ({ readAgentCharacter: (character: unknown) => character }));
 vi.mock('@oxy.so/bloom/agent-avatar', async () => hosts('AgentAvatar'));
@@ -584,12 +592,39 @@ describe('its own Telegram bot (ADR 0037)', () => {
     const tree = await render();
     const texts = all(tree, 'Text').map((node) => String(node.props.children));
     expect(texts).toContain('@scout_bot');
-    expect(texts.some((text) => text.includes('Live'))).toBe(true);
-    expect(texts.some((text) => text.includes('/setprivacy'))).toBe(true);
+    expect(all(tree, 'Badge')[0]?.props).toMatchObject({ content: 'Connected', color: 'success' });
+    // Privacy mode is on: the groups row says what it needs as a notice of its own.
+    expect(
+      all(tree, 'Admonition').some((node) => String(node.props.children).includes('/setprivacy')),
+    ).toBe(true);
 
     confirm.mockResolvedValueOnce(true);
     await act(async () => button(tree, 'Remove')?.props.onPress());
     await settle();
     expect(api.delete).toHaveBeenCalledWith('/agents/agent-1/telegram-bot');
+  });
+
+  it('says when Telegram cannot deliver, with its reason, and takes the gemie’s profile again', async () => {
+    telegramBot = {
+      bot: { ...bot, live: { ...bot.live, webhook: 'failing', webhookError: '502 Bad Gateway' } },
+      available: true,
+    };
+    api.patch.mockReset().mockResolvedValue({
+      data: { bot, profile: { name: true, description: true, photo: true } },
+    });
+    const tree = await render();
+    expect(all(tree, 'Badge')[0]?.props).toMatchObject({ content: 'Error', color: 'error' });
+    const notice = all(tree, 'Admonition').find((node) => node.props.type === 'error');
+    expect(String(notice?.props.children)).toContain('502 Bad Gateway');
+
+    await act(async () => button(tree, 'Sync profile')?.props.onPress());
+    await settle();
+    expect(api.patch).toHaveBeenCalledWith('/agents/agent-1/telegram-bot', {
+      syncProfile: true,
+      photoJpegBase64: null,
+    });
+    expect(toast.success).toHaveBeenCalledWith(
+      'The bot shows Scout’s name, description and picture.',
+    );
   });
 });
