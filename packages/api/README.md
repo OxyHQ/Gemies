@@ -123,7 +123,7 @@ Key groups:
   registered development binding locally; no customer API key fallback)
 - Queue and async execution (`REDIS_URL`)
 - Integrations and channels (`INTEGRATIONS_URL`, exact workload identities, external channel secrets)
-- The agents' computer (`ALIA_COMPUTER_HOST_URL`, `ALIA_COMPUTER_HOST_INSTANCE_ID`; optional)
+- GemiesOS, the gemies' computers (`GEMIES_OS_URL`, `GEMIES_OS_INSTANCE_ID`; optional)
 
 Upstream model credentials are not Alia configuration. Kaana owns them in its
 database; Alia must not receive them through environment variables, SSM or its own

@@ -479,9 +479,9 @@ describe('an agent reaches exactly what it was granted', () => {
     },
   );
 
-  it('builds no computer tool on a deployment without a computer host, granted or not', async () => {
+  it('builds no computer tool on a deployment without GemiesOS, granted or not', async () => {
     // The family is a grant AND a configured host. `null` is "no host", which
-    // is what production has until ALIA_COMPUTER_HOST_URL is set — so turning
+    // is what production has until GEMIES_OS_URL is set — so turning
     // the switch on there must add nothing rather than seven failing tools.
     const base = await namesFor([]);
     const granted = await namesFor(['computer'], {

@@ -161,15 +161,15 @@ An agent with the `computer` grant has its own Linux machine and a real browser:
   no network for the shell, a persistent `/workspace`.
 - A persistent Chromium context per actor behind a validating egress proxy, so a
   sign-in survives the browser closing and the host sleeping.
-- The host (`packages/alia-computer-host`) is a Spot instance that stops itself when
+- GemiesOS (`packages/gemies-os`) is a Spot instance that stops itself when
   idle; the API wakes it on demand (`lib/computer/host-waker.ts`).
 - The person watches it live and can take control (agent page → Computer,
   `routes/agents/computer.ts`, `packages/app/src/features/agents/ui/computer/`).
 - Alia herself has no computer: her row holds no `computer` grant, and her work never
   runs on an agent runtime (`task_authority = 'standing'`); the tools are built only for
-  an agent's runtime turn (`lib/agent/actions.ts`) and only when `ALIA_COMPUTER_HOST_URL`
+  an agent's runtime turn (`lib/agent/actions.ts`) and only when `GEMIES_OS_URL`
   is set.
 
 - Detail: [Agents → The agent's computer](./agents.md#the-agents-computer-computer).
-- Operations: `OxyHQ/oxy-infra` `docs/runbooks/47-alia-computer-host.md`;
-  infrastructure `terraform-uswest2/alia-computer-host.tf`.
+- Operations: `OxyHQ/oxy-infra` `docs/runbooks/47-gemies-os.md`;
+  infrastructure `terraform-uswest2/gemies-os.tf`.

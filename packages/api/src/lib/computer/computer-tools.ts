@@ -3,7 +3,7 @@
  *
  * Each agent has, per person it works for, one Linux container with node,
  * python3, git and bash, NO network, and a persistent `/workspace`
- * (`packages/alia-computer-host`). These tools are its whole surface. Granted
+ * (`packages/gemies-os`). These tools are its whole surface. Granted
  * by the `computer` family (`domain/capability-grants.ts`); classified in
  * `lib/agent/governance.ts` — reading is R0, starting/stopping/writing and a
  * foreground command are R1 (their effects stay inside the agent's own
@@ -30,7 +30,9 @@ import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { getErrorMessage } from '../errors/index.js';
 import { BROWSER_TOOL_NAMES, buildBrowserTools } from './browser-tools.js';
-import { ComputerHostError, type CommandReceipt, type ComputerClient } from './computer-client.js';
+import type { CommandReceipt } from '@gemies/os-protocol';
+import type { ComputerClient } from './computer-client.js';
+import { GemiesOsError } from './computer-errors.js';
 
 export const COMPUTER_TOOL_NAMES = [
   'computer_status',
@@ -59,7 +61,7 @@ function fenced(body: string): string {
 }
 
 function failure(error: unknown): string {
-  if (error instanceof ComputerHostError) {
+  if (error instanceof GemiesOsError) {
     if (error.code === 'capacity')
       return 'Error: every computer slot is in use right now. Try again in a few minutes.';
     if (error.code === 'busy')
@@ -91,7 +93,7 @@ async function withRunning<T>(
   try {
     return await work();
   } catch (error) {
-    if (!(error instanceof ComputerHostError) || error.code !== 'not_running') throw error;
+    if (!(error instanceof GemiesOsError) || error.code !== 'not_running') throw error;
     await client.start(actorId);
     return work();
   }
@@ -176,7 +178,7 @@ export function buildComputerTools(options: {
       description:
         'Run a bash command on your computer (no internet access; /workspace persists, /tmp does not and cannot hold executables). ' +
         'Give every distinct command its own operationId; repeating a call with the same operationId returns the first result instead of running it again. ' +
-        'A foreground command is stopped after timeoutSeconds (default 60, max 300). Set background=true for a long-running process; its output goes to a log file under /workspace/.alia/jobs/ that you can read later. ' +
+        'A foreground command is stopped after timeoutSeconds (default 60, max 300). Set background=true for a long-running process; its output goes to a log file under /workspace/.gemies-os/jobs/ that you can read later. ' +
         UNTRUSTED_NOTE,
       inputSchema: z.object({
         command: z.string().min(1).max(16_000).describe('The bash command'),

@@ -70,7 +70,8 @@ COPY packages/sdk/package.json ./packages/sdk/
 # install outright ("Workspace not found"), whatever `--filter` says.
 COPY packages/server/package.json ./packages/server/
 COPY packages/integrations/package.json ./packages/integrations/
-COPY packages/alia-computer-host/package.json ./packages/alia-computer-host/
+COPY packages/gemies-os/package.json ./packages/gemies-os/
+COPY packages/gemies-os-protocol/package.json ./packages/gemies-os-protocol/
 
 # Skip heavy browser/desktop binaries pulled by unrelated workspaces.
 # The API itself ships no browser and depends on neither Playwright nor
@@ -93,6 +94,7 @@ ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
 RUN bun install --frozen-lockfile --filter "@alia/api"
 
 # Copy API source and build the bundle.
+COPY packages/gemies-os-protocol/ ./packages/gemies-os-protocol/
 COPY packages/server/ ./packages/server/
 RUN cd packages/server && bun run build
 COPY packages/api/ ./packages/api/
@@ -133,6 +135,10 @@ COPY --from=builder --chown=bun:bun /build/packages/api/package.json ./packages/
 # Workspace SDK remains external in the API bundle; preserve its symlink target.
 COPY --from=builder --chown=bun:bun /build/packages/server/package.json ./packages/server/package.json
 COPY --from=builder --chown=bun:bun /build/packages/server/dist ./packages/server/dist
+# GemiesOS's wire contract (`@gemies/os-protocol`), external like the server SDK:
+# TypeScript source, which Bun loads as it is.
+COPY --from=builder --chown=bun:bun /build/packages/gemies-os-protocol/package.json ./packages/gemies-os-protocol/package.json
+COPY --from=builder --chown=bun:bun /build/packages/gemies-os-protocol/src ./packages/gemies-os-protocol/src
 
 # Built application bundle.
 COPY --from=builder --chown=bun:bun /build/packages/api/dist ./packages/api/dist

@@ -215,7 +215,7 @@ export const FIXED_FAMILY_TOOLS: Readonly<Record<FixedCapabilityFamily, readonly
   /**
    * The agent's own sandboxed Linux machine (`lib/computer/computer-tools.ts`)
    * and the browser on it (`lib/computer/browser-tools.ts`) — one machine, one
-   * switch. Built only on a runtime turn AND when a computer host is
+   * switch. Built only on a runtime turn AND when GemiesOS is
    * configured, so a grant on a deployment without one adds nothing — see
    * `actions.ts`.
    */

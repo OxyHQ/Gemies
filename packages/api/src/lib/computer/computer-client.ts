@@ -1,10 +1,10 @@
 /**
- * Alia's side of the agents' computer: a client for the computer host's
- * control API (`packages/alia-computer-host`).
+ * The API's side of the gemies' computers: a client for GemiesOS's control API
+ * (`packages/gemies-os`), speaking the wire contract in `@gemies/os-protocol`.
  *
  * ## Configured by one variable, and absent without it
  *
- * `ALIA_COMPUTER_HOST_URL` (e.g. `http://computer.alia.internal.oxy.so:8080`)
+ * `GEMIES_OS_URL` (e.g. `http://computer.alia.internal.oxy.so:8080`)
  * is the whole configuration. Unset, {@link getComputerClient} answers `null`
  * and the `computer` tools are not BUILT — the same withhold-don't-stub rule the
  * capability grants follow (`lib/agent/actions.ts`). There is no "computer
@@ -22,7 +22,7 @@
  * ## Asleep is a normal state
  *
  * The host stops itself when idle (`host-waker.ts`). With
- * `ALIA_COMPUTER_HOST_INSTANCE_ID` set, a call that finds it unreachable, or
+ * `GEMIES_OS_INSTANCE_ID` set, a call that finds it unreachable, or
  * stopping, starts it and waits — up to 90 s — instead of failing; a status
  * call never wakes it and answers `asleep`.
  *
@@ -34,120 +34,37 @@
  * dueño presente"). `aliaActorId` is the extension point for Alia's own
  * per-person computer; nothing calls it yet.
  */
+import type {
+  ActorRole,
+  BrowserActionReceipt,
+  BrowserInput,
+  BrowserReading,
+  BrowserResult,
+  BrowserState,
+  CommandReceipt,
+  CommandRequest,
+  ComputerStatus,
+  DirectoryListing,
+} from '@gemies/os-protocol';
 import { requestWorkloadServiceToken } from '@oxy.so/core/server';
-import { ComputerHostError } from './computer-errors.js';
+import { GemiesOsError } from './computer-errors.js';
 import { Ec2InstanceControl, HostWaker } from './host-waker.js';
 
-export interface ComputerStatus {
-  /** `asleep`: the whole host is stopped to save cost; any other call wakes it. */
-  state: 'running' | 'stopped' | 'asleep';
-  workspace: string;
-  network: 'disabled';
-  usageBytes: number | null;
-  quotaBytes: number;
-  idleStopMinutes: number;
-}
-
-export interface CommandReceipt {
-  operationId: string;
-  command: string;
-  cwd: string;
-  background: boolean;
-  status: 'running' | 'started' | 'succeeded' | 'failed' | 'timed_out' | 'interrupted';
-  exitCode: number | null;
-  stdout: string;
-  stderr: string;
-  truncated: boolean;
-  startedAt: string;
-  completedAt: string | null;
-}
-
-export interface DirectoryEntry {
-  name: string;
-  path: string;
-  type: 'file' | 'directory' | 'symlink' | 'other';
-  size: number;
-}
-
-export interface CommandInput {
-  operationId: string;
-  command: string;
-  cwd?: string;
-  timeoutSeconds?: number;
-  background?: boolean;
-}
-
-/** Who is acting in the browser: the agent, or the person it works for. */
-export type BrowserActor = 'agent' | 'owner';
-
-export interface BrowserState {
-  /** `asleep`: the whole host is stopped; nothing is open. */
-  state: 'open' | 'closed' | 'asleep';
-  url: string;
-  title: string;
-  controller: BrowserActor;
-  pendingDownloads: number;
-  lastActiveAt: string | null;
-}
-
-export interface SavedDownload {
-  path: string;
-  bytes: number;
-  mimeType: string;
-}
-
-export interface BrowserResult extends BrowserState {
-  downloads: SavedDownload[];
-  downloadNotes: string[];
-}
-
-export interface PageElement {
-  tag: string;
-  label: string;
-  x: number;
-  y: number;
-  type?: string;
-  role?: string;
-  href?: string;
-  password?: boolean;
-  focused?: boolean;
-}
-
-export interface PageReading {
-  url: string;
-  title: string;
-  text: string;
-  truncated: boolean;
-  elements: PageElement[];
-  downloads: SavedDownload[];
-}
-
-/** The host's input vocabulary (`alia-computer-host/src/browser/input.ts`). */
-export type BrowserInput =
-  | { type: 'click'; x: number; y: number }
-  | { type: 'type'; text: string }
-  | { type: 'key'; key: string }
-  | { type: 'scroll'; deltaY: number; deltaX?: number };
-
-export interface BrowserActionReceipt {
-  action: 'open' | 'navigate' | 'input' | 'control' | 'close' | 'download';
-  by: BrowserActor;
-  origin: string;
-  detail: string;
-  status: 'ok' | 'refused' | 'failed';
-  at: string;
-}
+/**
+ * GemiesOS's answer, or `asleep`: the whole machine is stopped to save cost, and
+ * a call that must not wake it (a status, the live view's poll) says so instead.
+ */
+export type OrAsleep<T extends { state: string }> = Omit<T, 'state'> & {
+  state: T['state'] | 'asleep';
+};
 
 /** What the tools need, so a test can hand them a double instead of a host. */
 export interface ComputerClient {
-  status(actorId: string): Promise<ComputerStatus>;
+  status(actorId: string): Promise<OrAsleep<ComputerStatus>>;
   start(actorId: string): Promise<ComputerStatus>;
   stop(actorId: string): Promise<ComputerStatus>;
-  run(actorId: string, input: CommandInput, signal?: AbortSignal): Promise<CommandReceipt>;
-  list(
-    actorId: string,
-    path: string,
-  ): Promise<{ path: string; entries: DirectoryEntry[]; truncated: boolean }>;
+  run(actorId: string, input: CommandRequest, signal?: AbortSignal): Promise<CommandReceipt>;
+  list(actorId: string, path: string): Promise<DirectoryListing>;
   read(actorId: string, path: string): Promise<{ path: string; text: string }>;
   write(actorId: string, path: string, text: string): Promise<{ path: string; bytes: number }>;
   mkdir(actorId: string, path: string): Promise<{ path: string }>;
@@ -155,20 +72,18 @@ export interface ComputerClient {
   recentCommands(actorId: string, limit: number): Promise<CommandReceipt[]>;
 
   /** Never wakes the host and never starts the browser. */
-  browserStatus(actorId: string): Promise<BrowserState>;
-  browserOpen(actorId: string, url: string | undefined, by: BrowserActor): Promise<BrowserResult>;
-  browserNavigate(actorId: string, url: string, by: BrowserActor): Promise<BrowserResult>;
-  browserRead(actorId: string): Promise<PageReading>;
+  browserStatus(actorId: string): Promise<OrAsleep<BrowserState>>;
+  browserOpen(actorId: string, url: string | undefined, by: ActorRole): Promise<BrowserResult>;
+  browserNavigate(actorId: string, url: string, by: ActorRole): Promise<BrowserResult>;
+  browserRead(actorId: string): Promise<BrowserReading>;
   /** A 1280×800 JPEG. */
   browserScreenshot(actorId: string): Promise<Buffer>;
-  browserInput(actorId: string, input: BrowserInput, by: BrowserActor): Promise<BrowserResult>;
-  browserControl(actorId: string, controller: BrowserActor): Promise<BrowserResult>;
-  browserClose(actorId: string, by: BrowserActor): Promise<BrowserState>;
+  browserInput(actorId: string, input: BrowserInput, by: ActorRole): Promise<BrowserResult>;
+  browserControl(actorId: string, controller: ActorRole): Promise<BrowserResult>;
+  browserClose(actorId: string, by: ActorRole): Promise<BrowserState>;
   /** Recent browser receipts, newest first. Never wakes the host. */
   browserActions(actorId: string, limit: number): Promise<BrowserActionReceipt[]>;
 }
-
-export { ComputerHostError };
 
 export function agentActorId(agentId: string, oxyUserId: string): string {
   return `agent:${agentId}:user:${oxyUserId}`;
@@ -189,7 +104,7 @@ const TOKEN_MARGIN_MS = 60_000;
 const AWAKE_TRUST_MS = 60_000;
 const PROBE_TIMEOUT_MS = 3_000;
 
-const BROWSER_ASLEEP: BrowserState = {
+const BROWSER_ASLEEP: OrAsleep<BrowserState> = {
   state: 'asleep',
   url: '',
   title: '',
@@ -198,7 +113,7 @@ const BROWSER_ASLEEP: BrowserState = {
   lastActiveAt: null,
 };
 
-const ASLEEP: ComputerStatus = {
+const ASLEEP: OrAsleep<ComputerStatus> = {
   state: 'asleep',
   workspace: '/workspace',
   network: 'disabled',
@@ -209,7 +124,7 @@ const ASLEEP: ComputerStatus = {
 
 /** Whether an error means "nobody answered", which is what a stopped host looks like. */
 function unreachable(error: unknown): boolean {
-  if (error instanceof ComputerHostError) return error.code === 'host_stopping';
+  if (error instanceof GemiesOsError) return error.code === 'host_stopping';
   const name = (error as { name?: string } | null)?.name ?? '';
   // fetch's network failure is a TypeError; our own bounded wait is a TimeoutError.
   return name === 'TypeError' || name === 'TimeoutError' || name === 'AbortError';
@@ -335,15 +250,15 @@ export class HttpComputerClient implements ComputerClient {
         error?: { code?: string; message?: string };
       } | null;
       if (!response.ok || !payload || payload.data === undefined) {
-        throw new ComputerHostError(
-          payload?.error?.message ?? `The computer host answered ${response.status}`,
+        throw new GemiesOsError(
+          payload?.error?.message ?? `GemiesOS answered ${response.status}`,
           response.status,
           payload?.error?.code ?? 'host_error',
         );
       }
       return payload.data;
     }
-    throw new ComputerHostError('The computer host refused this service', 401, 'unauthenticated');
+    throw new GemiesOsError('GemiesOS refused this service', 401, 'unauthenticated');
   }
 
   private actor(actorId: string) {
@@ -351,7 +266,7 @@ export class HttpComputerClient implements ComputerClient {
   }
 
   /** Never wakes the host: a sleeping one answers `asleep`. */
-  async status(actorId: string): Promise<ComputerStatus> {
+  async status(actorId: string): Promise<OrAsleep<ComputerStatus>> {
     if (this.waker && Date.now() - this.lastContactAt > AWAKE_TRUST_MS && !(await this.healthy())) {
       const state = await this.waker.state();
       if (state === 'stopped' || state === 'stopping') return ASLEEP;
@@ -374,7 +289,7 @@ export class HttpComputerClient implements ComputerClient {
   }
 
   /** `signal` is the turn's cancellation: it also ends the host's wait for a busy computer. */
-  run(actorId: string, input: CommandInput, signal?: AbortSignal) {
+  run(actorId: string, input: CommandRequest, signal?: AbortSignal) {
     // The host bounds a command by its own timeout; wait a little longer than
     // that so its receipt, not our abort, is what the agent reads.
     const timeoutMs = ((input.background ? 15 : (input.timeoutSeconds ?? 60)) + 30) * 1000;
@@ -389,7 +304,7 @@ export class HttpComputerClient implements ComputerClient {
   }
 
   list(actorId: string, path: string) {
-    return this.call<{ path: string; entries: DirectoryEntry[]; truncated: boolean }>(
+    return this.call<DirectoryListing>(
       'GET',
       `${this.actor(actorId)}/files?path=${encodeURIComponent(path)}`,
     );
@@ -421,10 +336,10 @@ export class HttpComputerClient implements ComputerClient {
   }
 
   browserStatus(actorId: string) {
-    return this.ifAwake<BrowserState>(`${this.actor(actorId)}/browser`, BROWSER_ASLEEP);
+    return this.ifAwake<OrAsleep<BrowserState>>(`${this.actor(actorId)}/browser`, BROWSER_ASLEEP);
   }
 
-  browserOpen(actorId: string, url: string | undefined, by: BrowserActor) {
+  browserOpen(actorId: string, url: string | undefined, by: ActorRole) {
     // Starting the browser stack can take a while on a cold host.
     return this.call<BrowserResult>(
       'POST',
@@ -434,7 +349,7 @@ export class HttpComputerClient implements ComputerClient {
     );
   }
 
-  browserNavigate(actorId: string, url: string, by: BrowserActor) {
+  browserNavigate(actorId: string, url: string, by: ActorRole) {
     return this.call<BrowserResult>(
       'POST',
       `${this.actor(actorId)}/browser/navigate`,
@@ -444,7 +359,12 @@ export class HttpComputerClient implements ComputerClient {
   }
 
   browserRead(actorId: string) {
-    return this.call<PageReading>('GET', `${this.actor(actorId)}/browser/read`, undefined, 75_000);
+    return this.call<BrowserReading>(
+      'GET',
+      `${this.actor(actorId)}/browser/read`,
+      undefined,
+      75_000,
+    );
   }
 
   browserScreenshot(actorId: string) {
@@ -457,7 +377,7 @@ export class HttpComputerClient implements ComputerClient {
     );
   }
 
-  browserInput(actorId: string, input: BrowserInput, by: BrowserActor) {
+  browserInput(actorId: string, input: BrowserInput, by: ActorRole) {
     return this.call<BrowserResult>(
       'POST',
       `${this.actor(actorId)}/browser/input`,
@@ -466,13 +386,13 @@ export class HttpComputerClient implements ComputerClient {
     );
   }
 
-  browserControl(actorId: string, controller: BrowserActor) {
+  browserControl(actorId: string, controller: ActorRole) {
     return this.call<BrowserResult>('POST', `${this.actor(actorId)}/browser/control`, {
       controller,
     });
   }
 
-  browserClose(actorId: string, by: BrowserActor) {
+  browserClose(actorId: string, by: ActorRole) {
     return this.call<BrowserState>('POST', `${this.actor(actorId)}/browser/close`, { by });
   }
 
@@ -489,16 +409,16 @@ let cached: { key: string; client: ComputerClient } | null = null;
 const INSTANCE_ID = /^i-[0-9a-f]{8,17}$/;
 
 /**
- * The configured client, or `null` when this deployment has no computer host.
+ * The configured client, or `null` when this deployment has no GemiesOS.
  *
- * `ALIA_COMPUTER_HOST_INSTANCE_ID` is optional: without it the client cannot
+ * `GEMIES_OS_INSTANCE_ID` is optional: without it the client cannot
  * wake a sleeping host and a call to one fails as unreachable.
  */
 export function getComputerClient(env: NodeJS.ProcessEnv = process.env): ComputerClient | null {
-  const url = env.ALIA_COMPUTER_HOST_URL?.trim();
+  const url = env.GEMIES_OS_URL?.trim();
   if (!url) return null;
   if (!/^https?:\/\/[^\s/]+(?::\d+)?\/?$/.test(url)) return null;
-  const instanceId = env.ALIA_COMPUTER_HOST_INSTANCE_ID?.trim() ?? '';
+  const instanceId = env.GEMIES_OS_INSTANCE_ID?.trim() ?? '';
   const key = `${url} ${instanceId}`;
   if (cached?.key !== key) {
     // The waker probes health through the client it wakes for; the closure

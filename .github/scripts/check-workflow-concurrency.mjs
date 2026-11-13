@@ -60,7 +60,7 @@ const EXPECTED = {
   'production-dictation-canary.yml': 'serialised',
   // One instance restarted over SSM: two overlapping restarts could leave the
   // unit on the older digest pair.
-  'deploy-computer-host.yml': 'serialised',
+  'deploy-gemies-os.yml': 'serialised',
   'refresh-build-cache.yml': 'serialised',
   // One npm release at a time: two dispatches of the same version would both
   // pass the registry preflight and race to publish.

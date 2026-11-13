@@ -247,3 +247,24 @@ gemie**. Step 1 had left her without one on purpose, so as not to change behavio
   worklets. The wire does not change in this step: routes, events, `alia_*` fields and the
   `x-alia-*` internal headers keep their spelling until the vocabulary phase.
 - **Not done here:** the PR per consuming repository, and `api.alia.onl`'s removal (phase 8).
+
+### Phase 4, step 1: GemiesOS (2026-11-13)
+
+**The owner's decision:** the gemies' computer host is **GemiesOS**, not "the Alia computer host".
+
+- **Code.** `packages/alia-computer-host` (`@alia/computer-host`) is `packages/gemies-os`
+  (`@gemies/os`); its two images are the `host` and `workspace` targets of one Dockerfile, released
+  by `deploy-gemies-os.yml` to `oxy/gemies-os` and `oxy/gemies-os-workspace`. Its configuration is
+  `GEMIES_OS_*` (the host) and `GEMIES_OS_URL` / `GEMIES_OS_INSTANCE_ID` (the API); the Docker
+  objects it manages are `gemies-os-*` with `ai.gemies.os.*` labels.
+- **One wire contract.** The request schemas and response types the API and GemiesOS used to write
+  twice (the browser's key list and input vocabulary, command, status, receipt and page shapes)
+  live once in `packages/gemies-os-protocol` (`@gemies/os-protocol`). The routes and their bodies
+  did not change, so the renamed API spoke to the old host during the cut-over.
+- **Infrastructure** (oxy-infra runbook 47): instance, role, security group, log group, SSM prefix
+  `/oxy/gemies-os`, ECR repositories and database `gemies_os` renamed by creating the new ones
+  beside the old, moving the instance and its workspace volume onto them while it slept, and then
+  deleting the old. Every workspace and browser profile was carried over.
+- **Not renamed here:** the Cloud Map name `computer.alia.internal.oxy.so` and the Alia task role,
+  which move with the API's own rename (the namespace and the ECS service).
+

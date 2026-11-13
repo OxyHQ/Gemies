@@ -71,7 +71,7 @@ export interface CapabilityFamily {
  * granted a sandbox container production never had, so they could be turned
  * on and never do anything. The API drops them on read and on write.
  * `computer` is their successor under a new name, and it is last because it
- * runs code: its tools exist only where a computer host is configured.
+ * runs code: its tools exist only where GemiesOS is configured.
  *
  * `mcp` keeps the Material Symbol the two lists this replaces already carried.
  *

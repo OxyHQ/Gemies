@@ -168,7 +168,7 @@ jobs:
     outputs:
       api: ${{ steps.filter.outputs.api }}
       integrations: ${{ steps.filter.outputs.integrations }}
-      computer_host: ${{ steps.filter.outputs.computer_host }}
+      gemies_os: ${{ steps.filter.outputs.gemies_os }}
       deploy_scripts: ${{ steps.filter.outputs.deploy_scripts }}
     steps:
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -183,14 +183,16 @@ jobs:
             api:
               - *shared
               - 'packages/api/**'
+              - 'packages/gemies-os-protocol/**'
               - '.github/scripts/smoke-api-image.sh'
             integrations:
               - *shared
               - 'packages/integrations/**'
-            computer_host:
+            gemies_os:
               - *shared
-              - 'packages/alia-computer-host/**'
-              - '.github/scripts/smoke-computer-host-image.sh'
+              - 'packages/gemies-os/**'
+              - 'packages/gemies-os-protocol/**'
+              - '.github/scripts/smoke-gemies-os-image.sh'
             deploy_scripts:
               - *shared
               - '.github/**'
@@ -477,12 +479,12 @@ jobs:
       - name: Assert the Expo generator did not rewrite tsconfig
         run: git diff --exit-code packages/app/tsconfig.json
 
-      # The agents' computer host runs model-authored commands. Its isolation
+      # GemiesOS runs model-authored commands. Its isolation
       # check, path gates (TypeScript and files.py), receipts and leases have a
       # suite; Docker is faked, files.py runs under the runner's python3. The
       # typecheck is picked up by `typecheck-workspaces.ts`.
-      - name: Test computer host
-        run: bun run --filter @alia/computer-host test
+      - name: Test GemiesOS
+        run: bun run --filter @gemies/os test
 
       # `@alia/app` has had a `test` script and, until now, no job calling it —
       # a suite that cannot fail. The effort selector is
@@ -652,30 +654,32 @@ jobs:
           REDIS_URL: redis://127.0.0.1:6382
         run: bash .github/scripts/smoke-api-image.sh
 
-  # The computer host's control API image, under the hardening its systemd unit
-  # applies (read-only root, no capabilities, 512 MB), on arm64 like the host:
-  # Bun as PID 1, a refused boot exiting non-zero, /health and the ops drain,
-  # and exit 0 on the unit's SIGTERM. The workspace image is not built here: it
-  # stays on Node and nothing in this change touches it.
-  computer-host-image:
-    name: Computer host image (Bun runtime)
+  # Both GemiesOS images, on arm64 like the host. The control API (`host`)
+  # under the hardening its systemd unit applies (read-only root, no
+  # capabilities, 512 MB): Bun as PID 1, a refused boot exiting non-zero,
+  # /health and the ops drain, and exit 0 on the unit's SIGTERM. The workspace
+  # image (`workspace`): the bundled browser worker and egress proxy load under
+  # its Node, beside playwright-core and files.py. The deploy builds exactly
+  # these two targets, so this is where a broken image is found first.
+  gemies-os-image:
+    name: GemiesOS images
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     needs: [lint-and-test, changes]
     if: >-
       !cancelled() && needs.lint-and-test.result == 'success' &&
-      (github.event_name != 'pull_request' || needs.changes.outputs.computer_host == 'true')
+      (github.event_name != 'pull_request' || needs.changes.outputs.gemies_os == 'true')
     services:
       postgres:
         image: postgres:17-alpine
         env:
           POSTGRES_USER: alia
           POSTGRES_PASSWORD: alia
-          POSTGRES_DB: alia_computer
+          POSTGRES_DB: gemies_os
         ports:
           - 5442:5432
         options: >-
-          --health-cmd "pg_isready -U alia -d alia_computer"
+          --health-cmd "pg_isready -U alia -d gemies_os"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -692,18 +696,21 @@ jobs:
       - name: Expose the Actions cache to buildx
         uses: crazy-max/ghaction-github-runtime@v4
 
-      - name: Build the computer-host image
+      - name: Build the GemiesOS images
         run: |
-          docker buildx build \
-            --cache-from type=gha,scope=alia \
-            --load \
-            -f packages/alia-computer-host/Dockerfile -t alia-computer-host:ci .
+          for target in host workspace; do
+            docker buildx build \
+              --cache-from type=gha,scope=alia \
+              --load \
+              -f packages/gemies-os/Dockerfile --target "$target" -t "gemies-os-$target:ci" .
+          done
 
-      - name: Smoke the computer-host image under its Bun runtime
+      - name: Smoke the GemiesOS images
         env:
-          IMAGE: alia-computer-host:ci
-          DATABASE_URL: postgres://alia:alia@127.0.0.1:5442/alia_computer
-        run: bash .github/scripts/smoke-computer-host-image.sh
+          HOST_IMAGE: gemies-os-host:ci
+          WORKSPACE_IMAGE: gemies-os-workspace:ci
+          DATABASE_URL: postgres://alia:alia@127.0.0.1:5442/gemies_os
+        run: bash .github/scripts/smoke-gemies-os-image.sh
 
   integrations-postgres:
     name: Integrations (Postgres)

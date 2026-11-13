@@ -154,7 +154,7 @@ function main(): void {
   // Exact counts. Each list may only change in a diff that also changes the
   // number beside it, which is the review this gate exists to force.
   const counts: readonly [string, number, number][] = [
-    ['workspaces', workspaces.length, 6],
+    ['workspaces', workspaces.length, 7],
     ['CHECKED_ELSEWHERE', Object.keys(CHECKED_ELSEWHERE).length, 4],
     ['EXCLUDED', Object.keys(EXCLUDED).length, 0],
     ['NO_TYPECHECK', Object.keys(NO_TYPECHECK).length, 0],
@@ -176,9 +176,9 @@ function main(): void {
 
   // The vacuity floor. An empty checked set satisfies "no package failed", and a
   // filter bug, a renamed workspace or an over-grown exclusion list all produce
-  // exactly that. Two today (`@alia/computer-host`, `@alia/integrations`);
-  // it was four before two packages moved to their own repository.
-  if (checked.length < 2) {
+  // exactly that. Three today (`@gemies/os`, `@gemies/os-protocol`,
+  // `@alia/integrations`).
+  if (checked.length < 3) {
     console.error(`Only ${checked.length} workspace(s) would be checked; the gate has eroded.`);
     process.exit(1);
   }

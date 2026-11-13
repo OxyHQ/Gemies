@@ -1,14 +1,16 @@
 /**
- * A computer host in a box: every `ComputerClient` method as a spy with a
+ * GemiesOS in a box: every `ComputerClient` method as a spy with a
  * plausible answer, for the tool and route suites.
  */
 import { vi } from 'vitest';
-import type {
-  BrowserResult,
-  BrowserState,
-  CommandReceipt,
-  ComputerClient,
-} from '../computer-client.js';
+import {
+  WORKSPACE,
+  type BrowserResult,
+  type BrowserState,
+  type CommandReceipt,
+  type ComputerStatus,
+} from '@gemies/os-protocol';
+import type { ComputerClient } from '../computer-client.js';
 
 export const receipt = (over: Partial<CommandReceipt> = {}): CommandReceipt => ({
   operationId: 'x',
@@ -43,10 +45,10 @@ export const browserResult = (over: Partial<BrowserResult> = {}): BrowserResult 
 });
 
 export function clientDouble(over: Partial<ComputerClient> = {}): ComputerClient {
-  const running = {
-    state: 'running' as const,
-    workspace: '/workspace',
-    network: 'disabled' as const,
+  const running: ComputerStatus = {
+    state: 'running',
+    workspace: WORKSPACE,
+    network: 'disabled',
     usageBytes: 0,
     quotaBytes: 1,
     idleStopMinutes: 10,

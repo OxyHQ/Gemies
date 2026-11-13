@@ -12,7 +12,8 @@
     "packages/sdk",
     "packages/server",
     "packages/integrations",
-    "packages/alia-computer-host"
+    "packages/gemies-os",
+    "packages/gemies-os-protocol"
   ],
   "packageManager": "bun@1.4.3",
   "scripts": {

@@ -125,7 +125,7 @@ flowchart LR
   end
   G & A & O & C --> API[Gemies API<br/>api.gemies.ai]
   API --> I[Integrations<br/>WhatsApp, Telegram, MCP]
-  API --> H[Computer host]
+  API --> H[GemiesOS]
   API --> DB[(PostgreSQL)]
   API --> Oxy[Oxy<br/>identity, billing]
   Oxy --> K[Kaana<br/>inference]
@@ -149,7 +149,8 @@ flowchart LR
 |---|---|---|
 | [`packages/api`](packages/api/) | `@alia/api` | The API: Express, drizzle and PostgreSQL |
 | [`packages/integrations`](packages/integrations/) | `@alia/integrations` | Messaging channels and MCP connectors |
-| [`packages/alia-computer-host`](packages/alia-computer-host/) | — | The gemies' computers |
+| [`packages/gemies-os`](packages/gemies-os/) | `@gemies/os` | GemiesOS: the gemies' computers and their browser |
+| [`packages/gemies-os-protocol`](packages/gemies-os-protocol/) | `@gemies/os-protocol` | GemiesOS's wire contract, shared with the API |
 | [`packages/app`](packages/app/) | `@alia/app` | The Gemies app: Expo for web, iOS and Android |
 | [`packages/sdk`](packages/sdk/) | `@gemies/sdk` | Gemies in any React Native or Expo app |
 | [`packages/server`](packages/server/) | `@gemies/server` | The server-side client |
