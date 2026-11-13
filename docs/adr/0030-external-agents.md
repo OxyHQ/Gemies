@@ -2,7 +2,9 @@
 
 Status: Accepted (2026-11-10, the owner's decision: a person pastes a short text into Claude Code,
 Codex or OpenCode and the agent shows up in Alia's sidebar, answering with the person's own
-subscription, and other agents of Alia can talk to it the way they talk to each other).
+subscription, and other agents of Alia can talk to it the way they talk to each other). The Oxy
+`bot` account of §3 is superseded by [ADR 0036](./0036-external-agents-have-no-oxy-account.md): an
+external agent has none.
 Date: 2026-11-10.
 
 ## Context

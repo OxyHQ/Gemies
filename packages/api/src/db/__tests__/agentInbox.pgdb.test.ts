@@ -55,7 +55,7 @@ async function agent(
   } = {},
 ) {
   const created = await createAgent(db, {
-    oxyAccountId: `inbox-bot-${unique()}`,
+    identity: { source: 'oxy', oxyAccountId: `inbox-bot-${unique()}` },
     ownerOxyAccountId: OWNER,
     character: TEST_CHARACTER,
     tagline: 't',

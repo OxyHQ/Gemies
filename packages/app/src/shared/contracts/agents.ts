@@ -39,17 +39,28 @@ export interface ArchetypeConfig {
 }
 
 /**
+ * Where a gemie's identity lives (Gemies ADR 0036): the Oxy `bot` account it IS, or its own row —
+ * a gemie with no Oxy account, which an external agent (a CLI paired from its owner's computer)
+ * is. A `local` gemie has no handle, is addressed by its id, and is its owner's alone: it is never
+ * listed or shared, and has no connected accounts, inbox or background work.
+ */
+export type AgentIdentitySource =
+  | { source: 'oxy'; oxyAccountId: string }
+  | { source: 'local'; name: string; color: string };
+
+/**
  * An agent, as the API serves it.
  *
- * An agent IS an Oxy `bot` account: `oxyAccountId` is the seam, and `name`,
- * `handle` and `color` are READ from that account rather than stored by Alia.
+ * An `oxy` gemie IS an Oxy `bot` account (`identity.oxyAccountId`), and `name`,
+ * `handle` and `color` are READ from that account rather than stored by Gemies.
  * They are nullable because the API resolves them through a batched Oxy lookup
  * that FAILS OPEN — an account it cannot resolve leaves the three null and the
  * listing still renders, because the tagline, the rating and the price are
- * Alia's own.
+ * Gemies' own. A `local` gemie's name and colour are its row's, and it has no
+ * handle.
  *
- * They are also READ-ONLY. `AgentUpdate` cannot carry them and `PATCH /agents`
- * refuses them outright: editing an agent's name is `updateAccount` at Oxy.
+ * The editor writes them where they live: an `oxy` gemie's at Oxy
+ * (`accounts.update`), a `local` gemie's through `PATCH /agents/:id`.
  *
  * What an agent LOOKS like is its `character` (a Bloom avatar character chosen in the agent editor:
  * its shape and features) painted in its `color`, the account's: the character carries no colour
@@ -58,14 +69,14 @@ export interface ArchetypeConfig {
  */
 export interface Agent {
   _id: string;
-  /** The Oxy `bot` account this agent IS. */
-  oxyAccountId: string;
+  /** Where its name and colour live: its Oxy account, or its own row. */
+  identity: AgentIdentitySource;
   /**
    * What the agent looks like apart from its colour, as the server stores it: JSON, parsed and
    * painted in `color` where it is drawn (`readAgentCharacter`). Never absent: every agent has one.
    */
   character: unknown;
-  /** The bot's parent in Oxy's account graph; null until a legacy row is reconciled. */
+  /** Its owner: the bot's parent in Oxy's account graph, or who made a `local` gemie. */
   ownerOxyAccountId: string | null;
   name: string | null;
   handle: string | null;
@@ -197,10 +208,11 @@ export type AgentFeatureGates = Partial<Record<GatedFeature, AgentFeatureGate>>;
  * and `knowledge` are sent as bare id arrays — the API resolves them to full
  * objects on the way back.
  *
- * The identity fields are OMITTED, not optional. `PATCH /agents/:id` validates
- * with a strict schema and answers 400 for any of them, so a screen that could
- * still put `name` in this object would compile and fail at runtime — the exact
- * shape a type is for.
+ * `name` and `color` are who the gemie is, and only a gemie with no Oxy account
+ * keeps them on its row: an `oxy` gemie's are its account's, written at Oxy by
+ * the editor (`PATCH /agents/:id` answers 400 for its colour). The handle, the
+ * account and the owner are OMITTED, not optional: the strict schema answers
+ * 400 for them.
  */
 export type AgentUpdate = Partial<
   Omit<
@@ -209,14 +221,17 @@ export type AgentUpdate = Partial<
     | 'knowledge'
     | 'name'
     | 'handle'
+    | 'color'
     | 'avatar'
-    | 'oxyAccountId'
+    | 'identity'
     | 'ownerOxyAccountId'
     | '_id'
   >
 > & {
   skills?: string[];
   knowledge?: string[];
+  name?: string;
+  color?: string;
 };
 
 /**
@@ -226,7 +241,10 @@ export type AgentUpdate = Partial<
  * .createAccount({ kind: 'bot', … })` — because Oxy owns the account and only
  * the person's own credential may create one under their tree.
  */
-export type AgentCreate = Pick<Agent, 'oxyAccountId' | 'tagline' | 'description' | 'category'> &
+export type AgentCreate = { oxyAccountId: string } & Pick<
+  Agent,
+  'tagline' | 'description' | 'category'
+> &
   Partial<
     Pick<
       Agent,

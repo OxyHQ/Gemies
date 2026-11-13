@@ -285,7 +285,8 @@ describe('deleting the conversation', () => {
   });
 
   it('is not offered on an agent’s thread: it is a view over several conversations', () => {
-    expect(mount({ threadHandle: 'pepe' }).onDelete).toBeUndefined();
+    expect(mount({ thread: { handle: 'pepe' } }).onDelete).toBeUndefined();
+    expect(mount({ thread: { gemieId: 'g1' } }).onDelete).toBeUndefined();
   });
 });
 

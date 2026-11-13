@@ -72,6 +72,7 @@ import { deliverAgentWorkResult } from '../work-delivery';
 import * as outreach from '../agent-outreach';
 import { sendNotification } from '../../notification-service';
 import { addAgentFollowUp } from '../../../db/agents/agentWorkRepository';
+import { runtimeGemieAccountId } from '../../gemie-oxy-actor.js';
 
 let db: ApiDatabase;
 beforeAll(() => {
@@ -91,7 +92,7 @@ async function seed() {
     .where(eq(userCredits.id, owner));
   const agent = await createAgent(db, {
     character: TEST_CHARACTER,
-    oxyAccountId: randomUUID(),
+    identity: { source: 'oxy', oxyAccountId: randomUUID() },
     ownerOxyAccountId: owner,
     authorOxyUserId: owner,
     tagline: 'test',
@@ -152,7 +153,7 @@ it('concurrent chat scheduling binds one authority and queues only the unused pr
   const now = new Date();
   const input = {
     agentId: agent.id,
-    agentAccountId: agent.oxyAccountId,
+    agentAccountId: runtimeGemieAccountId(agent),
     ownerAccountId: owner,
     sourceSessionId: source.id,
     requesterToken: 'live-requester',
@@ -258,7 +259,7 @@ async function scheduledChat() {
     expect.objectContaining({
       accessToken: 'live-requester-token',
       effectiveAccountId: owner,
-      actorAccountId: agent.oxyAccountId,
+      actorAccountId: runtimeGemieAccountId(agent),
       origin: { kind: 'goal', id: turn.id },
     }),
   );
@@ -370,7 +371,7 @@ it('refuses a scheduling call for a different requester before minting authority
   expect(
     await scheduleChatFollowUp({
       agentId: agent.id,
-      agentAccountId: agent.oxyAccountId,
+      agentAccountId: runtimeGemieAccountId(agent),
       ownerAccountId: randomUUID(),
       sourceSessionId: work.sourceSessionId!,
       requesterToken: 'other-requester',

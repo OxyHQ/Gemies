@@ -1,8 +1,8 @@
 /**
- * `/agents/external/*` — pairing a person's coding-agent CLI with Alia (ADR 0030). The rules under
- * test: a code is minted for the caller and only the caller can redeem it, redeeming creates ONE
- * private unlisted agent plus its link, an unusable code creates nothing, and revoking cuts the
- * daemon off.
+ * `/agents/external/*` — pairing a person's coding-agent CLI with Gemies (ADR 0030, ADR 0036). The
+ * rules under test: a code is minted for the caller and only the caller can redeem it, redeeming
+ * creates ONE private unlisted gemie with no Oxy account plus its link, an unusable code creates
+ * nothing, and revoking cuts the daemon off.
  */
 import type { Server } from 'node:http';
 import express from 'express';
@@ -16,7 +16,6 @@ const state = vi.hoisted(() => ({
   redeemPairing: vi.fn(),
   createAgent: vi.fn(),
   deleteAgent: vi.fn(),
-  createBot: vi.fn(),
   createLink: vi.fn(),
   revoke: vi.fn(),
   disconnect: vi.fn(),
@@ -42,11 +41,6 @@ vi.mock('../../../db/agents/externalAgentRepository.js', () => ({
     { agentId: 'a1', cli: 'codex', hostName: 'laptop', createdAt: 'x', lastConnectedAt: null },
     { agentId: 'a2', cli: 'claude', hostName: 'desk', createdAt: 'y', lastConnectedAt: null },
   ]),
-}));
-vi.mock('../../../lib/agent-account.js', () => ({ createAgentBotAccount: state.createBot }));
-vi.mock('../../../lib/agent-identity.js', () => ({
-  suggestAgentUsername: () => 'codex',
-  fallbackAgentUsername: () => 'agent',
 }));
 vi.mock('../../../lib/external-agents/relay.js', () => ({
   isExternalAgentReachable: async (id: string) => state.online.has(id),
@@ -77,7 +71,6 @@ beforeEach(() => {
   state.userId = 'owner-1';
   state.online.clear();
   state.redeemPairing.mockResolvedValue(true);
-  state.createBot.mockResolvedValue({ oxyAccountId: 'bot-1', username: 'codexbot' });
   state.createAgent.mockResolvedValue({ _id: 'agent-1' });
   state.revoke.mockResolvedValue(true);
   state.deleteAgent.mockResolvedValue(1);
@@ -120,18 +113,24 @@ describe('POST /agents/external/pair', () => {
 describe('POST /agents/external/redeem', () => {
   const valid = { code: 'ABCD-EFGH-JKMN', cli: 'codex', hostName: 'laptop' };
 
-  it('creates a private, unlisted agent and its link for the redeeming account', async () => {
+  it('creates a private, unlisted gemie with no Oxy account, and its link, for the redeeming account', async () => {
     const response = await post('/redeem', valid);
     expect(response.status).toBe(201);
-    expect(await response.json()).toMatchObject({ agentId: 'agent-1', cli: 'codex' });
+    expect(await response.json()).toEqual({
+      agentId: 'agent-1',
+      name: 'Codex · laptop',
+      cli: 'codex',
+    });
     const redeem = state.redeemPairing.mock.calls[0][1] as { ownerOxyUserId: string };
     expect(redeem.ownerOxyUserId).toBe('owner-1');
     const agent = state.createAgent.mock.calls[0][1] as Record<string, unknown>;
     expect(agent).toMatchObject({
+      identity: { source: 'local', name: 'Codex · laptop', color: 'graphite' },
       isPublished: false,
       access: 'private',
       ownerOxyAccountId: 'owner-1',
     });
+    expect(JSON.stringify(agent)).not.toContain('oxyAccountId');
     expect(state.createLink).toHaveBeenCalledWith(
       {},
       { agentId: 'agent-1', ownerOxyUserId: 'owner-1', cli: 'codex', hostName: 'laptop' },
@@ -143,7 +142,6 @@ describe('POST /agents/external/redeem', () => {
     const response = await post('/redeem', valid);
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: 'invalid_or_expired_code' });
-    expect(state.createBot).not.toHaveBeenCalled();
     expect(state.createAgent).not.toHaveBeenCalled();
     expect(state.createLink).not.toHaveBeenCalled();
   });
@@ -161,9 +159,9 @@ describe('POST /agents/external/redeem', () => {
   });
 
   it('reports a pairing failure after the code was consumed', async () => {
-    state.createBot.mockRejectedValue(new Error('oxy down'));
+    state.createAgent.mockRejectedValue(new Error('database down'));
     const response = await post('/redeem', valid);
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(500);
     expect(state.createLink).not.toHaveBeenCalled();
   });
 });

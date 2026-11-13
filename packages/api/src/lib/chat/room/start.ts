@@ -24,6 +24,7 @@ import { enqueueRoomJob } from './queue.js';
 import type { RoomMember } from './policy.js';
 import type { GroupInputMessage } from './transcript.js';
 import { ROOM_GEMIE_ID } from '../../../domain/alia-gemie.js';
+import { gemieOxyAccountId } from '../../gemie-oxy-actor.js';
 
 type SaveParams = Parameters<typeof saveConversation>[0];
 
@@ -87,7 +88,9 @@ export const prepareRoom: PrepareRoom = async (input) => {
         members.push({ info, available: false });
         continue;
       }
-      accountOf.set(agentId, found.oxyAccountId);
+      // A member with no Oxy account (ADR 0036) acts as nobody there: it talks, with no Oxy task.
+      const actorAccountId = gemieOxyAccountId(found);
+      if (actorAccountId !== null) accountOf.set(agentId, actorAccountId);
       members.push({ info, available: true, description: found.description });
     } catch (error: unknown) {
       log.general.error({ err: error, agentId }, 'Could not check a group member');

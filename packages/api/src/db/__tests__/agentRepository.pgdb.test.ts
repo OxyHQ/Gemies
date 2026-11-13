@@ -10,7 +10,6 @@ import {
   AgentChildWriteOutsideTransactionError,
   createAgent,
   deleteAgent,
-  findAgentOxyAccountId,
   evolveAgentSoul,
   findAgentById,
   findAgentKnowledge,
@@ -52,7 +51,7 @@ const botAccount = () => `oxy-bot-${Math.random().toString(36).slice(2, 10)}`;
 
 function newAgentInput(overrides: Record<string, unknown> = {}) {
   return {
-    oxyAccountId: botAccount(),
+    identity: { source: 'oxy' as const, oxyAccountId: botAccount() },
     ownerOxyAccountId: OWNER,
     character: TEST_CHARACTER,
     tagline: 'finds things out',
@@ -152,13 +151,6 @@ describe('capability grants round-trip, and an unmentioned agent is granted NOTH
  * is what it is for, and that it no longer gates a write is exactly the point.
  */
 describe('what a permission gate starts from', () => {
-  it('findAgentOxyAccountId answers the account, never the row', async () => {
-    const oxyAccountId = botAccount();
-    const created = await createAgent(db, newAgentInput({ oxyAccountId }));
-    expect(await findAgentOxyAccountId(db, created._id)).toBe(oxyAccountId);
-    expect(await findAgentOxyAccountId(db, 'no-such-agent')).toBeNull();
-  });
-
   it('a patch and a delete no longer carry an owner predicate', async () => {
     const created = await createAgent(db, newAgentInput({ tagline: 'Before' }));
 

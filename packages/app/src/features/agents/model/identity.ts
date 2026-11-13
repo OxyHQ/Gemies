@@ -1,5 +1,5 @@
 /**
- * Rendering an agent whose identity lives in Oxy.
+ * Rendering an agent, whose identity lives in Oxy or (a gemie with no Oxy account) on its own row.
  *
  * `Agent.name`, `.handle` and `.color` are nullable because the API resolves
  * them through a batched Oxy lookup that FAILS OPEN: an account it cannot
@@ -41,4 +41,14 @@ export function agentIdentityMatches(agent: AgentIdentityFields, query: string):
     agentDisplayName(agent).toLowerCase().includes(lowered) ||
     agentHandle(agent).toLowerCase().includes(lowered)
   );
+}
+
+/**
+ * Whether the gemie has an Oxy account of its own (Gemies ADR 0036). One with none — an external
+ * agent, a CLI paired from its owner's computer — has a name and a colour but no handle, no page,
+ * no connected accounts, inbox or background work, and is its owner's alone: a screen offers it
+ * none of those, and never shares or publishes it.
+ */
+export function hasOxyAccount(agent: Pick<Agent, 'identity'>): boolean {
+  return agent.identity.source === 'oxy';
 }

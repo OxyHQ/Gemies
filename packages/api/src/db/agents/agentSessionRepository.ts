@@ -52,6 +52,12 @@ import {
   type AgentSessionPlanItem,
 } from '../schema/agent-sessions';
 import { agents } from '../schema/agents';
+import {
+  agentIdentityColumns,
+  readStoredIdentity,
+  type AgentIdentityColumns,
+} from './storedIdentity';
+import type { StoredAgentIdentity } from '../../domain/agent';
 import { fundingSourceOf, type CreditFundingSource } from '../../domain/credit-funding';
 import type { AgentSessionStatus } from '../../domain/agent-session';
 
@@ -132,13 +138,13 @@ export interface AgentSessionRecord {
 /**
  * The agent an `agentId` object stands for, before identity is attached.
  *
- * `oxyAccountId` is what a caller feeds to `attachAgentIdentities`; nothing
+ * `identity` is what a caller feeds to `attachAgentIdentities`; nothing
  * renderable is here, deliberately, so a route that forgets to hydrate produces
  * an obviously empty card rather than a plausible wrong one.
  */
 export interface AgentSessionAgentRef {
   _id: string;
-  oxyAccountId: string;
+  identity: StoredAgentIdentity;
   /** What the agent looks like, so a task card draws it as the editor shows it. */
   character: AvatarCharacter;
 }
@@ -316,9 +322,15 @@ export async function accountHasSessionWithAgent(
 
 const AGENT_REF = {
   _id: agents.id,
-  oxyAccountId: agents.oxyAccountId,
   character: agents.character,
+  ...agentIdentityColumns,
 } as const;
+
+type AgentRefRow = AgentIdentityColumns & { _id: string; character: AvatarCharacter };
+
+function toAgentRef(row: AgentRefRow): AgentSessionAgentRef {
+  return { _id: row._id, identity: readStoredIdentity(row), character: row.character };
+}
 
 const LISTING_COLUMNS = {
   _id: agentSessions.id,
@@ -353,7 +365,7 @@ function toListing(row: {
   statsCompletedAt: Date | null;
   statsLastActivityAt: Date | null;
   createdAt: Date;
-  agent: AgentSessionAgentRef | null;
+  agent: AgentRefRow | null;
 }): AgentSessionListing {
   return {
     _id: row._id,
@@ -364,7 +376,7 @@ function toListing(row: {
      * rather than each of its members, so there is no partial-object case to
      * reject — and `TaskSession.agentId` is already typed to accept it.
      */
-    agentId: row.agent,
+    agentId: row.agent === null ? null : toAgentRef(row.agent),
     automationRunId: row.automationRunId,
     status: row.status as AgentSessionStatus,
     task: row.task,
@@ -506,7 +518,7 @@ export async function listChildAgentSessions(
       : [
           {
             parentSessionId: row.parentSessionId,
-            agent: row.agent,
+            agent: toAgentRef(row.agent),
           },
         ],
   );

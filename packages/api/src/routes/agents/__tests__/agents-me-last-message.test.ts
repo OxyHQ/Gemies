@@ -54,7 +54,7 @@ vi.mock('../../../db/agents/agentRepository.js', () => ({
       ...AGENT_SHAPE,
       _id: agent._id,
       id: agent._id,
-      oxyAccountId: `acct-${agent._id}`,
+      identity: { source: 'oxy', oxyAccountId: `acct-${agent._id}` },
     })),
   ),
   findAgentById: vi.fn(),

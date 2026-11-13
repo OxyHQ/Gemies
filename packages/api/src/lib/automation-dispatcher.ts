@@ -45,6 +45,7 @@ import {
   type WatchConfig,
   type WatchObservation,
 } from './alia-watch.js';
+import { runtimeGemieAccountId } from './gemie-oxy-actor.js';
 import { log } from './logger.js';
 import { getOrCreateUserCredits } from './user-credits-helpers.js';
 
@@ -219,7 +220,7 @@ export async function dispatchStructuredAutomation(
       {
         stage: 0,
         agentId: agent.id,
-        actorAccountId: agent.oxyAccountId,
+        actorAccountId: runtimeGemieAccountId(agent),
         actions: [],
       },
     ];
@@ -230,7 +231,7 @@ export async function dispatchStructuredAutomation(
       {
         stage: 0,
         selectedAgentId: agent.id,
-        selectedActorAccountId: agent.oxyAccountId,
+        selectedActorAccountId: runtimeGemieAccountId(agent),
         resource,
         taskInput: taskInputs[0] ?? {},
         actions: [],

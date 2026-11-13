@@ -25,7 +25,7 @@ async function seed() {
   const owner = randomUUID();
   const agent = await createAgent(db, {
     character: TEST_CHARACTER,
-    oxyAccountId: randomUUID(),
+    identity: { source: 'oxy', oxyAccountId: randomUUID() },
     ownerOxyAccountId: owner,
     authorOxyUserId: owner,
     tagline: 'test',

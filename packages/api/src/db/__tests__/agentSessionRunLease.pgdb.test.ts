@@ -41,7 +41,7 @@ afterAll(async () => {
 async function seedSession(overrides: Record<string, unknown> = {}) {
   const agent = await createAgent(db, {
     character: TEST_CHARACTER,
-    oxyAccountId: `oxy-bot-lease-${suffix()}`,
+    identity: { source: 'oxy', oxyAccountId: `oxy-bot-lease-${suffix()}` },
     ownerOxyAccountId: OWNER,
     tagline: 't',
     description: 'd',

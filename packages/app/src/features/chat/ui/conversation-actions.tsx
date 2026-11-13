@@ -1,6 +1,10 @@
 import { ALIA_GEMIE_ID, buildConversationMarkdown, exportFilename } from '@gemies/sdk/model';
 import type { GemieChatState } from '@gemies/sdk';
-import { useDeleteConversation, useShareConversation } from '@gemies/sdk/runtime';
+import {
+  type GemieThreadAddress,
+  useDeleteConversation,
+  useShareConversation,
+} from '@gemies/sdk/runtime';
 import { confirm } from '@oxy.so/bloom/surfaces';
 import { toast } from '@oxy.so/bloom/toast';
 import { useQueryClient } from '@tanstack/react-query';
@@ -20,8 +24,8 @@ interface ConversationActionsProps {
   agentName?: string;
   /** The agent this chat belongs to, when it does. */
   agentId?: string;
-  /** The handle whose thread this is, when it is one. */
-  threadHandle?: string;
+  /** The thread this is, when it is one: by the gemie's handle, or its id. */
+  thread?: GemieThreadAddress;
   /** Whether the conversation can be shared: a temporary (ghost) chat is never stored, so it cannot. */
   shareable?: boolean;
 }
@@ -39,7 +43,7 @@ export function ConversationActions({
   chat,
   agentName,
   agentId,
-  threadHandle,
+  thread,
   shareable = true,
 }: ConversationActionsProps) {
   const { t } = useTranslation();
@@ -185,7 +189,7 @@ export function ConversationActions({
       onExport={stored ? handleExport : undefined}
       onClear={stored ? clearMessages : undefined}
       onOpenTerminal={terminalAgentId === undefined ? undefined : handleOpenTerminal}
-      onDelete={stored && threadHandle === undefined ? handleDelete : undefined}
+      onDelete={stored && thread === undefined ? handleDelete : undefined}
     />
   );
 }

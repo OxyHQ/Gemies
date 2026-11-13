@@ -32,7 +32,7 @@ function baseGemie(): HydratedAgent {
   return {
     _id: 'gemie-1',
     id: 'gemie-1',
-    oxyAccountId: 'bot-account-1',
+    identity: { source: 'oxy', oxyAccountId: 'bot-account-1' },
     ownerOxyAccountId: 'owner-1',
     character: { preset: 'blue_beret' },
     tagline: 'A gemie',
@@ -81,7 +81,7 @@ export function aliaGemie(): HydratedAgent {
     ...baseGemie(),
     _id: ALIA_GEMIE_ID,
     id: ALIA_GEMIE_ID,
-    oxyAccountId: ALIA_PENDING_OXY_ACCOUNT_ID,
+    identity: { source: 'oxy', oxyAccountId: ALIA_PENDING_OXY_ACCOUNT_ID },
     ownerOxyAccountId: null,
     author: ALIA_PENDING_OXY_ACCOUNT_ID,
     character: { preset: 'blue_beret', accessory: 'none', color: 'orchid' },

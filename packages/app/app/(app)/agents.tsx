@@ -53,8 +53,7 @@ export default function AgentsScreen() {
   const handleChat = useCallback(
     (agentId: string) => {
       const agent = agents.find((entry) => entry._id === agentId);
-      const route = agent === undefined ? null : agentChatRoute(agent);
-      if (route !== null) router.push(route);
+      if (agent !== undefined) router.push(agentChatRoute(agent));
     },
     [agents, router],
   );

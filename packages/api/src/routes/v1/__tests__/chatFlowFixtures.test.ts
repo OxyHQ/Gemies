@@ -808,7 +808,7 @@ describe('fixture: an explicit agent id is fail-closed at the streaming route', 
     H.state.agent = {
       _id: 'agent-private',
       id: 'agent-private',
-      oxyAccountId: 'oxy-bot-private',
+      identity: { source: 'oxy', oxyAccountId: 'oxy-bot-private' },
       isPublished: true,
       access: 'private',
       status: 'active',

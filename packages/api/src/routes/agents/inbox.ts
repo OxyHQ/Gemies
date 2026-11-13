@@ -23,6 +23,7 @@ import {
 } from '../../db/agents/agentInboxRepository.js';
 import { getDb } from '../../db/index.js';
 import { loadAgentForActor, refusalMessage, refusalStatus } from '../../lib/agent-account.js';
+import { gemieOxyAccountId } from '../../lib/gemie-oxy-actor.js';
 import { log } from '../../lib/logger.js';
 import { authenticateToken } from '../../middleware/auth.js';
 
@@ -98,6 +99,12 @@ router.post('/:id/subscriptions', authenticateToken, async (req: Request, res: R
     if (agent.ownerOxyAccountId === null) {
       return res.status(409).json({ error: 'This agent has no owner to wake it for' });
     }
+    // An event wakes it into background work, which runs as its own Oxy account: a gemie with none
+    // (ADR 0036) has no mailbox and no background work, so nothing can wake it.
+    const agentAccountId = gemieOxyAccountId(agent);
+    if (agentAccountId === null) {
+      return res.status(409).json({ error: 'This gemie works only while its owner talks to it' });
+    }
     if (parsed.data.account === 'owner' && req.user.id !== agent.ownerOxyAccountId) {
       // An operator may manage the agent, but its owner's events are the owner's to share.
       return res
@@ -112,8 +119,7 @@ router.post('/:id/subscriptions', authenticateToken, async (req: Request, res: R
     const subscription = await upsertAgentSubscription(getDb(), {
       agentId: agent._id,
       ownerAccountId: agent.ownerOxyAccountId,
-      sourceAccountId:
-        parsed.data.account === 'owner' ? agent.ownerOxyAccountId : agent.oxyAccountId,
+      sourceAccountId: parsed.data.account === 'owner' ? agent.ownerOxyAccountId : agentAccountId,
       appId: parsed.data.appId,
       eventType: parsed.data.eventType,
     });

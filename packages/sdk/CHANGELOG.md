@@ -1,5 +1,12 @@
 # @gemies/sdk
 
+## 3.1.0
+
+- **New: `AGENT_ROUTES` and `threadKey` from `@gemies/sdk/runtime`**, the routes and cache key of a
+  gemie's thread by its address (`{ handle }` or `{ gemieId }`), so a host opening a thread by id
+  reads the same path and invalidates the same key as `GemieChatContent`. A gemie with no Oxy
+  account (an external agent, Gemies ADR 0036) has no handle: its thread is addressed by its id.
+
 ## 3.0.1
 
 - **A gemie's account colour may be any hex, not only a Bloom preset key.** `readAgentCharacter`

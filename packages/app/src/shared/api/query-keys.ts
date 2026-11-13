@@ -59,11 +59,12 @@ export const queryKeys = {
     inbox: (id: string) => ['agents', 'inbox', id] as const,
     /** The agents that remember something about the caller. */
     /**
-     * Keyed by the USERNAME the URL carries, not by the agent id, because the
-     * id is part of what the query answers — `/a/pepe` is resolvable before
-     * anything is known about who Pepe is.
+     * Keyed by the thread's ADDRESS (`threadKey` in the SDK: the handle the URL
+     * carries, or `id:<gemieId>`), not by the agent id, because the id is part
+     * of what the query answers — `/@pepe` is resolvable before anything is known
+     * about who Pepe is. The same key the SDK's chat invalidates.
      */
-    thread: (username: string) => ['agent-thread', username] as const,
+    thread: (key: string) => ['agent-thread', key] as const,
     /**
      * The thread's history, kept apart from the thread itself: re-reading which
      * conversation is active is cheap and happens whenever a new stretch

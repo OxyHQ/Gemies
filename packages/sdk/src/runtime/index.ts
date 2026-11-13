@@ -124,6 +124,7 @@ export { useThreadHistory } from './use-thread-history';
 export { useThreadSearch, useThreadWindow } from './use-thread-search';
 export { useGemieThread } from './use-gemie-thread';
 export type { GemieThreadInfo } from './use-gemie-thread';
+export { AGENT_ROUTES, threadKey } from './routes';
 export type { GemieThreadAddress } from './routes';
 export { useStartConversation } from './use-start-conversation';
 export type { StartConversationOptions } from './use-start-conversation';

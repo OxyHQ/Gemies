@@ -139,7 +139,7 @@ async function balanceOf(id: string): Promise<{ free: number; paid: number }> {
 async function seedAgent(price: number | null = 15): Promise<string> {
   const agent = await createAgent(db, {
     character: TEST_CHARACTER,
-    oxyAccountId: `oxy-bot-goal-${SUITE}-${seq++}`,
+    identity: { source: 'oxy', oxyAccountId: `oxy-bot-goal-${SUITE}-${seq++}` },
     ownerOxyAccountId: SUITE,
     tagline: 'runs things',
     description: 'd',

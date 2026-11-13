@@ -2,6 +2,7 @@ import {
   useAgentDraftAutosave,
   useAgentIdentityAutosave,
 } from '@/features/agents/runtime/use-agent-autosave';
+import { hasOxyAccount } from '@/features/agents/model/identity';
 import { AgentProfileFields } from '@/features/agents/ui/edit/agent-profile-fields';
 import type { Agent } from '@/shared/contracts/agents';
 
@@ -18,6 +19,7 @@ export function AgentEditor({ agent, onClose }: { agent: Agent; onClose?: () => 
   return (
     <AgentProfileFields
       id={agent._id}
+      hasAccount={hasOxyAccount(agent)}
       identity={identity}
       draft={draft}
       onEditIdentity={editIdentity}

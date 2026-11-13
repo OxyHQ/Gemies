@@ -23,6 +23,7 @@ import {
 import { hasAnyConversation, upsertConversation } from '../chat/conversationRepository';
 import { countOutreachInConversationSince, insertMessages } from '../chat/messageRepository';
 import { hashAgentMemory } from '../../lib/agent/memory-contract.js';
+import { runtimeGemieAccountId } from '../../lib/gemie-oxy-actor.js';
 
 let db: ApiDatabase;
 
@@ -37,7 +38,7 @@ afterAll(async () => closePostgres());
 async function agent(owner = `owner-${randomUUID()}`) {
   return createAgent(db, {
     character: TEST_CHARACTER,
-    oxyAccountId: `bot-${randomUUID()}`,
+    identity: { source: 'oxy', oxyAccountId: `bot-${randomUUID()}` },
     ownerOxyAccountId: owner,
     tagline: 'reads its own mail',
     description: 'an agent with a mailbox',
@@ -140,7 +141,7 @@ describe('email_outreach_decisions (migration 0084)', () => {
     const owner = `owner-${randomUUID()}`;
     const mine = await agent(owner);
     await claimEmailOutreach(db, {
-      mailboxAccountId: mine.oxyAccountId,
+      mailboxAccountId: runtimeGemieAccountId(mine),
       messageId: 'msg-2',
       oxyUserId: owner,
       agentId: mine._id,
@@ -150,7 +151,7 @@ describe('email_outreach_decisions (migration 0084)', () => {
       await db
         .select()
         .from(emailOutreachDecisions)
-        .where(eq(emailOutreachDecisions.mailboxAccountId, mine.oxyAccountId)),
+        .where(eq(emailOutreachDecisions.mailboxAccountId, runtimeGemieAccountId(mine))),
     ).toEqual([]);
   });
 });

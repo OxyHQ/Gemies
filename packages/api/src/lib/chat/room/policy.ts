@@ -251,7 +251,8 @@ export function roomPrompt(input: {
 }): string {
   const others = input.roster
     .filter((info) => info.id !== input.self.id)
-    .map((info) => `${info.name} (@${info.handle})`)
+    // A member with no handle (no Oxy account, ADR 0036) is addressed by its name.
+    .map((info) => (info.handle === '' ? info.name : `${info.name} (@${info.handle})`))
     .join(', ');
   const said =
     input.since.length === 0

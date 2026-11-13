@@ -102,7 +102,7 @@ export const updateAgentTool = (userId: string, accessToken: string | undefined)
           userId,
           accessToken,
           edit,
-          ...(name === undefined ? {} : { account: { displayName: name } }),
+          ...(name === undefined ? {} : { identity: { name } }),
         });
         if (!outcome.ok) return { success: false, error: outcome.error };
 

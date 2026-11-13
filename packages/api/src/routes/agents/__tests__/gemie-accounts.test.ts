@@ -12,13 +12,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 const ALIA = {
   _id: 'alia-gemie',
   reach: 'person',
-  oxyAccountId: 'pending',
+  identity: { source: 'oxy', oxyAccountId: 'pending' },
   ownerOxyAccountId: null,
 };
 const PERSONA = {
   _id: 'persona-1',
   reach: 'grants',
-  oxyAccountId: 'bot-1',
+  identity: { source: 'oxy', oxyAccountId: 'bot-1' },
   ownerOxyAccountId: 'person-1',
 };
 

@@ -102,7 +102,7 @@ import {
   type CapabilityGrantSet,
   type InstancedToolSource,
 } from '../domain/capability-grants.js';
-import { oxyActorFor } from './gemie-oxy-actor.js';
+import { oxyActorFor, runtimeGemieAccountId } from './gemie-oxy-actor.js';
 import type { DeviceInfo } from './tools/device-info.js';
 import {
   applyRuntimePolicy,
@@ -607,7 +607,7 @@ export class ToolPipeline {
         aliaTools.memory = buildAgentMemoryTool({
           oxyUserId: userId,
           agentId: agent._id,
-          actorOxyAccountId: agent.oxyAccountId,
+          actorOxyAccountId: runtimeGemieAccountId(agent),
         });
         aliaTools.searchThread = createSearchThreadTool(userId, agent._id);
       }

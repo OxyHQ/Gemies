@@ -13,7 +13,8 @@ Agents, tools, the risk policy, deep research and triggers are Alia's own respon
 ## An agent IS an Oxy `bot` account
 
 Alia stores an agent's RUNTIME — the prompt, the models, the archetype, the
-soul, the marketplace listing. It stores nothing about who the agent is.
+soul, the marketplace listing. It stores nothing about who the agent is —
+except an external agent's, which has no account (below).
 
 The identity is an account in the Oxy account graph (`kind: 'bot'`, a child of
 its owner's personal account), and `agents.oxy_account_id` is the whole seam:
@@ -35,6 +36,24 @@ one column, no foreign key, UNIQUE.
 - **Creating an agent takes the caller's own credential**, because the account
   is minted under their tree and they become its owner. The app does it in one
   tap: generate → `createAccount` → `POST /agents`.
+
+### An external agent has no Oxy account (ADR 0036)
+
+A coding-agent CLI paired from its owner's computer (`codea connect`, ADR 0030) is a gemie whose
+identity is its own row: `agents.identity = 'local'`, its name in `local_name`, its colour in
+`local_color` (the vocabulary of an account's `User.color`) and no `oxy_account_id`. Pairing mints
+no account.
+
+- **Read the same way.** `attachAgentIdentities` resolves both sources; a `local` gemie has no
+  handle, so it is addressed by its id (`GET /agents/:id/thread`, `/agents/<id>` in the app).
+- **Its owner's alone.** Who may use or change it is `owner_oxy_account_id`, asked of nobody
+  (`lib/agent-account.ts`); it is never published or public (`agents_local_identity_check`).
+- **Customisable.** Its owner renames and recolours it in the same editor (`PATCH /agents/:id`
+  `name`, `color`), and changes its character as for any gemie.
+- **Nothing that needs an account.** No mailbox, connected accounts, event subscriptions,
+  heartbeat, background sessions, automations or Oxy tasks: each gate asks `gemieOxyAccountId`
+  (`lib/gemie-oxy-actor.ts`), and Gemies' own runtime, which it never enters, refuses it
+  (`runtimeGemieAccountId`).
 
 ### An app's agent is an ordinary agent (ADR 0020)
 

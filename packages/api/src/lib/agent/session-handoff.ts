@@ -46,6 +46,8 @@ import {
 import { agentPromptName, attachAgentIdentity } from '../agent-identity.js';
 import { safeRefund } from '../credits-manager.js';
 import { log } from '../logger.js';
+import { gemieOxyAccountId } from '../gemie-oxy-actor.js';
+import type { StoredAgentIdentity } from '../../domain/agent.js';
 import { getOrCreateUserCredits } from '../user-credits-helpers.js';
 import { enqueueAgentSession } from '../task-queue.js';
 
@@ -95,15 +97,15 @@ export type AgentSessionOrigin = 'hire' | 'delegation';
 /**
  * The three fields hiring an agent reads.
  *
- * `oxyAccountId` rather than `name`: an agent IS an Oxy `bot` account and has no
- * name of its own here any more. The queue entry still wants one, so this
+ * Its identity rather than `name`: an Oxy gemie IS a `bot` account and has no
+ * name of its own here any more, and its account is the actor of the run. The queue entry still wants one, so this
  * function resolves it — which is also why the identity lookup lives HERE and
  * not at the three callers. They stopped knowing what a reservation is; they do
  * not get to start knowing what a display name is either.
  */
 export interface HirableAgent {
   readonly _id: string;
-  readonly oxyAccountId: string;
+  readonly identity: StoredAgentIdentity;
   readonly price: number | null;
 }
 
@@ -120,6 +122,11 @@ export type AgentSessionHandoff =
    * asked for is reported by whoever asked for it.
    */
   | { readonly ok: false; readonly reason: 'insufficient_credits'; readonly creditsNeeded: number }
+  /**
+   * A gemie with no Oxy account (ADR 0036) has no background work: a run is an Oxy task whose actor
+   * is the gemie's account. Refused before anything is reserved.
+   */
+  | { readonly ok: false; readonly reason: 'no_background_work' }
   | { readonly ok: false; readonly reason: 'handoff_failed' };
 
 /**
@@ -146,6 +153,8 @@ export async function startAgentSession(input: {
   readonly goalId?: string;
 }): Promise<AgentSessionHandoff> {
   const { agent, userId, task, origin } = input;
+  const actorAccountId = gemieOxyAccountId(agent);
+  if (actorAccountId === null) return { ok: false, reason: 'no_background_work' };
   const price = agentHirePrice(agent);
 
   /**
@@ -196,7 +205,7 @@ export async function startAgentSession(input: {
     oxyTaskId = await createOxyTask({
       accessToken: input.requesterToken,
       effectiveAccountId: userId,
-      actorAccountId: agent.oxyAccountId,
+      actorAccountId,
       origin: { kind: 'goal', id: input.goalId ?? newSessionId },
     });
     const session = await createAgentSession(getDb(), {

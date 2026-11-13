@@ -154,7 +154,7 @@ const { clearAgentAccountVerdicts } = await import('../../../lib/agent-account.j
 const AGENT_ROW = {
   _id: 'agent-1',
   id: 'agent-1',
-  oxyAccountId: 'acct-bot',
+  identity: { source: 'oxy', oxyAccountId: 'acct-bot' },
   ownerOxyAccountId: 'oxy-owner',
   tagline: 'keeps the roadmap honest',
   description: 'a description',

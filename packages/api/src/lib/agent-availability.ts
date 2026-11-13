@@ -24,6 +24,7 @@
  */
 
 import type { AgentAvailability } from '@oxy.so/contracts';
+import type { StoredAgentIdentity } from '../domain/agent.js';
 import { log } from './logger.js';
 import { oxy } from './oxy.js';
 import { TTLCache } from './ttl-cache.js';
@@ -50,15 +51,19 @@ async function readAvailability(agentAccountId: string): Promise<AgentAvailabili
 /**
  * Whether an agent opens on this surface.
  *
- * @param agentAccountId the agent's Oxy `bot` account (`agents.oxy_account_id`)
+ * A gemie with no Oxy account (identity `local`, ADR 0036) has no application to be confined to,
+ * so it opens wherever its owner does, and Oxy is not asked.
+ *
+ * @param agent the gemie, by where its identity lives (`agents.oxy_account_id` when it is Oxy's)
  * @param surfaceApplicationId the application of the request's verified app
  *   assertion (`lib/app-surface.ts`), or `null` when it has none
  */
 export async function agentOpensOn(
-  agentAccountId: string,
+  agent: { readonly identity: StoredAgentIdentity },
   surfaceApplicationId: string | null,
 ): Promise<'reachable' | 'out_of_reach' | 'identity_unavailable'> {
-  const availability = await readAvailability(agentAccountId);
+  if (agent.identity.source === 'local') return 'reachable';
+  const availability = await readAvailability(agent.identity.oxyAccountId);
   if (availability === null) return 'identity_unavailable';
   if (availability.anywhere) return 'reachable';
   return surfaceApplicationId !== null && availability.applicationIds.includes(surfaceApplicationId)

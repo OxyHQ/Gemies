@@ -70,6 +70,7 @@ import {
   agentSubscriptions,
 } from '../schema/agent-runtime';
 import { agentKnowledge, agents, agentSkills } from '../schema/agents';
+import { agentIdentityColumns, readStoredIdentity } from './storedIdentity';
 import { conversations } from '../schema/chat';
 import { libraryFiles } from '../schema/library';
 import { skills } from '../schema/skills';
@@ -82,6 +83,7 @@ import type {
   AgentReach,
   AgentStatus,
   AgentTaskAuthority,
+  StoredAgentIdentity,
 } from '../../domain/agent';
 import type { AgentFeatureGates, AgentStarter } from '../../domain/agent-features';
 import { withoutRetiredGrants } from '../../domain/capability-grants';
@@ -124,12 +126,12 @@ export interface AgentRecord {
   _id: string;
   id: string;
   /**
-   * The Oxy `bot` account this agent IS. Name, handle and avatar are read from
-   * it — see `lib/agent-identity/hydrate.ts` — and are NOT fields of this
+   * Where its name and colour live (ADR 0036): the Oxy `bot` account it IS, or its own row. Name,
+   * handle and colour are resolved from it by `lib/agent-identity.ts` and are NOT fields of this
    * record, so nothing here can disagree with Oxy.
    */
-  oxyAccountId: string;
-  /** Exact bot parent from Oxy; null only on unreconciled legacy rows. */
+  identity: StoredAgentIdentity;
+  /** Who owns it: the bot's parent in Oxy for an `oxy` gemie (null only on unreconciled legacy rows), the person who made it for a `local` one. */
   ownerOxyAccountId: string | null;
   /** What the agent looks like: a Bloom avatar character, stored whole. */
   character: AvatarCharacter;
@@ -238,11 +240,27 @@ function toSoul(row: AgentRow): AgentSoul | undefined {
   };
 }
 
+/**
+ * The columns a gemie's identity is written to. A `local` gemie has no mailbox (its own Oxy account
+ * would be one), which `agents_local_identity_check` also holds.
+ */
+function identityValues(identity: StoredAgentIdentity) {
+  return identity.source === 'oxy'
+    ? { identity: 'oxy', oxyAccountId: identity.oxyAccountId, localName: null, localColor: null }
+    : {
+        identity: 'local',
+        oxyAccountId: null,
+        localName: identity.name,
+        localColor: identity.color,
+        mailbox: false,
+      };
+}
+
 export function toAgentRecord(row: AgentRow): AgentRecord {
   return {
     _id: row.id,
     id: row.id,
-    oxyAccountId: row.oxyAccountId,
+    identity: readStoredIdentity({ ...row, identitySource: row.identity }),
     ownerOxyAccountId: row.ownerOxyAccountId,
     character: row.character,
     tagline: row.tagline,
@@ -312,23 +330,6 @@ export async function findAgentByOxyAccountId(
     .where(eq(agents.oxyAccountId, oxyAccountId))
     .limit(1);
   return row ? toAgentRecord(row) : null;
-}
-
-/**
- * The bot account an agent IS, and nothing else.
- *
- * A PROJECTION rather than the row, because every caller of this is about to
- * ask Oxy a permission question and has no business holding an agent it has not
- * been authorised for yet. `lib/agent-account.ts` is the only place that turns
- * this into a verdict.
- */
-export async function findAgentOxyAccountId(db: Executor, id: string): Promise<string | null> {
-  const [row] = await db
-    .select({ oxyAccountId: agents.oxyAccountId })
-    .from(agents)
-    .where(eq(agents.id, id))
-    .limit(1);
-  return row?.oxyAccountId ?? null;
 }
 
 /**
@@ -424,7 +425,7 @@ export async function listAgentsByAuthor(
 /** An agent an owner can point another agent at — see {@link listActiveAgentsByAuthor}. */
 export interface GrantableAgent {
   _id: string;
-  oxyAccountId: string;
+  identity: StoredAgentIdentity;
   tagline: string;
 }
 
@@ -551,13 +552,13 @@ export async function listAgentCatalogue(
 /**
  * The fields `searchAgents` projects for the model to choose between.
  *
- * `oxyAccountId` rather than a name and a handle: the caller hydrates the batch
- * through `hydrateAgentIdentities` in ONE round trip, so the model still sees
+ * Its identity rather than a name and a handle: the caller resolves the batch
+ * through `attachAgentIdentities` in ONE round trip, so the model still sees
  * names — they just come from Oxy, which owns them.
  */
 export interface AgentSearchResult {
   id: string;
-  oxyAccountId: string;
+  identity: StoredAgentIdentity;
   tagline: string;
   category: string;
   /**
@@ -621,10 +622,10 @@ export async function searchActiveAgents(
   const rows = await db
     .select({
       id: agents.id,
-      oxyAccountId: agents.oxyAccountId,
       tagline: agents.tagline,
       category: agents.category,
       tags: agents.tags,
+      ...agentIdentityColumns,
     })
     .from(agents)
     .where(
@@ -645,7 +646,13 @@ export async function searchActiveAgents(
     // eligible set in the same order.
     .orderBy(asc(agents.id))
     .limit(limit);
-  return rows;
+  return rows.map((row) => ({
+    id: row.id,
+    identity: readStoredIdentity(row),
+    tagline: row.tagline,
+    category: row.category,
+    tags: row.tags,
+  }));
 }
 
 /**
@@ -725,15 +732,16 @@ export async function listActiveAgentsByAuthor(
   db: Executor,
   ownerOxyUserId: string,
 ): Promise<GrantableAgent[]> {
-  return db
-    .select({
-      _id: agents.id,
-      oxyAccountId: agents.oxyAccountId,
-      tagline: agents.tagline,
-    })
+  const rows = await db
+    .select({ _id: agents.id, tagline: agents.tagline, ...agentIdentityColumns })
     .from(agents)
     .where(and(eq(agents.authorOxyUserId, ownerOxyUserId), eq(agents.status, 'active')))
     .orderBy(desc(agents.createdAt), desc(agents.id));
+  return rows.map((row) => ({
+    _id: row._id,
+    identity: readStoredIdentity(row),
+    tagline: row.tagline,
+  }));
 }
 
 /* --------------------------- the children --------------------------- */
@@ -834,9 +842,12 @@ async function replaceAgentKnowledge(
 /* ------------------------------ writes ------------------------------ */
 
 export interface CreateAgentInput {
-  /** The Oxy `bot` account the agent IS. Verified by the caller before it gets here. */
-  oxyAccountId: string;
-  /** The bot's exact direct parent, resolved from Oxy rather than `author`. */
+  /**
+   * Who the agent is: the Oxy `bot` account it IS (verified by the caller before it gets here), or
+   * its own name and colour (ADR 0036).
+   */
+  identity: StoredAgentIdentity;
+  /** The bot's exact direct parent, resolved from Oxy rather than `author`; a `local` gemie's owner. */
   ownerOxyAccountId: string;
   /** What the agent looks like. A new agent has one picked (`avatarCharacterFor`) when the person did not choose. */
   character: AvatarCharacter;
@@ -875,7 +886,7 @@ export async function createAgent(db: ApiDatabase, input: CreateAgentInput): Pro
     const [row] = await tx
       .insert(agents)
       .values({
-        oxyAccountId: input.oxyAccountId,
+        ...identityValues(input.identity),
         ownerOxyAccountId: input.ownerOxyAccountId,
         character: input.character,
         tagline: input.tagline,
@@ -912,6 +923,9 @@ export async function createAgent(db: ApiDatabase, input: CreateAgentInput): Pro
 export interface UpdateAgentInput {
   /** The agent's look, replaced whole: a character is one value, not a set of fields. */
   character?: AvatarCharacter;
+  /** A `local` gemie's name and colour (ADR 0036); `agents_identity_check` refuses them on an `oxy` one. */
+  localName?: string;
+  localColor?: string;
   tagline?: string;
   description?: string;
   /** Replaced whole. */

@@ -1,8 +1,13 @@
 /**
- * An agent's name, handle and colour — read from Oxy, never from Alia.
+ * An agent's name, handle and colour — the ONE place they are resolved, from either identity.
  *
- * `agents` stores an `oxy_account_id` and nothing else about who the agent is.
- * Every response that renders an agent therefore has to resolve that account,
+ * A gemie's identity lives in one of two places (ADR 0036, `StoredAgentIdentity`): an Oxy `bot`
+ * account (`identity = 'oxy'`), or its own row (`identity = 'local'`, a name and a colour and no
+ * handle). Every reader gets both the same way, through {@link attachAgentIdentities}, so no surface
+ * asks which kind of gemie it is drawing.
+ *
+ * An `oxy` gemie's row stores an `oxy_account_id` and nothing else about who it is.
+ * Every response that renders it therefore has to resolve that account,
  * and this is the one place that does it: ONE batch call for a whole page
  * through {@link hydrateOxyUsers}, which wraps `POST /users/by-ids` (cap 100,
  * deduplicated and chunked by the SDK). A per-agent `getUserById` in a loop is
@@ -40,6 +45,7 @@ import {
   findHireableAgentByOxyAccountId,
   type AgentRecord,
 } from '../db/agents/agentRepository.js';
+import type { StoredAgentIdentity } from '../domain/agent.js';
 import { oxy } from './oxy.js';
 import { agentOpensOn } from './agent-availability.js';
 import { log } from './logger.js';
@@ -49,7 +55,7 @@ import { hydrateOxyUsers } from './oxy-user-hydration.js';
 export interface AgentIdentity {
   /** `name.displayName` when Oxy resolved one, else the normalized handle. */
   name: string | null;
-  /** The Oxy username. Globally unique across the whole account graph. */
+  /** The Oxy username. Globally unique across the whole account graph. Null for a `local` gemie, which has none. */
   handle: string | null;
   /**
    * The gemie's colour: a Bloom colour preset key — `"blue"`, `"lagoon"` — or any hex
@@ -98,7 +104,7 @@ export const UNRESOLVED_IDENTITY: AgentIdentity = {
  * in whatever order it already holds them, and so an unresolved id is a MISSING
  * KEY rather than a hole at an index that has to be lined up by position.
  */
-export async function resolveAgentIdentities(
+async function resolveOxyIdentities(
   oxyAccountIds: readonly string[],
 ): Promise<Map<string, AgentIdentity>> {
   const users = await hydrateOxyUsers(oxyAccountIds);
@@ -117,40 +123,48 @@ export async function resolveAgentIdentities(
   return identities;
 }
 
+/** The identity a `local` gemie keeps on its row: its name and colour, and no handle. */
+function localIdentity(identity: { name: string; color: string }): AgentIdentity {
+  return { name: identity.name, handle: null, color: identity.color, authorName: null };
+}
+
 /**
- * Attach an identity to every row that names a bot account.
+ * Attach an identity to every row, whichever source it lives in.
  *
  * Generic over the row so it serves an `AgentRecord`, a team's projected agent
  * and a session's embedded one without three copies. The identity fields are
  * spread LAST, so a row that somehow carried a stale `name` of its own cannot
- * win over Oxy's.
+ * win over the resolved one.
  */
-export async function attachAgentIdentities<T extends { oxyAccountId: string; author?: string }>(
-  rows: readonly T[],
-): Promise<(T & AgentIdentity)[]> {
+export async function attachAgentIdentities<
+  T extends { identity: StoredAgentIdentity; author?: string },
+>(rows: readonly T[]): Promise<(T & AgentIdentity)[]> {
   if (rows.length === 0) return [];
   // ONE batch for both kinds of account. `hydrateOxyUsers` deduplicates, so an
   // agent whose author is also its own bot account costs one entry, not two.
-  const identities = await resolveAgentIdentities([
-    ...rows.map((row) => row.oxyAccountId),
+  const identities = await resolveOxyIdentities([
+    ...rows.flatMap((row) => (row.identity.source === 'oxy' ? [row.identity.oxyAccountId] : [])),
     ...rows.flatMap((row) => (typeof row.author === 'string' ? [row.author] : [])),
   ]);
   return rows.map((row) => {
-    const own = identities.get(row.oxyAccountId) ?? UNRESOLVED_IDENTITY;
+    const own =
+      row.identity.source === 'local'
+        ? localIdentity(row.identity)
+        : (identities.get(row.identity.oxyAccountId) ?? UNRESOLVED_IDENTITY);
     const author = typeof row.author === 'string' ? identities.get(row.author) : undefined;
     return { ...row, ...own, authorName: author?.name ?? null };
   });
 }
 
 /** One row. Still one round trip, and the same failure-open contract. */
-export async function attachAgentIdentity<T extends { oxyAccountId: string }>(
+export async function attachAgentIdentity<T extends { identity: StoredAgentIdentity }>(
   row: T,
 ): Promise<T & AgentIdentity> {
   const [hydrated] = await attachAgentIdentities([row]);
   return hydrated;
 }
 
-/** An agent record with its Oxy identity already attached. */
+/** An agent record with its identity already resolved. */
 export type HydratedAgent = AgentRecord & AgentIdentity;
 
 /**
@@ -216,7 +230,7 @@ export async function findAgentByOxyHandle(
   if (!options.hireableOnly) return findAgentByOxyAccountId(db, accountId);
   const hireable = await findHireableAgentByOxyAccountId(db, accountId);
   if (hireable === null) return null;
-  return (await agentOpensOn(hireable.oxyAccountId, null)) === 'reachable' ? hireable : null;
+  return (await agentOpensOn(hireable, null)) === 'reachable' ? hireable : null;
 }
 
 /** The label a bot's handle ends in. Lower-case: the comparison folds case. */

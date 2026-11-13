@@ -731,7 +731,7 @@ describe('ToolPipeline.forUser applies the budget on every path it serves', () =
     };
     const agent = {
       _id: 'sindi',
-      oxyAccountId: 'sindi-bot',
+      identity: { source: 'oxy', oxyAccountId: 'sindi-bot' },
       ownerOxyAccountId: 'homiio-project',
       capabilityGrants: ['oxy_service', 'web'],
       featureGates: {},

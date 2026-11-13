@@ -1,8 +1,10 @@
+import type { StoredAgentIdentity } from '../domain/agent.js';
 import { agentOpensOn } from './agent-availability.js';
+import { gemieOxyAccountId } from './gemie-oxy-actor.js';
 
 /** What the unattended rule reads of an agent. */
 export interface UnattendedAgent {
-  readonly oxyAccountId: string;
+  readonly identity: StoredAgentIdentity;
   readonly ownerOxyAccountId: string | null;
   readonly access: string;
   readonly status: string;
@@ -20,16 +22,20 @@ export interface UnattendedAgent {
  *
  * Unattended work is in no app, so an agent Oxy confines to an app never does it (ADR 0021) — asked
  * of Oxy like every other reach; `identity_unavailable` when Oxy could not answer.
+ *
+ * And it runs under an Oxy task whose actor is the gemie's own account, so a gemie with none (a
+ * `local` one, ADR 0036) never does it: it works only when its owner talks to it.
  */
 export async function unattendedReach(
   agent: UnattendedAgent,
   personAccountId: string,
 ): Promise<'reachable' | 'out_of_reach' | 'identity_unavailable'> {
+  if (gemieOxyAccountId(agent) === null) return 'out_of_reach';
   const who =
     agent.ownerOxyAccountId === personAccountId ||
     (agent.access === 'public' && agent.status === 'active');
   if (!who) return 'out_of_reach';
-  return agentOpensOn(agent.oxyAccountId, null);
+  return agentOpensOn(agent, null);
 }
 
 /** {@link unattendedReach} for an automation: anything but a yes refuses. */

@@ -128,7 +128,7 @@ describe('the new-chat route', () => {
 describe('the three doors onto one chat', () => {
   const route = (file: string) => readFileSync(join(APP_ROOT, 'app/(app)', file), 'utf8');
 
-  it.each(['index.tsx', 'c/[id]/index.tsx', '[username]/index.tsx'])(
+  it.each(['index.tsx', 'c/[id]/index.tsx'])(
     '%s mounts the conversation screen and draws no thread of its own',
     (file) => {
       const source = route(file);
@@ -136,4 +136,22 @@ describe('the three doors onto one chat', () => {
       expect(source).not.toMatch(/GemieThread|ThreadRow|useConversationThread/);
     },
   );
+
+  it.each(['[username]/index.tsx', 'agents/[id].tsx'])(
+    '%s mounts the agent thread screen, the one the handle and the id both open',
+    (file) => {
+      const source = route(file);
+      expect(source).toContain("from '@/features/agents/ui/agent-thread-screen'");
+      expect(source).not.toMatch(/GemieThread|ThreadRow|useConversationThread/);
+    },
+  );
+
+  it('the agent thread screen mounts the conversation screen and draws no thread of its own', () => {
+    const source = readFileSync(
+      join(APP_ROOT, 'src/features/agents/ui/agent-thread-screen.tsx'),
+      'utf8',
+    );
+    expect(source).toContain("from '@/features/chat/ui/conversation-screen'");
+    expect(source).not.toMatch(/GemieThread\b|ThreadRow|useConversationThread/);
+  });
 });

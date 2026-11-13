@@ -319,7 +319,7 @@ describe('a turn in her thread is a turn of Alia', () => {
 async function seedPersona(): Promise<string> {
   const agent = await createAgent(db, {
     character: TEST_CHARACTER,
-    oxyAccountId: `oxy-bot-${SUITE}-${seq++}`,
+    identity: { source: 'oxy', oxyAccountId: `oxy-bot-${SUITE}-${seq++}` },
     ownerOxyAccountId: SUITE,
     tagline: 'finds things out',
     description: 'd',

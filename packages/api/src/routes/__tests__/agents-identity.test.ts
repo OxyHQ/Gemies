@@ -147,7 +147,7 @@ const { clearAgentAccountVerdicts, verifyAgentAccount } = await import(
 const AGENT_ROW = {
   _id: 'agent-1',
   id: 'agent-1',
-  oxyAccountId: 'acct-bot',
+  identity: { source: 'oxy', oxyAccountId: 'acct-bot' },
   ownerOxyAccountId: 'owner-account-1',
   tagline: 'finds things out',
   description: 'a description',
@@ -369,7 +369,7 @@ describe('a created agent', () => {
 
     expect(res.status).toBe(201);
     const input = repository.createAgent.mock.calls[0][1] as Record<string, unknown>;
-    expect(input.oxyAccountId).toBe('acct-bot');
+    expect(input.identity).toEqual({ source: 'oxy', oxyAccountId: 'acct-bot' });
     expect(input.ownerOxyAccountId).toBe('owner-account-1');
     expect(input.authorOxyUserId).toBe('oxy-caller');
     expect(Object.keys(input)).not.toContain('name');
@@ -498,7 +498,7 @@ describe('a patch is gated by act_as, not by the author column', () => {
     expect(repository.updateAgent).not.toHaveBeenCalled();
   });
 
-  it.each(['name', 'color', 'oxyAccountId', 'ownerOxyAccountId', 'creditBalance'])(
+  it.each(['color', 'oxyAccountId', 'ownerOxyAccountId', 'creditBalance'])(
     'refuses a patch of %s, which is not Alia’s to write',
     async (field) => {
       const res = await patch({ [field]: 'anything' });

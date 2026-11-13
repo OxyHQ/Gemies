@@ -153,7 +153,7 @@ beforeEach(() => {
           taskAuthority: 'session',
           ownerOxyAccountId: 'owner-1',
           access: 'private',
-          oxyAccountId: `bot-${id}`,
+          identity: { source: 'oxy', oxyAccountId: `bot-${id}` },
           status: 'active',
         },
   );
@@ -237,7 +237,7 @@ describe('normalized automation dispatch', () => {
       taskAuthority: 'session',
       ownerOxyAccountId: 'owner-1',
       access: 'private',
-      oxyAccountId: `bot-${id}`,
+      identity: { source: 'oxy', oxyAccountId: `bot-${id}` },
       status: 'offline',
     }));
 
@@ -258,7 +258,7 @@ describe('normalized automation dispatch', () => {
       author: 'owner-1',
       ownerOxyAccountId: 'someone-else',
       access: 'private',
-      oxyAccountId: `bot-${id}`,
+      identity: { source: 'oxy', oxyAccountId: `bot-${id}` },
       status: 'active',
     }));
 
@@ -274,7 +274,7 @@ describe('normalized automation dispatch', () => {
       taskAuthority: 'session',
       ownerOxyAccountId: 'someone-else',
       access: 'public',
-      oxyAccountId: `bot-${id}`,
+      identity: { source: 'oxy', oxyAccountId: `bot-${id}` },
       status: 'active',
     }));
 

@@ -19,7 +19,11 @@ const state = vi.hoisted(() => ({
   remove: vi.fn(),
 }));
 
-const AGENT = { _id: 'agent-1', oxyAccountId: 'bot-1', ownerOxyAccountId: 'owner-1' };
+const AGENT = {
+  _id: 'agent-1',
+  identity: { source: 'oxy', oxyAccountId: 'bot-1' },
+  ownerOxyAccountId: 'owner-1',
+};
 
 vi.mock('../../../middleware/auth.js', () => ({
   authenticateToken: (req: express.Request, _res: express.Response, next: express.NextFunction) => {

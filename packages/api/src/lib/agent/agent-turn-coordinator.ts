@@ -14,6 +14,7 @@ import { EventStream } from './event-stream.js';
 import { withAgentAdmission } from '../../db/agents/agentRuntimeRepository.js';
 import { startAgentSession } from './session-handoff.js';
 import { log } from '../logger.js';
+import { runtimeGemieAccountId } from '../gemie-oxy-actor.js';
 import { scheduleChatFollowUp } from './chat-follow-ups.js';
 
 export interface CoordinatedAgentTurn {
@@ -81,7 +82,7 @@ export class AgentTurnCoordinator {
             scheduleFollowUp: (at: Date, note: string, now: Date, toolCallId: string) =>
               scheduleChatFollowUp({
                 agentId: input.agent._id,
-                agentAccountId: input.agent.oxyAccountId,
+                agentAccountId: runtimeGemieAccountId(input.agent),
                 ownerAccountId: input.oxyUserId,
                 sourceSessionId: session.id,
                 requesterToken: input.requesterToken!,
@@ -116,8 +117,10 @@ export class AgentTurnCoordinator {
           return 'Not started: you already have as much work running for this person as you may. Tell them, and do what you can now.';
         const handoff = admission.value;
         if (!handoff.ok) {
-          return handoff.reason === 'insufficient_credits'
-            ? 'Not started: the person does not have enough credits for background work. Tell them.'
+          if (handoff.reason === 'insufficient_credits')
+            return 'Not started: the person does not have enough credits for background work. Tell them.';
+          return handoff.reason === 'no_background_work'
+            ? 'Not started: you have no background work. Do what you can now.'
             : 'Not started: the background run could not be queued. Do what you can now.';
         }
         return 'Started. It runs in the background and its result will be posted in this conversation when done. Tell the person briefly that you are on it; do not do the same work now.';

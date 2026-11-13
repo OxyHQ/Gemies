@@ -22,6 +22,7 @@ import {
   loadAgentForActor,
   refusalMessage,
   refusalStatus,
+  actorVerdictFor,
   setAgentAccountCharacter,
   verifyAgentAccount,
   type AgentAccountRefusal,
@@ -33,9 +34,9 @@ import {
   agentPromptName,
   attachAgentIdentities,
   attachAgentIdentity,
-  resolveAgentIdentities,
-  UNRESOLVED_IDENTITY,
 } from '../../lib/agent-identity.js';
+import { gemieOxyAccountId } from '../../lib/gemie-oxy-actor.js';
+import { isAgentColor } from '../../lib/agent-color.js';
 import { latestMessagePerAgent } from '../../db/chat/conversationRepository.js';
 import {
   AGENT_ACCESS,
@@ -279,7 +280,7 @@ async function grantableAgentRows(
   );
   if (owned.length === 0) return [];
 
-  const identities = await resolveAgentIdentities(owned.map((agent) => agent.oxyAccountId));
+  const named = await attachAgentIdentities(owned);
   return [
     {
       grant: formatCapabilityGrant('agent'),
@@ -287,10 +288,10 @@ async function grantableAgentRows(
       label: 'All your active agents',
       detail: 'New agents join automatically; switching one off removes it',
     },
-    ...owned.map((agent) => ({
+    ...named.map((agent) => ({
       grant: formatCapabilityGrant('agent', agent._id),
       family: 'agent',
-      label: agentPromptName(identities.get(agent.oxyAccountId) ?? UNRESOLVED_IDENTITY),
+      label: agentPromptName(agent),
       detail: agent.tagline,
     })),
   ];
@@ -341,24 +342,25 @@ async function respondWithAgent(
     req.user?.id === undefined || req.accessToken === undefined
       ? false
       : (
-          await verifyAgentAccount({
+          await actorVerdictFor(found, {
             oxyUserId: req.user.id,
             accessToken: req.accessToken,
-            oxyAccountId: found.oxyAccountId,
             // A READ. The write paths pass `false`; see `lib/agent-account.ts`.
             cache: true,
           })
-        ).permitted;
+        ).ok;
 
   /**
    * Who may manage their own connected accounts on it (ADR 0035): its editors, and on every
    * person's own assistant (Alia) every person. Her card is theirs to read for that, though she is
-   * not listed (a draft-like `is_published = false` until her Oxy account exists).
+   * not listed (a draft-like `is_published = false` until her Oxy account exists). A gemie with no
+   * Oxy account has none to link (ADR 0036).
    */
-  const mayManageAccounts = mayEdit || isPersonsOwnAssistant(found);
+  const mayManageAccounts =
+    isPersonsOwnAssistant(found) || (mayEdit && gemieOxyAccountId(found) !== null);
 
   // A draft is not in the catalogue and not addressable by a stranger.
-  if (!found.isPublished && !mayManageAccounts) {
+  if (!found.isPublished && !mayEdit && !mayManageAccounts) {
     res.status(404).json({ error: 'Agent not found' });
     return;
   }
@@ -367,8 +369,9 @@ async function respondWithAgent(
   // opening. (Alia's account does not exist in Oxy yet, so Oxy places her
   // nowhere; her card is for managing the person's own accounts on her.)
   if (
+    !mayEdit &&
     !mayManageAccounts &&
-    (await agentOpensOn(found.oxyAccountId, await appSurfaceOf(req))) !== 'reachable'
+    (await agentOpensOn(found, await appSurfaceOf(req))) !== 'reachable'
   ) {
     res.status(404).json({ error: 'Agent not found' });
     return;
@@ -566,7 +569,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     }
 
     const agent = await createAgent(getDb(), {
-      oxyAccountId: data.oxyAccountId,
+      identity: { source: 'oxy', oxyAccountId: data.oxyAccountId },
       ownerOxyAccountId: verdict.ownerAccountId,
       character,
       tagline: data.tagline,
@@ -656,10 +659,13 @@ const primaryToolsSchema = z
 /**
  * What `PATCH /agents/:id` accepts.
  *
- * No `name`, no `avatar`, no `creditBalance`. The first two are the bot
- * account's and are edited through Oxy; the third named a column nothing ever
- * spent. `oxyAccountId` is absent too — rebinding an agent to a different
- * account is not an edit, it is a different agent.
+ * `name` and `color` are who the gemie is, written where that lives
+ * (`applyAgentEdit`): a `local` gemie's row (ADR 0036), or an `oxy` gemie's
+ * account for the name — its colour is edited at Oxy, by the editor, and is a
+ * 400 here. No `avatar` (the `character` is the look) and no `creditBalance`,
+ * which named a column nothing ever spent. `oxyAccountId` is absent too —
+ * rebinding an agent to a different account is not an edit, it is a different
+ * agent.
  *
  * Every member is optional and `undefined` never reaches the repository, which
  * builds its SET clause from DEFINED keys only: `{ x: undefined }` would be a
@@ -667,6 +673,10 @@ const primaryToolsSchema = z
  */
 const updateAgentSchema = z
   .object({
+    /** Its name, as for a person. */
+    name: z.string().trim().min(1).max(100).optional(),
+    /** A `local` gemie's colour: what an account may wear (`lib/agent-color.ts`). */
+    color: z.string().refine(isAgentColor, { message: 'Not a colour a gemie may wear' }).optional(),
     /** The agent's look, replaced whole. */
     character: characterSchema.optional(),
     tagline: z.string().min(1).max(200).optional(),
@@ -735,11 +745,13 @@ router.patch('/:id', authenticateToken, async (req: Request, res: Response) => {
       }
     }
 
+    const { name, color, ...edit } = data;
     const outcome = await applyAgentEdit({
       agentId: id,
       userId: req.user.id,
       accessToken: req.accessToken,
-      edit: data,
+      edit,
+      identity: { name, color },
     });
     if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });
 

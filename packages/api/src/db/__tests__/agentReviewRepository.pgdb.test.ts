@@ -65,7 +65,7 @@ const suffix = () => Math.random().toString(36).slice(2, 10);
 async function seedAgent(): Promise<string> {
   const agent = await createAgent(db, {
     character: TEST_CHARACTER,
-    oxyAccountId: `oxy-bot-reviewed-${suffix()}`,
+    identity: { source: 'oxy', oxyAccountId: `oxy-bot-reviewed-${suffix()}` },
     ownerOxyAccountId: AUTHOR,
     tagline: 't',
     description: 'd',

@@ -1,4 +1,8 @@
-import { agentChatRoute, agentThreadHref } from '@/shared/routing/agent-address';
+import {
+  agentChatRoute,
+  agentThreadHref,
+  gemieThreadAddress,
+} from '@/shared/routing/agent-address';
 import { shareAgent } from '@/features/agents/runtime/share-agent';
 import { useSetAgentStatus } from '@/features/agents/runtime/use-agent-thread-actions';
 import { useTranslation } from '@/shared/i18n/use-translation';
@@ -36,30 +40,24 @@ export function useAgentDetailActions(agent: Agent) {
   const setStatus = useSetAgentStatus();
   const answerShare = useAnswerShare();
 
-  /** The thread with this agent, addressed by its handle. */
+  /** One stretch of the thread with this agent, at its address. */
   const openThread = useCallback(
-    (handle: string, threadId: string) => {
-      router.push(agentThreadHref(handle, threadId));
+    (threadId: string) => {
+      router.push(agentThreadHref(gemieThreadAddress(agent), threadId));
     },
-    [router],
+    [agent, router],
   );
 
   /**
    * Open the thread with this agent. It does not START one.
    *
-   * The thread is the agent's handle: `/@handle` opens it where it left off, and the API begins its
-   * first conversation only when the two have never spoken (`GET /agents/thread/:username`).
-   * Without a handle the thread has no address; saying so is better than navigating to `/@`, which
-   * would sit on a loading screen that never resolves.
+   * The thread is the agent's address (`/@handle`, or `/agents/<id>` for one with no handle): it
+   * opens where it left off, and the API begins its first conversation only when the two have never
+   * spoken.
    */
   const handleChat = useCallback(() => {
-    const route = agentChatRoute(agent);
-    if (route === null) {
-      toast.error(t('agents.chatUnavailable'));
-      return;
-    }
-    router.push(route);
-  }, [agent, router, t]);
+    router.push(agentChatRoute(agent));
+  }, [agent, router]);
 
   const handleShare = () => answerShare(agent);
 

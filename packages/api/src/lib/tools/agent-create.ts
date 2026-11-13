@@ -181,7 +181,7 @@ export const createAgentTool = (userId: string, accessToken: string | undefined)
         });
 
         const agent = await createAgent(getDb(), {
-          oxyAccountId: account.oxyAccountId,
+          identity: { source: 'oxy', oxyAccountId: account.oxyAccountId },
           // `createAgentBotAccount` omitted a parent, so Oxy created the bot
           // directly under this caller's personal account. Store that authority
           // explicitly; `author` remains listing metadata only.

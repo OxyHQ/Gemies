@@ -77,7 +77,11 @@ describe('the call’s tools', () => {
       appCatalogPrompt: '',
       activeToolNames: () => [],
     });
-    const agent = { _id: 'agent-1', oxyAccountId: 'bot-1', ownerOxyAccountId: 'owner-1' } as never;
+    const agent = {
+      _id: 'agent-1',
+      identity: { source: 'oxy', oxyAccountId: 'bot-1' },
+      ownerOxyAccountId: 'owner-1',
+    } as never;
     await buildVoiceTurn(input({ linkedAgent: agent }));
     const options = H.forUser.mock.calls[0]![0];
     expect(options).toMatchObject({
@@ -99,7 +103,7 @@ describe('the call’s tools', () => {
       await vi.importActual<typeof import('../../tool-pipeline.js')>('../../tool-pipeline.js');
     const agent = {
       _id: 'agent-1',
-      oxyAccountId: 'bot-1',
+      identity: { source: 'oxy', oxyAccountId: 'bot-1' },
       ownerOxyAccountId: 'owner-1',
       capabilityGrants: [],
       primaryTools: [],

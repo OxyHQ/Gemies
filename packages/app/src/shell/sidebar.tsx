@@ -25,7 +25,11 @@ import {
   StreamingIndicator,
 } from '@/shell/sidebar-menus';
 import { agentDisplayName, agentIdentityMatches } from '@/features/agents/model/identity';
-import { agentHandle, agentChatRoute } from '@/shared/routing/agent-address';
+import {
+  agentChatRoute,
+  gemieOfThreadPath,
+  gemieThreadAddress,
+} from '@/shared/routing/agent-address';
 import type { Agent } from '@/shared/contracts/agents';
 import { formatRelativeTime } from '@/shared/format/relative-time';
 import { queryKeys } from '@/shared/api/query-keys';
@@ -349,10 +353,8 @@ function useSidebarProps() {
 
   const openAgent = React.useCallback(
     (agent: NonNullable<typeof myAgents>[number]) => {
-      const route = agentChatRoute(agent);
-      if (route === null) return;
       closeNav?.();
-      router.push(route);
+      router.push(agentChatRoute(agent));
     },
     [router, closeNav],
   );
@@ -477,7 +479,7 @@ function useSidebarProps() {
       // Ahead of the press: its thread and conversation, when there is a conversation to read.
       onPrefetch: () =>
         onHoverIntent(() =>
-          prefetchAgentThread(agentHandle(agent), Boolean(agent.lastMessage?.trim())),
+          prefetchAgentThread(gemieThreadAddress(agent), Boolean(agent.lastMessage?.trim())),
         ),
       // Its page, edit, computer, share, move to a space, pause and delete (`sidebar-gemie-menu.tsx`).
       actions: isAuthenticated ? (
@@ -995,13 +997,10 @@ function useSidebarProps() {
   return { props, dialogs };
 }
 
-/** An agent thread's route (`/@pepe`) selects that agent's row. */
+/** An agent thread's route (`/@pepe`, `/agents/<id>`) selects that agent's row. */
 function selectedTreeItemForPath(pathname: string, agents?: Agent[]): string | undefined {
   if (pathname === '/') return ALIA_KEY;
-  const match = /^\/@([^/]+)$/.exec(pathname);
-  if (!match) return undefined;
-  const handle = decodeURIComponent(match[1]!);
-  const agent = agents?.find((candidate) => agentHandle(candidate) === handle);
+  const agent = gemieOfThreadPath(pathname, agents);
   return agent ? `${AGENT_KEY}${agent._id}` : undefined;
 }
 

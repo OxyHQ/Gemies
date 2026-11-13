@@ -67,12 +67,12 @@ describe("the agent page's Chat", () => {
     expect(fx.post).not.toHaveBeenCalled();
   });
 
-  it('says the thread is unreachable when the agent has no handle, instead of opening /@', () => {
+  it('opens a gemie with no handle at its id, instead of /@', () => {
     const actions = actionsFor({ handle: null });
     act(() => {
       void actions.handleChat();
     });
-    expect(fx.push).not.toHaveBeenCalled();
-    expect(fx.toastError).toHaveBeenCalledWith('agents.chatUnavailable');
+    expect(fx.push).toHaveBeenCalledWith('/agents/agent-1');
+    expect(fx.toastError).not.toHaveBeenCalled();
   });
 });

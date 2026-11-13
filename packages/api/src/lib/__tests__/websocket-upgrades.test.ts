@@ -22,8 +22,7 @@ vi.mock('../../lib/oxy.js', () => ({
   oxy: { middleware: { socket: () => (_socket: unknown, next: () => void) => next() } },
 }));
 vi.mock('../../db/index.js', () => ({ getDb: () => ({}) }));
-vi.mock('../../db/agents/agentRepository.js', () => ({ findAgentOxyAccountId: vi.fn() }));
-vi.mock('../agent-account.js', () => ({ verifyAgentAccount: vi.fn() }));
+vi.mock('../agent-account.js', () => ({ loadAgentForActor: vi.fn() }));
 vi.mock('../../db/agents/agentSessionRepository.js', () => ({
   accountHasSessionWithAgent: vi.fn(),
   agentSessionIsOwnedBy: vi.fn(),

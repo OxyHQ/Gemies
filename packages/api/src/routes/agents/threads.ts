@@ -272,6 +272,9 @@ router.post(
           .status(402)
           .json({ error: 'Insufficient credits', creditsNeeded: handoff.creditsNeeded });
       }
+      if (handoff.reason === 'no_background_work') {
+        return res.status(409).json({ error: 'This gemie works only while its owner talks to it' });
+      }
       return res.status(500).json({ error: 'Failed to start agent goal' });
     }
     res

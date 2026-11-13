@@ -8,7 +8,7 @@ import { useUIStore } from '@/features/chat/runtime/ui-store';
 import type { Agent } from '@/shared/contracts/agents';
 import type { Space } from '@/shared/contracts/spaces';
 import { useTranslation } from '@/shared/i18n/use-translation';
-import { agentChatRoute, agentDetailsRoute } from '@/shared/routing/agent-address';
+import { agentChatRoute, agentDetailsRoute, agentEditRoute } from '@/shared/routing/agent-address';
 import { MoreTrigger } from '@/shell/sidebar-menus';
 import {
   DropdownMenu,
@@ -44,8 +44,12 @@ export interface GemieRowHandlers {
 
 /** Whether a path is one of this gemie's screens: its thread, its page or its editor. */
 export function isGemiePath(pathname: string, agent: Agent): boolean {
-  const thread = agentChatRoute(agent);
-  return thread !== null && (pathname === thread || pathname.startsWith(`${thread}/`));
+  const thread = String(agentChatRoute(agent));
+  return (
+    pathname === thread ||
+    pathname.startsWith(`${thread}/`) ||
+    pathname === String(agentEditRoute(agent))
+  );
 }
 
 /**
@@ -132,8 +136,8 @@ export function useGemieRowHandlers(
 /**
  * A gemie row's ⋯ menu: its page, edit it, its computer, share it, move it to a space, pause or
  * resume it, delete it. Only what applies to this gemie is offered: editing, pausing and deleting
- * are its owner's; a gemie connected from a computer (`external`) has no editor, computer or
- * schedule here; one with no handle has no page to open or share.
+ * are its owner's; a gemie connected from a computer (`external`) has no computer or schedule here
+ * (its owner still renames and recolours it); one with no handle has no page to open or share.
  */
 export const GemieRowActions = React.memo(function GemieRowActions({
   agent,
@@ -162,7 +166,7 @@ export const GemieRowActions = React.memo(function GemieRowActions({
             {t('agents.viewProfile')}
           </DropdownMenuItem>
         ) : null}
-        {isOwner && !external ? (
+        {isOwner ? (
           <DropdownMenuItem onPress={() => handlers.edit(agent)}>
             {t('agents.edit')}
           </DropdownMenuItem>

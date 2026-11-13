@@ -27,7 +27,7 @@ afterAll(() => closePostgres());
 async function setup(authorize = true) {
   const owner = randomUUID();
   const agent = await createAgent(db, {
-    oxyAccountId: randomUUID(),
+    identity: { source: 'oxy', oxyAccountId: randomUUID() },
     ownerOxyAccountId: owner,
     authorOxyUserId: owner,
     character: TEST_CHARACTER,

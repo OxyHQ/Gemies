@@ -33,6 +33,7 @@ import type { ChannelId, ChannelInboundMessage } from '../channels/types.js';
 import { log } from '../logger.js';
 import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { servedModelId, servedReferenceOf } from '../models/power-levels.js';
+import { runtimeGemieAccountId } from '../gemie-oxy-actor.js';
 
 /**
  * How to answer on a channel with no prompt file of its own. It names nobody:
@@ -382,7 +383,7 @@ export async function processAgentBotMessage(
      */
     await getOrCreateUserCredits(ownerUserId);
     const funding = await reserveAgentTurn({
-      agentAccountId: agent.oxyAccountId,
+      agentAccountId: runtimeGemieAccountId(agent),
       ownerUserId,
       ownerFallbackAllowed: bot.ownerPaysAgentTurns,
     });

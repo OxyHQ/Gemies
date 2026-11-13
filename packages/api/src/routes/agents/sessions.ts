@@ -5,7 +5,11 @@ import { getJobStatus, cancelJob } from '../../lib/task-queue.js';
 import { getDb } from '../../db/index.js';
 import { updateAgent, withoutInternalAgentBindings } from '../../db/agents/agentRepository.js';
 import { loadAgentForActor, refusalMessage, refusalStatus } from '../../lib/agent-account.js';
-import { resolveAgentIdentities, type AgentIdentity } from '../../lib/agent-identity.js';
+import {
+  attachAgentIdentities,
+  UNRESOLVED_IDENTITY,
+  type AgentIdentity,
+} from '../../lib/agent-identity.js';
 import {
   findAgentSessionOwnedBy,
   listActiveAgentSessions,
@@ -37,39 +41,29 @@ interface SessionWithChildren extends Omit<AgentSessionListing, 'agentId'> {
  * Attach every agent identity a page needs in ONE Oxy call.
  *
  * A task listing names an agent twice — the session's own, and one per
- * delegated child — and both are bot accounts. Resolving them per row would be
- * one round trip per card; collecting every account id in the page first makes
- * it one for the page, which is the whole reason `resolveAgentIdentities`
- * returns a map instead of doing the attaching itself.
+ * delegated child. Resolving them per row would be one round trip per card;
+ * collecting every reference in the page first makes it one for the page.
+ *
+ * A session's embedded agent reference carries no author of its own — the
+ * session belongs to the person who started it, not to whoever built the
+ * agent — so `authorName` is null here whatever was resolved.
  */
-function hydrateSessionAgents(
+async function withAgentIdentities(
   sessions: readonly (AgentSessionListing & { childAgents?: AgentSessionAgentRef[] })[],
-  identities: Map<string, AgentIdentity>,
-): SessionWithChildren[] {
-  // A session's embedded agent reference carries no author of its own — the
-  // session belongs to the person who started it, not to whoever built the
-  // agent — so `authorName` is null here whether Oxy resolved the account or not.
-  const UNRESOLVED: AgentIdentity = { name: null, handle: null, color: null, authorName: null };
-  const hydrate = (ref: AgentSessionAgentRef): HydratedAgentRef => ({
-    ...ref,
-    ...(identities.get(ref.oxyAccountId) ?? UNRESOLVED),
-  });
+): Promise<SessionWithChildren[]> {
+  const refs = sessions.flatMap((session) => [
+    ...(session.agentId === null ? [] : [session.agentId]),
+    ...(session.childAgents ?? []),
+  ]);
+  const named = await attachAgentIdentities(refs);
+  const byRef = new Map(refs.map((ref, index) => [ref, named[index]]));
+  const hydrate = (ref: AgentSessionAgentRef): HydratedAgentRef =>
+    byRef.get(ref) ?? { ...ref, ...UNRESOLVED_IDENTITY };
   return sessions.map(({ childAgents, agentId, ...session }) => ({
     ...session,
     agentId: agentId === null ? null : hydrate(agentId),
     ...(childAgents !== undefined && { childAgents: childAgents.map(hydrate) }),
   }));
-}
-
-/** Every bot account a page of listings names, deduplicated by the resolver. */
-async function withAgentIdentities(
-  sessions: readonly (AgentSessionListing & { childAgents?: AgentSessionAgentRef[] })[],
-): Promise<SessionWithChildren[]> {
-  const accountIds = sessions.flatMap((session) => [
-    ...(session.agentId === null ? [] : [session.agentId.oxyAccountId]),
-    ...(session.childAgents ?? []).map((child) => child.oxyAccountId),
-  ]);
-  return hydrateSessionAgents(sessions, await resolveAgentIdentities(accountIds));
 }
 
 /**
