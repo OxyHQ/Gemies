@@ -96,7 +96,7 @@ import type {
   ResponseFormat,
   ToolChoice,
   ToolDefinition,
-} from '@oxy.so/contracts';
+} from '@kaana.ai/contracts';
 import { OxyInferenceError } from '@oxy.so/core/inference';
 
 import { log } from '../logger.js';

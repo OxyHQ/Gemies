@@ -184,6 +184,7 @@ export async function reconcileChatCreditOperation(
           !Number.isSafeInteger(unit.quantity) ||
           unit.quantity < 0 ||
           (unit.unit !== 'requests' &&
+            unit.unit !== 'cache_write_input_tokens' &&
             !tokenUnits.some((name) => name === unit.unit) &&
             unit.quantity > 0),
       )

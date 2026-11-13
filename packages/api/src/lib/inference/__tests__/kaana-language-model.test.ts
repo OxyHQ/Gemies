@@ -431,8 +431,9 @@ describe('Kaana AI SDK adapter over direct public inference', () => {
 
 describe('canonical disjoint token accounting', () => {
   it.each([
-    { input: 0, cached: 3000, output: 0, reasoning: 60 },
-    { input: 20, cached: 3000, output: 5, reasoning: 60 },
+    { input: 0, cached: 3000, cacheWrite: undefined, output: 0, reasoning: 60 },
+    { input: 20, cached: 3000, cacheWrite: 125, output: 5, reasoning: 60 },
+    { input: 0, cached: 0, cacheWrite: 125, output: 0, reasoning: 0 },
   ])(
     'includes cache and reasoning exactly once in streamed AI SDK totals: %j',
     async (quantities) => {
@@ -444,6 +445,9 @@ describe('canonical disjoint token accounting', () => {
           units: [
             { unit: 'input_tokens', quantity: quantities.input },
             { unit: 'cached_input_tokens', quantity: quantities.cached },
+            ...(quantities.cacheWrite === undefined
+              ? []
+              : [{ unit: 'cache_write_input_tokens', quantity: quantities.cacheWrite }]),
             { unit: 'output_tokens', quantity: quantities.output },
             { unit: 'reasoning_tokens', quantity: quantities.reasoning },
           ],
@@ -458,10 +462,10 @@ describe('canonical disjoint token accounting', () => {
       const parts = await drain((await model.doStream({ prompt } as never)).stream);
       expect(parts.at(-1)?.usage).toEqual({
         inputTokens: {
-          total: quantities.input + quantities.cached,
+          total: quantities.input + quantities.cached + (quantities.cacheWrite ?? 0),
           noCache: quantities.input,
           cacheRead: quantities.cached,
-          cacheWrite: undefined,
+          cacheWrite: quantities.cacheWrite,
         },
         outputTokens: {
           total: quantities.output + quantities.reasoning,

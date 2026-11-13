@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { InferenceMessage, ToolDefinition } from '@oxy.so/contracts';
+import type { InferenceMessage, ToolDefinition } from '@kaana.ai/contracts';
 
 import aliaHello from './fixtures/alia-hello-21-tools.json';
 import toolChain from './fixtures/oxy-measured-tool-chain.json';
