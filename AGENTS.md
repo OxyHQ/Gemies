@@ -38,7 +38,7 @@ bun run dev:api                                       # también dev:app, dev:in
 - Biome sustituye a ESLint/Prettier; `@ts-nocheck` y `@ts-expect-error` sin descripción los vigila `scripts/check-ts-directives.mjs` en CI.
 - Sobre `process.env` en Expo, solo `process.env.EXPO_PUBLIC_*` estático (Metro no inlinea otra cosa); lo hacen cumplir los plugins de `biome-plugins/`.
 - `bun.lock` va en el mismo commit que el `package.json` que lo cambia.
-- Un `model` o id de proveedor nunca va fijo en código o env; los niveles de potencia los resuelve Oxy ([`docs/model-abstraction.mdx`](./docs/model-abstraction.mdx)).
+- Un `model` o id de proveedor nunca va fijo en código o env; los niveles de potencia los resuelve Kaana ([`docs/model-abstraction.mdx`](./docs/model-abstraction.mdx)).
 - Cada one-shot que arranca la imagen de la API nombra `bun`; la imagen es Bun, no Node.
 - Una pantalla nunca espera tras un spinner: usa el esqueleto de Bloom (`__tests__/no-loading-screens.test.ts`).
 - Los fallos de inferencia son errores tipados (`failTurn`), nunca un mensaje de relleno con `finish_reason: "stop"`.
