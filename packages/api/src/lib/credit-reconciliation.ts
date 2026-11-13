@@ -1,8 +1,7 @@
-/** Interrupted turns reconcile the existing ledger from Kaana's public receipts, never from lost stream bytes. */
+/** Interrupted turns reconcile the existing ledger from Oxy, never from lost stream bytes. */
 import { and, asc, eq, isNotNull, lte, sql } from 'drizzle-orm';
-import { resolveOxyDeploymentEnvironment } from './inference/workload-identity-config.js';
-import { GEMIES_APPLICATION_ID } from '@gemies/server';
-import type { Kaana } from '@kaana.ai/sdk';
+import { OXY_ALIA_RESOURCE_APPLICATION_ID } from '@oxy.so/core/server';
+import type { OxyInferenceClient } from '@oxy.so/core/inference';
 import { getDb } from '../db';
 import {
   creditOperationAttempts,
@@ -16,7 +15,7 @@ import {
   type CreditReservation,
   type CreditUsage,
 } from './credits-manager';
-import { getHostedKaanaClient, disposeHostedKaanaClient } from './kaana/transport';
+import { getOxyInferenceClient, resolveOxyDeploymentEnvironment } from './inference/oxy-inference';
 import { tokenUsageFromUnits } from './inference/token-usage';
 import { servedModelId } from './models/power-levels';
 import { log } from './logger';
@@ -92,7 +91,7 @@ export async function retireTerminalCreditReconciliation(operationId: string): P
     );
 }
 
-type ReceiptReader = Pick<Kaana, 'generations'>;
+type ReceiptReader = Pick<OxyInferenceClient, 'getGenerationRecordByIdempotencyKey'>;
 
 /** Safe to repeat, including from two workers: the original ledger locks its terminal transition. */
 export async function reconcileChatCreditOperation(
@@ -137,15 +136,13 @@ export async function reconcileChatCreditOperation(
   let model = operation.requestedModel;
   for (const attempt of attempts) {
     signal.throwIfAborted();
-    const record = await client.generations.getByIdempotencyKey(attempt.idempotencyKey, {
-      onBehalfOfUserId: operation.userId,
+    const record = await client.getGenerationRecordByIdempotencyKey(attempt.idempotencyKey, {
+      delegatedUserId: operation.userId,
       signal,
     });
     if (
-      record.schemaVersion !== 1 ||
-      // This canonical backend identity remains the deployed legacy application
-      // despite the Gemies brand; the distinct frontend registration is not its payer.
-      record.applicationId !== GEMIES_APPLICATION_ID ||
+      record.schemaVersion !== 2 ||
+      record.applicationId !== OXY_ALIA_RESOURCE_APPLICATION_ID ||
       record.delegatedUserId !== operation.userId ||
       record.environment !== resolveOxyDeploymentEnvironment() ||
       !record.requestId ||
@@ -199,7 +196,7 @@ export async function reconcileChatCreditOperation(
     usage.completionTokens += output;
     usage.reasoningTokens = (usage.reasoningTokens ?? 0) + (projected.outputTokens.reasoning ?? 0);
     usage.totalTokens += input + output;
-    model = servedModelId(operation.requestedModel, record.model);
+    model = servedModelId(operation.requestedModel, record.resolvedModelReference);
   }
   if (!Number.isSafeInteger(usage.totalTokens))
     throw new Error('Token usage exceeds the supported range');
@@ -228,12 +225,10 @@ export async function runCreditReconciliation(): Promise<void> {
     )
     .limit(100);
   for (const row of terminal) await retireTerminalCreditReconciliation(row.id);
+  const client = getOxyInferenceClient();
+  if (!client) return;
   const rows = await getDb()
-    .select({
-      id: creditReconciliations.operationId,
-      attempts: creditReconciliations.attempts,
-      userId: creditOperations.userId,
-    })
+    .select({ id: creditReconciliations.operationId, attempts: creditReconciliations.attempts })
     .from(creditReconciliations)
     .innerJoin(creditOperations, eq(creditOperations.id, creditReconciliations.operationId))
     .where(
@@ -246,7 +241,6 @@ export async function runCreditReconciliation(): Promise<void> {
     .orderBy(asc(creditReconciliations.nextAttemptAt))
     .limit(5);
   for (const row of rows) {
-    const client = getHostedKaanaClient(row.userId);
     try {
       await reconcileChatCreditOperation(row.id, client, AbortSignal.timeout(5_000));
     } catch {
@@ -271,8 +265,6 @@ export async function runCreditReconciliation(): Promise<void> {
         { operationId: row.id, attempts, needsReview: attempts >= MAX_RECONCILIATION_ATTEMPTS },
         'Interrupted credit operation awaits authoritative usage',
       );
-    } finally {
-      disposeHostedKaanaClient(client);
     }
   }
 }

@@ -3,14 +3,14 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { Kaana } from '@kaana.ai/sdk';
-import { GEMIES_APPLICATION_ID } from '@gemies/server';
+import { OxyInferenceClient } from '@oxy.so/core/inference';
+import { OXY_ALIA_RESOURCE_APPLICATION_ID } from '@oxy.so/core/server';
 import { connectPostgres, closePostgres, getDb } from '../../db';
 import { creditOperations, creditReconciliations } from '../../db/schema/credit-operations';
 import { userCredits } from '../../db/schema/billing';
 import { getOrCreateUserCredits, findUserCredits } from '../../db/billing/userCreditsRepository';
 import { createCreditPriceBook } from '../credit-price-snapshot';
-import * as inferenceAuthority from '../kaana/transport';
+import * as inferenceAuthority from '../inference/oxy-inference';
 import { reserveCredits, refundReservation, type CreditReservation } from '../credits-manager';
 import {
   recordChatInferenceAttempt,
@@ -20,7 +20,7 @@ import {
 } from '../credit-reconciliation';
 
 let server: Server;
-let client: Kaana;
+let client: OxyInferenceClient;
 const records = new Map<string, object>();
 let reads = 0;
 beforeAll(async () => {
@@ -28,35 +28,31 @@ beforeAll(async () => {
   server = createServer((req, res) => {
     reads++;
     expect(req.method).toBe('GET');
-    const url = new URL(req.url!, 'http://fixture');
-    expect(url.pathname).toBe('/v1/generations');
-    const key = url.searchParams.get('idempotency_key');
+    expect(req.url).toBe('/v1/generations/by-idempotency-key');
+    const key = req.headers['idempotency-key'];
     const record = typeof key === 'string' ? records.get(key) : undefined;
-    res.writeHead(record ? 200 : 404, {
-      'Content-Type': 'application/json',
-      'Kaana-Request-Id': 'readback',
-    });
+    res.writeHead(record ? 200 : 404, { 'Content-Type': 'application/json' });
     res.end(
       JSON.stringify(
         record
-          ? record
+          ? { data: record }
           : {
-              schemaVersion: 1,
-              code: 'model_not_found',
-              message: 'Pending',
-              requestId: 'readback',
-              retryable: false,
+              error: {
+                code: 'model_not_found',
+                message: 'Pending',
+                requestId: 'readback',
+                retryable: false,
+              },
             },
       ),
     );
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  client = new Kaana({
-    baseURL: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,
+  client = new OxyInferenceClient({
+    baseURL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     credential: 'synthetic-workload',
-    maxRetries: 0,
   });
-  vi.spyOn(inferenceAuthority, 'getHostedKaanaClient').mockReturnValue(client);
+  vi.spyOn(inferenceAuthority, 'getOxyInferenceClient').mockReturnValue(client);
 });
 afterAll(async () => {
   server.closeAllConnections();
@@ -95,16 +91,14 @@ async function operation(reservation: TrackedReservation) {
 }
 function receipt(reservation: CreditReservation, id: string, input: number, output: number) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'metered_usage',
     requestId: id,
-    applicationId: GEMIES_APPLICATION_ID,
+    applicationId: OXY_ALIA_RESOURCE_APPLICATION_ID,
     credentialId: 'synthetic-workload',
     delegatedUserId: reservation.userId,
     environment: 'development',
-    meteredUsageId: id,
-    tariff: { status: 'unpriced', priceVersionId: null },
-    customerCharge: { status: 'not_charged' },
+    economicTreatment: 'internal_metered',
     outcome: 'cancelled',
     usageSource: 'provider_reported',
     units: [
@@ -114,7 +108,7 @@ function receipt(reservation: CreditReservation, id: string, input: number, outp
       { unit: 'reasoning_tokens', quantity: 0 },
       { unit: 'requests', quantity: 1 },
     ],
-    model: 'fixture/model@immutable',
+    resolvedModelReference: 'fixture/model@immutable',
     settledAt: new Date().toISOString(),
   };
 }
@@ -132,10 +126,9 @@ describe('interrupted credit reconciliation', () => {
     expect((await findUserCredits(getDb(), held.userId))?.creditsFree).toBe(99);
     records.set(key, receipt(held, randomUUID(), 5000, 200));
     // No in-memory reservation/controller survives this reconstruction.
-    const restarted = new Kaana({
-      baseURL: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,
+    const restarted = new OxyInferenceClient({
+      baseURL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
       credential: 'synthetic-workload',
-      maxRetries: 0,
     });
     await Promise.all([
       reconcileChatCreditOperation(held.operationId, restarted, AbortSignal.timeout(2000)),
@@ -184,31 +177,6 @@ describe('interrupted credit reconciliation', () => {
       totalTokens: 3060,
       systemPromptTokens: 100,
     });
-  });
-  it('rejects the future Gemies binding while the workload is bound to Alia and preserves staging scope', async () => {
-    const held = await admission(),
-      key = randomUUID();
-    await recordChatInferenceAttempt(held, key, 'prepared', 0);
-    records.set(key, {
-      ...receipt(held, randomUUID(), 100, 10),
-      applicationId: 'synthetic-future-gemies-application',
-    });
-    await expect(
-      reconcileChatCreditOperation(held.operationId, client, AbortSignal.timeout(2000)),
-    ).rejects.toThrow('does not match');
-    expect((await operation(held)).status).toBe('admitted');
-    vi.stubEnv('NODE_ENV', 'staging');
-    try {
-      records.set(key, { ...receipt(held, randomUUID(), 100, 10), environment: 'development' });
-      await expect(
-        reconcileChatCreditOperation(held.operationId, client, AbortSignal.timeout(2000)),
-      ).rejects.toThrow('does not match');
-      records.set(key, { ...receipt(held, randomUUID(), 100, 10), environment: 'staging' });
-      await reconcileChatCreditOperation(held.operationId, client, AbortSignal.timeout(2000));
-      expect((await operation(held)).status).toBe('settled');
-    } finally {
-      vi.unstubAllEnvs();
-    }
   });
   it('only refunds known pre-dispatch cancellation or an authoritative explicit zero, not missing units', async () => {
     const held = await admission();

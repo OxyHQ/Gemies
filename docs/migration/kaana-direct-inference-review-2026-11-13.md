@@ -123,3 +123,14 @@ another product's merchant or claim invoice readiness from SDK availability.
   idempotency, usage/receipt reconciliation, actual Gemies workload identity
   and payer treatment. Existing direct voice/dictation must continue working.
   No successful production migration or live inference is asserted here.
+
+
+## Temporary transport release hold — November 13
+
+PR #49 (`a3bd50f94`) moved hosted text and receipt reads to the public Kaana lane before its native spend authority was ready. The existing Oxy-backed grant lane rejects an explicit output request above the first-party 2048-token ceiling. The previous text edge bounded that request instead. Gemies normally requests 16384 output tokens, and even its utility allowance is 2560; transport-level tests did not exercise this actual workload policy difference.
+
+The temporary source rollback restores the pre-#49 text transport and associated receipt path so a later automatic API deployment cannot reintroduce that incompatible transition. Voice remains on its established direct Kaana transport. Other changes merged after #49 are retained. This is a release-order correction, **not a reversal of the owner's decision**: Kaana must process requests, authorize spending and bill, with Oxy supplying identity only. Neither the Oxy ceiling workaround nor a product-side clamp/fallback is introduced.
+
+Reapply the direct transport only after reviewed native Kaana policy, identity, durable admission/settlement and historical-key fencing are available for the exact deployed workload. Before enabling Gemies traffic, test the effective output allowance and price/context limits through the actual workload authority, then verify structured output, tools, streaming/cancellation and receipt reads. Preserve outstanding legacy receipts and permanent idempotency fences across the transition. A passing transport unit test or the presence of the public SDK is not sufficient activation evidence.
+
+This note describes the source release hold. Deployment, rollback completion and production health must be verified separately; it does not claim a successful production rollback.

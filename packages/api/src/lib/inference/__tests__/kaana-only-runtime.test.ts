@@ -40,7 +40,7 @@ describe('Kaana-only hosted inference architecture', () => {
     expect(runtime).not.toContain(retiredFlag);
     expect(runtime).not.toContain(retiredModule);
     expect(runtime).not.toContain('GATEWAY_API_URL');
-    expect(source('lib/inference/kaana-boot-check.ts')).not.toContain(
+    expect(source('lib/inference/oxy-inference-boot-check.ts')).not.toContain(
       ['is', 'Kaana', 'Client', 'Enabled'].join(''),
     );
   });
@@ -80,7 +80,7 @@ describe('Kaana-only hosted inference architecture', () => {
     expect("await import('../internal/providers/lib/seed-features.js')").toMatch(dynamic);
     // …and the model catalogue is Oxy's, read through the inference client —
     // never a static table under internal/providers (ADR 0012).
-    expect(source('lib/models/catalogue.ts')).toContain('.models.list(');
+    expect(source('lib/models/catalogue.ts')).toContain('listModels(');
     expect(source('lib/gateway-client.ts')).not.toMatch(/internal\/providers/);
   });
 

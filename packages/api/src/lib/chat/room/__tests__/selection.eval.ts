@@ -41,7 +41,7 @@ vi.mock('../../../credits-manager.js', () => ({
 }));
 
 import { selectRoomDecision } from '../selector.js';
-import { getHostedKaanaClient, disposeHostedKaanaClient } from '../../../kaana/transport.js';
+import { createOxyInferenceCredential } from '../../../inference/oxy-inference-credential.js';
 
 const repetitions = Number(process.env.ROOM_EVAL_REPETITIONS ?? '1');
 if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 50) {
@@ -225,11 +225,10 @@ beforeAll(async () => {
     );
   }
   try {
-    const client = getHostedKaanaClient();
-    try {
-      await client.models.list();
-    } finally {
-      disposeHostedKaanaClient(client);
+    const credential = createOxyInferenceCredential();
+    const accessToken = typeof credential === 'function' ? await credential() : credential;
+    if (typeof accessToken !== 'string' || accessToken.length === 0) {
+      throw new Error('Alia workload returned no credential.');
     }
   } catch {
     // Do not let SDK error serialization expose credential material in an evaluation report.

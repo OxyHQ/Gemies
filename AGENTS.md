@@ -13,6 +13,8 @@ Este repo nació el 2026-11-12 de `OxyHQ/Alia`, con todo su historial y sin ser 
 - **El SDK (`packages/sdk`, `@gemies/sdk`) y el cliente de servidor (`packages/server`, `@gemies/server`) viven y se publican aquí** (`release-packages.yml`, OIDC). Sustituyen sin paquete puente a `@alia.onl/sdk` y `@alia.onl/server`: componentes `Gemie*` (`GemieChatContent`, `GemieChatSheet`, `GemieAvatar`, `useAskGemie`…) y base URL `https://api.gemies.ai`. La app Alia los consume desde npm.
 - Vocabulario nuevo: un agente es un **gemie**. Alia es un gemie oficial global y Codea otro. Alia es la fila `agents` `ALIA_GEMIE_ID` (`domain/alia-gemie.ts`) y lo que la distingue es su configuración (`memory_store`, `reach`, `mailbox`, `task_authority`, sus grants): decide por esos atributos, nunca por su id ni por un `agentId` nulo.
 
+**Retención temporal del transporte (2026-11-13):** el texto conserva el transporte previo a PR #49 hasta completar la autoridad nativa de Kaana. La decisión Kaana procesa/autoriza/factura sigue vigente; no desplegar de nuevo el transporte directo por sí solo. Gates y motivo: [release hold](docs/migration/kaana-direct-inference-review-2026-11-13.md#temporary-transport-release-hold--november-13).
+
 ## Comandos
 
 ```bash

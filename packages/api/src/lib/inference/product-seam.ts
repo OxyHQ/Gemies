@@ -33,8 +33,8 @@
  *   ADR 0001. `reportModelUsage` has no counterpart on this seam because it has
  *   no counterpart in the target architecture at all — see the gap analysis.
  * - **Hosted transport wiring.** `chat-core.ts` selects
- *   `kaana-language-model.ts`, which uses the published Kaana SDK to
- *   call Kaana directly. This file supplies only Alia-owned product vocabulary to that
+ *   `kaana-language-model.ts`, which uses the published `OxyInferenceClient` to
+ *   call Oxy. This file supplies only Alia-owned product vocabulary to that
  *   adapter; it never owns an endpoint, credential or provider route.
  */
 
