@@ -1,15 +1,6 @@
 /**
- * Real-time episode progress, on the SHARED notifications socket.
- *
- * The version this replaces documented exactly this — *"the actual socket
- * connection is managed by use-notification-setup"* — and then built a second
- * refcounted singleton of its own. A signed-in user on the shows screen held
- * two websockets to the same server, in the same room, so every emit arrived
- * twice and which socket a listener landed on depended on mount order.
- *
- * `src/features/notifications/runtime/notifications-socket.ts` is the one connection now. This hook adds a
- * listener and takes it away again; the connection belongs to whoever still
- * holds a reference.
+ * Real-time episode progress: `show.progress` on the account's ONE realtime connection, the one
+ * the runtime provider holds (`@gemies/sdk/runtime`). This hook only listens; it opens nothing.
  */
 
 import { useRealtimeEvent } from '@gemies/sdk/runtime';
