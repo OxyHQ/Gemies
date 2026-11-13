@@ -17,7 +17,7 @@
  * ## What is allowed, and why each one is not an assembler
  *
  * A SOURCE produces tools from one place and merges nothing: `buildMcpTools`,
- * `buildIntegrationTools`, `buildOxyServiceTools`, `buildRuntimeTools`, the
+ * `buildOxyServiceTools`, `buildRuntimeTools`, the
  * editor-tool converter. The assembler is what gathers them. The distinction is
  * not stylistic — it is the whole reason the five diverged, since each one
  * decided independently which sources to gather and each decided differently.
@@ -126,12 +126,6 @@ function toolSetConstructions(): Map<string, string[]> {
 const ALLOWED: Readonly<Record<string, string>> = {
   'packages/api/src/lib/tool-pipeline.ts': 'THE ASSEMBLER. The only thing that gathers.',
   'packages/api/src/lib/tools/mcp.ts': 'SOURCE: one origin (MCP connectors), merges nothing.',
-  'packages/api/src/lib/tools/integrations/index.ts':
-    'SOURCE: the OAuth integrations, merging only its own per-service modules below.',
-  'packages/api/src/lib/tools/integrations/google-calendar.ts': 'SOURCE: one service.',
-  'packages/api/src/lib/tools/integrations/google-drive.ts': 'SOURCE: one service.',
-  'packages/api/src/lib/tools/integrations/microsoft-365.ts':
-    'SOURCE: one provider (Microsoft Graph); each builder is one connected service.',
   'packages/api/src/lib/tools/oxy-services.ts': 'SOURCE: one origin (the oxy_services manifests).',
   'packages/api/src/lib/tools/accounts.ts':
     "SOURCE: one origin (the turn gemie's connected accounts of the person, ADR 0035). Merges nothing.",

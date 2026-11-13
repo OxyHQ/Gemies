@@ -250,9 +250,6 @@ vi.mock('../../../db/agents/agentRepository.js', () => ({
   findAgentById: vi.fn(async () => null),
 }));
 vi.mock('../../../lib/tools/mcp.js', () => ({ buildMcpTools: vi.fn(async () => ({})) }));
-vi.mock('../../../lib/tools/integrations.js', () => ({
-  buildIntegrationTools: vi.fn(async () => ({})),
-}));
 vi.mock('../../../lib/tools/oxy-services.js', () => ({
   buildOxyServiceTools: vi.fn(async () => ({})),
   getOxyServicePromptFragment: vi.fn(async () => ''),

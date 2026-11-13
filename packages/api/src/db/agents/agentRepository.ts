@@ -744,6 +744,42 @@ export async function listActiveAgentsByAuthor(
   }));
 }
 
+/**
+ * The person's own agents granted one of these connectors (`mcp:<id>`), with the
+ * ids each holds, for "which gemies can use it" on the connected list. The same
+ * rows `listActiveAgentsByAuthor` scopes a grant to: the person's own, active.
+ */
+export async function listAgentsGrantedConnectors(
+  db: Executor,
+  ownerOxyUserId: string,
+  connectorIds: readonly string[],
+): Promise<{ _id: string; identity: StoredAgentIdentity; connectorIds: string[] }[]> {
+  if (connectorIds.length === 0) return [];
+  const grants = connectorIds.map((id) => `mcp:${id}`);
+  const rows = await db
+    .select({
+      _id: agents.id,
+      capabilityGrants: agents.capabilityGrants,
+      ...agentIdentityColumns,
+    })
+    .from(agents)
+    .where(
+      and(
+        eq(agents.authorOxyUserId, ownerOxyUserId),
+        eq(agents.status, 'active'),
+        sql`${agents.capabilityGrants} && ${sql.param(grants)}::text[]`,
+      ),
+    )
+    .orderBy(desc(agents.createdAt), desc(agents.id));
+  return rows.map((row) => ({
+    _id: row._id,
+    identity: readStoredIdentity(row),
+    connectorIds: row.capabilityGrants
+      .filter((grant) => grants.includes(grant))
+      .map((grant) => grant.slice('mcp:'.length)),
+  }));
+}
+
 /* --------------------------- the children --------------------------- */
 
 /**

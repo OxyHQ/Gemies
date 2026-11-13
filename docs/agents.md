@@ -571,9 +571,12 @@ Two properties are worth stating outright, because both reverse what came before
   the six `permissions_*` columns and `archetypeConfig.knowledgeSources`— all
   treated an unset value as *allowed*, so an agent nobody had configured could
   reach everything its owner could.
-- **Connectors are granted one at a time.** MCP connectors and OAuth
-  integrations build their tool names from rows, so a grant names the row. An
-  agent no longer inherits every connector its owner has installed. Oxy apps
+- **Connectors are granted one account at a time.** An MCP connector builds its
+  tool names from its row, and each account a person connects is its own row
+  (`mcp_notion__…`, `mcp_notion_2__…`), so a grant (`mcp:<id>`) names one
+  account. An agent never inherits every connector its owner has connected, and
+  with two Notion workspaces it reaches only the one it was given; the gemie's
+  editor has a switch per account. Oxy apps
   are not in this vocabulary at all — see "Oxy apps: for the person and as
   itself" below.
 

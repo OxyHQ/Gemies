@@ -218,7 +218,7 @@ describe('the production turn (getEmailContext + 4 readEmail, 47 tools) now fits
     const core = wrapToolsWithTruncation(coreTools(), TRUNCATION_CHARS);
     const budgeted = budgetTools({
       tools: { ...core, ...inbox, ...mention },
-      sources: { oxy_service: { ...inbox, ...mention }, mcp: {}, integration: {} },
+      sources: { oxy_service: { ...inbox, ...mention }, mcp: {} },
     });
     expect(budgeted.activeToolNames()).toHaveLength(26); // 25 core + loadTools
 

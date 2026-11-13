@@ -44,7 +44,7 @@
  *    reached everything its owner could. `domain/capability-grants.ts` argues
  *    the reversal.
  *  - **Only a `reach = 'person'` gemie (Alia) reaches every row** of the
- *    instanced families: the person's own connectors, integrations and agents.
+ *    instanced families: the person's own connectors and agents.
  *    A `grants` gemie's set answers `null` to an instance question only for a
  *    bare `agent` grant, so no persona can be mistaken for the person's own
  *    assistant.
@@ -86,7 +86,6 @@ import { listSpacePeerIds } from '../db/spaces/spaceRepository.js';
 import { SPACE_NOTES_TOOL, buildSpaceNotesTool } from './agent/space-notes-tool.js';
 import { buildAskAliaTool } from './tools/ask-alia.js';
 import { buildConsultAgentTool } from './tools/consult-agent.js';
-import { buildIntegrationTools } from './tools/integrations.js';
 import {
   buildOxyServiceTools,
   type OxyExecutionAuthorizationRef,
@@ -523,7 +522,7 @@ export class ToolPipeline {
       return withBudget(
         budgetTools({
           tools,
-          sources: { oxy_service: oxyServiceTools, mcp: {}, integration: {} },
+          sources: { oxy_service: oxyServiceTools, mcp: {} },
           inputBudgetBytes: requestInputBudgetBytes(inputLimits),
         }),
         toolNameMapping,
@@ -725,19 +724,19 @@ export class ToolPipeline {
      * its owner's Telegram bot could not reach one first-party Oxy service —
      * the divergence this collapse exists to end.
      *
-     * Three of the four build their tool NAMES from rows — `mcp_x__y`,
-     * `oxy_x__y`, and an integration the person connected — so nobody could
-     * enumerate them when the vocabulary was written and a whole-family grant
-     * would be a blank cheque over rows that do not exist yet. That is exactly
-     * what an agent inheriting all of its owner's connectors was, and it is why
-     * those three are granted one row at a time.
+     * Two of the three build their tool NAMES from rows — `mcp_x__y` (one row
+     * per connected account) and `oxy_x__y` — so nobody could enumerate them
+     * when the vocabulary was written and a whole-family grant would be a blank
+     * cheque over rows that do not exist yet. That is exactly what an agent
+     * inheriting all of its owner's connectors was, and it is why a connector is
+     * granted one account at a time.
      *
-     * `agent` is the fourth, and its rows are the person's OWN agents: one tool
+     * `agent` is the third, and its rows are the person's OWN agents: one tool
      * whose schema names exactly the ones this turn may talk to. It is here
      * rather than beside the catalogue tools below because the selection is a
-     * database read, and reading it in parallel with the other three is the
-     * difference between one round trip and four in series. It is under
-     * `actsForPerson` for the same reason the three are — and that is also what
+     * database read, and reading it in parallel with the other two is the
+     * difference between one round trip and three in series. It is under
+     * `actsForPerson` for the same reason the others are — and that is also what
      * bounds the recursion, since a nested agent turn does not act for a person
      * and therefore never receives this tool.
      *
@@ -794,14 +793,9 @@ export class ToolPipeline {
             self: agent.mailbox && ownerIsPresent && hasOwnAuthority,
           };
     const oxyPersonAccountId = requesterAccountId;
-    const [mcpTools, integrationTools, oxyServiceTools, ownAgentTools] = await Promise.all([
+    const [mcpTools, oxyServiceTools, ownAgentTools] = await Promise.all([
       actsForPerson && wants('mcp')
         ? buildMcpTools(userId, mcpSelection(mcpServerId, grants)).catch(bulkFailure('mcp'))
-        : {},
-      actsForPerson && wants('integration')
-        ? buildIntegrationTools(userId, grants.instances('integration') ?? undefined).catch(
-            bulkFailure('integration'),
-          )
         : {},
       !wants('oxy_service') ||
       (!actsForPerson && personAssistant) ||
@@ -839,13 +833,12 @@ export class ToolPipeline {
           }).catch(bulkFailure('agent'))
         : {},
     ]);
-    // The four sources come from rows in no promised order. Sorted by name, the
+    // The three sources come from rows in no promised order. Sorted by name, the
     // tool list — which leads the request — is the same bytes turn after turn,
     // so a provider's prefix cache can serve it.
     Object.assign(
       aliaTools,
       byName(mcpTools),
-      byName(integrationTools),
       /**
        * Alia's memory of the person is Nilo's. It reaches only a gemie whose
        * `memoryStore` is Nilo and that holds the `memory` grant, and not on a
@@ -914,7 +907,7 @@ export class ToolPipeline {
     return withBudget(
       budgetTools({
         tools,
-        sources: { oxy_service: oxyServiceTools, mcp: mcpTools, integration: integrationTools },
+        sources: { oxy_service: oxyServiceTools, mcp: mcpTools },
         pins: [...new Set(pins)],
         priorToolCalls,
         inputBudgetBytes: requestInputBudgetBytes(inputLimits),
@@ -959,7 +952,7 @@ function consultSelection(
  *
  * `undefined` survives only when BOTH sides are unrestricted, which is the
  * person's own assistant with no pick: that is the one case that still means
- * every runnable connector, local relay servers included.
+ * every connected connector.
  */
 function mcpSelection(
   pick: string | null | undefined,

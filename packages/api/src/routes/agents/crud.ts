@@ -57,12 +57,10 @@ import {
 } from '../../domain/capability-grants.js';
 import {
   listMcpServersForUser,
+  serializeMcpServer,
   type McpServerRow,
 } from '../../db/integrations/mcpServerRepository.js';
-import {
-  listIntegrationsForUser,
-  type IntegrationSafeRow,
-} from '../../db/integrations/integrationRepository.js';
+import { registryLogoIds } from '../../lib/connector-logos.js';
 import { refuseFeatureGates } from '../../lib/agent-features.js';
 import { refusePrimaryTools } from '../../lib/agent-primary-tools.js';
 import {
@@ -189,11 +187,11 @@ router.get('/me', authenticateToken, async (req: Request, res: Response) => {
 /**
  * GET /agents/capability-connectors — the ROWS this caller can grant an agent.
  *
- * Three capability families are granted one row at a time
- * (`mcp:<id>`, `integration:<service>`, `agent:<id>`),
- * because nobody can enumerate their members in advance. A screen offering
- * those grants has to know which rows exist, and only this service knows all
- * three. Oxy app/resource delegation is deliberately absent: it is edited in
+ * Two capability families are granted one row at a time (`mcp:<id>`,
+ * `agent:<id>`), because nobody can enumerate their members in advance. A
+ * screen offering those grants has to know which rows exist, and only this
+ * service knows both. Each connected account of a connector is its own row, so
+ * an agent is granted one account, never "Notion" in general. Oxy app/resource delegation is deliberately absent: it is edited in
  * Oxy Settings and stored in Oxy's normalized DelegationGrant records.
  *
  * `?agent=<id>` is the agent being EDITED, left out of its own list. Cosmetic
@@ -216,37 +214,31 @@ router.get('/capability-connectors', authenticateToken, async (req: Request, res
   const oxyUserId = req.user.id;
 
   const excludeAgentId = typeof req.query.agent === 'string' ? req.query.agent : undefined;
-  const [mcp, integration, ownAgents] = await Promise.all([
+  const [mcp, ownAgents, logos] = await Promise.all([
     listMcpServersForUser(getDb(), oxyUserId).catch(connectorFailure<McpServerRow>('mcp')),
-    listIntegrationsForUser(getDb(), oxyUserId).catch(
-      connectorFailure<IntegrationSafeRow>('integration'),
-    ),
     grantableAgentRows(oxyUserId, excludeAgentId).catch(
       connectorFailure<GrantableConnectorRow>('agent'),
     ),
+    registryLogoIds(getDb()).catch(() => new Map<string, string>()),
   ]);
 
   res.json({
     connectors: [
       ...ownAgents,
-      ...mcp.map((server) => ({
-        grant: formatCapabilityGrant('mcp', server.id),
-        family: 'mcp',
-        label: server.displayName,
-        // What the agent would actually gain. A connector with no tools grants
-        // nothing, and saying so is better than an inert toggle.
-        detail: `${server.tools.length} tool${server.tools.length === 1 ? '' : 's'}`,
-      })),
-      ...integration.map((row) => ({
-        // The SERVICE, not the row id: `buildIntegrationTools` matches on
-        // `google-calendar` / `google-drive`, which is what
-        // `listConnectedServices` answers, so a grant naming the row's own id
-        // would match nothing and fail silently.
-        grant: formatCapabilityGrant('integration', row.service),
-        family: 'integration',
-        label: row.displayName,
-        detail: row.status === 'active' ? 'Connected' : row.status,
-      })),
+      ...mcp.map((server) => {
+        const shown = serializeMcpServer(server, logos.get(server.registryId ?? '') ?? null);
+        return {
+          grant: formatCapabilityGrant('mcp', server.id),
+          family: 'mcp',
+          label: shown.accountLabel
+            ? `${shown.displayName} · ${shown.accountLabel}`
+            : shown.displayName,
+          // What the agent would actually gain. A connector with no tools grants
+          // nothing, and saying so is better than an inert toggle.
+          detail: `${server.tools.length} tool${server.tools.length === 1 ? '' : 's'}`,
+          logoUrl: shown.logoUrl,
+        };
+      }),
     ],
   });
 });
@@ -257,6 +249,8 @@ interface GrantableConnectorRow {
   family: string;
   label: string;
   detail: string;
+  /** A connector's logo, on the API's origin (`GET /mcp/logos/:id`); absent for agents. */
+  logoUrl?: string | null;
 }
 
 /**

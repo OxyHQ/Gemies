@@ -7,8 +7,9 @@
 #      the database is empty, then the deploy's own `pre` and `post`), and run
 #      deploy-aws.yml's post-rollout command shape (`/bin/sh -c 'bun ... && bun ...'`),
 #   3. serve /health/ready with 200 from the image's default CMD,
-#   4. answer the socket.io engine handshake and the `/ws/mcp` WebSocket upgrade
-#      on the same server (the noServer upgrade router in lib/mcp-relay.ts),
+#   4. answer the socket.io engine handshake and a WebSocket upgrade (the external
+#      agents' relay, `/ws/external-agent`) on the same server (the upgrade router
+#      in lib/websocket-upgrades.ts),
 #   5. run as Bun at PID 1, so SIGTERM reaches the process itself,
 #   6. turn SIGTERM (`docker stop`, as ECS does on a rollout) into the graceful
 #      shutdown and exit 0.
@@ -107,9 +108,9 @@ esac
 upgrade=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 --http1.1 \
   -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
   -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-  "http://127.0.0.1:$PORT/ws/mcp" 2>/dev/null || true)
+  "http://127.0.0.1:$PORT/ws/external-agent" 2>/dev/null || true)
 if [ "$upgrade" != 101 ]; then
-  echo "::error::the /ws/mcp WebSocket upgrade answered '$upgrade', expected 101"
+  echo "::error::the /ws/external-agent WebSocket upgrade answered '$upgrade', expected 101"
   exit 1
 fi
 
@@ -135,4 +136,4 @@ if [ "$exit_code" != 0 ] || ! grep -q 'Graceful shutdown complete' <<<"$logs"; t
   exit 1
 fi
 
-echo "API image smoke passed: refused boot non-zero, migrations + seed, /health/ready, socket.io + /ws/mcp upgrades, PID 1 = Bun, graceful SIGTERM"
+echo "API image smoke passed: refused boot non-zero, migrations + seed, /health/ready, socket.io + /ws/external-agent upgrades, PID 1 = Bun, graceful SIGTERM"

@@ -1,28 +1,26 @@
 // packages/api/src/routes/__tests__/mcp-oauth.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// INTEGRATIONS_URL are captured into module-level consts at import time,
-// so they must be present BEFORE mcp.ts is imported. vi.hoisted runs first.
+// INTEGRATIONS_URL is captured into a module-level const at import time, so it
+// must be present BEFORE mcp.ts is imported. vi.hoisted runs first.
 vi.hoisted(() => {
   process.env.INTEGRATIONS_URL = 'http://integrations.test';
-  process.env.APP_URL = 'http://app.test';
+  process.env.API_BASE_URL = 'https://api.test';
+  process.env.WEB_URL = 'https://gemies.ai';
 });
 
 vi.mock('../../db/integrations/mcpServerRepository.js', async () => {
-  // `serializeMcpServer` and `toMcpServerConfig` are PURE row transforms, and
-  // they are the seam that keeps the wire shape (`_id`, a nested `config`)
-  // apart from the flat columns. Mocking them away would leave the assertions
-  // below unable to notice a broken serializer, so the real ones are kept and
-  // only the query functions replaced.
+  // `serializeMcpServer` and `toMcpServerConfig` are PURE row transforms and the
+  // seam between the flat columns and the wire, so the real ones are kept and
+  // only the queries replaced.
   const actual = await vi.importActual<
     typeof import('../../db/integrations/mcpServerRepository.js')
   >('../../db/integrations/mcpServerRepository.js');
   return {
     ...actual,
     findMcpServerForUser: vi.fn(),
-    findMcpServerByName: vi.fn(),
-    listMcpServersForUser: vi.fn(),
-    installMcpServer: vi.fn(),
+    listMcpServersForUser: vi.fn(async () => []),
+    insertMcpServer: vi.fn(),
     deleteMcpServerForUser: vi.fn(),
     updateMcpServer: vi.fn(),
     setMcpServerStatus: vi.fn(),
@@ -36,62 +34,55 @@ vi.mock('../../db/integrations/mcpOAuthStateRepository.js', () => ({
   deleteMcpOAuthStateByToken: vi.fn(),
 }));
 
-// The handle is never used — every repository call is mocked — but `getDb()`
-// throws when Postgres is not connected, which is correct production behaviour
-// and would fail these unit tests for the wrong reason.
+vi.mock('../../db/agents/agentRepository.js', () => ({
+  listAgentsGrantedConnectors: vi.fn(async () => []),
+}));
+vi.mock('../../lib/agent-identity.js', () => ({
+  agentPromptName: (identity: { name: string }) => identity.name,
+  attachAgentIdentities: vi.fn(async (rows: Record<string, unknown>[]) =>
+    rows.map((row) => ({ ...row, name: 'Scout' })),
+  ),
+}));
+vi.mock('../../lib/connector-logos.js', () => ({
+  registryLogoIds: vi.fn(async () => new Map([['notion', 'a'.repeat(64)]])),
+  storeFirstIcon: vi.fn(async () => 'b'.repeat(64)),
+  servedLogo: vi.fn(),
+}));
+
 vi.mock('../../lib/integrations-client.js', () => ({
   integrationsFetch: (_account: string, path: string, init: RequestInit) =>
     fetch(`http://integrations.test${path}`, init),
 }));
-
+// The handle is never used — every repository call is mocked — but `getDb()`
+// throws when Postgres is not connected.
 vi.mock('../../db/index.js', () => ({ getDb: () => ({}) }));
-
-vi.mock('@oxy.so/core/server', () => ({
-  createOxyAuthMiddleware: vi.fn(() => (_req: any, _res: any, next: any) => next()),
-  createOptionalOxyAuth: vi.fn(() => (_req: any, _res: any, next: any) => next()),
-}));
-
 vi.mock('../../middleware/auth.js', () => ({
-  authenticateToken: vi.fn((_req: any, _res: any, next: any) => next()),
+  authenticateToken: vi.fn((_req: unknown, _res: unknown, next: () => void) => next()),
 }));
-
 vi.mock('../../lib/logger.js', () => ({
   log: { general: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } },
 }));
 
-vi.mock('../../lib/mcp-registry.js', () => ({
-  MCP_REGISTRY: [
+vi.mock('../../lib/mcp-registry.js', () => {
+  const MCP_REGISTRY = [
     {
-      id: 'github',
-      name: 'GitHub',
-      description: 'GitHub connector',
-      icon: 'github',
-      transport: 'streamable-http',
-      url: 'https://mcp.github.test',
-      requiredEnv: [],
-      requiresOAuth: true,
-      category: 'development',
-    },
-    {
-      id: 'github-local',
-      name: 'GitHub (local)',
-      description: 'A command connector from the registry',
-      icon: 'github',
-      transport: 'stdio',
-      command: 'npx',
-      args: ['-y', '@modelcontextprotocol/server-github'],
-      requiredEnv: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
-      category: 'development',
+      id: 'notion',
+      name: 'Notion',
+      description: 'Notion connector',
+      category: 'productivity',
+      url: 'https://mcp.notion.test/mcp',
+      website: 'https://notion.test',
+      docsUrl: 'https://notion.test/docs',
+      featured: true,
     },
     {
       id: 'vendor',
       name: 'Vendor',
-      description: 'A connector whose vendor issues Alia a client',
-      icon: 'vendor',
-      transport: 'streamable-http',
+      description: 'A connector whose provider issues Gemies a client',
+      category: 'productivity',
       url: 'https://mcp.vendor.test/mcp',
-      requiredEnv: [],
-      requiresOAuth: true,
+      website: 'https://vendor.test',
+      docsUrl: 'https://vendor.test/docs',
       oauth: {
         client: {
           envClientId: 'VENDOR_MCP_CLIENT_ID',
@@ -100,16 +91,19 @@ vi.mock('../../lib/mcp-registry.js', () => ({
         scope: 'read write',
         revocation: { url: 'https://vendor.test/oauth/revoke', clientAuth: 'basic' },
       },
-      category: 'productivity',
     },
-  ],
-}));
+  ];
+  return {
+    MCP_REGISTRY,
+    findRegistryEntry: (id: string) => MCP_REGISTRY.find((entry) => entry.id === id),
+  };
+});
 
 import {
   deleteMcpServerForUser,
-  findMcpServerByName,
   findMcpServerForUser,
-  installMcpServer,
+  insertMcpServer,
+  listMcpServersForUser,
   setMcpServerStatus,
   updateMcpServer,
   type McpServerRow,
@@ -120,11 +114,12 @@ import {
   deleteMcpOAuthStateByToken,
   findLiveMcpOAuthState,
 } from '../../db/integrations/mcpOAuthStateRepository.js';
+import { listAgentsGrantedConnectors } from '../../db/agents/agentRepository.js';
 import router from '../mcp.js';
 
 const mockFindServer = vi.mocked(findMcpServerForUser);
-const mockFindByName = vi.mocked(findMcpServerByName);
-const mockInstall = vi.mocked(installMcpServer);
+const mockList = vi.mocked(listMcpServersForUser);
+const mockInsert = vi.mocked(insertMcpServer);
 const mockSetStatus = vi.mocked(setMcpServerStatus);
 const mockDeleteServer = vi.mocked(deleteMcpServerForUser);
 const mockUpdate = vi.mocked(updateMcpServer);
@@ -132,60 +127,60 @@ const mockCreateState = vi.mocked(createMcpOAuthState);
 const mockFindState = vi.mocked(findLiveMcpOAuthState);
 const mockDeleteState = vi.mocked(deleteMcpOAuthState);
 const mockDeleteStateByToken = vi.mocked(deleteMcpOAuthStateByToken);
+const mockGranted = vi.mocked(listAgentsGrantedConnectors);
 
-/**
- * Two distinct user ids, in the 24-hex shape. `oxy_user_id` is `text` and the
- * ids need only differ — the shape is kept so the fixtures stay recognisable,
- * not because the code
- * still requires it.
- */
-const USER_A = '507f1f77bcf86cd799439011';
-const USER_B = '507f1f77bcf86cd799439012';
+const USER_A = 'user-a';
+const USER_B = 'user-b';
 
 /** A stored connector row, with only the fields a given test cares about set. */
 function serverRow(overrides: Partial<McpServerRow> = {}): McpServerRow {
   return {
     id: 'srv-1',
     oxyUserId: USER_A,
-    name: 'github',
-    displayName: 'GitHub',
+    name: 'notion',
+    displayName: 'Notion',
     description: null,
-    icon: null,
+    accountLabel: null,
     source: 'registry',
-    registryId: 'github',
+    registryId: 'notion',
     transport: 'streamable-http',
-    runtime: 'server',
-    configCommand: null,
-    configArgs: null,
-    configUrl: 'https://mcp.github.test',
+    configUrl: 'https://mcp.notion.test/mcp',
     configHeaders: null,
-    configEnv: null,
     configRequiresOauth: true,
-    status: 'installed',
+    status: 'running',
     statusMessage: null,
     tools: [],
     resources: null,
-    enabled: true,
+    logoId: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
     ...overrides,
   };
 }
 
-function getRouteHandler(method: 'get' | 'post' | 'put' | 'delete' | 'patch', path: string) {
+function stateRow(overrides: Partial<Awaited<ReturnType<typeof findLiveMcpOAuthState>>> = {}) {
+  return {
+    id: 'state-row-1',
+    oxyUserId: USER_A,
+    serverId: 'srv-new',
+    registryId: 'notion',
+    returnTo: 'https://gemies.ai/connectors',
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
+
+function getRouteHandler(method: 'get' | 'post' | 'delete' | 'patch', path: string) {
   const layer = (router as any).stack.find(
     (l: any) => l.route?.path === path && l.route.methods[method],
   );
   if (!layer) throw new Error(`No route handler found for ${method.toUpperCase()} ${path}`);
   const stack = layer.route.stack;
-  // Last handler in the stack is the real route handler (earlier entries are
-  // middleware such as authenticateToken, which we bypass by calling directly).
   return stack[stack.length - 1].handle as (req: any, res: any) => Promise<void> | void;
 }
 
 function makeMockRes() {
-  const res: any = {};
-  res.statusCode = 200;
+  const res: any = { statusCode: 200 };
   res.status = vi.fn((code: number) => {
     res.statusCode = code;
     return res;
@@ -198,666 +193,439 @@ function makeMockRes() {
     res.redirectUrl = url;
     return res;
   });
-  res.sendStatus = vi.fn((code: number) => {
-    res.statusCode = code;
-    return res;
-  });
+  res.set = vi.fn(() => res);
+  res.send = vi.fn(() => res);
+  res.end = vi.fn(() => res);
   return res;
 }
 
-describe('mcp.ts — OAuth CSRF binding + idempotent install', () => {
-  let mockFetch: ReturnType<typeof vi.fn>;
+function answer(body: unknown, status = 200) {
+  return { ok: status < 400, status, json: async () => body };
+}
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockFetch = vi.fn();
-    vi.stubGlobal('fetch', mockFetch);
+let mockFetch: ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.unstubAllEnvs();
+  mockFetch = vi.fn();
+  vi.stubGlobal('fetch', mockFetch);
+  mockList.mockResolvedValue([]);
+});
+
+/** The body integrations received on its Nth call. */
+function sentBody(call = 0) {
+  return JSON.parse(mockFetch.mock.calls[call]?.[1]?.body as string);
+}
+
+describe('the catalogue', () => {
+  it('lists what this deployment can connect, with its logo, and nothing of its configuration', async () => {
+    const res = makeMockRes();
+    await getRouteHandler('get', '/registry')({}, res);
+
+    expect(res.body.servers).toEqual([
+      {
+        id: 'notion',
+        name: 'Notion',
+        description: 'Notion connector',
+        category: 'productivity',
+        featured: true,
+        docsUrl: 'https://notion.test/docs',
+        logoUrl: `/mcp/logos/${'a'.repeat(64)}`,
+      },
+    ]);
   });
 
-  describe('POST /oauth/complete — CSRF binding', () => {
-    it('responds 403 and does NOT exchange when state was issued to a different user', async () => {
-      mockFindState.mockResolvedValue({
-        id: 'state-row-1',
-        oxyUserId: USER_B, // issued to someone else
-        serverId: 'srv-1',
-        createdAt: new Date(),
-      });
-
-      const handler = getRouteHandler('post', '/oauth/complete');
-      const req: any = { userId: USER_A, body: { state: 'the-state', code: 'the-code' } };
-      const res = makeMockRes();
-
-      await handler(req, res);
-
-      expect(res.statusCode).toBe(403);
-      expect(mockFetch).not.toHaveBeenCalled();
-      // State must NOT be consumed on a rejected CSRF attempt.
-      expect(mockDeleteState).not.toHaveBeenCalled();
-    });
-
-    it('consumes the state and proxies to integrations when state belongs to the caller', async () => {
-      mockFindState.mockResolvedValue({
-        id: 'state-row-1',
-        oxyUserId: USER_A, // belongs to the caller
-        serverId: 'srv-1',
-        createdAt: new Date(),
-      });
-      mockFindServer.mockResolvedValue(serverRow());
-      mockSetStatus.mockResolvedValue(
-        serverRow({ status: 'running', configRequiresOauth: true, tools: [] }),
-      );
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true, tools: [{ name: 't' }], resources: [] }),
-      });
-
-      const handler = getRouteHandler('post', '/oauth/complete');
-      const req: any = { userId: USER_A, body: { state: 'the-state', code: 'the-code' } };
-      const res = makeMockRes();
-
-      await handler(req, res);
-
-      expect(mockDeleteState).toHaveBeenCalledWith(expect.anything(), 'state-row-1');
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-      expect(res.statusCode).toBe(200);
-
-      // The durable OAuth mark, which a later `/:id/start` reads to reattach the
-      // SDK OAuthClientProvider. Asserted on the WRITE rather than on a local
-      // object, because there is no document to mutate any more.
-      expect(mockSetStatus).toHaveBeenCalledWith(expect.anything(), 'srv-1', USER_A, {
-        status: 'running',
-        requiresOAuth: true,
-        tools: [{ name: 't' }],
-        resources: [],
-      });
-
-      // The response still carries `_id` and a NESTED `config`, which the
-      // shipped mobile build reads. The real serializer produces both.
-      expect(res.body.server._id).toBe('srv-1');
-      expect(res.body.server.config).toEqual({
-        url: 'https://mcp.github.test',
-        requiresOAuth: true,
-      });
-    });
-  });
-
-  describe('POST /:id/oauth/start — authorization URL contract', () => {
-    it('returns the authorization URL from integrations and creates state', async () => {
-      mockFindServer.mockResolvedValue(
-        serverRow({ runtime: 'server', transport: 'streamable-http' }),
-      );
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ authorizationUrl: 'https://auth.example/authorize' }),
-      });
-
-      const handler = getRouteHandler('post', '/:id/oauth/start');
-      const req: any = { userId: USER_A, params: { id: 'srv-1' } };
-      const res = makeMockRes();
-
-      await handler(req, res);
-
-      expect(res.statusCode).toBe(200);
-      expect(res.body).toEqual({ authorizationUrl: 'https://auth.example/authorize' });
-      expect(mockCreateState).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ oxyUserId: USER_A, serverId: 'srv-1' }),
-      );
-
-      // The integrations service receives the NESTED config, reassembled from
-      // the flat columns — it is a separate deploy and cannot read them.
-      const body = JSON.parse(mockFetch.mock.calls[0]?.[1]?.body as string);
-      expect(body.config).toEqual({ url: 'https://mcp.github.test', requiresOAuth: true });
-    });
-
-    it('fails and removes the state when integrations does not return an authorization URL', async () => {
-      mockFindServer.mockResolvedValue(
-        serverRow({ runtime: 'server', transport: 'streamable-http' }),
-      );
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
-      });
-
-      const handler = getRouteHandler('post', '/:id/oauth/start');
-      const req: any = { userId: USER_A, params: { id: 'srv-1' } };
-      const res = makeMockRes();
-
-      await handler(req, res);
-
-      expect(res.statusCode).toBe(502);
-      expect(res.body).toEqual({ error: 'OAuth authorization URL was not returned' });
-      expect(mockDeleteStateByToken).toHaveBeenCalledWith(expect.anything(), expect.any(String));
-    });
-  });
-
-  describe('GET /oauth/callback — public, does not link', () => {
-    it('redirects with mcp_oauth_state + mcp_oauth_code and never exchanges', async () => {
-      mockFindState.mockResolvedValue({
-        id: 'state-row-1',
-        oxyUserId: USER_A,
-        serverId: 'srv-1',
-        createdAt: new Date(),
-      });
-
-      const handler = getRouteHandler('get', '/oauth/callback');
-      const req: any = { query: { code: 'the-code', state: 'the-state' } };
-      const res = makeMockRes();
-
-      await handler(req, res);
-
-      expect(res.redirect).toHaveBeenCalledTimes(1);
-      expect(res.redirectUrl).toContain('/settings/connectors?');
-      expect(res.redirectUrl).toContain('mcp_oauth_state=the-state');
-      expect(res.redirectUrl).toContain('mcp_oauth_code=the-code');
-      // The public callback never exchanges the code.
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
-    it('redirects with error= when the state is expired', async () => {
-      // Expiry is now the repository's decision — an expired row is simply not
-      // returned — so the route's `!stateRow` branch covers both "unknown" and
-      // "too old". Previously the route recomputed the age itself, in two
-      // places, from two copies of the same arithmetic.
-      mockFindState.mockResolvedValue(null);
-
-      const handler = getRouteHandler('get', '/oauth/callback');
-      const req: any = { query: { code: 'the-code', state: 'the-state' } };
-      const res = makeMockRes();
-
-      await handler(req, res);
-
-      expect(res.redirectUrl).toContain('error=oauth_expired');
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
-    it('redirects with error= when code/state are missing', async () => {
-      const handler = getRouteHandler('get', '/oauth/callback');
-      const req: any = { query: {} };
-      const res = makeMockRes();
-
-      await handler(req, res);
-
-      expect(res.redirect).toHaveBeenCalledTimes(1);
-      expect(res.redirectUrl).toContain('error=');
-      expect(mockFindState).not.toHaveBeenCalled();
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('POST /install — idempotency on a taken name', () => {
-    it('persists registry env values under config.env', async () => {
-      mockInstall.mockResolvedValue(
-        serverRow({
-          name: 'github-local',
-          registryId: 'github-local',
-          transport: 'stdio',
-          runtime: 'local',
-          configUrl: null,
-          configCommand: 'npx',
-          configEnv: { GITHUB_PERSONAL_ACCESS_TOKEN: 'token' },
-        }),
-      );
-
-      const handler = getRouteHandler('post', '/install');
-      const req: any = {
-        userId: USER_A,
-        body: {
-          registryId: 'github-local',
-          env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'token' },
-        },
-      };
-      const res = makeMockRes();
-
-      await handler(req, res);
-
-      expect(res.statusCode).toBe(201);
-      expect(mockInstall).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          oxyUserId: USER_A,
-          name: 'github-local',
-          source: 'registry',
-          config: expect.objectContaining({ env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'token' } }),
-        }),
-      );
-      expect(res.body.server.config.env).toEqual({ GITHUB_PERSONAL_ACCESS_TOKEN: 'token' });
-    });
-
-    it('returns 200 with the existing server on a duplicate registry install', async () => {
-      // `null` is what the unique index decided, surfaced without a thrown
-      // constraint violation.
-      mockInstall.mockResolvedValue(null);
-      mockFindByName.mockResolvedValue(serverRow({ id: 'existing-1' }));
-
-      const handler = getRouteHandler('post', '/install');
-      const req: any = { userId: USER_A, body: { registryId: 'github' } };
-      const res = makeMockRes();
-
-      await handler(req, res);
-
-      expect(res.statusCode).toBe(200);
-      expect(res.body.server._id).toBe('existing-1');
-      expect(mockFindByName).toHaveBeenCalledWith(expect.anything(), USER_A, 'github');
-    });
-
-    it('returns 409 on a duplicate CUSTOM install (no registryId)', async () => {
-      mockInstall.mockResolvedValue(null);
-
-      const handler = getRouteHandler('post', '/install');
-      const req: any = {
-        userId: USER_A,
-        body: {
-          name: 'my-custom',
-          displayName: 'My Custom',
-          transport: 'streamable-http',
-          config: { url: 'https://mcp.example.com/mcp' },
-        },
-      };
-      const res = makeMockRes();
-
-      await handler(req, res);
-
-      expect(res.statusCode).toBe(409);
-      // No existing-server lookup for a custom install.
-      expect(mockFindByName).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('the list and delete routes serve the shape the mobile build reads', () => {
-    it('answers 404 rather than 500 for an id of any shape', async () => {
-      /**
-       * `id` is `text`, so a malformed id simply matches nothing.
-       * Loud to quiet, in the direction the caller deserved — and stated here so
-       * it cannot be mistaken for an accident later.
-       */
-      mockFindServer.mockResolvedValue(null);
-      mockDeleteServer.mockResolvedValue(null);
-
-      const handler = getRouteHandler('delete', '/:id');
-      const req: any = { userId: USER_A, params: { id: 'not-an-object-id-at-all' } };
-      const res = makeMockRes();
-
-      await handler(req, res);
-
-      expect(res.statusCode).toBe(404);
-      expect(res.body).toEqual({ error: 'Server not found' });
-    });
-  });
-
-  describe('a registry connector with a client Alia holds', () => {
-    const vendorRow = (overrides: Partial<McpServerRow> = {}) =>
-      serverRow({
-        name: 'vendor',
-        displayName: 'Vendor',
-        registryId: 'vendor',
-        configUrl: 'https://mcp.vendor.test/mcp',
-        ...overrides,
-      });
-
-    beforeEach(() => {
-      delete process.env.VENDOR_MCP_CLIENT_ID;
-      delete process.env.VENDOR_MCP_CLIENT_SECRET;
-    });
-
-    it('lists it as not available, without the names of its configuration', async () => {
-      const handler = getRouteHandler('get', '/registry');
-      const res = makeMockRes();
-      await handler({ userId: USER_A }, res);
-
-      const vendor = res.body.servers.find((entry: { id: string }) => entry.id === 'vendor');
-      expect(vendor.configured).toBe(false);
-      expect(vendor).not.toHaveProperty('oauth');
-      expect(JSON.stringify(res.body)).not.toContain('VENDOR_MCP_CLIENT');
-      expect(
-        res.body.servers.find((entry: { id: string }) => entry.id === 'github').configured,
-      ).toBe(true);
-    });
-
-    it('is not installed while its client is not configured', async () => {
-      const handler = getRouteHandler('post', '/install');
-      const res = makeMockRes();
-      await handler({ userId: USER_A, body: { registryId: 'vendor' } }, res);
-
-      expect(res.statusCode).toBe(503);
-      expect(res.body.code).toBe('not_configured');
-      expect(mockInstall).not.toHaveBeenCalled();
-    });
-
-    it('does not start OAuth while its client is not configured', async () => {
-      mockFindServer.mockResolvedValue(vendorRow());
-      const handler = getRouteHandler('post', '/:id/oauth/start');
-      const res = makeMockRes();
-      await handler({ userId: USER_A, params: { id: 'srv-1' } }, res);
-
-      expect(res.statusCode).toBe(503);
-      expect(mockCreateState).not.toHaveBeenCalled();
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
-    it("sends the client, scope and revocation endpoint, to the registry's address only", async () => {
-      process.env.VENDOR_MCP_CLIENT_ID = 'vendor-client';
-      process.env.VENDOR_MCP_CLIENT_SECRET = 'vendor-secret';
-      mockFindServer.mockResolvedValue(vendorRow({ configUrl: 'https://attacker.test/mcp' }));
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ authorizationUrl: 'https://vendor.test/authorize' }),
-      });
-
-      const handler = getRouteHandler('post', '/:id/oauth/start');
-      const res = makeMockRes();
-      await handler({ userId: USER_A, params: { id: 'srv-1' } }, res);
-
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(mockFetch.mock.calls[0]?.[1]?.body as string);
-      expect(body.config).toEqual({
-        url: 'https://mcp.vendor.test/mcp',
-        requiresOAuth: true,
-        oauthClient: { clientId: 'vendor-client', clientSecret: 'vendor-secret' },
-        oauthScope: 'read write',
-        oauthRevocation: { url: 'https://vendor.test/oauth/revoke', clientAuth: 'basic' },
-      });
-    });
-  });
-
-  describe('DELETE /:id — revokes before it forgets', () => {
-    it('asks integrations to revoke, then deletes the row', async () => {
-      mockFindServer.mockResolvedValue(serverRow({ status: 'running' }));
-      mockDeleteServer.mockResolvedValue(serverRow());
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true, forgotten: true, revocation: { revoked: true } }),
-      });
-
-      const handler = getRouteHandler('delete', '/:id');
-      const res = makeMockRes();
-      await handler({ userId: USER_A, params: { id: 'srv-1' } }, res);
-
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-      expect(mockFetch.mock.calls[0]?.[0]).toBe(
-        'http://integrations.test/mcp/servers/srv-1/revoke',
-      );
-      const body = JSON.parse(mockFetch.mock.calls[0]?.[1]?.body as string);
-      expect(body.config.url).toBe('https://mcp.github.test');
-      expect(mockDeleteServer).toHaveBeenCalledWith(expect.anything(), 'srv-1', USER_A);
-      expect(res.body).toEqual({ success: true });
-    });
-
-    it('keeps the row and answers 502 when revocation could not run, so it is retried', async () => {
-      mockFindServer.mockResolvedValue(serverRow({ status: 'running' }));
-      mockFetch.mockRejectedValue(new Error('integrations down'));
-
-      const handler = getRouteHandler('delete', '/:id');
-      const res = makeMockRes();
-      await handler({ userId: USER_A, params: { id: 'srv-1' } }, res);
-
-      expect(res.statusCode).toBe(502);
-      expect(res.body.code).toBe('revoke_failed');
-      expect(mockDeleteServer).not.toHaveBeenCalled();
-    });
-
-    it("deletes a connector on the person's device without calling integrations", async () => {
-      mockFindServer.mockResolvedValue(
-        serverRow({ transport: 'stdio', runtime: 'local', configUrl: null, configCommand: 'npx' }),
-      );
-      mockDeleteServer.mockResolvedValue(serverRow());
-
-      const handler = getRouteHandler('delete', '/:id');
-      const res = makeMockRes();
-      await handler({ userId: USER_A, params: { id: 'srv-1' } }, res);
-
-      expect(mockFetch).not.toHaveBeenCalled();
-      expect(res.body).toEqual({ success: true });
-    });
+  it('lists an entry once its provider client is configured', async () => {
+    vi.stubEnv('VENDOR_MCP_CLIENT_ID', 'vendor-id');
+    vi.stubEnv('VENDOR_MCP_CLIENT_SECRET', 'vendor-secret');
+    const res = makeMockRes();
+    await getRouteHandler('get', '/registry')({}, res);
+
+    expect(res.body.servers.map((entry: { id: string }) => entry.id)).toEqual(['notion', 'vendor']);
+    expect(JSON.stringify(res.body)).not.toContain('VENDOR_MCP');
   });
 });
 
-/**
- * The integrations host is shared by every account and sits inside the VPC, so
- * a connector it runs is a remote server at an https URL, and a command runs
- * only on the person's own device. These are the requests that used to put a
- * command of the caller's choosing on that host.
- */
-describe('mcp.ts — where a connector runs', () => {
-  let mockFetch: ReturnType<typeof vi.fn>;
+describe('POST /connect — a new account of a catalogue entry', () => {
+  it('starts OAuth for a row that does not exist yet, remembering the entry and where to return', async () => {
+    mockFetch.mockResolvedValue(answer({ authorizationUrl: 'https://auth.notion.test/authorize' }));
+    const res = makeMockRes();
+    await getRouteHandler('post', '/connect')(
+      {
+        userId: USER_A,
+        body: { registryId: 'notion', returnTo: 'https://gemies.ai/connectors?x=1' },
+      },
+      res,
+    );
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockFetch = vi.fn();
-    vi.stubGlobal('fetch', mockFetch);
-    mockInstall.mockImplementation(async (_db, input) =>
-      serverRow({
-        name: input.name,
-        source: input.source,
-        transport: input.transport,
-        runtime: input.runtime,
-        configCommand: input.config.command ?? null,
-        configUrl: input.config.url ?? null,
+    expect(res.body).toEqual({ authorizationUrl: 'https://auth.notion.test/authorize' });
+    expect(mockInsert).not.toHaveBeenCalled();
+    const state = mockCreateState.mock.calls[0]?.[1];
+    expect(state).toMatchObject({
+      oxyUserId: USER_A,
+      registryId: 'notion',
+      returnTo: 'https://gemies.ai/connectors',
+    });
+    expect(mockFetch.mock.calls[0]?.[0]).toBe(
+      `http://integrations.test/mcp/servers/${state?.serverId}/oauth/start`,
+    );
+    expect(sentBody()).toMatchObject({
+      config: { url: 'https://mcp.notion.test/mcp', requiresOAuth: true },
+      callbackUrl: 'https://api.test/mcp/oauth/callback',
+    });
+  });
+
+  it('never returns to an origin it does not trust', async () => {
+    mockFetch.mockResolvedValue(answer({ authorizationUrl: 'https://auth.notion.test/authorize' }));
+    await getRouteHandler('post', '/connect')(
+      { userId: USER_A, body: { registryId: 'notion', returnTo: 'https://evil.test/steal' } },
+      makeMockRes(),
+    );
+    expect(mockCreateState.mock.calls[0]?.[1].returnTo).toBe('https://gemies.ai/connectors');
+  });
+
+  it("returns to the native app's own scheme", async () => {
+    mockFetch.mockResolvedValue(answer({ authorizationUrl: 'https://auth.notion.test/authorize' }));
+    await getRouteHandler('post', '/connect')(
+      { userId: USER_A, body: { registryId: 'notion', returnTo: 'gemies://connectors' } },
+      makeMockRes(),
+    );
+    expect(mockCreateState.mock.calls[0]?.[1].returnTo).toBe('gemies://connectors');
+  });
+
+  it('does not start while the provider client is not configured', async () => {
+    const res = makeMockRes();
+    await getRouteHandler('post', '/connect')(
+      { userId: USER_A, body: { registryId: 'vendor' } },
+      res,
+    );
+
+    expect(res.statusCode).toBe(503);
+    expect(res.body.code).toBe('not_configured');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("sends the issued client, scope and revocation endpoint to the catalogue's address", async () => {
+    vi.stubEnv('VENDOR_MCP_CLIENT_ID', 'vendor-id');
+    vi.stubEnv('VENDOR_MCP_CLIENT_SECRET', 'vendor-secret');
+    mockFetch.mockResolvedValue(answer({ authorizationUrl: 'https://auth.vendor.test/authorize' }));
+    await getRouteHandler('post', '/connect')(
+      { userId: USER_A, body: { registryId: 'vendor' } },
+      makeMockRes(),
+    );
+    expect(sentBody().config).toEqual({
+      url: 'https://mcp.vendor.test/mcp',
+      requiresOAuth: true,
+      oauthClient: { clientId: 'vendor-id', clientSecret: 'vendor-secret' },
+      oauthScope: 'read write',
+      oauthRevocation: { url: 'https://vendor.test/oauth/revoke', clientAuth: 'basic' },
+    });
+  });
+
+  it('removes the state when the provider did not start the sign-in', async () => {
+    mockFetch.mockResolvedValue(answer({ success: true }));
+    const res = makeMockRes();
+    await getRouteHandler('post', '/connect')(
+      { userId: USER_A, body: { registryId: 'notion' } },
+      res,
+    );
+
+    expect(res.statusCode).toBe(502);
+    expect(mockDeleteStateByToken).toHaveBeenCalled();
+  });
+});
+
+describe('GET /oauth/callback — public, does not link', () => {
+  it('hands state and code to the app that started the flow, and never exchanges', async () => {
+    mockFindState.mockResolvedValue(stateRow());
+    const res = makeMockRes();
+    await getRouteHandler('get', '/oauth/callback')(
+      { query: { code: 'the-code', state: 'the-state' } },
+      res,
+    );
+
+    const url = new URL(res.redirectUrl);
+    expect(`${url.origin}${url.pathname}`).toBe('https://gemies.ai/connectors');
+    expect(url.searchParams.get('mcp_oauth_state')).toBe('the-state');
+    expect(url.searchParams.get('mcp_oauth_code')).toBe('the-code');
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockDeleteState).not.toHaveBeenCalled();
+  });
+
+  it('says the sign-in expired when the state is unknown', async () => {
+    mockFindState.mockResolvedValue(null);
+    const res = makeMockRes();
+    await getRouteHandler('get', '/oauth/callback')({ query: { code: 'c', state: 'gone' } }, res);
+    expect(new URL(res.redirectUrl).searchParams.get('mcp_oauth_error')).toBe('expired');
+  });
+
+  it('passes on that the person declined, and forgets the state', async () => {
+    mockFindState.mockResolvedValue(stateRow());
+    const res = makeMockRes();
+    await getRouteHandler('get', '/oauth/callback')(
+      { query: { state: 'the-state', error: 'access_denied' } },
+      res,
+    );
+    expect(new URL(res.redirectUrl).searchParams.get('mcp_oauth_error')).toBe('access_denied');
+    expect(mockDeleteState).toHaveBeenCalledWith(expect.anything(), 'state-row-1');
+  });
+});
+
+describe('POST /oauth/complete', () => {
+  it('responds 403 and does NOT exchange when state was issued to a different user', async () => {
+    mockFindState.mockResolvedValue(stateRow({ oxyUserId: USER_B }));
+    const res = makeMockRes();
+    await getRouteHandler('post', '/oauth/complete')(
+      { userId: USER_A, body: { state: 'the-state', code: 'the-code' } },
+      res,
+    );
+
+    expect(res.statusCode).toBe(403);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockDeleteState).not.toHaveBeenCalled();
+  });
+
+  it('writes the new account with the id the flow began with, its tools, label and logo', async () => {
+    mockFindState.mockResolvedValue(stateRow());
+    mockFindServer.mockResolvedValue(null);
+    mockInsert.mockImplementation(async (_db, _slug, input) =>
+      serverRow({ id: input.id, accountLabel: input.accountLabel ?? null, logoId: input.logoId }),
+    );
+    mockFetch.mockResolvedValue(
+      answer({
+        success: true,
+        tools: [{ name: 'search', description: 'Search', inputSchema: {} }],
+        resources: [],
+        server: { icons: [{ src: 'https://notion.test/icon.png' }] },
+        accountLabel: 'ana@acme.com',
       }),
     );
-  });
-
-  async function install(body: Record<string, unknown>) {
     const res = makeMockRes();
-    await getRouteHandler('post', '/install')({ userId: USER_A, body }, res);
-    return res;
-  }
-
-  function installed() {
-    return mockInstall.mock.calls[0]?.[1];
-  }
-
-  describe('POST /install', () => {
-    it('installs a custom command connector on the device, whatever runtime the body asks for', async () => {
-      const res = await install({
-        name: 'tool',
-        displayName: 'Tool',
-        transport: 'stdio',
-        runtime: 'server',
-        config: { command: 'node', args: ['--version'] },
-      });
-
-      expect(res.statusCode).toBe(201);
-      expect(installed()).toMatchObject({ transport: 'stdio', runtime: 'local' });
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
-    it('refuses a command connector without a command', async () => {
-      const res = await install({ name: 'tool', displayName: 'Tool', transport: 'stdio' });
-
-      expect(res.statusCode).toBe(400);
-      expect(res.body.code).toBe('invalid_connector');
-      expect(mockInstall).not.toHaveBeenCalled();
-    });
-
-    it.each([
-      ['plain http', 'http://mcp.example.com/mcp'],
-      ['not a URL', 'mcp.example.com'],
-      ['another scheme', 'file:///etc/passwd'],
-    ])('refuses a remote connector at %s', async (_label, url) => {
-      const res = await install({
-        name: 'remote',
-        displayName: 'Remote',
-        transport: 'streamable-http',
-        config: { url },
-      });
-
-      expect(res.statusCode).toBe(400);
-      expect(res.body.code).toBe('invalid_connector');
-      expect(mockInstall).not.toHaveBeenCalled();
-    });
-
-    it('stores a remote connector with no command, args or env, and runs it on the server', async () => {
-      const res = await install({
-        name: 'remote',
-        displayName: 'Remote',
-        transport: 'streamable-http',
-        runtime: 'local',
-        config: {
-          url: 'https://mcp.example.com/mcp',
-          command: 'node',
-          args: ['--version'],
-          env: { NODE_OPTIONS: '--version' },
-        },
-      });
-
-      expect(res.statusCode).toBe(201);
-      expect(installed()).toMatchObject({
-        transport: 'streamable-http',
-        runtime: 'server',
-        config: {
-          url: 'https://mcp.example.com/mcp',
-          command: undefined,
-          args: undefined,
-          env: undefined,
-        },
-      });
-    });
-
-    it("installs a registry connector from the registry's command and address, never the body's", async () => {
-      const res = await install({
-        registryId: 'github-local',
-        transport: 'streamable-http',
-        runtime: 'server',
-        config: { command: 'node', args: ['--version'], url: 'https://elsewhere.example.com' },
-        env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'token' },
-      });
-
-      expect(res.statusCode).toBe(201);
-      expect(installed()).toMatchObject({
-        transport: 'stdio',
-        runtime: 'local',
-        config: {
-          command: 'npx',
-          args: ['-y', '@modelcontextprotocol/server-github'],
-          url: undefined,
-          env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'token' },
-        },
-      });
-    });
-
-    it('refuses registry env values the entry does not name', async () => {
-      const res = await install({
-        registryId: 'github-local',
-        env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'token', NODE_OPTIONS: '--version' },
-      });
-
-      expect(res.statusCode).toBe(400);
-      expect(mockInstall).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('PATCH /:id', () => {
-    async function patch(row: McpServerRow, body: Record<string, unknown>) {
-      mockFindServer.mockResolvedValue(row);
-      mockUpdate.mockResolvedValue(row);
-      const res = makeMockRes();
-      await getRouteHandler('patch', '/:id')({ userId: USER_A, params: { id: row.id }, body }, res);
-      return res;
-    }
-
-    const customRemote = () =>
-      serverRow({ source: 'custom', registryId: null, name: 'remote', configRequiresOauth: null });
-
-    it('cannot move a connector to the server', async () => {
-      const row = serverRow({
-        transport: 'stdio',
-        runtime: 'local',
-        configUrl: null,
-        configCommand: 'node',
-      });
-      const res = await patch(row, { runtime: 'server', enabled: true });
-
-      expect(res.statusCode).toBe(200);
-      expect(mockUpdate).toHaveBeenCalledWith(expect.anything(), row.id, USER_A, {
-        config: undefined,
-        enabled: true,
-      });
-    });
-
-    it('turns a command connector the migration turned off back on, on the device only', async () => {
-      // The shape 0111 left: moved to the device, turned off, its command kept.
-      const row = serverRow({
-        source: 'custom',
-        registryId: null,
-        transport: 'stdio',
-        runtime: 'local',
-        enabled: false,
-        status: 'stopped',
-        configUrl: null,
-        configCommand: 'npx',
-      });
-      const res = await patch(row, { enabled: true });
-
-      expect(res.statusCode).toBe(200);
-      expect(mockUpdate).toHaveBeenCalledWith(expect.anything(), row.id, USER_A, {
-        config: undefined,
-        enabled: true,
-      });
-      // Turning it on is a switch the device reads; the server starts nothing.
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
-    it('cannot point a custom remote connector at plain http', async () => {
-      const res = await patch(customRemote(), { config: { url: 'http://10.0.0.5/mcp' } });
-
-      expect(res.statusCode).toBe(400);
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('writes the whole validated config, so a command never reaches a remote connector', async () => {
-      const res = await patch(customRemote(), {
-        config: { url: 'https://two.example.com/mcp', command: 'node' },
-      });
-
-      expect(res.statusCode).toBe(200);
-      expect(mockUpdate).toHaveBeenCalledWith(expect.anything(), 'srv-1', USER_A, {
-        config: {
-          command: undefined,
-          args: undefined,
-          url: 'https://two.example.com/mcp',
-          headers: undefined,
-          env: undefined,
-        },
-        enabled: undefined,
-      });
-    });
-
-    it("refuses an edit of a registry connector's command or address", async () => {
-      const res = await patch(serverRow(), { config: { url: 'https://elsewhere.example.com' } });
-
-      expect(res.statusCode).toBe(400);
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-
-    it('answers 404 for a connector of another account', async () => {
-      mockFindServer.mockResolvedValue(null);
-      const res = makeMockRes();
-      await getRouteHandler('patch', '/:id')(
-        { userId: USER_B, params: { id: 'srv-1' }, body: { enabled: false } },
-        res,
-      );
-
-      expect(res.statusCode).toBe(404);
-      expect(mockFindServer).toHaveBeenCalledWith(expect.anything(), 'srv-1', USER_B);
-      expect(mockUpdate).not.toHaveBeenCalled();
-    });
-  });
-
-  it("does not ask integrations to start a connector on the person's device", async () => {
-    mockFindServer.mockResolvedValue(
-      serverRow({ transport: 'stdio', runtime: 'local', configUrl: null, configCommand: 'node' }),
+    await getRouteHandler('post', '/oauth/complete')(
+      { userId: USER_A, body: { state: 'the-state', code: 'the-code' } },
+      res,
     );
-    const res = makeMockRes();
-    await getRouteHandler('post', '/:id/start')({ userId: USER_A, params: { id: 'srv-1' } }, res);
 
+    expect(mockDeleteState).toHaveBeenCalledWith(expect.anything(), 'state-row-1');
+    expect(mockFetch.mock.calls[0]?.[0]).toBe(
+      'http://integrations.test/mcp/servers/srv-new/oauth/finish',
+    );
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.anything(),
+      'notion',
+      expect.objectContaining({
+        id: 'srv-new',
+        oxyUserId: USER_A,
+        registryId: 'notion',
+        accountLabel: 'ana@acme.com',
+        status: 'running',
+        logoId: 'b'.repeat(64),
+      }),
+    );
+    expect(res.body.server).toMatchObject({
+      _id: 'srv-new',
+      accountLabel: 'ana@acme.com',
+      logoUrl: `/mcp/logos/${'b'.repeat(64)}`,
+      config: { url: 'https://mcp.notion.test/mcp', requiresOAuth: true },
+    });
+  });
+
+  it('names a further account of the same entry when the provider did not', async () => {
+    mockFindState.mockResolvedValue(stateRow());
+    mockFindServer.mockResolvedValue(null);
+    mockList.mockResolvedValue([serverRow()]);
+    mockInsert.mockResolvedValue(serverRow({ id: 'srv-new', name: 'notion_2' }));
+    mockFetch.mockResolvedValue(answer({ success: true, tools: [], resources: [] }));
+    await getRouteHandler('post', '/oauth/complete')(
+      { userId: USER_A, body: { state: 'the-state', code: 'the-code' } },
+      makeMockRes(),
+    );
+    expect(mockInsert.mock.calls[0]?.[2].accountLabel).toBe('Account 2');
+  });
+
+  it('reconnects an existing account in place', async () => {
+    mockFindState.mockResolvedValue(stateRow({ serverId: 'srv-1', registryId: null }));
+    mockFindServer.mockResolvedValue(serverRow({ status: 'error' }));
+    mockSetStatus.mockResolvedValue(serverRow());
+    mockFetch.mockResolvedValue(answer({ success: true, tools: [], resources: [] }));
+    const res = makeMockRes();
+    await getRouteHandler('post', '/oauth/complete')(
+      { userId: USER_A, body: { state: 'the-state', code: 'the-code' } },
+      res,
+    );
+
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockSetStatus).toHaveBeenCalledWith(expect.anything(), 'srv-1', USER_A, {
+      status: 'running',
+      statusMessage: null,
+      requiresOAuth: true,
+      tools: [],
+      resources: [],
+    });
+    expect(res.statusCode).toBe(200);
+  });
+});
+
+describe('POST /custom — the person’s own server', () => {
+  it('connects a server that needs no sign-in', async () => {
+    const row = serverRow({
+      id: 'srv-c',
+      name: 'my_server',
+      source: 'custom',
+      registryId: null,
+      configUrl: 'https://mcp.mine.test/mcp',
+      configRequiresOauth: null,
+      status: 'installed',
+    });
+    mockInsert.mockResolvedValue(row);
+    mockSetStatus.mockResolvedValue({ ...row, status: 'running' });
+    mockFetch.mockResolvedValue(answer({ success: true, tools: [], resources: [] }));
+    const res = makeMockRes();
+    await getRouteHandler('post', '/custom')(
+      { userId: USER_A, body: { name: 'My server', url: 'https://mcp.mine.test/mcp' } },
+      res,
+    );
+
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.anything(),
+      'My server',
+      expect.objectContaining({ source: 'custom', config: { url: 'https://mcp.mine.test/mcp' } }),
+    );
+    expect(mockFetch.mock.calls[0]?.[0]).toBe('http://integrations.test/mcp/servers/srv-c/start');
+    expect(res.statusCode).toBe(201);
+    expect(res.body.authorizationUrl).toBeUndefined();
+  });
+
+  it('starts OAuth when the server answers that it wants a token', async () => {
+    const row = serverRow({
+      id: 'srv-c',
+      source: 'custom',
+      registryId: null,
+      configUrl: 'https://mcp.mine.test/mcp',
+      configRequiresOauth: null,
+      status: 'installed',
+    });
+    mockInsert.mockResolvedValue(row);
+    mockFetch
+      .mockResolvedValueOnce(answer({ code: 'authorization_required' }, 401))
+      .mockResolvedValueOnce(answer({ authorizationUrl: 'https://auth.mine.test/authorize' }));
+    const res = makeMockRes();
+    await getRouteHandler('post', '/custom')(
+      { userId: USER_A, body: { name: 'Mine', url: 'https://mcp.mine.test/mcp' } },
+      res,
+    );
+
+    expect(res.statusCode).toBe(202);
+    expect(res.body.authorizationUrl).toBe('https://auth.mine.test/authorize');
+    expect(sentBody(1).config).toEqual({ url: 'https://mcp.mine.test/mcp', requiresOAuth: true });
+    expect(mockCreateState.mock.calls[0]?.[1]).toMatchObject({ serverId: 'srv-c' });
+  });
+
+  it('refuses a server that is not https', async () => {
+    const res = makeMockRes();
+    await getRouteHandler('post', '/custom')(
+      { userId: USER_A, body: { name: 'Mine', url: 'http://mcp.mine.test/mcp' } },
+      res,
+    );
     expect(res.statusCode).toBe(400);
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it('refuses a command: every connector is reached over the network', async () => {
+    const res = makeMockRes();
+    await getRouteHandler('post', '/custom')(
+      { userId: USER_A, body: { name: 'Mine', transport: 'stdio', url: 'https://x.test' } },
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('GET /installed — what the person connected', () => {
+  it('says which gemies may use each account: Alia every one, others by grant', async () => {
+    mockList.mockResolvedValue([serverRow(), serverRow({ id: 'srv-2', name: 'notion_2' })]);
+    mockGranted.mockResolvedValue([
+      {
+        _id: 'gemie-1',
+        identity: { source: 'oxy', oxyAccountId: 'acct-1' },
+        connectorIds: ['srv-2'],
+      },
+    ]);
+    const res = makeMockRes();
+    await getRouteHandler('get', '/installed')({ userId: USER_A }, res);
+
+    const [first, second] = res.body.servers;
+    expect(first.usedBy.map((g: { name: string }) => g.name)).toEqual(['Alia']);
+    expect(second.usedBy.map((g: { name: string }) => g.name)).toEqual(['Alia', 'Scout']);
+    expect(second.usedBy.map((g: { id: string }) => g.id)).toEqual([
+      '01a1cf00-cecf-7a24-868b-42b452105a6f',
+      'gemie-1',
+    ]);
+    // A registry connector without its own icon shows its catalogue logo.
+    expect(first.logoUrl).toBe(`/mcp/logos/${'a'.repeat(64)}`);
+    expect(first.config.headers).toBeUndefined();
+  });
+});
+
+describe('PATCH /:id', () => {
+  it('renames the account', async () => {
+    mockFindServer.mockResolvedValue(serverRow());
+    mockUpdate.mockResolvedValue(serverRow({ accountLabel: 'Work' }));
+    const res = makeMockRes();
+    await getRouteHandler('patch', '/:id')(
+      { userId: USER_A, params: { id: 'srv-1' }, body: { accountLabel: '  Work ' } },
+      res,
+    );
+    expect(mockUpdate).toHaveBeenCalledWith(expect.anything(), 'srv-1', USER_A, {
+      accountLabel: 'Work',
+    });
+    expect(res.body.server.accountLabel).toBe('Work');
+  });
+
+  it("refuses an edit of a catalogue connector's address", async () => {
+    mockFindServer.mockResolvedValue(serverRow());
+    const res = makeMockRes();
+    await getRouteHandler('patch', '/:id')(
+      { userId: USER_A, params: { id: 'srv-1' }, body: { config: { url: 'https://evil.test' } } },
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 for a connector of another account', async () => {
+    mockFindServer.mockResolvedValue(null);
+    const res = makeMockRes();
+    await getRouteHandler('patch', '/:id')(
+      { userId: USER_B, params: { id: 'srv-1' }, body: { accountLabel: 'x' } },
+      res,
+    );
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('DELETE /:id — disconnect', () => {
+  it('asks integrations to revoke, then deletes the row', async () => {
+    mockFindServer.mockResolvedValue(serverRow());
+    mockDeleteServer.mockResolvedValue(serverRow());
+    mockFetch.mockResolvedValue(answer({ success: true }));
+    const res = makeMockRes();
+    await getRouteHandler('delete', '/:id')({ userId: USER_A, params: { id: 'srv-1' } }, res);
+
+    expect(mockFetch.mock.calls[0]?.[0]).toBe('http://integrations.test/mcp/servers/srv-1/revoke');
+    expect(mockDeleteServer).toHaveBeenCalledWith(expect.anything(), 'srv-1', USER_A);
+    expect(res.body).toEqual({ success: true });
+  });
+
+  it('keeps the row and answers 502 when revocation could not run, so it is retried', async () => {
+    mockFindServer.mockResolvedValue(serverRow());
+    mockFetch.mockResolvedValue(answer({ error: 'down' }, 500));
+    const res = makeMockRes();
+    await getRouteHandler('delete', '/:id')({ userId: USER_A, params: { id: 'srv-1' } }, res);
+
+    expect(res.statusCode).toBe(502);
+    expect(res.body.code).toBe('revoke_failed');
+    expect(mockDeleteServer).not.toHaveBeenCalled();
   });
 });

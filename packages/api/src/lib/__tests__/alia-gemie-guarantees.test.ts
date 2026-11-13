@@ -27,7 +27,6 @@ const seen = vi.hoisted(() => ({
 }));
 
 vi.mock('../tools/mcp.js', () => ({ buildMcpTools: vi.fn(async () => ({})) }));
-vi.mock('../tools/integrations.js', () => ({ buildIntegrationTools: vi.fn(async () => ({})) }));
 vi.mock('../tools/oxy-services.js', () => ({
   buildOxyServiceTools: vi.fn(async (_userId: string, context: (typeof seen.oxy)[number]) => {
     seen.oxy.push(context);

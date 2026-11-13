@@ -1079,6 +1079,20 @@
       "when": 1794569937047,
       "tag": "0153_channel_inbound_kind_validate",
       "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1794571290134,
+      "tag": "0154_connector_accounts_and_logos",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1794571298689,
+      "tag": "0155_connectors_are_public_mcp",
+      "breakpoints": true
     }
   ]
 }

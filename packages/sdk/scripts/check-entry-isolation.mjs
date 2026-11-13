@@ -197,6 +197,7 @@ if (walk('accounts.ts', QR_ENCODER, { exact: true }).hits.length === 0) {
 
 const SERVICES_ENTRY_ENTRIES = [
   'accounts.ts',
+  'connectors.ts',
   'index.ts',
   'voice.ts',
   'runtime/index.ts',

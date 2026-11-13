@@ -4,7 +4,7 @@ import { sweepAllExpiredRows } from '@oxy.so/db/expiry';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
 import { EXPIRY_TARGETS } from '../expiryTargets';
 import { agentSessions } from '../schema/agent-sessions';
-import { oauthStates } from '../schema/integrations';
+import { externalAgentPairings } from '../schema/external-agents';
 import { leases } from '../schema/leases';
 
 /**
@@ -131,8 +131,10 @@ describe('a bigint counter reaches JavaScript as a STRING', () => {
 
 describe('an expires_at deadline is retention ZERO, not a duration', () => {
   it('sweeps a row whose own deadline has passed and keeps one that has not', async () => {
-    const target = EXPIRY_TARGETS.find((t) => t.table === oauthStates);
-    if (!target) throw new Error('oauth_states has no expiry target; expiryTargets.ts changed');
+    const target = EXPIRY_TARGETS.find((t) => t.table === externalAgentPairings);
+    if (!target) {
+      throw new Error('external_agent_pairings has no expiry target; expiryTargets.ts changed');
+    }
     // The whole point: the column IS the deadline. A duration measured from it
     // would keep every row for that duration PAST its own expiry.
     expect(target.retentionSeconds).toBe(0);
@@ -141,28 +143,28 @@ describe('an expires_at deadline is retention ZERO, not a duration', () => {
      * Transactional so another file's full-registry sweep cannot consume this
      * fixture first, with a different
      * symptom: this case asserts only on SURVIVORS, so another file's
-     * full-registry sweep reaping `os-expired` first leaves it passing while
+     * full-registry sweep reaping `eap-expired` first leaves it passing while
      * measuring nothing about the sweep it calls. A silent vacuity rather than
      * a red run, which is the worse of the two to leave in place.
      */
     await db.transaction(async (tx) => {
       await tx.execute(sql`
-        insert into ${oauthStates} (id, service, user_id, expires_at) values
-          ('os-expired', 'svc', 'u', now() - interval '1 minute'),
-          ('os-live',    'svc', 'u', now() + interval '1 hour')
+        insert into ${externalAgentPairings} (id, code_hash, owner_oxy_user_id, expires_at) values
+          ('eap-expired', 'hash-expired', 'u', now() - interval '1 minute'),
+          ('eap-live',    'hash-live',    'u', now() + interval '1 hour')
       `);
 
       const results = await sweepAllExpiredRows(tx, [target]);
 
       // Asserted here and not before: without it, a sweep that deleted nothing
       // is indistinguishable from one whose row somebody else had already taken.
-      const swept = results.find((r) => r.table === 'oauth_states');
+      const swept = results.find((r) => r.table === 'external_agent_pairings');
       expect(swept?.deleted).toBeGreaterThanOrEqual(1);
 
       const survivors = await tx.execute<{ id: string }>(
-        sql`select id from ${oauthStates} where id like 'os-%'`,
+        sql`select id from ${externalAgentPairings} where id like 'eap-%'`,
       );
-      expect(survivors.map((r) => r.id)).toEqual(['os-live']);
+      expect(survivors.map((r) => r.id)).toEqual(['eap-live']);
     });
   });
 });

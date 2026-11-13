@@ -62,7 +62,6 @@ import {
  */
 const asked = vi.hoisted(() => ({
   mcp: [] as (readonly string[] | undefined)[],
-  integration: [] as (readonly string[] | undefined)[],
   oxy_service: [] as (readonly string[] | undefined)[],
   oxy_context: [] as Array<{
     requesterAccountId?: string;
@@ -93,12 +92,6 @@ vi.mock('../tools/mcp.js', () => ({
     return rowTools('mcp', ids);
   }),
 }));
-vi.mock('../tools/integrations.js', () => ({
-  buildIntegrationTools: vi.fn(async (_userId: string, ids?: readonly string[]) => {
-    asked.integration.push(ids);
-    return rowTools('integration', ids);
-  }),
-}));
 vi.mock('../tools/oxy-services.js', () => ({
   buildOxyServiceTools: vi.fn(
     async (
@@ -117,7 +110,7 @@ vi.mock('../tools/oxy-services.js', () => ({
 }));
 
 /**
- * The `agent` family's source, stubbed like the other three and for the same
+ * The `agent` family's source, stubbed like the other two and for the same
  * reason: its rows are in a database this test does not have.
  *
  * It mirrors the real one where the difference is observable — an EMPTY
@@ -250,7 +243,6 @@ const EVERY_GRANT = [
 const INSTANCE_TOOLS: Readonly<Record<string, string>> = {
   mcp: 'mcp_row-a__act',
   oxy_service: 'oxy_row-a__act',
-  integration: 'integration_row-a__act',
   // ONE name however many agents are granted: what narrows is the tool's
   // schema, which is why the assertion below also reads the selection.
   agent: 'consultAgent',
@@ -262,7 +254,6 @@ beforeEach(() => {
   // this suite is about the vocabulary, so it runs where both exist.
   vi.stubEnv('INTEGRATIONS_URL', 'https://integrations.example.test');
   asked.mcp = [];
-  asked.integration = [];
   asked.oxy_service = [];
   asked.oxy_context = [];
   asked.agent = [];
@@ -297,7 +288,6 @@ describe('an agent reaches exactly what it was granted', () => {
     expect(names).toEqual(['browser', 'getCurrentDate', 'memory', 'plan']);
     expect(asked.oxy_service).toEqual([undefined]);
     expect(asked.mcp).toEqual([]);
-    expect(asked.integration).toEqual([]);
     expect(asked.agent).toEqual([]);
     expect(asked.oxy_context[0]).toMatchObject({
       requesterAccountId: 'user-1',
@@ -400,7 +390,6 @@ describe('an agent reaches exactly what it was granted', () => {
     // selection, so a denied agent costs no round trip — and if that ever
     // regressed, these arrays would carry an empty-array call instead.
     expect(asked.mcp).toEqual([[]]);
-    expect(asked.integration).toEqual([[]]);
     expect(asked.oxy_service).toEqual([undefined]);
     expect(asked.agent).toEqual([[]]);
   });
@@ -420,7 +409,6 @@ describe('an agent reaches exactly what it was granted', () => {
     await namesFor([...EVERY_GRANT], { instancedSources: [] });
 
     expect(asked.mcp).toEqual([]);
-    expect(asked.integration).toEqual([]);
     expect(asked.oxy_service).toEqual([]);
     expect(asked.agent).toEqual([]);
   });
@@ -432,7 +420,6 @@ describe('an agent reaches exactly what it was granted', () => {
     await namesFor([...EVERY_GRANT]);
 
     expect(asked.mcp).toHaveLength(1);
-    expect(asked.integration).toHaveLength(1);
     expect(asked.oxy_service).toHaveLength(1);
     expect(asked.agent).toHaveLength(1);
   });
@@ -562,7 +549,7 @@ describe('every tool the assembler can build belongs to exactly one family', () 
     // sets — which is the shape of a passing test that measures nothing.
     const all = await namesFor(EVERY_GRANT);
     expect(all.length).toBeGreaterThanOrEqual(23);
-    expect(CAPABILITY_FAMILIES.length).toBe(11);
+    expect(CAPABILITY_FAMILIES.length).toBe(10);
   });
 });
 
@@ -600,16 +587,14 @@ describe("Alia's gemie reaches every row of the person's, under her own fixed fa
     const sameGrants = await namesFor(aliaGemie().capabilityGrants, { runtime: undefined });
 
     // Her fixed families are her row's grants, as a persona granted the same reaches them; what
-    // she adds is every row of the person's connectors and integrations, and nothing else.
+    // she adds is every row of the person's connectors, and nothing else.
     // Her memory is Nilo's (`memoryStore = 'nilo'`): the persona's own memory tools are not hers.
     expect(sameGrants.filter((name) => !alia.includes(name)).sort()).toEqual([
       'memory',
       'searchThread',
     ]);
     expect(
-      alia
-        .filter((name) => !sameGrants.includes(name))
-        .every((name) => /^(mcp|integration)_/.test(name)),
+      alia.filter((name) => !sameGrants.includes(name)).every((name) => /^mcp_/.test(name)),
     ).toBe(true);
     expect(alia).not.toContain('browser');
     expect(alia).not.toContain('computer_start');
@@ -624,7 +609,6 @@ describe("Alia's gemie reaches every row of the person's, under her own fixed fa
     // `undefined`, not `[]` and not an enumeration: the distinction that keeps
     // a missing agent from reading as a fully-granted one.
     expect(asked.mcp).toEqual([undefined]);
-    expect(asked.integration).toEqual([undefined]);
     expect(asked.oxy_service).toEqual([undefined]);
     expect(asked.agent).toEqual([undefined]);
     expect(readGemieGrants(aliaGemie()).instances('mcp')).toBeNull();
@@ -867,9 +851,9 @@ describe('the `agent` family: which agents this one may consult, and what a bare
  * clean cut removed what cannot work; these assertions are what keep a later
  * change from quietly offering the switch again.
  */
-describe('the retired shell and files families stay gone', () => {
+describe('the retired shell, files and integration families stay gone', () => {
   it('names them as retired and nowhere else in the vocabulary', () => {
-    expect([...RETIRED_CAPABILITY_FAMILIES].sort()).toEqual(['files', 'shell']);
+    expect([...RETIRED_CAPABILITY_FAMILIES].sort()).toEqual(['files', 'integration', 'shell']);
     for (const family of RETIRED_CAPABILITY_FAMILIES) {
       expect(CAPABILITY_FAMILIES as readonly string[]).not.toContain(family);
       expect(Object.keys(FIXED_FAMILY_TOOLS)).not.toContain(family);
@@ -900,11 +884,16 @@ describe('the retired shell and files families stay gone', () => {
   });
 
   it('strips retired entries on write and touches nothing else', () => {
-    expect(withoutRetiredGrants(['web', 'shell', 'files', 'mcp:conn-1', 'agent'])).toEqual([
-      'web',
-      'mcp:conn-1',
-      'agent',
-    ]);
+    expect(
+      withoutRetiredGrants([
+        'web',
+        'shell',
+        'files',
+        'integration:google-drive',
+        'mcp:conn-1',
+        'agent',
+      ]),
+    ).toEqual(['web', 'mcp:conn-1', 'agent']);
     // An unknown family is NOT retired: it stays, so the wire can still refuse it.
     expect(withoutRetiredGrants(['not-a-family'])).toEqual(['not-a-family']);
   });

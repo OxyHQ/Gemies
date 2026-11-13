@@ -67,11 +67,11 @@ export const FIXED_CAPABILITY_FAMILIES = [
  *
  * The rule is not a judgement call: a family is instanced exactly when nobody
  * can enumerate its members at the time this file is written, so a grant has to
- * name one. Two of them generate their tool NAMES from those rows as well —
- * `mcp_<connector>__<tool>` is built from `mcp_servers` rows, and an integration
- * is a row in the owner's connected services — and for those a whole-family grant is a blank
- * cheque over rows that do not exist yet, which is precisely what an agent
- * inheriting *all* of its owner's connectors was.
+ * name one. `mcp` generates its tool NAMES from those rows as well —
+ * `mcp_<connector>__<tool>` is built from `mcp_servers` rows, one per connected
+ * account — and for it a whole-family grant is a blank cheque over rows that do
+ * not exist yet, which is precisely what an agent inheriting *all* of its
+ * owner's connectors was.
  *
  * `agent` is instanced for the first reason and not the second: its single tool
  * is written here (`consultAgent`), and what the grant names is which agents
@@ -80,7 +80,7 @@ export const FIXED_CAPABILITY_FAMILIES = [
  * still absent rather than inert.
  * {@link EVERY_ROW_FAMILIES} is where its bare grant is argued.
  */
-export const INSTANCED_CAPABILITY_FAMILIES = ['mcp', 'integration', 'agent'] as const;
+export const INSTANCED_CAPABILITY_FAMILIES = ['mcp', 'agent'] as const;
 
 /**
  * Own Oxy tools come from the live platform catalogue (ADR 0022). They do not
@@ -96,7 +96,7 @@ const OXY_SERVICE_TOOL_SOURCE = 'oxy_service' as const;
  * cheque: every row I have, resolved again on every turn.
  *
  * `mcp` alone is refused above, and the argument is about what a future row
- * carries. An MCP connector or integration can hold or forward a CREDENTIAL,
+ * carries. An MCP connector can hold or forward a CREDENTIAL,
  * so "every one I will ever install" hands an agent
  * access nobody has considered yet — one row at a time is the only honest
  * grant.
@@ -137,14 +137,18 @@ export const DEFAULT_NEW_AGENT_GRANTS: readonly string[] = ['agent'];
  * Their successor is the `computer` family — a NEW name on purpose, so no
  * grant stored before it existed can turn it on.
  *
- * Migration 0071 removed them from `agents.capability_grants`. They are listed
+ * `integration` granted the hand-written Google and Microsoft integrations, which
+ * were replaced by the providers' own MCP servers (granted as `mcp:<id>` like any
+ * connector); no agent held one when it went (migration 0155).
+ *
+ * Migration 0071 removed `shell` and `files` from `agents.capability_grants`. They are listed
  * here so the wire can DROP them instead of refusing the whole save — an editor
  * still holding one from before the deploy would otherwise 400 on every
  * autosave, which is exactly the failure this vocabulary was built to end — and
  * so `capability-grants.test.ts` can pin that they stay gone. Anything else
  * outside the vocabulary is still refused.
  */
-export const RETIRED_CAPABILITY_FAMILIES = ['shell', 'files'] as const;
+export const RETIRED_CAPABILITY_FAMILIES = ['shell', 'files', 'integration'] as const;
 
 /** A grant list with every retired family's entries removed, and nothing else touched. */
 export function withoutRetiredGrants(grants: readonly string[]): string[] {

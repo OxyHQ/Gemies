@@ -63,6 +63,7 @@ const isChatRoute = (name: string) => CHAT_ROUTES.has(name) || name.startsWith('
 const PAGE_TITLES: Record<string, string> = {
   shows: 'sidebar.shows',
   agents: 'sidebar.agents',
+  connectors: 'sidebar.connectors',
   notifications: 'sidebar.notifications',
 };
 

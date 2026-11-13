@@ -57,10 +57,6 @@ vi.mock('../../../db/agents/rollbackRecordRepository.js', () => ({
   }),
 }));
 
-vi.mock('../../tools/integrations.js', () => ({
-  buildIntegrationTools: vi.fn(async () => ({})),
-}));
-
 /**
  * Two MCP tools whose names are the ones the R0 and R1 sets actually contain.
  * They are plain `execute` functions rather than `tool()` objects because that

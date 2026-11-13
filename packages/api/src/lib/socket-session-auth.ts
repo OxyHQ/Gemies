@@ -11,11 +11,10 @@ export interface SocketSession {
 
 /**
  * Validate an Oxy access token handed over a WebSocket's first message, and
- * return the user id. Shared by the MCP relay (`lib/mcp-relay.ts`) and voice
- * calls (`lib/voice/voice-socket.ts`): both lanes take the token in a message
- * because a browser-style WebSocket cannot set a header.
- *
- * (Moved here from `lib/mcp-relay.ts`, where the reasoning below was written.)
+ * return the user id. Shared by the external agents' relay
+ * (`lib/external-agents/relay.ts`) and voice calls (`lib/voice/voice-socket.ts`):
+ * both take the token in a message because a browser-style WebSocket cannot set
+ * a header.
  *
  * The retired `alia_sk_*` developer keys are not a lane here: one reaches
  * `authSocket()` like any other string and is refused, because it is not a

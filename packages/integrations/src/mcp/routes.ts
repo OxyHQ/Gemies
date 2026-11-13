@@ -7,6 +7,8 @@ import { internalAccount } from '../shared/internal-auth';
  */
 
 import { Router, type Router as RouterType } from 'express';
+import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js';
+import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { errorMessage } from '../shared/utils';
 import { createLogger } from '../shared/logger';
 import * as manager from './manager';
@@ -47,6 +49,12 @@ function oauthConfigError(config: Record<string, unknown>): string | null {
     }
   }
   return null;
+}
+
+/** Whether a connection failed because the server asked for a token (HTTP 401). */
+function isUnauthorized(err: unknown): boolean {
+  if (err instanceof UnauthorizedError) return true;
+  return err instanceof StreamableHTTPError && err.code === 401;
 }
 
 const router: RouterType = Router();
@@ -94,8 +102,16 @@ router.post('/servers/:id/start', async (req, res) => {
 
   try {
     const result = await manager.startServer(serverId, oxyUserId, transport, config);
-    res.json({ success: true, tools: result.tools, resources: result.resources });
+    res.json({ success: true, ...result });
   } catch (err: unknown) {
+    // A server that answers 401 to a connection without a token wants OAuth:
+    // the API starts that flow instead of recording a failure.
+    if (!config.requiresOAuth && isUnauthorized(err)) {
+      return res.status(401).json({
+        error: 'This server asks you to sign in',
+        code: 'authorization_required',
+      });
+    }
     logger.error(`Failed to start server ${serverId}:`, errorMessage(err));
     res.status(500).json({ error: errorMessage(err) });
   }
@@ -182,7 +198,7 @@ router.post('/servers/:id/oauth/finish', async (req, res) => {
       code,
       callbackUrl,
     );
-    res.json({ success: true, tools: result.tools, resources: result.resources });
+    res.json({ success: true, ...result });
   } catch (err: unknown) {
     logger.error(`Failed to finish OAuth for server ${serverId}:`, errorMessage(err));
     res.status(500).json({ error: errorMessage(err) });

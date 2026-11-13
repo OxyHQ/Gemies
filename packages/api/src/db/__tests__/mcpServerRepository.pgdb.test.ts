@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+import { constraintNameOf, isCheckViolation } from '@oxy.so/db';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
 import { MCP_OAUTH_STATE_TTL_SECONDS, mcpServers } from '../schema/integrations';
 import {
+  connectorSlug,
   deleteMcpServerForUser,
-  findMcpServerByName,
   findMcpServerForUser,
-  installMcpServer,
+  insertMcpServer,
   listMcpServersForUser,
   listRunnableMcpServersForUser,
   serializeMcpServer,
@@ -21,13 +22,14 @@ import {
   deleteMcpOAuthStateByToken,
   findLiveMcpOAuthState,
 } from '../integrations/mcpOAuthStateRepository';
+import { registryLogoIds, servedLogo, storeLogo } from '../../lib/connector-logos';
+import { listAgentsGrantedConnectors } from '../agents/agentRepository';
 
 /**
- * MCP connectors and their OAuth state, against a REAL server.
+ * MCP connectors, their logos and their OAuth state, against a REAL server.
  *
- * Ids and user ids are prefixed `mcp-` / `mcpu-`, and every count is scoped to
- * rows this file inserted — several `*.pgdb.test.ts` files share one database
- * per run.
+ * User ids are prefixed `mcpu-`, and every count is scoped to rows this file
+ * inserted — several `*.pgdb.test.ts` files share one database per run.
  */
 
 let db: ApiDatabase;
@@ -35,16 +37,20 @@ let db: ApiDatabase;
 function newServer(overrides: Partial<NewMcpServer> = {}): NewMcpServer {
   return {
     oxyUserId: 'mcpu-1',
-    name: 'github',
-    displayName: 'GitHub',
+    displayName: 'Notion',
     source: 'registry',
-    registryId: 'github',
+    registryId: 'notion',
     transport: 'streamable-http',
-    runtime: 'server',
-    config: { url: 'https://mcp.github.test', requiresOAuth: true },
+    config: { url: 'https://mcp.notion.test/mcp', requiresOAuth: true },
     ...overrides,
   };
 }
+
+/** A 1×1 PNG. */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 beforeAll(() => {
   const connected = connectPostgres(process.env.DATABASE_URL);
@@ -56,345 +62,234 @@ afterAll(async () => {
   await closePostgres();
 });
 
-describe('one user cannot install the same connector name twice', () => {
-  /**
-   * This is the constraint the schema batch did not port —
-   * `McpServerSchema.index({ oxyUserId: 1, name: 1 }, { unique: true })` — and
-   * the whole idempotency of `POST /mcp/install` rests on it.
-   *
-   * Without it the second insert simply SUCCEEDS: no error, no 409, no 200 with
-   * the existing row, just a second connector under the same name. The Connect
-   * flow calls /install before every OAuth start, so that is a duplicate per
-   * attempt, silently.
-   */
-  it('answers NULL on the second install rather than storing a rival row', async () => {
-    const first = await installMcpServer(db, newServer({ oxyUserId: 'mcpu-dup' }));
-    expect(first).not.toBeNull();
+describe('a person connects several accounts of one connector', () => {
+  it('gives each its own slug, so their tools never share a name', async () => {
+    const first = await insertMcpServer(db, 'notion', newServer({ oxyUserId: 'mcpu-multi' }));
+    const second = await insertMcpServer(db, 'notion', newServer({ oxyUserId: 'mcpu-multi' }));
+    const third = await insertMcpServer(db, 'notion', newServer({ oxyUserId: 'mcpu-multi' }));
 
-    const second = await installMcpServer(db, newServer({ oxyUserId: 'mcpu-dup' }));
-    expect(second).toBeNull();
-
-    const [{ n }] = await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(mcpServers)
-      .where(eq(mcpServers.oxyUserId, 'mcpu-dup'));
-    expect(n).toBe(1);
+    expect([first?.name, second?.name, third?.name]).toEqual(['notion', 'notion_2', 'notion_3']);
+    expect(await listMcpServersForUser(db, 'mcpu-multi')).toHaveLength(3);
   });
 
-  it('scopes the name to the USER, so two people may install the same connector', async () => {
-    const a = await installMcpServer(db, newServer({ oxyUserId: 'mcpu-a' }));
-    const b = await installMcpServer(db, newServer({ oxyUserId: 'mcpu-b' }));
-
-    expect(a).not.toBeNull();
-    expect(b).not.toBeNull();
-    expect(a?.id).not.toBe(b?.id);
+  it('scopes the slug to the person, so two people each have their own `notion`', async () => {
+    const a = await insertMcpServer(db, 'notion', newServer({ oxyUserId: 'mcpu-scope-a' }));
+    const b = await insertMcpServer(db, 'notion', newServer({ oxyUserId: 'mcpu-scope-b' }));
+    expect(a?.name).toBe('notion');
+    expect(b?.name).toBe('notion');
   });
 
-  it('finds the existing row by name, which is what turns the NULL into a 200', async () => {
-    await installMcpServer(db, newServer({ oxyUserId: 'mcpu-byname' }));
+  it('writes a registry account under the id its OAuth began with, once', async () => {
+    const id = crypto.randomUUID();
+    const row = await insertMcpServer(db, 'notion', newServer({ id, oxyUserId: 'mcpu-id' }));
+    expect(row?.id).toBe(id);
+    // A second completion of the same flow is refused rather than a second account.
+    expect(await insertMcpServer(db, 'notion', newServer({ id, oxyUserId: 'mcpu-id' }))).toBeNull();
+    expect(await listMcpServersForUser(db, 'mcpu-id')).toHaveLength(1);
+  });
 
-    const found = await findMcpServerByName(db, 'mcpu-byname', 'github');
-    expect(found?.name).toBe('github');
-    // Vacuity floor on the scope: another user's connector must not answer.
-    expect(await findMcpServerByName(db, 'mcpu-nobody', 'github')).toBeNull();
+  it('makes a slug of any name a person gives a custom server', () => {
+    expect(connectorSlug('My Server!', 0)).toBe('my_server');
+    expect(connectorSlug('My Server!', 1)).toBe('my_server_2');
+    expect(connectorSlug('###', 0)).toBe('mcp');
   });
 });
 
-describe("a command connector runs only on the person's device", () => {
-  /**
-   * `mcp_servers_command_runs_locally_check`: the integrations host is shared
-   * by every account, so Postgres refuses a row that would have it start a
-   * command, whichever code path tries to write one.
-   */
-  it('refuses a command connector the server would run', async () => {
+/** A write the database refuses with this CHECK. drizzle wraps the error; the name is on its cause. */
+function refusedBy(constraint: string) {
+  return (error: unknown) => {
+    expect(isCheckViolation(error)).toBe(true);
+    expect(constraintNameOf(error)).toBe(constraint);
+    return true;
+  };
+}
+
+describe('the database holds what a connector is', () => {
+  it('refuses a command connector: nothing is ever started as a process', async () => {
     await expect(
-      installMcpServer(
-        db,
-        newServer({
-          oxyUserId: 'mcpu-cmd-server',
-          name: 'cmd',
-          source: 'custom',
-          registryId: undefined,
-          transport: 'stdio',
-          runtime: 'server',
-          config: { command: 'node' },
-        }),
-      ),
-    ).rejects.toMatchObject({
-      cause: { constraint_name: 'mcp_servers_command_runs_locally_check' },
-    });
+      db.execute(sql`
+        insert into ${mcpServers} (id, oxy_user_id, name, display_name, source, transport)
+        values ('mcp-stdio', 'mcpu-stdio', 'x', 'X', 'custom', 'stdio')
+      `),
+    ).rejects.toSatisfy(refusedBy('mcp_servers_transport_check'));
   });
 
-  it('stores one that runs on the device', async () => {
-    const row = await installMcpServer(
-      db,
-      newServer({
-        oxyUserId: 'mcpu-cmd-local',
-        name: 'cmd',
-        source: 'custom',
-        registryId: undefined,
-        transport: 'stdio',
-        runtime: 'local',
-        config: { command: 'node' },
-      }),
-    );
-    expect(row?.runtime).toBe('local');
+  it('refuses a registry row without its entry, and a custom row with one', async () => {
+    await expect(
+      insertMcpServer(db, 'x', newServer({ oxyUserId: 'mcpu-reg', registryId: undefined })),
+    ).rejects.toSatisfy(refusedBy('mcp_servers_registry_check'));
+    await expect(
+      insertMcpServer(db, 'x', newServer({ oxyUserId: 'mcpu-reg', source: 'custom' })),
+    ).rejects.toSatisfy(refusedBy('mcp_servers_registry_check'));
   });
 });
 
 describe('`config` is flat in the database and nested on both wires', () => {
   it('round-trips through the columns and back into the nested object', async () => {
-    const row = await installMcpServer(
+    const row = await insertMcpServer(
       db,
+      'mine',
       newServer({
         oxyUserId: 'mcpu-config',
-        name: 'stdio-one',
-        transport: 'stdio',
-        runtime: 'local',
-        config: {
-          command: 'npx',
-          args: ['-y', 'pkg'],
-          headers: { Authorization: 'Bearer secret' },
-          env: { TOKEN: 'x' },
-        },
+        source: 'custom',
+        registryId: undefined,
+        config: { url: 'https://mcp.mine.test/mcp', headers: { Authorization: 'Bearer k' } },
       }),
     );
-    if (!row) throw new Error('install returned null');
-
-    expect(row.configCommand).toBe('npx');
-    expect(row.configArgs).toEqual(['-y', 'pkg']);
+    if (!row) throw new Error('insert failed');
     expect(toMcpServerConfig(row)).toEqual({
-      command: 'npx',
-      args: ['-y', 'pkg'],
-      headers: { Authorization: 'Bearer secret' },
-      env: { TOKEN: 'x' },
+      url: 'https://mcp.mine.test/mcp',
+      headers: { Authorization: 'Bearer k' },
     });
+    // The headers are the person's secret: never on the wire.
+    const served = serializeMcpServer(row);
+    expect(served.config).toEqual({ url: 'https://mcp.mine.test/mcp' });
+    expect(JSON.stringify(served)).not.toContain('Bearer');
+    expect(served._id).toBe(row.id);
   });
 
-  it('omits an unset key ENTIRELY rather than answering null', async () => {
-    /**
-     * `{ url: null }` and `{}` are the same to `if (config.url)` and different
-     * to a strict schema on the far side — and the far side is a separately
-     * deployed service. A `null` column read back verbatim would not omit it.
-     */
-    const row = await installMcpServer(
+  it('merges a patch per key and clears a key sent as null', async () => {
+    const row = await insertMcpServer(
       db,
-      newServer({
-        oxyUserId: 'mcpu-sparse',
-        name: 'sparse',
-        transport: 'stdio',
-        runtime: 'local',
-        config: { command: 'npx' },
-      }),
-    );
-    if (!row) throw new Error('install returned null');
-
-    const config = toMcpServerConfig(row);
-    expect(config).toEqual({ command: 'npx' });
-    expect('url' in config).toBe(false);
-    expect('requiresOAuth' in config).toBe(false);
-  });
-
-  it('serves `_id` alongside `id`, because a shipped mobile build reads it', async () => {
-    const row = await installMcpServer(db, newServer({ oxyUserId: 'mcpu-serialize' }));
-    if (!row) throw new Error('install returned null');
-
-    const wire = serializeMcpServer(row);
-    expect(wire._id).toBe(row.id);
-    expect(wire.id).toBe(row.id);
-    expect(wire.config).toEqual({ url: 'https://mcp.github.test', requiresOAuth: true });
-    // The scope the query already filtered on is not echoed back.
-    expect(Object.keys(wire)).not.toContain('oxyUserId');
-  });
-});
-
-describe('a patch MERGES config per key, as the sub-document assignment did', () => {
-  it('leaves a key the caller did not send alone', async () => {
-    const row = await installMcpServer(
-      db,
+      'mine',
       newServer({
         oxyUserId: 'mcpu-patch',
-        name: 'patch-me',
-        config: { url: 'https://one.test', requiresOAuth: true },
+        source: 'custom',
+        registryId: undefined,
+        config: { url: 'https://a.test/mcp', headers: { A: '1' } },
       }),
     );
-    if (!row) throw new Error('install returned null');
-
-    const patched = await updateMcpServer(db, row.id, 'mcpu-patch', {
-      config: { url: 'https://two.test' },
+    if (!row) throw new Error('insert failed');
+    const urlOnly = await updateMcpServer(db, row.id, 'mcpu-patch', {
+      config: { url: 'https://b.test/mcp' },
     });
-
-    expect(patched?.configUrl).toBe('https://two.test');
-    // `requiresOAuth` was not in the patch, so it survives. A replace would
-    // have cleared it and quietly un-marked the connector as OAuth-authenticated,
-    // which makes the next `/start` connect unauthenticated.
-    expect(patched?.configRequiresOauth).toBe(true);
-  });
-
-  it('CLEARS a key the caller sent as null', async () => {
-    const row = await installMcpServer(
-      db,
-      newServer({ oxyUserId: 'mcpu-patch-null', name: 'clear-me' }),
-    );
-    if (!row) throw new Error('install returned null');
-
-    const patched = await updateMcpServer(db, row.id, 'mcpu-patch-null', {
-      config: { url: undefined } as { url?: string },
+    expect(toMcpServerConfig(urlOnly!)).toEqual({ url: 'https://b.test/mcp', headers: { A: '1' } });
+    const cleared = await updateMcpServer(db, row.id, 'mcpu-patch', {
+      config: { headers: undefined },
     });
-
-    // `'url' in config` is true even when the value is undefined, which is the
-    // only way a JSON body can say "clear this" — `patch.config.url === undefined`
-    // could not tell it from an absent key.
-    expect(patched?.configUrl).toBeNull();
+    expect(toMcpServerConfig(cleared!).headers).toBeUndefined();
+    expect(await updateMcpServer(db, row.id, 'mcpu-other', { accountLabel: 'x' })).toBeNull();
   });
 
-  it('answers the current row for an EMPTY patch rather than raising', async () => {
-    // `db.update()` with no columns is a syntax error, and all three of the
-    // source's `!== undefined` guards missing is a legitimate request.
-    const row = await installMcpServer(
-      db,
-      newServer({ oxyUserId: 'mcpu-empty', name: 'empty-patch' }),
-    );
-    if (!row) throw new Error('install returned null');
-
-    const patched = await updateMcpServer(db, row.id, 'mcpu-empty', {});
-    expect(patched?.id).toBe(row.id);
-  });
-
-  it("refuses to patch another user's connector", async () => {
-    const row = await installMcpServer(db, newServer({ oxyUserId: 'mcpu-owner', name: 'mine' }));
-    if (!row) throw new Error('install returned null');
-
-    expect(await updateMcpServer(db, row.id, 'mcpu-intruder', { enabled: false })).toBeNull();
-    // And the row is untouched, not merely unreported.
-    expect((await findMcpServerForUser(db, row.id, 'mcpu-owner'))?.enabled).toBe(true);
+  it('renames the account, and answers the current row for an empty patch', async () => {
+    const row = await insertMcpServer(db, 'notion', newServer({ oxyUserId: 'mcpu-label' }));
+    if (!row) throw new Error('insert failed');
+    expect(
+      (await updateMcpServer(db, row.id, 'mcpu-label', { accountLabel: 'Work' }))?.accountLabel,
+    ).toBe('Work');
+    expect((await updateMcpServer(db, row.id, 'mcpu-label', {}))?.accountLabel).toBe('Work');
   });
 });
 
 describe('a status write does not blank what the reply omitted', () => {
-  it('keeps the last known tools when integrations answers without them', async () => {
-    const row = await installMcpServer(
+  it('keeps the last known tools, and the label, when a reconnect names neither', async () => {
+    const row = await insertMcpServer(
       db,
-      newServer({ oxyUserId: 'mcpu-status', name: 'status-one' }),
-    );
-    if (!row) throw new Error('install returned null');
-
-    await setMcpServerStatus(db, row.id, 'mcpu-status', {
-      status: 'running',
-      tools: [{ name: 'search', description: 'Search', inputSchema: {} }],
-    });
-    const stopped = await setMcpServerStatus(db, row.id, 'mcpu-status', { status: 'stopped' });
-
-    expect(stopped?.status).toBe('stopped');
-    expect(stopped?.tools).toHaveLength(1);
-    expect(stopped?.tools[0]?.name).toBe('search');
-  });
-
-  it('records the durable OAuth mark that a later start reads', async () => {
-    const row = await installMcpServer(
-      db,
+      'notion',
       newServer({
-        oxyUserId: 'mcpu-oauthmark',
-        name: 'oauth-one',
-        config: { url: 'https://x.test' },
+        oxyUserId: 'mcpu-status',
+        accountLabel: 'ana@acme.com',
+        status: 'running',
+        tools: [{ name: 'search', description: 'Search', inputSchema: {} }],
       }),
     );
-    if (!row) throw new Error('install returned null');
-    expect(row.configRequiresOauth).toBeNull();
-
-    const connected = await setMcpServerStatus(db, row.id, 'mcpu-oauthmark', {
-      status: 'running',
-      requiresOAuth: true,
+    if (!row) throw new Error('insert failed');
+    const errored = await setMcpServerStatus(db, row.id, 'mcpu-status', {
+      status: 'error',
+      statusMessage: 'Token expired',
     });
-    expect(connected?.configRequiresOauth).toBe(true);
+    expect(errored?.tools).toHaveLength(1);
+    const back = await setMcpServerStatus(db, row.id, 'mcpu-status', {
+      status: 'running',
+      statusMessage: null,
+    });
+    expect(back?.accountLabel).toBe('ana@acme.com');
+    expect(back?.statusMessage).toBeNull();
   });
 });
 
-describe('the chat tool builder sees only what it can dispatch to', () => {
-  it('filters on all four predicates, not merely on enabled', async () => {
-    const user = 'mcpu-runnable';
-    const good = await installMcpServer(db, newServer({ oxyUserId: user, name: 'good' }));
-    const local = await installMcpServer(
+describe('the chat tool builder sees only connected accounts', () => {
+  it('offers a running connector and not one that lost its connection', async () => {
+    const running = await insertMcpServer(
       db,
-      newServer({ oxyUserId: user, name: 'local-one', runtime: 'local' }),
+      'notion',
+      newServer({ oxyUserId: 'mcpu-run', status: 'running' }),
     );
-    const off = await installMcpServer(db, newServer({ oxyUserId: user, name: 'disabled-one' }));
-    const stopped = await installMcpServer(db, newServer({ oxyUserId: user, name: 'stopped-one' }));
-    if (!good || !local || !off || !stopped) throw new Error('install returned null');
-
-    await setMcpServerStatus(db, good.id, user, { status: 'running' });
-    await setMcpServerStatus(db, local.id, user, { status: 'running' });
-    await setMcpServerStatus(db, off.id, user, { status: 'running' });
-    await updateMcpServer(db, off.id, user, { enabled: false });
-    // `stopped-one` stays at its `installed` default.
-
-    const runnable = await listRunnableMcpServersForUser(db, user);
-    expect(runnable.map((s) => s.name)).toEqual(['good']);
-
-    // A named selection is an additional allow-list, never a way around the
-    // ownership/runtime predicates above.
-    expect((await listRunnableMcpServersForUser(db, user, [good.id])).map((s) => s.id)).toEqual([
-      good.id,
-    ]);
-    expect(await listRunnableMcpServersForUser(db, user, [stopped.id])).toEqual([]);
-    expect(await listRunnableMcpServersForUser(db, 'mcpu-someone-else', [good.id])).toEqual([]);
-    // An EMPTY selection means none, not all — the distinction an `inArray`
-    // over an empty list would get wrong in whichever direction drizzle picks.
-    expect(await listRunnableMcpServersForUser(db, user, [])).toEqual([]);
-
-    // Vacuity floor: the user really does own four connectors, so the single
-    // result above is filtering rather than an empty table.
-    const all = await listMcpServersForUser(db, user);
-    expect(all).toHaveLength(4);
-    // And newest first, as `sort({ createdAt: -1 })` was.
-    expect(all[0]?.createdAt.getTime()).toBeGreaterThanOrEqual(
-      all[all.length - 1]?.createdAt.getTime() ?? 0,
-    );
+    await insertMcpServer(db, 'notion', newServer({ oxyUserId: 'mcpu-run', status: 'error' }));
+    const listed = await listRunnableMcpServersForUser(db, 'mcpu-run');
+    expect(listed.map((row) => row.id)).toEqual([running?.id]);
+    expect(await listRunnableMcpServersForUser(db, 'mcpu-run', [])).toEqual([]);
   });
 });
 
 describe('an id of any shape simply fails to match', () => {
-  it('returns null rather than raising, which is a 404 instead of a 500', async () => {
-    expect(await findMcpServerForUser(db, 'not-an-object-id', 'mcpu-1')).toBeNull();
-    expect(await deleteMcpServerForUser(db, 'not-an-object-id', 'mcpu-1')).toBeNull();
+  it("returns null rather than raising, and deletes only the caller's own connector", async () => {
+    expect(await findMcpServerForUser(db, 'not-a-uuid', 'mcpu-del')).toBeNull();
+    const row = await insertMcpServer(db, 'notion', newServer({ oxyUserId: 'mcpu-del' }));
+    if (!row) throw new Error('insert failed');
+    expect(await deleteMcpServerForUser(db, row.id, 'mcpu-someone-else')).toBeNull();
+    expect((await deleteMcpServerForUser(db, row.id, 'mcpu-del'))?.id).toBe(row.id);
+  });
+});
+
+describe('a logo is stored once, by its content, and only if it is an image', () => {
+  it('keeps a PNG under its hash and serves it back with its type', async () => {
+    const id = await storeLogo(db, PNG);
+    expect(id).toMatch(/^[0-9a-f]{64}$/);
+    expect(await storeLogo(db, PNG)).toBe(id);
+    const served = await servedLogo(db, id!);
+    expect(served?.contentType).toBe('image/png');
+    expect(served?.bytes.equals(PNG)).toBe(true);
   });
 
-  it("deletes only the caller's own connector", async () => {
-    const row = await installMcpServer(db, newServer({ oxyUserId: 'mcpu-del', name: 'delete-me' }));
-    if (!row) throw new Error('install returned null');
+  it('refuses what is not an image, whatever it claims to be', async () => {
+    expect(await storeLogo(db, Buffer.from('<html><body>not found</body></html>'))).toBeNull();
+    expect(await servedLogo(db, '../etc/passwd')).toBeNull();
+  });
 
-    expect(await deleteMcpServerForUser(db, row.id, 'mcpu-someone-else')).toBeNull();
-    expect(await findMcpServerForUser(db, row.id, 'mcpu-del')).not.toBeNull();
+  it('falls back to the catalogue logo for a connector without its own', async () => {
+    const id = await storeLogo(db, PNG);
+    await db.execute(sql`
+      insert into mcp_registry_logos (registry_id, logo_id, source, source_url, refreshed_at)
+      values ('notion-test', ${id}, 'website', 'https://notion.test/apple-touch-icon.png', now())
+      on conflict (registry_id) do nothing
+    `);
+    expect((await registryLogoIds(db)).get('notion-test')).toBe(id);
+  });
+});
 
-    const deleted = await deleteMcpServerForUser(db, row.id, 'mcpu-del');
-    expect(deleted?.id).toBe(row.id);
-    expect(await findMcpServerForUser(db, row.id, 'mcpu-del')).toBeNull();
+describe('which gemies were granted a connector', () => {
+  it('finds none for connectors nobody was granted', async () => {
+    expect(await listAgentsGrantedConnectors(db, 'mcpu-none', ['srv-nobody'])).toEqual([]);
+    expect(await listAgentsGrantedConnectors(db, 'mcpu-none', [])).toEqual([]);
   });
 });
 
 describe('an OAuth state is a plaintext lookup key with a deadline', () => {
-  it('is found by the token it was minted as', async () => {
+  it('is found by the token it was minted as, with the entry and the return it carries', async () => {
     await createMcpOAuthState(db, {
       state: 'mcp-state-live',
       oxyUserId: 'mcpu-state',
       serverId: 'srv-x',
+      registryId: 'notion',
+      returnTo: 'https://gemies.ai/connectors',
     });
 
     const row = await findLiveMcpOAuthState(db, 'mcp-state-live');
-    expect(row?.oxyUserId).toBe('mcpu-state');
-    expect(row?.serverId).toBe('srv-x');
+    expect(row).toMatchObject({
+      oxyUserId: 'mcpu-state',
+      serverId: 'srv-x',
+      registryId: 'notion',
+      returnTo: 'https://gemies.ai/connectors',
+    });
   });
 
   it('is NOT returned once it is older than the TTL', async () => {
-    /**
-     * Expiry is the repository's decision, so both readers in `routes/mcp.ts`
-     * get the same answer. `now` is a parameter rather than a sleep, which is
-     * what lets this assert the boundary in both directions.
-     */
     await createMcpOAuthState(db, {
       state: 'mcp-state-old',
       oxyUserId: 'mcpu-state',
       serverId: 'srv-x',
+      returnTo: 'https://gemies.ai/connectors',
     });
 
     const justInside = new Date(Date.now() + (MCP_OAUTH_STATE_TTL_SECONDS - 5) * 1000);
@@ -409,6 +304,7 @@ describe('an OAuth state is a plaintext lookup key with a deadline', () => {
       state: 'mcp-state-consume',
       oxyUserId: 'mcpu-state',
       serverId: 'srv-x',
+      returnTo: 'https://gemies.ai/connectors',
     });
     const row = await findLiveMcpOAuthState(db, 'mcp-state-consume');
     if (!row) throw new Error('state not found');
@@ -420,6 +316,7 @@ describe('an OAuth state is a plaintext lookup key with a deadline', () => {
       state: 'mcp-state-abandon',
       oxyUserId: 'mcpu-state',
       serverId: 'srv-x',
+      returnTo: 'https://gemies.ai/connectors',
     });
     await deleteMcpOAuthStateByToken(db, 'mcp-state-abandon');
     expect(await findLiveMcpOAuthState(db, 'mcp-state-abandon')).toBeNull();

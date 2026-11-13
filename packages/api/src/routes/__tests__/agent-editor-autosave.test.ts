@@ -529,7 +529,6 @@ describe('the editor and the route agree on what a save contains', () => {
     // A bare CONNECTOR family is a blank cheque over rows, and is refused too.
     expect((await patch({ capabilityGrants: ['mcp'] })).status).toBe(400);
     expect((await patch({ capabilityGrants: ['oxy_service'] })).status).toBe(400);
-    expect((await patch({ capabilityGrants: ['integration'] })).status).toBe(400);
     expect(repository.updateAgent).not.toHaveBeenCalled();
   });
 

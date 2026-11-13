@@ -20,6 +20,8 @@ import {
 import { restoreOpenerFocus } from '../../lib/focus-return';
 import { useLabels } from '../../lib/labels';
 import { getToolIcon } from '../../lib/tool-icons';
+import { useConnectionOfTool } from '../../runtime/connectors';
+import { ConnectorLogo } from '../connectors/ConnectorLogo';
 import { type ThoughtTab, useThoughtStore } from '../../runtime/thought-store';
 import { FilesAndSources, type OutputActions } from './FilesAndSources';
 import { ToolStep } from './ToolStep';
@@ -156,7 +158,6 @@ function StepsTab({ steps, lifecycle }: { steps: ThoughtStep[]; lifecycle: TurnL
           }
           const inv = step.invocation;
           const key = inv?.toolCallId || `tool-${index}`;
-          const ToolIcon = getToolIcon(step.toolName || '');
           const status =
             inv === undefined ? (live ? 'running' : 'done') : toolCallStatus(inv, live);
           return (
@@ -165,9 +166,8 @@ function StepsTab({ steps, lifecycle }: { steps: ThoughtStep[]; lifecycle: TurnL
                 title={step.toolName === undefined ? step.label : toolLabel(step.toolName, t)}
                 status={status}
                 icon={
-                  <ToolIcon
-                    width={14}
-                    height={14}
+                  <ToolGlyph
+                    toolName={step.toolName}
                     fill={status === 'error' ? colors.error : colors.text}
                   />
                 }
@@ -423,4 +423,17 @@ export function ThoughtPanel({ onClose, outputActions }: ThoughtPanelProps) {
       </ScrollView>
     </View>
   );
+}
+
+/**
+ * A step's glyph: a connector's tool (`mcp_<account>__<tool>`) shows that connector's logo, every
+ * other tool its own glyph.
+ */
+function ToolGlyph({ toolName, fill }: { toolName: string | undefined; fill: string }) {
+  const connection = useConnectionOfTool(toolName);
+  if (connection) {
+    return <ConnectorLogo name={connection.displayName} logoUrl={connection.logoUrl} size={14} />;
+  }
+  const ToolIcon = getToolIcon(toolName || '');
+  return <ToolIcon width={14} height={14} fill={fill} />;
 }

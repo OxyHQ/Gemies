@@ -43,7 +43,7 @@ import type { ExpirySweepTarget } from '@oxy.so/db/expiry';
 import { moderationEvents, moderationOutboxes } from './schema/moderation';
 import { conversationShares } from './schema/chat';
 import { audioJobs, notifications } from './schema/notifications';
-import { MCP_OAUTH_STATE_TTL_SECONDS, mcpOauthStates, oauthStates } from './schema/integrations';
+import { MCP_OAUTH_STATE_TTL_SECONDS, mcpOauthStates } from './schema/integrations';
 import { emailOutreachDecisions } from './schema/proactive';
 import { apiKeyUsage } from './schema/telemetry';
 import { oxyFileEvents } from './schema/oxy-files';
@@ -157,13 +157,6 @@ export const EXPIRY_TARGETS: readonly ExpirySweepTarget[] = [
     column: mcpOauthStates.createdAt,
     retentionSeconds: MCP_OAUTH_STATE_TTL_SECONDS,
     reason: 'Abandoned MCP OAuth handshakes; a completed one deletes its own row.',
-  },
-  {
-    table: oauthStates,
-    /** `expires_at` IS the deadline, so retention is ZERO — the `cache_entries` shape. */
-    column: oauthStates.expiresAt,
-    retentionSeconds: 0,
-    reason: 'Abandoned integrations OAuth handshakes; the row carries its own deadline.',
   },
   {
     table: conversationShares,

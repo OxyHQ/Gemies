@@ -33,6 +33,7 @@ const api = vi.hoisted(() => ({
 const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 const confirm = vi.hoisted(() => vi.fn());
 const mine = vi.hoisted(() => ({ agents: undefined as unknown, pending: false }));
+const connections = vi.hoisted(() => ({ list: [] as unknown[] }));
 const updateAgent = vi.hoisted(() => vi.fn());
 
 vi.mock('react-native', async () => hosts('View', 'Text'));
@@ -52,6 +53,12 @@ vi.mock('@gemies/sdk/accounts', async () => hosts('GemieAccounts'));
 vi.mock('@gemies/sdk', async () => ({ readAgentCharacter: (character: unknown) => character }));
 vi.mock('@oxy.so/bloom/agent-avatar', async () => hosts('AgentAvatar'));
 vi.mock('@oxy.so/bloom/text-field', async () => hosts('TextFieldInput'));
+vi.mock('@gemies/sdk/connectors', async () => ({
+  ...(await hosts('ConnectorLogo')),
+  connectorQueryKeys: { connected: ['gemie-connectors', 'connected'] },
+  useConnections: () => ({ data: connections.list, isPending: false }),
+}));
+vi.mock('expo-router', () => ({ useRouter: () => ({ push: () => {} }) }));
 vi.mock('@oxy.so/bloom/surfaces', () => ({ confirm }));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast }));
 vi.mock('@oxy.so/services/ui/client', () => ({
@@ -143,6 +150,7 @@ let telegramBot: { bot: unknown; available: boolean } = { bot: null, available: 
 
 beforeEach(() => {
   commitAccountProjection('A', 'session-A');
+  connections.list = [];
   subscriptions = [];
   items = [];
   lastHeartbeatAt = null;
@@ -237,6 +245,53 @@ describe('whose computer the agent works on', () => {
     );
     await act(async () => select(tree, 'Where Scout works')?.props.onChange('own'));
     expect(toast.error).toHaveBeenCalled();
+  });
+});
+
+describe('the connected accounts it may use', () => {
+  const notion = (id: string, accountLabel: string) => ({
+    _id: id,
+    displayName: 'Notion',
+    accountLabel,
+    status: 'running',
+    logoUrl: '/mcp/logos/abc',
+  });
+
+  it('grants one account at a time, so two of one connector stay apart', async () => {
+    connections.list = [notion('n1', 'ana@acme.com'), notion('n2', 'Home')];
+    mine.agents = [{ _id: 'agent-1', name: 'Scout', handle: 'scout', capabilityGrants: ['web'] }];
+    const tree = await render();
+
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Notion · ana@acme.com', 'Notion · Home']));
+    expect(all(tree, 'ConnectorLogo').map((node) => node.props.logoUrl)).toEqual([
+      '/mcp/logos/abc',
+      '/mcp/logos/abc',
+    ]);
+    const switches = all(tree, 'Switch').filter((node) =>
+      String(node.props.accessibilityLabel).includes('Notion'),
+    );
+    await act(async () => switches[1]?.props.onCheckedChange(true));
+    expect(updateAgent).toHaveBeenCalledWith({
+      id: 'agent-1',
+      updates: { capabilityGrants: ['web', 'mcp:n2'] },
+    });
+  });
+
+  it('takes an account away without touching its other grants', async () => {
+    connections.list = [notion('n1', 'ana@acme.com')];
+    mine.agents = [
+      { _id: 'agent-1', name: 'Scout', handle: 'scout', capabilityGrants: ['web', 'mcp:n1'] },
+    ];
+    const tree = await render();
+    const granted = all(tree, 'Switch').find((node) =>
+      String(node.props.accessibilityLabel).includes('Notion'),
+    );
+    expect(granted?.props.checked).toBe(true);
+    await act(async () => granted?.props.onCheckedChange(false));
+    expect(updateAgent).toHaveBeenCalledWith({
+      id: 'agent-1',
+      updates: { capabilityGrants: ['web'] },
+    });
   });
 });
 

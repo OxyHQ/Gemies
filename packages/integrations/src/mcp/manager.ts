@@ -28,16 +28,22 @@ import { getDb } from '../db';
 import { decrypt } from '../shared/crypto';
 import { connectorFetch } from './connector-fetch';
 import { AliaOAuthProvider } from './oauth-provider';
-import { deleteConnectorAuth, findConnectorAuth } from './oauth-store';
+import {
+  deleteConnectorAuth,
+  findConnectorAuth,
+  forgetAbandonedAuthorizations,
+} from './oauth-store';
 import { revokeConnectorTokens, type RevocationOutcome } from './revoke';
 import {
   isHostedTransport,
+  type ConnectedServer,
   type HostedTransport,
-  type McpServerSession,
-  type McpServerConfig,
-  type McpToolDefinition,
   type McpResourceDefinition,
+  type McpServerConfig,
+  type McpServerSession,
+  type McpToolDefinition,
 } from './types';
+import { accountLabelOf } from './account-label';
 
 const logger = createLogger('MCP');
 
@@ -56,7 +62,7 @@ export async function startServer(
   oxyUserId: string,
   transport: HostedTransport,
   config: McpServerConfig,
-): Promise<{ tools: McpToolDefinition[]; resources: McpResourceDefinition[] }> {
+): Promise<ConnectedServer> {
   if (sessions.has(serverId)) {
     await stopServer(serverId);
   }
@@ -111,7 +117,7 @@ export async function startServer(
     logger.info(
       `[${serverId}] Started via ${transport} (${tools.length} tools, ${resources.length} resources)`,
     );
-    return { tools, resources };
+    return { tools, resources, server: serverInfoOf(client) };
   } catch (err: unknown) {
     session.status = 'error';
     session.statusMessage = errorMessage(err);
@@ -140,6 +146,7 @@ export async function startOAuth(
   if (!config.url) {
     throw new Error(`${transport} transport requires a url for OAuth`);
   }
+  await forgetAbandonedAuthorizations(getDb(), oxyUserId);
 
   const provider = new AliaOAuthProvider({
     oxyUserId,
@@ -179,7 +186,7 @@ export async function finishOAuth(
   config: McpServerConfig,
   code: string,
   callbackUrl: string,
-): Promise<{ tools: McpToolDefinition[]; resources: McpResourceDefinition[] }> {
+): Promise<ConnectedServer> {
   if (!config.url) {
     throw new Error(`${transport} transport requires a url for OAuth`);
   }
@@ -205,6 +212,7 @@ export async function finishOAuth(
   if (result !== 'AUTHORIZED') {
     throw new Error(`Expected OAuth authorization to complete but the flow returned '${result}'`);
   }
+  const accountLabel = accountLabelOf(await provider.tokens());
 
   if (sessions.has(serverId)) {
     await stopServer(serverId);
@@ -244,7 +252,12 @@ export async function finishOAuth(
     logger.info(
       `[${serverId}] OAuth connected via ${transport} (${tools.length} tools, ${resources.length} resources)`,
     );
-    return { tools, resources };
+    return {
+      tools,
+      resources,
+      server: serverInfoOf(client),
+      ...(accountLabel ? { accountLabel } : {}),
+    };
   } catch (err: unknown) {
     session.status = 'error';
     session.statusMessage = errorMessage(err);
@@ -440,6 +453,29 @@ function defaultCallbackUrl(): string {
 // ---------------------------------------------------------------------------
 // Discovery
 // ---------------------------------------------------------------------------
+
+/**
+ * What the server said about itself in `initialize` (MCP `Implementation`): its
+ * name, website and icons. The API stores the icon it can serve; the URLs here
+ * are the server's and are never handed to a client as they are.
+ */
+function serverInfoOf(client: Client): ConnectedServer['server'] {
+  const info = client.getServerVersion();
+  if (!info) return {};
+  return {
+    name: info.title ?? info.name,
+    ...(info.websiteUrl ? { websiteUrl: info.websiteUrl } : {}),
+    ...(info.icons?.length
+      ? {
+          icons: info.icons.map((icon) => ({
+            src: icon.src,
+            ...(icon.mimeType ? { mimeType: icon.mimeType } : {}),
+            ...(icon.sizes ? { sizes: icon.sizes } : {}),
+          })),
+        }
+      : {}),
+  };
+}
 
 async function discoverTools(client: Client): Promise<McpToolDefinition[]> {
   const { tools } = await client.listTools();

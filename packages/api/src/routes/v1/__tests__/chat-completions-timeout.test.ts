@@ -200,10 +200,6 @@ vi.mock('../../../lib/tools/mcp.js', () => ({
   buildMcpTools: vi.fn().mockResolvedValue({}),
 }));
 
-vi.mock('../../../lib/tools/integrations.js', () => ({
-  buildIntegrationTools: vi.fn().mockResolvedValue({}),
-}));
-
 vi.mock('../../../lib/tools/oxy-services.js', () => ({
   buildOxyServiceTools: vi.fn().mockResolvedValue({}),
   getOxyServicePromptFragment: vi.fn().mockReturnValue(''),

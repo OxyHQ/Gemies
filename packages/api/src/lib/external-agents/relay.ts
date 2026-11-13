@@ -2,9 +2,8 @@
  * External-agent relay (ADR 0030) — the WebSocket a person's daemon (`codea connect`) holds open so
  * the agent it serves can be asked to take a turn.
  *
- * The shape is `lib/mcp-relay.ts`, run the other way round: there a client lends Alia TOOLS and the
- * server calls them; here a client lends Alia an AGENT and the server hands it TURNS. A turn is one
- * `turn` frame down and `delta`* + `end` (or `error`) frames back.
+ * A client lends Gemies an AGENT and the server hands it TURNS. A turn is one `turn` frame down
+ * and `delta`* + `end` (or `error`) frames back.
  *
  * ## More than one instance
  *
@@ -36,7 +35,7 @@ import { CMD_PREFIX, EVT_PREFIX, getClusterBus, type ClusterBus } from './cluste
 const EXTERNAL_AGENT_RELAY_PATH = '/ws/external-agent';
 
 const AUTH_TIMEOUT_MS = 5_000;
-/** Same cadence as the MCP relay: the ALB (60 s) and Cloudflare (100 s) cut a silent connection. */
+/** The ALB (60 s) and Cloudflare (100 s) cut a silent connection; a ping every 25 s keeps it open. */
 const HEARTBEAT_INTERVAL_MS = 25_000;
 /** How long an instance waits for the one that holds the socket to take a turn it published. */
 const REMOTE_ACK_TIMEOUT_MS = 4_000;

@@ -24,6 +24,7 @@ vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
 }));
 vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
   StreamableHTTPClientTransport: sdk.streamable,
+  StreamableHTTPError: class StreamableHTTPError extends Error {},
 }));
 vi.mock('@modelcontextprotocol/sdk/client/sse.js', () => ({ SSEClientTransport: sdk.sse }));
 vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
@@ -32,6 +33,13 @@ vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
       connect: sdk.connect,
       listTools: async () => ({ tools: [] }),
       getServerCapabilities: () => ({}),
+      getServerVersion: () => ({
+        name: 'example',
+        title: 'Example',
+        version: '1.0.0',
+        websiteUrl: 'https://example.com',
+        icons: [{ src: 'https://example.com/icon.png', mimeType: 'image/png', sizes: ['64x64'] }],
+      }),
       close: async () => undefined,
     };
   }),
@@ -116,8 +124,15 @@ describe('a command-based connector', () => {
 
 describe('a remote connector', () => {
   it('reaches its server through the address-checked fetch', async () => {
-    await manager.startServer('srv-remote', 'user-a', 'streamable-http', {
+    const connected = await manager.startServer('srv-remote', 'user-a', 'streamable-http', {
       url: 'https://mcp.example.com/mcp',
+    });
+
+    // What the server said about itself, for the API to read its logo from.
+    expect(connected.server).toEqual({
+      name: 'Example',
+      websiteUrl: 'https://example.com',
+      icons: [{ src: 'https://example.com/icon.png', mimeType: 'image/png', sizes: ['64x64'] }],
     });
 
     expect(sdk.streamable).toHaveBeenCalledTimes(1);
