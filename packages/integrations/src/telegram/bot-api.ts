@@ -9,6 +9,7 @@
 
 import type {
   TelegramBotUser,
+  TelegramFile,
   TelegramInputFileUpload,
   TelegramMessage,
   TelegramWebhookInfo,
@@ -110,6 +111,64 @@ export class BotApi {
       );
     }
     return answer.result;
+  }
+
+  /**
+   * Download a file a message carries, or `null` when Telegram will not hand it to a bot (over
+   * 20 MB) or it is over `maxBytes`. The download URL carries the token, so it stays here too.
+   */
+  async downloadFile(fileId: string, maxBytes: number): Promise<Buffer | null> {
+    const file = await this.call<TelegramFile>('getFile', { file_id: fileId });
+    if (!file.file_path || (file.file_size ?? 0) > maxBytes) return null;
+    let response: Response;
+    try {
+      response = await fetch(`${BOT_API}/file/bot${this.token}/${file.file_path}`, {
+        signal: AbortSignal.timeout(CALL_TIMEOUT_MS * 3),
+      });
+    } catch (error: unknown) {
+      const kind = error instanceof Error ? error.name : 'NetworkError';
+      throw new TelegramApiError('getFile', 0, `The file could not be downloaded (${kind})`);
+    }
+    if (!response.ok) {
+      throw new TelegramApiError('getFile', response.status, `HTTP ${response.status}`);
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    return bytes.length > maxBytes ? null : bytes;
+  }
+
+  /** React to a message with one emoji (or clear the bot's reaction with `null`). */
+  setMessageReaction(chatId: string, messageId: number, emoji: string | null): Promise<true> {
+    return this.call<true>('setMessageReaction', {
+      chat_id: chatId,
+      message_id: messageId,
+      reaction: emoji ? [{ type: 'emoji', emoji }] : [],
+    });
+  }
+
+  /** Send a photo Telegram fetches from a URL, with an optional caption. */
+  sendPhoto(params: {
+    chatId: string;
+    photo: string;
+    caption?: string;
+    businessConnectionId?: string;
+    replyToMessageId?: number;
+  }): Promise<TelegramMessage> {
+    return this.call<TelegramMessage>('sendPhoto', {
+      chat_id: params.chatId,
+      photo: params.photo,
+      ...(params.caption ? { caption: params.caption } : {}),
+      ...(params.businessConnectionId
+        ? { business_connection_id: params.businessConnectionId }
+        : {}),
+      ...(params.replyToMessageId
+        ? {
+            reply_parameters: {
+              message_id: params.replyToMessageId,
+              allow_sending_without_reply: true,
+            },
+          }
+        : {}),
+    });
   }
 
   getMe(): Promise<TelegramBotUser> {

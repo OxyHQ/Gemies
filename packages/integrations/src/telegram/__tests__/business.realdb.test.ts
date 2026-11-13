@@ -21,6 +21,9 @@ vi.mock('../../shared/api-client', () => ({
     async decideInbound() {
       return { answer: api.answer };
     }
+    async prepareAccountMessage(_identity: unknown, incoming: { message: { text: string } }) {
+      return { content: [{ type: 'text', text: incoming.message.text }] };
+    }
     async getConversation() {
       return null;
     }

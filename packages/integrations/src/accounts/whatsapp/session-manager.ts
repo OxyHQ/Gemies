@@ -4,6 +4,7 @@ import makeWASocket, {
   areJidsSameUser,
   BufferJSON,
   DisconnectReason,
+  downloadMediaMessage,
   fetchLatestBaileysVersion,
   initAuthCreds,
   makeCacheableSignalKeyStore,
@@ -14,6 +15,14 @@ import makeWASocket, {
   type WASocket,
 } from '@whiskeysockets/baileys';
 import { randomUUID } from 'node:crypto';
+import {
+  contextOf,
+  readWhatsAppMessage,
+  whatsAppContent,
+  whatsAppHasContent,
+  whatsAppLabel,
+  whatsAppText,
+} from './inbound';
 import { getDb } from '../../db';
 import {
   createWhatsAppSession,
@@ -289,8 +298,10 @@ class SessionManager {
       // Persist all messages (both notify and history sync)
       const rows: WhatsAppMessageInsert[] = [];
       for (const msg of messages) {
-        const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-        if (!text || !msg.key.id || !msg.key.remoteJid) continue;
+        const content = whatsAppContent(msg);
+        if (!whatsAppHasContent(content) || !msg.key.id || !msg.key.remoteJid) continue;
+        // What the gemies granted the account read of the chat later: its words, or what it was.
+        const text = whatsAppText(content) || `[${whatsAppLabel(content)}]`;
 
         rows.push({
           sessionId,
@@ -317,21 +328,14 @@ class SessionManager {
 
       for (const msg of messages) {
         if (msg.key.fromMe) continue;
-        if (!msg.message) continue;
-
-        const text =
-          msg.message?.conversation ||
-          msg.message?.extendedTextMessage?.text ||
-          msg.message?.imageMessage?.caption ||
-          '';
-
-        if (!text) continue;
+        const content = whatsAppContent(msg);
+        if (!whatsAppHasContent(content)) continue;
 
         const remoteJid = msg.key?.remoteJid;
         if (!remoteJid) continue;
 
         const isGroup = remoteJid.endsWith('@g.us');
-        const context = msg.message?.extendedTextMessage?.contextInfo;
+        const context = contextOf(content);
         const self = sock.user?.id;
         const mentionsAccount =
           isGroup &&
@@ -349,7 +353,8 @@ class SessionManager {
                 chatKind: isGroup ? 'group' : 'direct',
                 mentionsAccount,
               },
-              messageText: text,
+              readMessage: () =>
+                readWhatsAppMessage(msg, (message) => downloadMediaMessage(message, 'buffer', {})),
               sendResponse: async (text) => {
                 await sock.sendMessage(remoteJid, { text });
               },

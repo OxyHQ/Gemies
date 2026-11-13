@@ -1,3 +1,5 @@
+import type { GemieChannelMessage, GemieTurnContentPart } from './channel-messages.js';
+
 /**
  * The connected-account contract between the Gemies API and its integrations process (ADR 0035).
  *
@@ -97,4 +99,20 @@ export interface GemieAccountNotify {
 /** The API's answer to {@link GemieAccountInbound}. */
 export interface GemieAccountInboundDecision {
   readonly answer: boolean;
+}
+
+/**
+ * `POST /channel-accounts/messages`: a message that arrived on the account and that its gemie will
+ * answer, as the turn carries it. The API keeps its media in the person's Oxy Files and answers
+ * the user message's content: one text part saying everything the message is, and a `file` part
+ * for each piece of media kept, like an app attachment.
+ */
+export interface GemieAccountIncoming {
+  readonly chatId: string;
+  readonly message: GemieChannelMessage;
+}
+
+/** The API's answer to {@link GemieAccountIncoming}. */
+export interface GemieAccountTurnContent {
+  readonly content: readonly GemieTurnContentPart[];
 }

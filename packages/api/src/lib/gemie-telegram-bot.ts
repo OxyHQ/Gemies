@@ -15,6 +15,12 @@
  *    of anyone's, and the prompt says how the person links their Telegram when someone asks for
  *    their data. Who pays is {@link reserveAgentTurn}'s: the gemie's own balance first, then the
  *    person who connected the bot when they allowed it (`bots.owner_pays_agent_turns`).
+ *
+ * A message is whatever Telegram carried (`lib/channel-messages.ts`): its media is kept in the Oxy
+ * Files of the person who connected the bot, whose conversation it is, and a voice note is
+ * transcribed on the account whose turn it is (theirs for their own turn, the gemie's for a third
+ * party's). An edit updates the stored message and is not answered again. In a third party's turn
+ * the gemie may react to the message with an emoji (`channels/reaction-tool.ts`).
  */
 
 import { generateAnswered } from './chat/tool-synthesis.js';
@@ -35,7 +41,11 @@ import { getOrCreateUserCredits } from './user-credits-helpers.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { GemieTelegramBotAnswer, GemieTelegramBotMessage } from '@gemies/server/internal';
 import { findAgentById } from '../db/agents/agentRepository.js';
-import { listRecentTurns } from '../db/chat/messageRepository.js';
+import { listRecentTurns, replaceChannelMessageWords } from '../db/chat/messageRepository.js';
+import type { MessageContent } from '../domain/conversation.js';
+import { prepareChannelTurn } from './channel-messages.js';
+import { buildReactionTool, REACT_TOOL } from './channels/reaction-tool.js';
+import { publishConversation } from './realtime/conversations.js';
 import { appendConversationMessages } from './conversation-saver.js';
 import { getDb } from '../db/index.js';
 import {
@@ -73,6 +83,42 @@ const sweep = setInterval(() => {
 sweep.unref?.();
 
 export { botConversationId };
+
+/** The id a Telegram message is stored under in its conversation, so an edit finds it again. */
+export function botMessageClientId(chatId: string, messageId: string): string {
+  return `telegram:${chatId}:${messageId}`;
+}
+
+/** Who wrote a message, as the gemie reads it. */
+function speakerOf(message: GemieTelegramBotMessage): string {
+  return message.from.username
+    ? `${message.from.name} (@${message.from.username})`
+    : message.from.name;
+}
+
+/** A person edited a message the conversation keeps: its words follow. Nothing is answered. */
+async function onEdited(bot: GemieBotRow, message: GemieTelegramBotMessage): Promise<void> {
+  const turn = await prepareChannelTurn({
+    message: message.message,
+    ownerUserId: bot.userId,
+    payerAccountId: bot.userId,
+    speaker: message.chatKind === 'group' ? speakerOf(message) : undefined,
+    keep: false,
+  });
+  const words = turn.content[0];
+  if (words?.type !== 'text') return;
+  const conversationId = botConversationId(bot, message.chatId);
+  const changed = await replaceChannelMessageWords(
+    getDb(),
+    {
+      oxyUserId: bot.userId,
+      conversationId,
+      clientMessageId: botMessageClientId(message.chatId, message.messageId),
+    },
+    words.text,
+  );
+  if (changed) void publishConversation(bot.userId, conversationId, { reload: true });
+}
 
 /** Whether the gemie answers this message at all, before anything is spent on it. */
 export function botAnswers(
@@ -126,6 +172,10 @@ export async function answerGemieTelegramMessage(
   message: GemieTelegramBotMessage,
 ): Promise<GemieTelegramBotAnswer> {
   if (!botAnswers(bot, message)) return { reply: null };
+  if (message.edited) {
+    await onEdited(bot, message);
+    return { reply: null };
+  }
   if (isSenderRateLimited(bot.botId, message.from.id)) {
     log.channels.info({ botId: bot.botId }, 'A Telegram sender was rate limited');
     return { reply: null };
@@ -142,7 +192,7 @@ export async function answerGemieTelegramMessage(
   const steps = said.steps(name);
   const conversationId = botConversationId(bot, message.chatId);
 
-  const start = message.chatKind === 'direct' ? startCommandOf(message.text) : null;
+  const start = message.chatKind === 'direct' ? startCommandOf(message.message.text) : null;
   if (start?.code) {
     const claimed = await claimGemieBotLinkCode(db, {
       botId: bot.botId,
@@ -154,10 +204,24 @@ export async function answerGemieTelegramMessage(
     return { reply: claimed ? said.linked(name) : said.expired(steps) };
   }
   if (isPersonTurn(bot, message)) {
-    return start ? { reply: said.hello(name) } : { reply: null, personTurn: { conversationId } };
+    if (start) return { reply: said.hello(name) };
+    // Their turn, with what they sent kept and transcribed as theirs, as an attachment in the app.
+    const turn = await prepareChannelTurn({
+      message: message.message,
+      ownerUserId: bot.userId,
+      payerAccountId: bot.userId,
+    });
+    return {
+      reply: null,
+      personTurn: {
+        conversationId,
+        messageId: botMessageClientId(message.chatId, message.messageId),
+        content: turn.content,
+      },
+    };
   }
   if (start) return { reply: said.helloStranger(name, steps) };
-  return { reply: await answerAsThirdParty(bot, message, agent, conversationId) };
+  return answerAsThirdParty(bot, message, agent, conversationId);
 }
 
 /** A third party's turn: the gemie's own, with nothing of anybody's. */
@@ -166,12 +230,12 @@ async function answerAsThirdParty(
   message: GemieTelegramBotMessage,
   agent: HydratedAgent,
   conversationId: string,
-): Promise<string | null> {
+): Promise<GemieTelegramBotAnswer> {
   const db = getDb();
   const agentAccountId = gemieOxyAccountId(agent);
-  if (!agentAccountId) return null;
+  if (!agentAccountId) return { reply: null };
   const resolved = await resolveStoredModel(agent.modelId).catch(() => null);
-  if (!resolved) return 'Sorry, no AI models are available right now.';
+  if (!resolved) return { reply: 'Sorry, no AI models are available right now.' };
 
   await getOrCreateUserCredits(bot.userId);
   const funding = await reserveAgentTurn({
@@ -181,17 +245,18 @@ async function answerAsThirdParty(
   });
   if (!funding.ok) {
     const name = agentPromptName(agent);
-    return funding.reason === 'owner_fallback_not_authorised'
-      ? `${name} is not available here yet: whoever connected this bot has not allowed it to use their credits.`
-      : `${name} is not available right now: it is out of credits.`;
+    return {
+      reply:
+        funding.reason === 'owner_fallback_not_authorised'
+          ? `${name} is not available here yet: whoever connected this bot has not allowed it to use their credits.`
+          : `${name} is not available right now: it is out of credits.`,
+    };
   }
   const reservation: CreditReservation = funding.reservation;
   let settled = false;
 
   try {
-    const speaker = message.from.username
-      ? `${message.from.name} (@${message.from.username})`
-      : message.from.name;
+    const speaker = speakerOf(message);
     const history = await listRecentTurns(db, bot.userId, conversationId, 20).catch(
       (error: unknown) => {
         log.channels.error({ err: error }, 'Could not read a Telegram bot conversation');
@@ -199,7 +264,13 @@ async function answerAsThirdParty(
       },
     );
     // In a group several people speak, so each message says who wrote it.
-    const said = message.chatKind === 'group' ? `${speaker}: ${message.text}` : message.text;
+    const turn = await prepareChannelTurn({
+      message: message.message,
+      ownerUserId: bot.userId,
+      payerAccountId: agentAccountId,
+      speaker: message.chatKind === 'group' ? speaker : undefined,
+      modelAcceptsFiles: resolved.catalogue?.inputModalities.includes('file') === true,
+    });
     const where =
       message.chatKind === 'group'
         ? `You are in the Telegram group "${message.chatTitle ?? 'a group'}", where you answer only when someone mentions you or replies to you. Each message says who wrote it.`
@@ -219,6 +290,7 @@ async function answerAsThirdParty(
       isLocalRuntime: false,
       agent,
     });
+    const reaction = buildReactionTool();
     const answered = await generateAnswered({
       model: getAIModel(resolved, 'agent_run'),
       system: `${buildIdentityGuard({ agentName: agentPromptName(agent) })}\n\n---\n\n${agentRemitPrompt(agent)}${await agentSpacePrompt(agent)}\n\n${DEFAULT_CHANNEL_PROMPT}\n\n${where}\n\n${reach}${appCatalogPrompt}`,
@@ -227,9 +299,9 @@ async function answerAsThirdParty(
           role: turn.role as 'user' | 'assistant',
           content: turn.content,
         })),
-        { role: 'user' as const, content: said },
+        { role: 'user' as const, content: turn.modelParts },
       ],
-      tools,
+      tools: { ...tools, [REACT_TOOL]: reaction.tool },
       ...routing,
       temperature: 0.7,
       maxOutputTokens: 2048,
@@ -252,22 +324,25 @@ async function answerAsThirdParty(
     }
 
     const reply = answered.text.trim();
-    if (!reply) return null;
     // Appended after the conversation's last message, with its `seq`: the person's own turns in
     // the same chat run through the chat route's saver, which continues from there.
-    await appendConversationMessages({
+    await appendConversationMessages<MessageContent>({
       userId: bot.userId,
       conversationId,
       agentId: agent._id,
       titleOnInsert: `Telegram · ${message.chatKind === 'group' ? (message.chatTitle ?? 'Group') : speaker}`,
       source: 'telegram',
       messages: [
-        { id: randomUUID(), role: 'user', content: said },
-        { id: randomUUID(), role: 'assistant', content: reply },
+        {
+          id: botMessageClientId(message.chatId, message.messageId),
+          role: 'user',
+          content: turn.content,
+        },
+        ...(reply ? [{ id: randomUUID(), role: 'assistant' as const, content: reply }] : []),
       ],
     });
     await recordGemieBotMessage(db, bot.id);
-    return reply;
+    return { reply: reply || null, reaction: reaction.chosen() };
   } finally {
     if (!settled) await safeRefund(reservation, 'Telegram bot turn ended without charging');
   }

@@ -6,8 +6,13 @@
  */
 
 import { createHash } from 'node:crypto';
-import type { GemieAccountInbound, GemieChannelIdentity } from '@gemies/server/internal';
-import type { APIClient } from './api-client';
+import {
+  channelMessageIsEmpty,
+  type GemieAccountInbound,
+  type GemieChannelIdentity,
+  type GemieChannelMessage,
+} from '@gemies/server/internal';
+import type { APIClient, MessageContent } from './api-client';
 import { chunkText } from './utils';
 import { createLogger } from './logger';
 
@@ -16,7 +21,11 @@ export interface IncomingMessageParams {
   sessionId: string;
   /** Where it arrived, for the API to decide whether the account's gemie answers it. */
   inbound: GemieAccountInbound;
-  messageText: string;
+  /**
+   * What the message is, in the shared channel-message model. Read only once the gemie answers
+   * it, because reading downloads its media.
+   */
+  readMessage: () => Promise<GemieChannelMessage>;
   /** Send a response message back on this platform */
   sendResponse: (text: string) => Promise<void>;
   /** Show/hide typing indicator (best-effort) */
@@ -50,7 +59,14 @@ export async function handleIncomingMessage(
     const conversationId = createHash('sha256')
       .update(JSON.stringify([platform, params.sessionId, params.inbound.chatId]))
       .digest('hex');
-    await answerThroughChat({ ...params, identity, conversationId }, apiClient);
+    const message = await params.readMessage();
+    if (channelMessageIsEmpty(message)) return;
+    // Its media kept in the person's Oxy Files and its voice transcribed: the API's to do.
+    const { content } = await apiClient.prepareAccountMessage(identity, {
+      chatId: params.inbound.chatId,
+      message,
+    });
+    await answerThroughChat({ ...params, identity, conversationId, content }, apiClient);
   } catch (error: unknown) {
     // Nothing is said in the chat: it is the person's own account writing to one of their
     // contacts, and an apology from it would be a message the person never wrote.
@@ -63,7 +79,10 @@ export interface ChatTurnParams {
   identity: GemieChannelIdentity;
   /** The conversation the turn continues (and the API saves it to). */
   conversationId: string;
-  messageText: string;
+  /** The user message: text, or its words and kept media as `file` parts. */
+  content: MessageContent;
+  /** The id the user message is stored under, when the platform's message has one to keep. */
+  messageId?: string;
   sendResponse: (text: string) => Promise<void>;
   setTyping?: (typing: boolean) => Promise<void>;
   /** Max chars per message (default 4000) */
@@ -83,7 +102,7 @@ export async function answerThroughChat(
     platform,
     identity,
     conversationId,
-    messageText,
+    content,
     sendResponse,
     setTyping,
     charLimit = 4000,
@@ -97,27 +116,24 @@ export async function answerThroughChat(
   }
 
   /**
-   * The whole stored conversation, as the app sends it. The API's saver appends the new turn when
-   * this history is exactly what it holds, and otherwise rewrites the thread FROM it: a trimmed
-   * history (it was the last 20 messages) cut every longer thread down to its last 20 on the next
-   * turn.
+   * The whole stored conversation, as the app sends it, each message's content as it is stored. The
+   * API's saver appends the new turn when this history is exactly what it holds,
+   * and otherwise rewrites the thread FROM it: a trimmed or reworded history would cut or rewrite
+   * the thread. A channel turn reads only its new message's files; earlier ones are said in words.
    */
-  let messages: Array<{ role: string; content: string }> = [];
+  let messages: Array<{ id?: string; role: string; content: MessageContent }> = [];
   try {
     const conversation = await apiClient.getConversation(identity, conversationId);
     if (conversation?.messages?.length) {
       messages = conversation.messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => ({
-          role: m.role,
-          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-        }));
+        .map((m) => ({ role: m.role, content: m.content }));
     }
   } catch (error) {
     logger.error('Failed to load history:', error);
   }
 
-  messages.push({ role: 'user', content: messageText });
+  messages.push({ ...(params.messageId ? { id: params.messageId } : {}), role: 'user', content });
 
   // Platform instructions as first system message —
   // the API extracts this as clientContext and merges it into the full system prompt

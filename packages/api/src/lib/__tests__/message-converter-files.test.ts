@@ -60,4 +60,33 @@ describe('a file part on its way to the model', () => {
       ),
     ).toThrow('A file part was not read before the turn');
   });
+
+  it('in a channel turn, an earlier message’s file is said in words, as it was read then', () => {
+    const [earlier, latest] = convertToAISDKMessages(
+      [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: '[Voice note, 0:03]' },
+            {
+              type: 'file',
+              file: { file_id: 'voice', filename: 'voice.ogg', transcript: 'hola' },
+            },
+          ],
+        },
+        { role: 'user', content: [{ type: 'file', file: { file_id: 'photo' } }] },
+      ],
+      new Map(),
+      new Map([['photo', [{ type: 'text', text: 'the photo, read' }]]]),
+      { earlierFilesInWords: true },
+    );
+    expect(earlier).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: '[Voice note, 0:03]' },
+        { type: 'text', text: '[Attached audio: voice.ogg. It says: hola]' },
+      ],
+    });
+    expect(latest).toEqual({ role: 'user', content: [{ type: 'text', text: 'the photo, read' }] });
+  });
 });

@@ -11,6 +11,7 @@
  */
 
 import type { ModelMessage } from 'ai';
+import { turnContentText } from '@gemies/server/internal';
 import type { ResolvedFiles } from './files/person-files.js';
 import { withoutHostImageData } from './chat/host-image-result.js';
 
@@ -19,6 +20,8 @@ export interface FilePartRef {
   file_id: string;
   filename?: string;
   mime?: string;
+  /** What an audio file says, read instead of the audio by a model that does not hear. */
+  transcript?: string;
 }
 
 /**
@@ -63,6 +66,7 @@ export function convertToAISDKMessages(
   messages: ChatMessage[],
   toolNameMapping: Map<string, string>,
   files: ResolvedFiles = new Map(),
+  options: { earlierFilesInWords?: boolean } = {},
 ): ModelMessage[] {
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK ModelMessage types are complex/dynamic
   const result: any[] = [];
@@ -91,6 +95,10 @@ export function convertToAISDKMessages(
             }
             if (part.type === 'file') {
               const resolved = part.file ? files.get(part.file.file_id) : undefined;
+              // A channel turn's earlier media, read on the turn it arrived: said in words.
+              if (resolved === undefined && options.earlierFilesInWords) {
+                return [{ type: 'text', text: turnContentText([part]) }];
+              }
               if (resolved === undefined)
                 throw new Error('A file part was not read before the turn');
               return resolved;

@@ -12,6 +12,7 @@
  * | A spoken clip (cache)        | ALIA (a cache Alia expires) | private    | `speech_clip`/<key>  |
  * | A catalogue skill's file     | ALIA (no person owns it)    | private    | `skill_file`/<id>    |
  * | A person's own skill's file  | the PERSON                  | private    | `skill_file`/<id>    |
+ * | Media sent on a channel      | the PERSON (their chat's)   | private    | its message's part   |
  *
  * A spoken clip is Alia's and not the person's on purpose: it is a cache Alia
  * deletes after 30 days unused and with the conversation it was spoken from.
@@ -231,7 +232,7 @@ export interface StoreContentInput {
 
 /** Raised when Oxy stored a private file as something other than private. Never recorded. */
 class OxyFileVisibilityError extends Error {
-  constructor(kind: PrivateContentKind, visibility: string) {
+  constructor(kind: PrivateContentKind | 'channel_media', visibility: string) {
     super(`Oxy stored a private ${kind} as ${visibility}`);
     this.name = 'OxyFileVisibilityError';
   }
@@ -281,6 +282,27 @@ export async function copyIntoOxy(input: Omit<StoreContentInput, 'legacyKey'>): 
   return storeInOxy(input);
 }
 
+/**
+ * Keep media that arrived for a person on a channel (a photo sent to their gemie's bot, a voice
+ * note in their connected account) as THEIR private Oxy file, like an attachment they made in the
+ * app: Oxy only, no legacy copy. Answers the file id; throws when Oxy does not take it, and the
+ * caller says so in the conversation instead.
+ */
+export async function storeChannelMedia(input: {
+  readonly oxyUserId: string;
+  readonly bytes: Buffer;
+  readonly mime: string;
+  readonly name: string;
+}): Promise<string> {
+  return storeInOxy({
+    kind: 'channel_media',
+    owner: { kind: 'person', oxyUserId: input.oxyUserId },
+    bytes: input.bytes,
+    mime: input.mime,
+    name: input.name,
+  });
+}
+
 /** Whether a type is one Oxy's streamed service uploads take (image, video, audio). */
 function isStreamedMedia(mime: string): boolean {
   const type = mime.toLowerCase();
@@ -292,7 +314,12 @@ export function uploadRoute(mime: string, size: number): 'streamed' | 'large' {
   return isStreamedMedia(mime) && size <= STREAMED_UPLOAD_MAX_BYTES ? 'streamed' : 'large';
 }
 
-async function storeInOxy(input: Omit<StoreContentInput, 'legacyKey'>): Promise<string> {
+/** What a file stored in Oxy only is, for an error that names it. */
+type OxyOnlyInput = Omit<StoreContentInput, 'legacyKey' | 'kind'> & {
+  readonly kind: PrivateContentKind | 'channel_media';
+};
+
+async function storeInOxy(input: OxyOnlyInput): Promise<string> {
   const expected = sha256Hex(input.bytes);
   const file = await uploadPrivate(input, expected);
   // A deduplicated file comes back as it already was, visibility included, and
@@ -311,10 +338,7 @@ interface UploadedPrivateFile {
   readonly visibility: string;
 }
 
-async function uploadPrivate(
-  input: Omit<StoreContentInput, 'legacyKey'>,
-  sha256: string,
-): Promise<UploadedPrivateFile> {
+async function uploadPrivate(input: OxyOnlyInput, sha256: string): Promise<UploadedPrivateFile> {
   const assets = oxy().assets;
   const route = uploadRoute(input.mime, input.bytes.length);
   if (input.owner.kind === 'alia') {

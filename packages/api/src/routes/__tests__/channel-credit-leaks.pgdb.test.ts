@@ -1,6 +1,6 @@
 import { TEST_CHARACTER } from '../../db/__tests__/support/agent-character';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 /**
  * The two inbound chat handlers — the system bot's (`routes/webhooks.ts`) and a
@@ -33,6 +33,10 @@ vi.mock('@oxy.so/core/server', () => ({ verifySecret: vi.fn(() => false) }));
 // configured, which this file never does; the real module would construct an
 // OxyServer at import time.
 vi.mock('../../lib/oxy.js', () => ({ oxy: {} }));
+// A channel message's media is kept as the person's Oxy file; here, an id.
+vi.mock('../../lib/files/oxy-files.js', () => ({
+  storeChannelMedia: vi.fn(async () => 'oxy-file-1'),
+}));
 vi.mock('ai', () => ({
   generateText: vi.fn(async () => ({
     text: 'an answer',
@@ -40,6 +44,7 @@ vi.mock('ai', () => ({
     steps: [{ toolResults: [] }],
   })),
   stepCountIs: vi.fn(() => 5),
+  tool: vi.fn((definition: unknown) => definition),
 }));
 vi.mock('../../lib/channels/registry.js', () => ({ getChannel: vi.fn(() => null) }));
 // The ONE assembler stands in for what `buildChatTools` used to: this file is
@@ -84,6 +89,7 @@ import { generateText } from 'ai';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../../db/index.js';
 import { agents } from '../../db/schema/agents.js';
 import { userCredits } from '../../db/schema/billing.js';
+import { messages } from '../../db/schema/chat.js';
 import { getOrCreateUserCredits } from '../../db/billing/userCreditsRepository.js';
 import { resolveStoredModel } from '../../lib/chat-core.js';
 import type { BotUserRow } from '../../db/integrations/botRepository.js';
@@ -166,7 +172,7 @@ const botMessage: GemieTelegramBotMessage = {
   chatTitle: null,
   messageId: '1',
   from: { id: 'tg-1', username: null, name: 'A stranger' },
-  text: 'hello there',
+  message: { text: 'hello there' },
   mentionsBot: false,
 };
 
@@ -363,5 +369,76 @@ describe("a gemie’s own Telegram bot — who pays for the gemie's turn", () =>
     expect(await balanceOf(ownerId)).toEqual({ free: 0, paid: 0 });
     expect(generateText).not.toHaveBeenCalled();
     expect(text).toContain('out of credits');
+  });
+});
+
+describe('what a gemie bot’s conversation keeps of a message', () => {
+  it('keeps a sticker as an attachment, and follows an edit of its words without answering', async () => {
+    const ownerId = await account(100, 0);
+    const bot = await gemieBot(ownerId);
+    const sticker: GemieTelegramBotMessage = {
+      ...botMessage,
+      messageId: '77',
+      message: {
+        text: '',
+        media: [
+          {
+            kind: 'sticker',
+            emoji: '😂',
+            setName: 'HappyCats',
+            file: { mime: 'image/webp', data: Buffer.from('webp').toString('base64') },
+          },
+        ],
+      },
+    };
+    vi.mocked(generateText).mockClear();
+
+    const answer = await answerGemieTelegramMessage(bot, sticker);
+
+    expect(answer.reply).toBe('an answer');
+    const stored = await db
+      .select({ role: messages.role, content: messages.content })
+      .from(messages)
+      .where(eq(messages.oxyUserId, ownerId));
+    expect(stored).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '[Sticker 😂 from the set "HappyCats"]' },
+          {
+            type: 'file',
+            file: { file_id: 'oxy-file-1', filename: 'sticker.webp', mime: 'image/webp' },
+          },
+        ],
+      },
+      { role: 'assistant', content: 'an answer' },
+    ]);
+    // The gemie saw the sticker itself.
+    const [call] = vi.mocked(generateText).mock.calls;
+    const sent = (call?.[0] as { messages: Array<{ content: unknown }> }).messages.at(-1);
+    expect(sent?.content).toEqual([
+      { type: 'text', text: '[Sticker 😂 from the set "HappyCats"]' },
+      { type: 'image', image: expect.any(Uint8Array), mediaType: 'image/webp' },
+    ]);
+
+    vi.mocked(generateText).mockClear();
+    const edit = await answerGemieTelegramMessage(bot, {
+      ...sticker,
+      message: { text: 'jaja', media: [{ kind: 'sticker', emoji: '😂', setName: 'HappyCats' }] },
+      edited: true,
+    });
+    expect(edit).toEqual({ reply: null });
+    expect(generateText).not.toHaveBeenCalled();
+    const [edited] = await db
+      .select({ content: messages.content })
+      .from(messages)
+      .where(and(eq(messages.oxyUserId, ownerId), eq(messages.role, 'user')));
+    expect(edited?.content).toEqual([
+      { type: 'text', text: '[Sticker 😂 from the set "HappyCats"]\njaja' },
+      {
+        type: 'file',
+        file: { file_id: 'oxy-file-1', filename: 'sticker.webp', mime: 'image/webp' },
+      },
+    ]);
   });
 });

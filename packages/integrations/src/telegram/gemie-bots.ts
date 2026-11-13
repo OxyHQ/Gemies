@@ -8,15 +8,16 @@
  * receives into the API's question and the API's answer into a Telegram message.
  */
 
+import { channelMessageIsEmpty, type GemieTelegramBotSend } from '@gemies/server/internal';
 import { Router, type Request, type Response } from 'express';
-import type { GemieTelegramBotSend } from '@gemies/server/internal';
 import { APIClient, type TelegramBotMessage } from '../shared/api-client';
 import { answerThroughChat } from '../shared/chat-handler';
 import { createLogger } from '../shared/logger';
 import { BotApi, TelegramApiError, looksLikeBotToken } from './bot-api';
 import { GEMIE_BOT_UPDATES, registerWebhook } from './bots';
 import { renderBotPhoto } from './bot-photo';
-import { sendText, whileTyping } from './send';
+import { readTelegramMessage } from './inbound';
+import { sendReply, sendText, whileTyping } from './send';
 import type { TelegramMessage, TelegramUpdate } from './types';
 import { webhookUrl } from './webhook';
 
@@ -80,12 +81,11 @@ export function textForGemie(text: string, username: string): string {
     .trim();
 }
 
-/** Answer one update of a gemie's bot. */
+/** Answer one update of a gemie's bot: a message, or an edit of one (stored, not answered). */
 export async function handleGemieBotUpdate(bot: GemieBot, update: TelegramUpdate): Promise<void> {
-  const message = update.message;
+  const edited = update.edited_message !== undefined;
+  const message = update.message ?? update.edited_message;
   if (!message?.from || message.from.is_bot) return;
-  const raw = message.text ?? message.caption ?? '';
-  if (!raw) return;
   const chatKind =
     message.chat.type === 'private'
       ? ('direct' as const)
@@ -96,8 +96,13 @@ export async function handleGemieBotUpdate(bot: GemieBot, update: TelegramUpdate
   const addressed = mentionsBot(message, { id: bot.api.botId, username: bot.username });
   // A group message that is not the bot's is never the gemie's to answer, whatever the setting.
   if (chatKind === 'group' && !addressed) return;
-  const text = textForGemie(raw, bot.username);
-  if (!text) return;
+
+  const read = await readTelegramMessage(bot.api, message, {
+    text: textForGemie(message.text ?? message.caption ?? '', bot.username),
+    download: !edited,
+    selfId: bot.api.botId,
+  });
+  if (channelMessageIsEmpty(read)) return;
 
   const chatId = String(message.chat.id);
   const question: TelegramBotMessage = {
@@ -111,9 +116,14 @@ export async function handleGemieBotUpdate(bot: GemieBot, update: TelegramUpdate
       name: [message.from.first_name, message.from.last_name].filter(Boolean).join(' '),
       languageCode: message.from.language_code ?? null,
     },
-    text,
+    message: read,
     mentionsBot: addressed,
+    ...(edited ? { edited: true } : {}),
   };
+  if (edited) {
+    await apiClient.answerTelegramBotMessage(bot.api.botId, question);
+    return;
+  }
   const target = {
     chatId,
     replyToMessageId: chatKind === 'group' ? message.message_id : undefined,
@@ -128,9 +138,10 @@ export async function handleGemieBotUpdate(bot: GemieBot, update: TelegramUpdate
           platform: 'telegram',
           identity: { kind: 'gemie_bot', botId: bot.api.botId, platformUserId: question.from.id },
           conversationId: answer.personTurn.conversationId,
-          messageText: text,
+          messageId: answer.personTurn.messageId,
+          content: answer.personTurn.content,
           sendResponse: async (reply) => {
-            await sendText(bot.api, target, reply);
+            await sendReply(bot.api, target, reply);
           },
           charLimit: 3500,
           platformContext:
@@ -143,7 +154,12 @@ export async function handleGemieBotUpdate(bot: GemieBot, update: TelegramUpdate
       });
       return;
     }
-    if (answer.reply) await sendText(bot.api, target, answer.reply);
+    if (answer.reaction) {
+      await bot.api
+        .setMessageReaction(chatId, message.message_id, answer.reaction)
+        .catch((error: unknown) => logger.warn('Could not react to a message:', error));
+    }
+    if (answer.reply) await sendReply(bot.api, target, answer.reply);
   });
 }
 
@@ -323,7 +339,7 @@ export function gemieBotsRouter(): Router {
       return res.status(400).json({ error: 'A chat and a text are required' });
     }
     try {
-      await sendText(api, { chatId }, text);
+      await sendReply(api, { chatId }, text);
       res.status(204).end();
     } catch (error: unknown) {
       answerTelegramError(res, error, 'Writing in a gemie bot chat');

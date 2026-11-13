@@ -567,7 +567,9 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
     // puts each attached document's content where its `file` part was), and give
     // each host action the app reported its real outcome (`lib/host-tools.ts`).
     const convertedMessages = applyHostOutcomes(
-      convertToAISDKMessages(rawMessages, toolNameMapping, ctx.files),
+      convertToAISDKMessages(rawMessages, toolNameMapping, ctx.files, {
+        earlierFilesInWords: ctx.earlierFilesInWords,
+      }),
       host?.outcomes,
     );
     if (host?.outcomes?.length && conversationId && req.user?.id) {

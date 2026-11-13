@@ -1,6 +1,7 @@
 /**
- * Sending a gemie's text to a Telegram chat, the one way both bots write: the model's Markdown as
- * Telegram HTML, in pieces Telegram accepts, and as plain text when Telegram refuses the HTML.
+ * Sending a gemie's answer to a Telegram chat, the one way both bots write: the model's Markdown as
+ * Telegram HTML, in pieces Telegram accepts, and as plain text when Telegram refuses the HTML; an
+ * image the answer shows (`![alt](https://…)`, as a tool's result is shown) as a photo.
  */
 
 import { chunkText } from '../shared/utils';
@@ -50,6 +51,44 @@ export async function sendText(api: BotApi, target: SendTarget, text: string): P
     }
     lastId = String(sent.message_id);
     replyTo = undefined;
+  }
+  return lastId;
+}
+
+const MARKDOWN_IMAGE = /!\[([^\]]*)\]\((https:\/\/[^\s)]+)\)/g;
+
+/** An answer's words, and the images it shows, in order. */
+export function splitImages(text: string): {
+  text: string;
+  images: Array<{ url: string; alt: string }>;
+} {
+  const images: Array<{ url: string; alt: string }> = [];
+  const words = text.replace(MARKDOWN_IMAGE, (_match, alt: string, url: string) => {
+    images.push({ url, alt: alt.trim() });
+    return '';
+  });
+  return { text: words.replace(/\n{3,}/g, '\n\n').trim(), images };
+}
+
+/** Send an answer: its words, then each image it shows as a photo. Answers the last message's id. */
+export async function sendReply(api: BotApi, target: SendTarget, answer: string): Promise<string> {
+  const { text, images } = splitImages(answer);
+  let lastId = text ? await sendText(api, target, text) : '';
+  for (const image of images) {
+    try {
+      const sent = await api.sendPhoto({
+        chatId: target.chatId,
+        photo: image.url,
+        caption: image.alt || undefined,
+        businessConnectionId: target.businessConnectionId,
+        replyToMessageId: lastId ? undefined : target.replyToMessageId,
+      });
+      lastId = String(sent.message_id);
+    } catch (error: unknown) {
+      // Telegram could not fetch it: the link still reaches the person.
+      if (!(error instanceof TelegramApiError)) throw error;
+      lastId = await sendText(api, { ...target, replyToMessageId: undefined }, image.url);
+    }
   }
   return lastId;
 }

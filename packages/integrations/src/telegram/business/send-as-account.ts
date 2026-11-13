@@ -1,5 +1,5 @@
 import { sharedBot } from '../bots';
-import { sendText } from '../send';
+import { sendReply } from '../send';
 import { recordBusinessMessage, type BusinessConnectionRow } from './repository';
 
 /**
@@ -15,7 +15,7 @@ export async function sendAsAccount(input: {
 }): Promise<string> {
   const api = sharedBot();
   if (!api) throw new Error('The shared Telegram bot is not configured');
-  const messageId = await sendText(
+  const messageId = await sendReply(
     api,
     { chatId: input.chatId, businessConnectionId: input.connection.connectionId },
     input.text,

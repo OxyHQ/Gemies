@@ -6,6 +6,7 @@
 
 import { generateText } from 'ai';
 import { isUniqueViolation } from '@oxy.so/db';
+import { turnContentText } from '@gemies/server/internal';
 import { getDb } from '../db/index.js';
 import {
   findConversation,
@@ -271,12 +272,15 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
   return { reload: true };
 }
 
-/** One message a voice call appends (ADR 0017 §3). */
-export interface AppendedMessage {
+/**
+ * One message the server appends: a voice call's (ADR 0017 §3), text; a gemie bot's third-party
+ * turn's, whose user message may be a channel message's parts (its words and its kept media).
+ */
+export interface AppendedMessage<Content extends MessageContent = string> {
   /** The client id the message is stored under. */
   readonly id: string;
   readonly role: 'user' | 'assistant';
-  readonly content: string;
+  readonly content: Content;
   readonly toolInvocations?: ToolInvocation[];
   /** A spoken answer the person talked over: how much of it they heard. */
   readonly interruptedAfterMs?: number;
@@ -299,10 +303,10 @@ const MAX_APPEND_ATTEMPTS = 4;
  * The conversation row is upserted first, so a call opened in a conversation
  * that did not exist yet creates it, owned by the person.
  */
-export async function appendConversationMessages(params: {
+export async function appendConversationMessages<Content extends MessageContent = string>(params: {
   readonly userId: string;
   readonly conversationId: string;
-  readonly messages: readonly AppendedMessage[];
+  readonly messages: readonly AppendedMessage<Content>[];
   /** The gemie of the call, which a conversation it creates belongs to. */
   readonly agentId: string;
   readonly titleOnInsert: string;
@@ -311,11 +315,14 @@ export async function appendConversationMessages(params: {
 }): Promise<void> {
   const { userId, conversationId, messages } = params;
   if (messages.length === 0) return;
-  const last = [...messages].reverse().find((message) => message.content.trim() !== '');
+  const last = [...messages]
+    .reverse()
+    .map((message) => turnContentText(message.content))
+    .find((text) => text.trim() !== '');
   await upsertConversation(getDb(), {
     oxyUserId: userId,
     conversationId,
-    ...(last ? { lastMessage: last.content.slice(0, 100) } : {}),
+    ...(last ? { lastMessage: last.slice(0, 100) } : {}),
     titleOnInsert: params.titleOnInsert,
     source: params.source ?? 'app',
     agentId: params.agentId,
