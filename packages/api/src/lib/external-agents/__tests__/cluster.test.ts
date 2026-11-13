@@ -7,13 +7,9 @@ import { WebSocket } from 'ws';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
-  links: new Map<string, { agentId: string; ownerOxyUserId: string }>(),
+  links: new Map<string, { agentId: string; ownerOxyUserId: string; credentialHash: string }>(),
 }));
 
-vi.mock('../../socket-session-auth.js', () => ({
-  authenticateSocketToken: async (token: string | undefined) =>
-    token === 'tok-nate' ? 'user-nate' : null,
-}));
 vi.mock('../../../db/index.js', () => ({ getDb: () => ({}) }));
 vi.mock('../../../db/agents/externalAgentRepository.js', () => ({
   findExternalLink: async (_db: unknown, agentId: string) => state.links.get(agentId),
@@ -24,10 +20,12 @@ vi.mock('../../logger.js', () => {
   return { log: { general: child } };
 });
 
+import { hashExternalAgentCredential } from '../credential.js';
 import { createMemoryClusterBus } from './memory-cluster-bus.js';
 import { createExternalAgentRelay, type ExternalAgentRelay } from '../relay.js';
 import { routeWebSocketUpgrades } from '../../websocket-upgrades.js';
 
+const CREDENTIAL = 'gxa_agent-1-credential';
 let a: ExternalAgentRelay;
 let b: ExternalAgentRelay;
 let server: http.Server;
@@ -35,7 +33,11 @@ let port: number;
 const sockets: WebSocket[] = [];
 
 beforeEach(async () => {
-  state.links.set('agent-1', { agentId: 'agent-1', ownerOxyUserId: 'user-nate' });
+  state.links.set('agent-1', {
+    agentId: 'agent-1',
+    ownerOxyUserId: 'user-nate',
+    credentialHash: hashExternalAgentCredential(CREDENTIAL),
+  });
   const bus = createMemoryClusterBus();
   a = createExternalAgentRelay({ bus, remoteAckTimeoutMs: 150 });
   b = createExternalAgentRelay({ bus, remoteAckTimeoutMs: 150 });
@@ -68,7 +70,7 @@ async function daemonOnA() {
   ws.on('message', (d) => frames.push(JSON.parse(d.toString())));
   sockets.push(ws);
   await new Promise<void>((resolve) => ws.on('open', () => resolve()));
-  ws.send(JSON.stringify({ type: 'auth', token: 'tok-nate', agentId: 'agent-1' }));
+  ws.send(JSON.stringify({ type: 'auth', credential: CREDENTIAL, agentId: 'agent-1' }));
   await waitFor(() => frames.some((f) => f.type === 'auth-ok'));
   return { ws, frames };
 }
@@ -152,10 +154,25 @@ describe('turns across instances', () => {
 
   it('revoking from B drops the daemon held by A', async () => {
     const { ws, frames } = await daemonOnA();
-    b.disconnect('agent-1');
+    b.disconnect('agent-1', { reason: 'revoked' });
     await waitFor(() => frames.some((f) => f.type === 'revoked'));
     await waitFor(() => ws.readyState === WebSocket.CLOSED);
     expect(await a.isReachable('agent-1')).toBe(false);
+  });
+
+  it('reconnecting from B drops a daemon on A holding another credential, and keeps the new one', async () => {
+    const { ws, frames } = await daemonOnA();
+    b.disconnect('agent-1', {
+      reason: 'credential-replaced',
+      credentialHash: hashExternalAgentCredential(CREDENTIAL),
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+
+    b.disconnect('agent-1', { reason: 'credential-replaced', credentialHash: 'another' });
+    await waitFor(() => ws.readyState === WebSocket.CLOSED);
+    // Not told it was revoked: the agent still exists, served from elsewhere.
+    expect(frames.some((f) => f.type === 'revoked')).toBe(false);
   });
 
   it('serves a local turn without the bus', async () => {

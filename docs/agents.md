@@ -54,6 +54,10 @@ no account.
   heartbeat, background sessions, automations or Oxy tasks: each gate asks `gemieOxyAccountId`
   (`lib/gemie-oxy-actor.ts`), and Gemies' own runtime, which it never enters, refuses it
   (`runtimeGemieAccountId`).
+- **Connected by a code, not a sign-in (ADR 0038).** The person pastes one text into the CLI; the
+  daemon redeems the single-use code with no session and keeps the agent's own credential
+  (`gxa_…`, stored hashed on `external_agent_links`), which opens `/ws/external-agent` for that agent
+  only. Removing the agent kills it; **Reconnect** in Settings replaces it.
 
 ### An app's agent is an ordinary agent (ADR 0020)
 
