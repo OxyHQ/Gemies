@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { Kaana } from '@kaana.ai/sdk';
 import { GEMIES_APPLICATION_ID } from '@gemies/server';
+import { OXY_ALIA_RESOURCE_APPLICATION_ID } from '@oxy.so/core/server';
 import { connectPostgres, closePostgres, getDb } from '../../db';
 import { creditOperations, creditReconciliations } from '../../db/schema/credit-operations';
 import { userCredits } from '../../db/schema/billing';
@@ -98,7 +99,7 @@ function receipt(reservation: CreditReservation, id: string, input: number, outp
     schemaVersion: 1,
     kind: 'metered_usage',
     requestId: id,
-    applicationId: GEMIES_APPLICATION_ID,
+    applicationId: OXY_ALIA_RESOURCE_APPLICATION_ID,
     credentialId: 'synthetic-workload',
     delegatedUserId: reservation.userId,
     environment: 'development',
@@ -185,13 +186,13 @@ describe('interrupted credit reconciliation', () => {
       systemPromptTokens: 100,
     });
   });
-  it('rejects another application receipt and preserves staging scope on the public reader', async () => {
+  it('rejects the future Gemies binding while the workload is bound to Alia and preserves staging scope', async () => {
     const held = await admission(),
       key = randomUUID();
     await recordChatInferenceAttempt(held, key, 'prepared', 0);
     records.set(key, {
       ...receipt(held, randomUUID(), 100, 10),
-      applicationId: 'other-application',
+      applicationId: GEMIES_APPLICATION_ID,
     });
     await expect(
       reconcileChatCreditOperation(held.operationId, client, AbortSignal.timeout(2000)),
