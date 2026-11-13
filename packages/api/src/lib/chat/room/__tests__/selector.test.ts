@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { RoomSelectionInput } from '../decision.js';
 
 const h = vi.hoisted(() => ({
   generate: vi.fn(),
@@ -6,10 +7,14 @@ const h = vi.hoisted(() => ({
   settle: vi.fn(),
   refund: vi.fn(),
   model: vi.fn(),
+  info: vi.fn(),
+  defaultModel: vi.fn(() => ({ modelId: 'auto' })),
+  utilityModel: vi.fn(async () => ({ modelId: 'instant' })),
 }));
 vi.mock('ai', () => ({ generateObject: h.generate }));
 vi.mock('../../../chat-core.js', () => ({
-  resolveUtilityModel: async () => ({ modelId: 'instant' }),
+  resolveDefaultModel: h.defaultModel,
+  resolveUtilityModel: h.utilityModel,
   getAIModel: h.model,
   utilityOutputTokens: (n: number) => n + 2048,
 }));
@@ -24,7 +29,7 @@ vi.mock('../../../models/power-levels.js', () => ({
   servedModelId: () => 'served/model',
   servedReferenceOf: () => 'served/model',
 }));
-vi.mock('../../../logger.js', () => ({ log: { agents: { info: vi.fn() } } }));
+vi.mock('../../../logger.js', () => ({ log: { agents: { info: h.info } } }));
 const { selectRoomDecision } = await import('../selector.js');
 const { ROOM_SELECTION_SYSTEM, REACTION_SELECTION_SYSTEM } = await import('../decision.js');
 const input = {
@@ -50,26 +55,56 @@ beforeEach(() => {
   h.reserve.mockResolvedValue({ id: 'reservation' });
   h.settle.mockResolvedValue({ creditsCharged: 1 });
   h.generate.mockResolvedValue({
-    object: { action: 'speak', agentId: 'e', reason: 'directed' },
+    object: {
+      choice: 'person-request:e',
+    },
     usage: { inputTokens: 12, outputTokens: 4, totalTokens: 16 },
   });
 });
+afterEach(() => vi.restoreAllMocks());
+
+async function assertParentCancels(selection: RoomSelectionInput) {
+  const parent = new AbortController();
+  const reason = new DOMException('Parent turn cancelled', 'AbortError');
+  h.generate.mockImplementationOnce(
+    ({ abortSignal }: { abortSignal: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        abortSignal.addEventListener('abort', () => reject(abortSignal.reason), { once: true });
+        parent.abort(reason);
+      }),
+  );
+  await expect(selectRoomDecision({ ...selection, signal: parent.signal })).rejects.toBe(reason);
+  expect(h.refund).toHaveBeenCalledOnce();
+  expect(h.settle).not.toHaveBeenCalled();
+}
 
 describe('room selection inference accounting', () => {
   it('uses bounded structured inference with no tools and settles actual served-model usage', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
     expect((await selectRoomDecision(input)).agentId).toBe('e');
+    expect(timeout).toHaveBeenCalledWith(30_000);
+    expect(h.defaultModel).toHaveBeenCalledOnce();
+    expect(h.utilityModel).not.toHaveBeenCalled();
+    expect(h.model).toHaveBeenCalledWith({ modelId: 'auto' }, 'agent_run');
     const call = h.generate.mock.calls[0]?.[0];
     expect(call.tools).toBeUndefined();
-    expect(call.maxOutputTokens).toBe(2560);
+    expect(call.maxOutputTokens).toBe(8192);
     expect(call.maxRetries).toBe(1);
     expect(call.abortSignal).toBeInstanceOf(AbortSignal);
     expect(call.system).toBe(ROOM_SELECTION_SYSTEM);
-    expect(call.schema.parse({ action: 'clarify', agentId: 'e', reason: 'ambiguous' })).toEqual({
-      action: 'clarify',
+    expect(
+      call.schema.parse({
+        choice: 'clarify-person-request:e',
+      }),
+    ).toEqual({ choice: 'clarify-person-request:e' });
+    expect(Object.keys(call.schema.shape)).toEqual(['choice']);
+    expect(JSON.parse(call.prompt).allowedChoices).toContainEqual({
+      id: 'person-request:e',
+      action: 'speak',
       agentId: 'e',
-      reason: 'ambiguous',
+      source: { messageId: 'p', role: 'user', actorId: null },
     });
-    expect(JSON.parse(call.prompt).messages[0].content).toBe(input.rows[0]?.content);
+    expect(JSON.parse(call.prompt).personRequest.content).toBe(input.rows[0]?.content);
     expect(h.settle).toHaveBeenCalledWith(
       { id: 'reservation' },
       { promptTokens: 12, completionTokens: 4, totalTokens: 16 },
@@ -78,10 +113,23 @@ describe('room selection inference accounting', () => {
     expect(h.refund).not.toHaveBeenCalled();
   });
 
+  it('lets parent cancellation preempt the general planning deadline', async () => {
+    await assertParentCancels(input);
+  });
+
   it('does not infer without credits', async () => {
     h.reserve.mockResolvedValue(null);
     await expect(selectRoomDecision(input)).rejects.toThrow('credits');
     expect(h.generate).not.toHaveBeenCalled();
+  });
+
+  it('uses only the authoritative source choice and discards unsolicited explanatory output', async () => {
+    const assessment = 'Transient description of pending work; never stored or logged.';
+    h.generate.mockResolvedValue({ object: { assessment, choice: 'person-request:e' }, usage: {} });
+    const decision = await selectRoomDecision(input);
+    expect(decision).toEqual({ action: 'speak', agentId: 'e', reason: 'directed' });
+    expect(JSON.stringify(h.info.mock.calls)).not.toContain(assessment);
+    expect(JSON.stringify(h.settle.mock.calls)).not.toContain(assessment);
   });
 
   it('refunds failed inference and never guesses a speaker', async () => {
@@ -93,10 +141,24 @@ describe('room selection inference accounting', () => {
 
   it('settles a completed generation even if its selected ID is invalid', async () => {
     h.generate.mockResolvedValue({
-      object: { action: 'speak', agentId: 'outsider', reason: 'directed' },
+      object: { choice: 'person-request:outsider' },
       usage: {},
     });
-    await expect(selectRoomDecision(input)).rejects.toThrow('non-member');
+    await expect(selectRoomDecision(input)).rejects.toThrow();
+    expect(h.settle).toHaveBeenCalledOnce();
+    expect(h.refund).not.toHaveBeenCalled();
+  });
+
+  it('rejects the observed clarify/directed contradiction rather than repairing its recipient', async () => {
+    h.generate.mockResolvedValue({
+      object: { action: 'clarify', agentId: 'e', reason: 'directed' },
+      usage: {},
+    });
+    await expect(selectRoomDecision(input)).rejects.toThrow();
+    const schema = h.generate.mock.calls[0]?.[0].schema;
+    expect(schema.safeParse({ action: 'clarify', agentId: 'e', reason: 'directed' }).success).toBe(
+      false,
+    );
     expect(h.settle).toHaveBeenCalledOnce();
     expect(h.refund).not.toHaveBeenCalled();
   });
@@ -134,9 +196,15 @@ describe('reaction selection generation contract', () => {
   ])('maps the sole inference choice $action to its exact validated outcome', async (expected) => {
     // This tests the generation contract and authority boundary, not model semantics.
     h.generate.mockResolvedValue({ object: { action: expected.action }, usage: {} });
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
     expect(await selectRoomDecision(reaction)).toEqual(expected);
+    expect(timeout).toHaveBeenCalledWith(10_000);
+    expect(h.utilityModel).toHaveBeenCalledOnce();
+    expect(h.defaultModel).not.toHaveBeenCalled();
+    expect(h.model).toHaveBeenCalledWith({ modelId: 'instant' }, 'agent_run');
     const call = h.generate.mock.calls[0]?.[0];
     expect(call.system).toBe(REACTION_SELECTION_SYSTEM);
+    expect(call.maxOutputTokens).toBe(2560);
     expect(call.schema.parse({ action: expected.action })).toEqual({ action: expected.action });
     for (const action of ['clarify', 'unavailable', 'invalid'])
       expect(call.schema.safeParse({ action }).success).toBe(false);
@@ -149,6 +217,10 @@ describe('reaction selection generation contract', () => {
     expect(data).not.toHaveProperty('remainingHandoffs');
     expect(h.settle).toHaveBeenCalledOnce();
     expect(h.refund).not.toHaveBeenCalled();
+  });
+
+  it('lets parent cancellation preempt the short feedback deadline too', async () => {
+    await assertParentCancels(reaction);
   });
 
   it('never lets model-supplied identity or reason widen the reaction recipient', async () => {
