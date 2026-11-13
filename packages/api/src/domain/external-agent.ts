@@ -25,6 +25,16 @@ export const EXTERNAL_AGENT_CLI_COLORS: Record<ExternalAgentCli, string> = {
   opencode: 'teal',
 };
 
+/**
+ * What came of one call to an external agent's tools (ADR 0039): it ran (`ok`), it ran and failed
+ * (`error`), or the governance stopped it before it ran (`blocked`: R3 or the threat detector).
+ */
+export const EXTERNAL_TOOL_CALL_OUTCOMES = ['ok', 'error', 'blocked'] as const;
+export type ExternalToolCallOutcome = (typeof EXTERNAL_TOOL_CALL_OUTCOMES)[number];
+
+/** Requests a minute one external agent may make to its tool server (`/mcp/agents/:id`). */
+export const EXTERNAL_TOOL_REQUESTS_PER_MINUTE = 120;
+
 /** One earlier message of the conversation a turn answers. */
 export interface ChatTurn {
   readonly role: 'user' | 'assistant';

@@ -1,7 +1,11 @@
 import { and, desc, eq, gt, isNull } from 'drizzle-orm';
 import type { ApiDatabase, Executor } from '../index.js';
-import { externalAgentLinks, externalAgentPairings } from '../schema/external-agents.js';
-import type { ExternalAgentCli } from '../../domain/external-agent.js';
+import {
+  externalAgentLinks,
+  externalAgentPairings,
+  externalAgentToolCalls,
+} from '../schema/external-agents.js';
+import type { ExternalAgentCli, ExternalToolCallOutcome } from '../../domain/external-agent.js';
 
 export async function createPairing(
   db: ApiDatabase,
@@ -143,4 +147,20 @@ export async function revokeExternalLink(
     )
     .returning({ agentId: externalAgentLinks.agentId });
   return rows.length > 0;
+}
+
+/** Records one call an external agent made to its tools (ADR 0039). */
+export async function recordExternalToolCall(
+  db: ApiDatabase,
+  input: {
+    id: string;
+    agentId: string;
+    ownerOxyUserId: string;
+    toolName: string;
+    riskLevel: 'R0' | 'R1' | 'R2' | 'R3';
+    outcome: ExternalToolCallOutcome;
+    durationMs: number;
+  },
+): Promise<void> {
+  await db.insert(externalAgentToolCalls).values(input);
 }

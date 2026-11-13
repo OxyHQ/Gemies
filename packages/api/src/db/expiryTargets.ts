@@ -48,7 +48,7 @@ import { emailOutreachDecisions } from './schema/proactive';
 import { apiKeyUsage } from './schema/telemetry';
 import { oxyFileEvents } from './schema/oxy-files';
 import { chatTurnControls } from './schema/chat-turn-controls';
-import { externalAgentPairings } from './schema/external-agents';
+import { externalAgentPairings, externalAgentToolCalls } from './schema/external-agents';
 import { chatHostResults } from './schema/chat-host-results';
 
 const DAY = 24 * 60 * 60;
@@ -60,6 +60,13 @@ export const EXPIRY_TARGETS: readonly ExpirySweepTarget[] = [
     retentionSeconds: 0,
     reason:
       '10-minute single-use pairing codes (hash only); a redeemed or unused code has no value after its deadline.',
+  },
+  {
+    table: externalAgentToolCalls,
+    column: externalAgentToolCalls.createdAt,
+    retentionSeconds: 90 * DAY,
+    reason:
+      "An external agent's tool calls (name, risk, outcome, duration; no arguments or results): the audit of its MCP lane for a quarter.",
   },
   {
     table: chatTurnControls,

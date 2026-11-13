@@ -215,7 +215,7 @@
     "connections": {
       "externalAgents": {
         "title": "Conectar un Gemie externo",
-        "description": "Usa un agente de código de tu ordenador (por ejemplo Codex u OpenCode) como uno de tus Gemies. Responde con tu propia suscripción y tus otros Gemies pueden hablar con él.",
+        "description": "Usa un agente de código de tu ordenador (por ejemplo Codex u OpenCode) como uno de tus Gemies. Responde con tu propia suscripción, tus otros Gemies pueden hablar con él y, en su editor, eliges qué cuentas conectadas puede usar como herramientas.",
         "createLabel": "Nueva conexión",
         "createHint": "Crea un código de un solo uso y copia un texto para pegarlo en tu agente de código. No inicia sesión en nada: basta con el código.",
         "create": "Crear código",

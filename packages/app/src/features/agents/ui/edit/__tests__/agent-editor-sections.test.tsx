@@ -122,7 +122,7 @@ async function settle(): Promise<void> {
   }
 }
 
-async function render(): Promise<ReactTestRenderer> {
+async function render({ hasAccount = true } = {}): Promise<ReactTestRenderer> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     renderer = create(
@@ -131,6 +131,7 @@ async function render(): Promise<ReactTestRenderer> {
           agentId="agent-1"
           name="Scout"
           look={{ character: { preset: 'blue_beret' }, color: null }}
+          hasAccount={hasAccount}
         />
       </QueryClientProvider>,
     );
@@ -302,6 +303,22 @@ describe('the connected accounts it may use', () => {
     expect(updateAgent).toHaveBeenCalledWith({
       id: 'agent-1',
       updates: { capabilityGrants: ['web', 'mcp:n2'] },
+    });
+  });
+
+  it('gives an external agent its connected accounts, and none of the runtime’s cards', async () => {
+    connections.list = [notion('n1', 'ana@acme.com')];
+    mine.agents = [{ _id: 'agent-1', name: 'Claude Code · desk', capabilityGrants: [] }];
+    const tree = await render({ hasAccount: false });
+    const sections = all(tree, 'AgentCreatorSection');
+    expect(sections).toHaveLength(1);
+    const grant = all(tree, 'Switch').find((node) =>
+      String(node.props.accessibilityLabel).includes('Notion'),
+    );
+    await act(async () => grant?.props.onCheckedChange(true));
+    expect(updateAgent).toHaveBeenCalledWith({
+      id: 'agent-1',
+      updates: { capabilityGrants: ['mcp:n1'] },
     });
   });
 

@@ -13,17 +13,25 @@ import type { AvatarCharacter } from '@oxy.so/bloom/agent-avatar';
  * the accounts themselves are connected in Settings), its own Telegram bot (ADR 0037), the
  * connectors (Notion, Linear…) it may use, what it hears about, what waits in its inbox and what it
  * remembers about the person.
+ *
+ * A gemie with no Oxy account (an external agent, ADR 0036) has only what needs none: the connectors
+ * it may use, which reach it as its tools (ADR 0039). The rest is Gemies' runtime, which it never
+ * enters.
  */
 export function AgentEditorSections({
   agentId,
   name,
   look,
+  hasAccount,
 }: {
   agentId: string;
   name: string;
   /** Its character and colour, which its Telegram bot takes as its picture. */
   look: { character: AvatarCharacter; color: string | null };
+  /** Whether the gemie IS an Oxy account. */
+  hasAccount: boolean;
 }) {
+  if (!hasAccount) return <AgentConnectorsSection agentId={agentId} name={name} />;
   return (
     <>
       <AgentWorkSection agentId={agentId} name={name} />

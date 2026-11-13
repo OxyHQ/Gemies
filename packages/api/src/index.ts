@@ -44,6 +44,7 @@ import channelAccountsRouter from './routes/channel-accounts.js';
 import meAccountsRouter from './routes/me-accounts.js';
 import channelBotsRouter from './routes/channel-bots.js';
 import mcpRouter from './routes/mcp.js';
+import externalAgentToolsRouter from './routes/external-agent-tools.js';
 import toolsProxyRouter from './routes/tools-proxy.js';
 import billingRouter from './routes/billing.js';
 import organizationRouter from './routes/organization.js';
@@ -223,7 +224,10 @@ app.use(noStoreByDefault);
  * service-only `/internal` lane — and an Oxy Console app key (`oxy_sk_`),
  * which authenticates nothing but the two app-only chat routes and is paced by
  * Oxy Console's own limits; this resolver cannot read it and would otherwise
- * put every customer behind one server address in the anonymous bucket.
+ * put every customer behind one server address in the anonymous bucket. An
+ * external agent's tool server (`/mcp/agents`, ADR 0039) is exempt too: its
+ * bearer is the agent's own credential, which this resolver cannot read either,
+ * and the route paces each agent itself.
  */
 app.use(
   createOxyRateLimit(oxy, {
@@ -231,6 +235,7 @@ app.use(
       req.path.startsWith('/webhooks/') ||
       req.path === '/billing/webhook' ||
       req.path.startsWith('/internal/') ||
+      req.path.startsWith('/mcp/agents/') ||
       req.headers.authorization?.startsWith('Bearer oxy_sk_') === true,
   }),
 );
@@ -337,6 +342,8 @@ app.use('/bots', botsRouter);
 app.use('/channel-accounts', channelAccountsRouter);
 app.use('/me/accounts', meAccountsRouter);
 app.use('/channel-bots', channelBotsRouter);
+// An external agent's tools (ADR 0039), before the connectors' `/mcp/:id` routes.
+app.use('/mcp/agents', externalAgentToolsRouter);
 app.use('/mcp', mcpRouter);
 app.use('/tools', toolsProxyRouter);
 app.use('/billing', billingRouter);
