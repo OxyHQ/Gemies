@@ -62,7 +62,7 @@ vi.mock('react-native-reanimated', async () =>
 );
 vi.mock('expo-router', () => ({ useRouter: () => ({ push: () => {} }) }));
 vi.mock('@oxy.so/bloom/badge', () => ({ Badge: () => null }));
-vi.mock('@oxy.so/bloom/chart-cards', () => ({ LineChartCard: () => null }));
+vi.mock('@oxy.so/bloom/chart-cards/line', () => ({ LineChartCard: () => null }));
 vi.mock('@oxy.so/bloom/item', () => ({ Item: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiArrowRightSLine', () => ({ RiArrowRightSLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiCalendarScheduleLine', () => ({

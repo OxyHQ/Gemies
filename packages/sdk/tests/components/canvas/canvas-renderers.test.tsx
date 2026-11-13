@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 /**
  * Which Bloom surface a generated canvas component lands on. The chart and the
- * table are Bloom's own (`chart-cards`, `table`); these pin the mapping from
+ * table are Bloom's own (`chart-cards/*`, `table`); these pin the mapping from
  * the tool's data shape onto them, with Bloom stubbed at its boundary.
  */
 
@@ -14,10 +14,12 @@ vi.mock('react-native', async () => ({
 vi.mock('../../../src/lib/labels', () => ({
   useLabels: () => ({ t: (key: string) => key }),
 }));
-vi.mock('@oxy.so/bloom/chart-cards', async () => {
-  const { host } = await import('../../support/panel-bloom-stubs');
-  return { BarListCard: host('BarListCard'), LineChartCard: host('LineChartCard') };
-});
+vi.mock('@oxy.so/bloom/chart-cards/bar-list', async () => ({
+  BarListCard: (await import('../../support/panel-bloom-stubs')).host('BarListCard'),
+}));
+vi.mock('@oxy.so/bloom/chart-cards/line', async () => ({
+  LineChartCard: (await import('../../support/panel-bloom-stubs')).host('LineChartCard'),
+}));
 vi.mock('@oxy.so/bloom/table', async () => {
   const { host } = await import('../../support/panel-bloom-stubs');
   return {
