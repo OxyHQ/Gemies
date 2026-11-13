@@ -43,29 +43,32 @@ vi.mock('../../logger.js', () => {
   };
 });
 
-vi.mock('../oxy-inference.js', () => ({
-  getOxyInferenceClient: () => ({
-    respond: async (request: Record<string, unknown>) => {
-      oxy.requests.push(request);
-      const next = oxy.script.shift() ?? { toolCalls: [], text: 'done' };
-      return {
-        requestId: `req-${oxy.requests.length}`,
-        model: 'openai/gpt-oss-120b@observed-2026-09-01',
-        output: [
-          {
-            role: 'assistant',
-            content: next.text ? [{ type: 'text', text: next.text }] : [],
-            toolCalls: next.toolCalls,
-          },
-        ],
-        finishReason: next.toolCalls.length > 0 ? 'tool_calls' : 'stop',
-        usage: [
-          { unit: 'input_tokens', quantity: 1 },
-          { unit: 'output_tokens', quantity: 1 },
-        ],
-      };
+vi.mock('../../kaana/transport.js', () => ({
+  getHostedKaanaClient: () => ({
+    responses: {
+      create: async (request: Record<string, unknown>) => {
+        oxy.requests.push(request);
+        const next = oxy.script.shift() ?? { toolCalls: [], text: 'done' };
+        return {
+          requestId: `req-${oxy.requests.length}`,
+          model: 'openai/gpt-oss-120b@observed-2026-09-01',
+          output: [
+            {
+              role: 'assistant',
+              content: next.text ? [{ type: 'text', text: next.text }] : [],
+              toolCalls: next.toolCalls,
+            },
+          ],
+          finishReason: next.toolCalls.length > 0 ? 'tool_calls' : 'stop',
+          usage: [
+            { unit: 'input_tokens', quantity: 1 },
+            { unit: 'output_tokens', quantity: 1 },
+          ],
+        };
+      },
     },
   }),
+  disposeHostedKaanaClient: vi.fn(),
 }));
 
 const { kaanaLanguageModel } = await import('../kaana-language-model.js');

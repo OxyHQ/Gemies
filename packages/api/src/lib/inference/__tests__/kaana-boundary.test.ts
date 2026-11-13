@@ -17,11 +17,10 @@ const retiredRuntimeFiles = [
   'kaana-connectivity.ts',
   'kaana-catalogue.ts',
   'kaana-openai-adapter.ts',
-  'kaana-boot-check.ts',
 ] as const;
 
-describe('Alia to Oxy to Kaana boundary', () => {
-  it('has no direct Kaana client, signer or bespoke wire transport', () => {
+describe('Gemies to Kaana boundary', () => {
+  it('has no bespoke signer or wire transport', () => {
     for (const file of retiredRuntimeFiles) {
       expect(existsSync(path.join(REPO_ROOT, 'packages/api/src/lib/inference', file)), file).toBe(
         false,
@@ -29,18 +28,18 @@ describe('Alia to Oxy to Kaana boundary', () => {
     }
   });
 
-  it('uses the published OxyInferenceClient', () => {
-    const source = read('packages/api/src/lib/inference/oxy-inference.ts');
-    expect(source).toContain("import { OxyInferenceClient } from '@oxy.so/core/inference'");
-    expect(source).toContain('new OxyInferenceClient');
+  it('uses the published Kaana workload transport', () => {
+    const source = read('packages/api/src/lib/kaana/transport.ts');
+    expect(source).toContain("import { kaanaForOxyService } from '@kaana.ai/sdk/server'");
+    expect(source).toContain('kaanaForOxyService(oxy');
   });
 
   it('does not configure direct Kaana signing or a direct Kaana origin', () => {
     const activeFiles = [
       '.github/workflows/deploy-aws.yml',
       'packages/api/.env.example',
-      'packages/api/src/lib/inference/oxy-inference.ts',
-      'packages/api/src/lib/inference/oxy-inference-credential.ts',
+      'packages/api/src/lib/kaana/transport.ts',
+      'packages/api/src/lib/inference/workload-identity-config.ts',
     ];
     const forbidden = [
       'KAANA_EDGE_SIGNING_PRIVATE_KEY',
