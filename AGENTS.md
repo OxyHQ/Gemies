@@ -4,7 +4,7 @@ La plataforma de gemies de Oxy («Create your Gemies. Let them work together.»)
 
 ## Estado: separación de Alia en curso (ADR 0034)
 
-Este repo nació el 2026-11-12 de `OxyHQ/Alia`, con todo su historial y sin ser un fork. El plan y sus fases están en [`docs/adr/0034-gemies-and-alia.md`](./docs/adr/0034-gemies-and-alia.md). Mientras la migración no termine, el backend y la app siguen llamándose Alia por dentro (`@alia/api`, `@alia/app`, `api.alia.onl`); el SDK y el cliente de servidor ya son `@gemies/sdk` y `@gemies/server`.
+Este repo nació el 2026-11-12 de `OxyHQ/Alia`, con todo su historial y sin ser un fork. El plan y sus fases están en [`docs/adr/0034-gemies-and-alia.md`](./docs/adr/0034-gemies-and-alia.md). Mientras la migración no termine, el backend y la app siguen llamándose Alia por dentro (`@alia/api`, `@alia/app`); las apps ya llaman a `api.gemies.ai`; el SDK y el cliente de servidor ya son `@gemies/sdk` y `@gemies/server`.
 
 - **Gemies despliega el backend en producción desde el 2026-11-12** (servicio ECS `alia`, `alia-integrations`, computer host; runbook 65 de oxy-infra). Push a `main` despliega tras CI verde. La API responde en `api.gemies.ai` y en `api.alia.onl`.
 - **Los cambios de backend se hacen aquí, nunca en `OxyHQ/Alia`.** Alia conserva su app (`onl.alia.app`, `alia.onl`), el OTA y Android; por eso esos workflows siguen desactivados aquí (`publish-update`, `android-release`).
