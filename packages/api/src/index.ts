@@ -9,6 +9,7 @@ import cors from 'cors';
 import { closePostgres } from './db/index.js';
 import { runBootGuards } from './lib/boot-guards.js';
 import { createInternalCors } from './lib/cors-origins.js';
+import { noStoreByDefault } from './middleware/no-store-by-default.js';
 import { startExpirySweeper, stopExpirySweeper } from './db/expirySweeper.js';
 import {
   startCreditReconciliation,
@@ -199,6 +200,9 @@ app.use((req, res, next) => {
 app.use(
   createOxySecurityHeaders({ helmet: { crossOriginResourcePolicy: { policy: 'cross-origin' } } }),
 );
+
+// No response is stored by a browser unless its route says otherwise (`no-store-by-default.ts`).
+app.use(noStoreByDefault);
 
 /**
  * Per-person (or per-service) request budget, keyed by the identity Oxy
