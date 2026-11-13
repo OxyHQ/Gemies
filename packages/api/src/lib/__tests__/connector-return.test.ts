@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../logger.js', () => ({ log: { general: { error: vi.fn() } } }));
 
-const { connectorReturnTarget, connectorReturnUrl } = await import('../connector-return.js');
+const { connectorCallbackUrl, connectorReturnTarget, connectorReturnUrl } = await import(
+  '../connector-return.js'
+);
 
 const WEB = 'https://gemies.ai';
 
@@ -38,5 +40,20 @@ describe('where a connector sign-in returns the person', () => {
     expect(
       connectorReturnUrl('gemies://connectors', { mcp_oauth_state: 's', mcp_oauth_code: 'c' }),
     ).toBe('gemies://connectors?mcp_oauth_state=s&mcp_oauth_code=c');
+  });
+});
+
+describe('the one redirect URI every provider knows Gemies by', () => {
+  it("is api.gemies.ai's in production, whatever host the API is also configured as", () => {
+    expect(
+      connectorCallbackUrl({ NODE_ENV: 'production', API_BASE_URL: 'https://api.alia.onl' }),
+    ).toBe('https://api.gemies.ai/mcp/oauth/callback');
+  });
+
+  it("is a development API's own", () => {
+    expect(
+      connectorCallbackUrl({ NODE_ENV: 'development', API_BASE_URL: 'http://localhost:4150/' }),
+    ).toBe('http://localhost:4150/mcp/oauth/callback');
+    expect(connectorCallbackUrl({})).toBe('http://localhost:4150/mcp/oauth/callback');
   });
 });

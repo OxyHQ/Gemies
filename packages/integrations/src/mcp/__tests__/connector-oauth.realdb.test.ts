@@ -37,7 +37,7 @@ async function authorize(
     oxyUserId,
     serverId,
     stateToken: 'state',
-    callbackUrl: 'https://api.alia.onl/mcp/oauth/callback',
+    callbackUrl: 'https://api.gemies.ai/mcp/oauth/callback',
     client,
   });
   await provider.saveTokens({
@@ -181,9 +181,9 @@ describe('startOAuth with a pre-registered client', () => {
           requiresOAuth: true,
           oauthClient: { clientId: 'zoom-client', clientSecret: 'zoom-secret' },
           oauthScope: 'meeting:read:search',
+          oauthCallbackUrl: 'https://api.gemies.ai/mcp/oauth/callback',
         },
         'state-123',
-        'https://api.alia.onl/mcp/oauth/callback',
       );
 
       const url = new URL(authorizationUrl);
@@ -192,7 +192,7 @@ describe('startOAuth with a pre-registered client', () => {
       expect(url.searchParams.get('scope')).toBe('meeting:read:search');
       expect(url.searchParams.get('state')).toBe('state-123');
       expect(url.searchParams.get('code_challenge_method')).toBe('S256');
-      expect(url.searchParams.get('redirect_uri')).toBe('https://api.alia.onl/mcp/oauth/callback');
+      expect(url.searchParams.get('redirect_uri')).toBe('https://api.gemies.ai/mcp/oauth/callback');
       expect(authorizationUrl).not.toContain('zoom-secret');
       expect(requested.some((u) => u.includes('register'))).toBe(false);
 

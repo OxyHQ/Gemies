@@ -76,6 +76,11 @@ export interface McpOAuthClient {
 export interface McpServerConfig {
   url?: string;
   headers?: Record<string, string>;
+  /**
+   * Where the provider returns an authorization: the API's one redirect URI, which it sends with
+   * every config. This service never derives its own.
+   */
+  oauthCallbackUrl?: string;
   /** When true, remote (sse/streamable-http) transports authenticate via the MCP OAuth flow. */
   requiresOAuth?: boolean;
   /** Pre-registered OAuth client; absent means Dynamic Client Registration. */

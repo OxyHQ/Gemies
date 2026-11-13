@@ -76,7 +76,7 @@ export async function startServer(
         oxyUserId,
         serverId,
         stateToken: randomUUID(),
-        callbackUrl: defaultCallbackUrl(),
+        callbackUrl: callbackUrlOf(config),
         scope: config.oauthScope,
         client: config.oauthClient,
       })
@@ -141,7 +141,6 @@ export async function startOAuth(
   transport: HostedTransport,
   config: McpServerConfig,
   stateToken: string,
-  callbackUrl: string,
 ): Promise<{ authorizationUrl: string }> {
   if (!config.url) {
     throw new Error(`${transport} transport requires a url for OAuth`);
@@ -152,7 +151,7 @@ export async function startOAuth(
     oxyUserId,
     serverId,
     stateToken,
-    callbackUrl,
+    callbackUrl: callbackUrlOf(config),
     scope: config.oauthScope,
     client: config.oauthClient,
   });
@@ -185,7 +184,6 @@ export async function finishOAuth(
   transport: HostedTransport,
   config: McpServerConfig,
   code: string,
-  callbackUrl: string,
 ): Promise<ConnectedServer> {
   if (!config.url) {
     throw new Error(`${transport} transport requires a url for OAuth`);
@@ -198,7 +196,7 @@ export async function finishOAuth(
     oxyUserId,
     serverId,
     stateToken: randomUUID(),
-    callbackUrl,
+    callbackUrl: callbackUrlOf(config),
     scope: config.oauthScope,
     client: config.oauthClient,
   });
@@ -441,13 +439,10 @@ function createTransport(
     : new SSEClientTransport(url, options);
 }
 
-/**
- * The fixed public API callback URL the OAuth Authorization Server redirects to
- * (`GET /mcp/oauth/callback` on the API). Mirrors the same env + dev fallback
- * the API uses so the DCR `redirect_uris` match across processes.
- */
-function defaultCallbackUrl(): string {
-  return `${process.env.API_BASE_URL || 'http://localhost:4150'}/mcp/oauth/callback`;
+/** The redirect URI the API sent with this connector's config. */
+function callbackUrlOf(config: McpServerConfig): string {
+  if (!config.oauthCallbackUrl) throw new Error('config.oauthCallbackUrl is required');
+  return config.oauthCallbackUrl;
 }
 
 // ---------------------------------------------------------------------------

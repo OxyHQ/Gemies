@@ -38,6 +38,10 @@ function oauthConfigError(config: Record<string, unknown>): string | null {
   if (config.oauthScope !== undefined && typeof config.oauthScope !== 'string') {
     return 'config.oauthScope must be a string';
   }
+  const callback = config.oauthCallbackUrl;
+  if (callback !== undefined && (typeof callback !== 'string' || !URL.canParse(callback))) {
+    return 'config.oauthCallbackUrl must be a URL';
+  }
   const revocation = config.oauthRevocation;
   if (revocation !== undefined) {
     const { url, clientAuth } = (revocation ?? {}) as Record<string, unknown>;
@@ -120,7 +124,7 @@ router.post('/servers/:id/start', async (req, res) => {
 /** POST /mcp/servers/:id/oauth/start */
 router.post('/servers/:id/oauth/start', async (req, res) => {
   const serverId = req.params.id;
-  const { oxyUserId, config, transport, stateToken, callbackUrl } = req.body;
+  const { oxyUserId, config, transport, stateToken } = req.body;
 
   if (!oxyUserId || typeof oxyUserId !== 'string') {
     return res.status(400).json({ error: 'oxyUserId must be a non-empty string' });
@@ -141,19 +145,12 @@ router.post('/servers/:id/oauth/start', async (req, res) => {
   if (!stateToken || typeof stateToken !== 'string') {
     return res.status(400).json({ error: 'stateToken must be a non-empty string' });
   }
-  if (!callbackUrl || typeof callbackUrl !== 'string') {
-    return res.status(400).json({ error: 'callbackUrl must be a non-empty string' });
+  if (typeof config.oauthCallbackUrl !== 'string') {
+    return res.status(400).json({ error: 'config.oauthCallbackUrl is required' });
   }
 
   try {
-    const result = await manager.startOAuth(
-      serverId,
-      oxyUserId,
-      transport,
-      config,
-      stateToken,
-      callbackUrl,
-    );
+    const result = await manager.startOAuth(serverId, oxyUserId, transport, config, stateToken);
     res.json({ authorizationUrl: result.authorizationUrl });
   } catch (err: unknown) {
     logger.error(`Failed to start OAuth for server ${serverId}:`, errorMessage(err));
@@ -164,7 +161,7 @@ router.post('/servers/:id/oauth/start', async (req, res) => {
 /** POST /mcp/servers/:id/oauth/finish */
 router.post('/servers/:id/oauth/finish', async (req, res) => {
   const serverId = req.params.id;
-  const { oxyUserId, config, transport, code, callbackUrl } = req.body;
+  const { oxyUserId, config, transport, code } = req.body;
 
   if (!oxyUserId || typeof oxyUserId !== 'string') {
     return res.status(400).json({ error: 'oxyUserId must be a non-empty string' });
@@ -185,19 +182,12 @@ router.post('/servers/:id/oauth/finish', async (req, res) => {
   if (!code || typeof code !== 'string') {
     return res.status(400).json({ error: 'code must be a non-empty string' });
   }
-  if (!callbackUrl || typeof callbackUrl !== 'string') {
-    return res.status(400).json({ error: 'callbackUrl must be a non-empty string' });
+  if (typeof config.oauthCallbackUrl !== 'string') {
+    return res.status(400).json({ error: 'config.oauthCallbackUrl is required' });
   }
 
   try {
-    const result = await manager.finishOAuth(
-      serverId,
-      oxyUserId,
-      transport,
-      config,
-      code,
-      callbackUrl,
-    );
+    const result = await manager.finishOAuth(serverId, oxyUserId, transport, config, code);
     res.json({ success: true, ...result });
   } catch (err: unknown) {
     logger.error(`Failed to finish OAuth for server ${serverId}:`, errorMessage(err));

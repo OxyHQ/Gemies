@@ -176,10 +176,15 @@ the API answers `502 revoke_failed` and the person retries.
 
 ### What the owner registers
 
-The redirect URI is fixed by `API_BASE_URL` (production `https://api.alia.onl`):
-`https://api.alia.onl/mcp/oauth/callback`, the same for every provider. Secrets go to SSM
-`/oxy/alia/<NAME>` first and are then bound in the API task definition
-([deployment](./deployment.md#secrets)); only the API reads them.
+The redirect URI is **`https://api.gemies.ai/mcp/oauth/callback`**, the same for every provider:
+the API's canonical public origin (`GEMIES_API_URL`), fixed in production by
+`connectorCallbackUrl` (`lib/connector-return.ts`) whatever host a request arrived on, and never
+`api.alia.onl`, which is being retired. The API sends it with every connector config, so
+integrations never derives its own; a Dynamic Client Registration names it, and a client stored for
+another redirect URI is registered again on the next sign-in (`mcp/oauth-provider.ts`). Secrets go
+to SSM `/oxy/alia/<NAME>` first — still the API service's prefix until the infrastructure is
+renamed — and are then bound in the API task definition ([deployment](./deployment.md#secrets));
+only the API reads them.
 
 - **GitHub** — an OAuth App (Settings › Developer settings › OAuth Apps) with that callback URL.
   Organizations with OAuth App access restrictions approve it; Copilot Business/Enterprise
@@ -207,8 +212,8 @@ The redirect URI is fixed by `API_BASE_URL` (production `https://api.alia.onl`):
 - **Figma** — join Figma's MCP client waitlist for the client name `Alia`; once Figma lists it, set
   `FIGMA_MCP_APPROVED=true`.
 - **Atlassian (Jira, Confluence, Loom, Trello)** — nothing to create (DCR), but Atlassian redirects
-  only to domains it supports by default: ask Atlassian to add `api.alia.onl`, then set
-  `ATLASSIAN_MCP_APPROVED=true`. (An organization's admin can also add `https://api.alia.onl/**`
+  only to domains it supports by default: ask Atlassian to add `api.gemies.ai`, then set
+  `ATLASSIAN_MCP_APPROVED=true`. (An organization's admin can also add `https://api.gemies.ai/**`
   under Rovo MCP server › custom domains for their own members.) Every call spends the site's Rovo
   credits.
 - **Notion, Linear, Granola, Amplitude** — nothing (DCR). Their admins can switch MCP off for their
