@@ -22,7 +22,13 @@ export function createGemieTurnControl(
   let finished = false;
   return {
     id,
-    /** Acknowledged remote Stop, then detach. Failure leaves the stream available for retry. */
+    /**
+     * Acknowledged remote Stop, then detach. Failure leaves the stream available for retry.
+     *
+     * Only an answer of `cancelled` detaches: a generation already past its commit point
+     * (`finishing`, `completed`, `failed`) was not stopped, and its stream carries it to its own
+     * end, stored. Detaching it would report a stored answer as cancelled.
+     */
     stop(): Promise<void> {
       if (pending) return pending;
       if (finished || options.controller.signal.aborted) return Promise.resolve();
@@ -31,8 +37,8 @@ export function createGemieTurnControl(
           { turnId: id, conversationId: options.conversationId },
           { signal: AbortSignal.any([options.lifetimeSignal, AbortSignal.timeout(10_000)]) },
         )
-        .then(() => {
-          options.controller.abort();
+        .then(({ state }) => {
+          if (state === 'cancelled') options.controller.abort();
         })
         .catch((error) => {
           pending = undefined;

@@ -407,7 +407,7 @@ export function useConversationThread({
 
   /** Leave this thread for an empty one. Nothing is deleted: the conversation stays in the list. */
   const startOver = useCallback(() => {
-    stop();
+    void stop();
     setMessages([]);
     clearFailedTurn();
     host.closeConversation?.();
@@ -526,7 +526,7 @@ export function useConversationThread({
   );
 
   const stopGeneration = useCallback(() => {
-    stop();
+    void stop();
   }, [stop]);
 
   /**
@@ -554,19 +554,27 @@ export function useConversationThread({
    *
    * A turn still streaming is stopped first rather than refused: the person
    * has just confirmed they want the thread empty, and an answer that kept
-   * arriving into it would be the next thing to clear. Stopping settles the
-   * assistant placeholder as `cancelled` and lets the server close the turn,
-   * so the clear that follows is of a thread nothing is writing to.
+   * arriving into it would be the next thing to clear. The clear WAITS for
+   * that turn to end, not just for Stop to be sent: the server stores a turn
+   * (its question and its answer) as it finishes, so a clear sent while it was
+   * still finishing was undone by that late save. Once `stop()` settles the
+   * turn is over — cancelled, so the server never stores it, or already
+   * finished and stored, so the clear removes it — and the clear that follows
+   * is of a thread nothing is writing to.
    *
    * A refusal keeps everything: the screen is not reset, the cache is not
    * touched, and the error is surfaced — a cleared view whose history returns
-   * on the next fetch is exactly the state this exists to end.
+   * on the next fetch is exactly the state this exists to end. A turn that
+   * could not be stopped is such a refusal.
    *
    * With no conversation id there is nothing persisted to clear, so the
    * screen's own list is all there is and the local reset is the whole job.
    */
   const clearConversation = useCallback(async (): Promise<boolean> => {
-    if (isLoading) stop();
+    if (isLoading && !(await stop())) {
+      toast.error(labels.conversationClearFailed);
+      return false;
+    }
 
     if (conversationId) {
       try {

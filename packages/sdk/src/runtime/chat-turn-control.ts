@@ -17,6 +17,10 @@ export function createChatTurnControl(
   const id = createRandomUuid();
   let stopping: Promise<void> | undefined;
   let ended = false;
+  let markEnded!: () => void;
+  const endedPromise = new Promise<void>((resolve) => {
+    markEnded = resolve;
+  });
   const lifetime = new AbortController();
   const epoch = linked.client.getSessionEpoch();
   const current = () => linked.client.getSessionEpoch() === epoch;
@@ -29,7 +33,15 @@ export function createChatTurnControl(
   });
   return {
     id,
-    /** Only a deliberate Stop invokes this. View teardown merely aborts its transport. */
+    /** Settles once `finish()` has run: the turn's stream is over and nothing more will be written. */
+    ended: endedPromise,
+    /**
+     * Only a deliberate Stop invokes this. View teardown merely aborts its transport.
+     *
+     * Resolves once the server has answered. Only an answer of `cancelled` cuts the stream here:
+     * a turn already past its commit point (`finishing`, `completed`, `failed`) was not stopped,
+     * and its stream carries it to its own end, stored. Await `ended` to know it is over.
+     */
     stop(): Promise<void> {
       if (stopping) return stopping;
       if (ended || controller.signal.aborted) return Promise.resolve();
@@ -51,8 +63,8 @@ export function createChatTurnControl(
           await response.body?.cancel();
           throw new Error('Generation could not be stopped. Try again.');
         }
-        await response.body?.cancel();
-        controller.abort();
+        const answer: unknown = await response.json().catch(() => null);
+        if ((answer as { state?: unknown } | null)?.state === 'cancelled') controller.abort();
       })().catch((error) => {
         stopping = undefined;
         throw error;
@@ -66,6 +78,7 @@ export function createChatTurnControl(
       lifetime.abort();
       unsubscribe();
       linked.dispose();
+      markEnded();
     },
   };
 }

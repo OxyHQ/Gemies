@@ -133,7 +133,7 @@ describe('overlapping turns', () => {
     await mount();
     const { outcome: first } = await begin('one');
     await act(async () => {
-      api.stop();
+      void api.stop();
     });
     const { outcome: second } = await begin('two');
     expect(await first).toBe('aborted');
@@ -145,7 +145,7 @@ describe('overlapping turns', () => {
 
     // And Stop still reaches it, because the old turn did not clear the ref.
     await act(async () => {
-      api.stop();
+      void api.stop();
     });
     expect(await second).toBe('aborted');
     expect(harness.streams[1].signal?.aborted).toBe(true);
@@ -207,7 +207,7 @@ describe('Stop while the device info is collected', () => {
     await mount();
     const { outcome } = await begin('one');
     await act(async () => {
-      api.stop();
+      void api.stop();
     });
     await act(async () => {
       release(undefined);
@@ -227,7 +227,7 @@ it('handles an immediately rejected assertion while device preparation never res
   // The existing assertion adapter normalizes an unavailable assertion to {}.
   // Stop must still settle the pending device preparation without a dispatch.
   await act(async () => {
-    api.stop();
+    void api.stop();
   });
   expect(await outcome).toBe('aborted');
   expect(harness.streams).toHaveLength(0);

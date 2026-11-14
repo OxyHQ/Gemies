@@ -78,6 +78,66 @@ describe('canvas', () => {
     expect(dashboard.error).toMatch(/^The dashboard was not drawn: widgets\.0\.kind/);
   });
 
+  it('refuses a chart whose series has fewer values than labels, naming the series', async () => {
+    const data = {
+      chartType: 'bar',
+      labels: ['Jan', 'Feb', 'Mar'],
+      datasets: [
+        { label: 'A', values: [1, 2, 3] },
+        { label: 'B', values: [1] },
+      ],
+    };
+    const chart = await run({ type: 'chart', title: 'Q1', data });
+    expect(chart.error).toBe(
+      'The chart was not drawn: datasets.1.values: needs 3 values, one per label; it has 1. Send it again in the shape the tool describes.',
+    );
+    expect(chart.id).toBeUndefined();
+    const dashboard = await run({
+      type: 'dashboard',
+      title: 'Q1',
+      data: { widgets: [{ kind: 'chart', ...data }] },
+    });
+    expect(dashboard.error).toMatch(
+      /^The dashboard was not drawn: widgets\.0\.datasets\.1\.values: needs 3 values/,
+    );
+  });
+
+  it('draws a chart whose every series has a value per label', async () => {
+    const out = await run({
+      type: 'chart',
+      title: 'Q1',
+      data: {
+        chartType: 'line',
+        labels: ['Jan', 'Feb'],
+        datasets: [{ label: 'A', values: [1, 2] }],
+      },
+    });
+    expect(out.error).toBeUndefined();
+    expect(out.type).toBe('chart');
+  });
+
+  it('refuses a table row that does not have a cell per header, and a table without headers', async () => {
+    const short = { headers: ['Region', 'Sales'], rows: [['EU', '10'], ['US']] };
+    const table = await run({ type: 'table', title: 'Sales', data: short });
+    expect(table.error).toBe(
+      'The table was not drawn: rows.1: needs 2 cells, one per header; it has 1. Send it again in the shape the tool describes.',
+    );
+    const dashboard = await run({
+      type: 'dashboard',
+      title: 'Sales',
+      data: { widgets: [{ kind: 'table', ...short }] },
+    });
+    expect(dashboard.error).toMatch(
+      /^The dashboard was not drawn: widgets\.0\.rows\.1: needs 2 cells, one per header/,
+    );
+    const headless = await run({
+      type: 'dashboard',
+      title: 'Sales',
+      data: { widgets: [{ kind: 'table', headers: [], rows: [] }] },
+    });
+    expect(headless.error).toMatch(/^The dashboard was not drawn: widgets\.0\.headers: /);
+  });
+
   it('leaves the other types untouched', async () => {
     const out = await run({ type: 'markdown', title: 'Report', data: { content: '# Q3' } });
     expect(out).toMatchObject({ type: 'markdown', title: 'Report', data: { content: '# Q3' } });

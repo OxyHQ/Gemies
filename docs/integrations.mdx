@@ -46,10 +46,15 @@ by a grant. The families and the tools each contributes:
 `canvas` (`lib/tools/canvas.ts`) draws content for the person instead of writing it in the
 reply: `markdown` (a report or document), `deck`, `dashboard`, `chart`, `table`, `code`,
 `form`, `image` and `artifact`. A deck is `{ slides: [{ title, subtitle?, bullets?, body?, notes? }] }`
-and a dashboard `{ widgets: [stat | chart | table | text] }`; both are validated when the tool
-runs, and a malformed one comes back to the model as an `error` naming the field, so a surface
-never receives one it cannot draw. Surfaces open them on their own: the SDK's
-`CanvasComponent` draws every type in the app's panel, and Astro opens reports, decks and
+and a dashboard `{ widgets: [stat | chart | table | text] }`. Decks, dashboards, charts and tables
+are validated when the tool runs: every chart series has one value per label, and a table (or a
+dashboard's table) has at least one header and one cell per header in every row. A malformed one
+comes back to the model as an `error` naming the field (`widgets.0.datasets.1.values: needs 3
+values, one per label; it has 1`), so a surface never receives one it cannot draw, nor a chart
+whose missing values it would draw as zeros. Surfaces open them on their own: the runtime hands
+every finished canvas to the host as an artifact (`onArtifact`, read by the same
+`canvasResultOf` the thread uses), the SDK's `CanvasComponent` draws every type in the app's
+panel, and Astro opens reports, decks and
 dashboards in a tab with comments, versions (a later call with the same title and type) and
 exports.
 

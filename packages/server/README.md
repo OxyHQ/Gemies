@@ -146,7 +146,9 @@ reader and allows background completion.
 `createGemieTurnControl(client, { controller, lifetimeSignal, conversationId })` creates the UUID
 before any asynchronous preparation. Send its `id` as the request's `turnId`;
 call `stop()` only for deliberate Stop. It deduplicates concurrent Stop calls,
-waits up to ten seconds for acknowledgement, and only then aborts the controller.
+waits up to ten seconds for acknowledgement, and only then aborts the controller —
+only when the answer is `cancelled`. A generation already past its commit point
+(`finishing`, `completed`, `failed`) was not stopped: its stream runs to its own end.
 A refused Stop rejects and remains retryable. Abort the stream controller directly for view teardown. The separate
 `lifetimeSignal` fences account changes or disposal of its authenticated owner;
 it must not be the stream signal, because a cancellation SSE frame can close the

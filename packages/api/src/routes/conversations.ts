@@ -687,8 +687,13 @@ router.patch(
  * outside the guard it could not reach somebody else's rows.
  *
  * A stream still writing into this thread is NOT this route's concern: the
- * client stops it before asking, and a turn that lands after the clear is a
- * new turn in an empty thread, which is what a person who kept typing wanted.
+ * client stops it and waits for it to END before asking (`clearConversation`
+ * in the SDK). Stop alone is not enough — a turn past its finalization CAS
+ * answers `finishing` and stores its question and answer as it ends — but a
+ * cancelled turn never stores anything and a finished one is stored by the
+ * time its stream closes, so the clear that follows removes all of it. A turn
+ * that starts after the clear is a new turn in an empty thread, which is what
+ * a person who kept typing wanted.
  *
  * ## The clips spoken from it go first
  *
