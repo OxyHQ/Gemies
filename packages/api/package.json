@@ -40,7 +40,7 @@
     "@oxy.so/contracts": "7.1.0",
     "@oxy.so/core": "7.50.0",
     "@oxy.so/db": "^1.5.0",
-    "@oxy.so/mcp": "1.4.2",
+    "@oxy.so/mcp": "1.4.3",
     "@oxy.so/telemetry": "^2.2.0",
     "@oxy.so/utils": "^1.5.2",
     "@socket.io/redis-adapter": "^8.3.0",

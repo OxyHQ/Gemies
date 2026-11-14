@@ -14,14 +14,13 @@ const ChatConversationPage = () => {
   const { data: agents } = useMyAgents();
   const memberIds = conversation?.memberAgentIds;
   const group = useMemo(() => groupMembersOf(memberIds, agents), [memberIds, agents]);
-  const waitingForMembers = memberIds !== undefined && memberIds.length > 0 && group === undefined;
 
   return (
     <ConversationScreen
       conversationId={id}
       agentId={agentId}
       group={group}
-      loading={waitingForMembers && agents === undefined}
+      loading={group === undefined && (memberIds?.length ?? 0) > 0}
     />
   );
 };

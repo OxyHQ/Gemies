@@ -9,16 +9,28 @@ export const MAX_REACTIONS_PER_MESSAGE = 6;
 /** The longest a reaction may be: a flag, a family or a skin-toned gesture is several code points. */
 const MAX_REACTION_LENGTH = 16;
 
-/** One or more pictographs (with their joiners, tones and variation selectors), and nothing else. */
-const EMOJI =
-  /^(?:[0-9#*]\ufe0f?\u20e3|\p{Extended_Pictographic}|\p{Emoji_Modifier}|\u200d|\ufe0f|\p{Regional_Indicator})+$/u;
+/**
+ * One emoji: a keycap, a flag, or a pictograph with its tones, variation selector and tag sequence,
+ * joined to the next by a zero-width joiner. Never a joiner, a tone or a selector on its own.
+ */
+const PICTOGRAPH = String.raw`\p{Extended_Pictographic}[\u{FE0F}\p{Emoji_Modifier}]*(?:[\u{E0020}-\u{E007E}]+\u{E007F})?`;
+const EMOJI = new RegExp(
+  String.raw`^(?:[0-9#*]\u{FE0F}?\u{20E3}|\p{Regional_Indicator}{2}|${PICTOGRAPH}(?:\u{200D}${PICTOGRAPH})*)$`,
+  'u',
+);
 
-/** A reaction as a client sends it: a short, emoji-only string, or `null` when it is not one. */
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+/**
+ * A reaction as a client sends it: exactly one emoji, or `null` when it is not one. `👍🎉` is two:
+ * taken as one, it held two reactions in one of the six places a message has.
+ */
 export function parseReaction(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const emoji = value.trim();
   if (emoji === '' || emoji.length > MAX_REACTION_LENGTH || !EMOJI.test(emoji)) return null;
-  return emoji;
+  const [first, second] = graphemes.segment(emoji);
+  return first !== undefined && second === undefined ? emoji : null;
 }
 
 /**
