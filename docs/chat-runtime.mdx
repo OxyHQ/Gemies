@@ -78,8 +78,8 @@ financial-ledger migration (Kaana ADR 0010); see the
 ```
 
 `personalization: false` turns personalization off for the turn: no memory profile, no recall,
-no learned rules, no memory tools (nor for an agent it consults) and nothing learned from it; the
-conversation is still stored.
+no learned rules, no memory tools (nor for an agent it consults, nor for any member of a group
+turn's chain) and nothing learned from it; the conversation is still stored.
 `tool_choice: "none"` (OpenAI's field; `"auto"` is the default, anything else is a 400) offers the turn
 no tool at all, for a call that only needs words, such as a sample phrase. A host tool may
 declare `awaitsResult: true` to be answered within the same turn on

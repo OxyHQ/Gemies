@@ -316,6 +316,28 @@ describe('serveGroupTurn as a subscriber of the room', () => {
     });
     expect(await lastIsAssistant.run()).toBeNull();
     expect(lastIsAssistant.prepareRoom).not.toHaveBeenCalled();
+
+    const notBoolean = setup({
+      body: { stream: true, messages: [{ role: 'user', content: 'x' }], personalization: 'no' },
+    });
+    expect(await notBoolean.run()).toBeNull();
+    expect(notBoolean.res.status).toHaveBeenCalledWith(400);
+    expect(notBoolean.prepareRoom).not.toHaveBeenCalled();
+  });
+
+  it('starts the chain with the person’s personalization, on unless they sent `false`', async () => {
+    const on = setup({ firstRoundSize: 0 });
+    await on.run();
+    expect(on.prepareRoom).toHaveBeenCalledWith(expect.objectContaining({ personalization: true }));
+
+    const off = setup({
+      firstRoundSize: 0,
+      body: { stream: true, messages: [{ role: 'user', content: 'x' }], personalization: false },
+    });
+    await off.run();
+    expect(off.prepareRoom).toHaveBeenCalledWith(
+      expect.objectContaining({ personalization: false }),
+    );
   });
 });
 

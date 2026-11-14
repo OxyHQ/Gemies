@@ -70,6 +70,12 @@ export interface RoomJobData {
   readonly surfaceApplicationId: string | null;
   /** The space this room is the room of (ADR 0028): its name and brief, fixed when the chain started. */
   readonly space?: { readonly name: string; readonly instructions: string } | null;
+  /**
+   * The person turned personalization off for the turn that started the chain. Kept on every step
+   * of it (each one spreads the job), so no member's turn reads or offers their memory, as a
+   * one-to-one turn with it off would not.
+   */
+  readonly personalization?: false;
 }
 
 /** A stored message as the engine reads it. */
@@ -445,6 +451,7 @@ async function speak(input: {
         isDirectSession: false,
         ...(member.oxyTaskId ? { taskId: member.oxyTaskId } : {}),
         surfaceApplicationId: data.surfaceApplicationId,
+        ...(data.personalization === false ? { personalization: false as const } : {}),
       },
       payerOxyUserId: data.userId,
       observer: {

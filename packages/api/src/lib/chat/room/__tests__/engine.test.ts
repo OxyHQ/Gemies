@@ -204,6 +204,14 @@ describe('legacy room jobs drain their first round', () => {
     });
   });
 
+  it('runs every member’s turn of a chain started with personalization off with it off', async () => {
+    const h = harness({ script: () => 'ok' });
+    await h.drain(h.first({ personalization: false }));
+    expect(
+      h.runs.map((run) => (run.person as { personalization?: false }).personalization),
+    ).toEqual([false, false, false]);
+  });
+
   it('streams start, deltas and end, then the stored message, then idle', async () => {
     const h = harness({ script: () => 'hello world', roster: members.slice(0, 1) });
     await h.drain(h.first({ pending: [] }));

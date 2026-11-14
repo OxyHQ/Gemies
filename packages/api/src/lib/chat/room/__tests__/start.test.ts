@@ -45,6 +45,7 @@ const input = {
   messages: [{ id: 'client-p', role: 'user', content: 'Eusebio, ¿qué puedes hacer?' }],
   accessToken: 'PRIVATE_BEARER',
   surfaceApplicationId: 'alia',
+  personalization: true,
 };
 
 beforeEach(() => {
@@ -98,6 +99,14 @@ describe('room preparation', () => {
       available: true,
     });
     expect(h.save.mock.invocationCallOrder[0]).toBeLessThan(h.mint.mock.invocationCallOrder[0]!);
+  });
+
+  it('keeps the person’s personalization off on the chain it starts, and says nothing when on', async () => {
+    await (await prepareRoom(input)).start();
+    expect(h.enqueue.mock.calls[0]?.[0]).not.toHaveProperty('personalization');
+
+    await (await prepareRoom({ ...input, personalization: false })).start();
+    expect(h.enqueue.mock.calls[1]?.[0]).toMatchObject({ personalization: false });
   });
 
   it('keeps unavailable Eusebio identifiable, without task authority or private description', async () => {

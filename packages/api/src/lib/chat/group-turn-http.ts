@@ -75,6 +75,11 @@ export async function serveGroupTurn(
     refusal(res, 'The last message of a group turn must be the person’s own.', 'messages');
     return null;
   }
+  // As in a one-to-one turn: absent means on, only `false` changes anything, anything else is refused.
+  if (body.personalization !== undefined && typeof body.personalization !== 'boolean') {
+    refusal(res, '"personalization" must be a boolean', 'personalization');
+    return null;
+  }
 
   sse.ensureHeaders();
   const emitter = createResponseSSEEmitter(res, sse.ensureHeaders);
@@ -94,6 +99,7 @@ export async function serveGroupTurn(
     messages: history,
     accessToken: req.accessToken,
     surfaceApplicationId: await appSurfaceOf(req),
+    personalization: body.personalization !== false,
   });
   if (input.signal.aborted) {
     await room.abandon();
