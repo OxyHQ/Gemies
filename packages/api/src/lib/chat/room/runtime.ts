@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from 'node:util';
+import { RoomRequestSupersededError } from './obligations.js';
 /**
  * The room engine wired to the real world: Postgres, Oxy tasks, the agent turn, the queue, the bus
  * and the room lock. `engine.ts` takes all of these as parameters; this is the one place that
@@ -113,6 +115,34 @@ export function roomRuntime(): RoomRuntime {
       const found = await findAgentById(getDb(), agentId);
       return found === null ? null : attachAgentIdentity(found);
     },
+    reactionContributions: async (userId, conversationId, turnIds) => {
+      const { getDb } = await import('../../../db/index.js');
+      const { listAgentReactionContributions } = await import(
+        '../../../db/chat/reactionRepository.js'
+      );
+      return listAgentReactionContributions(getDb(), userId, conversationId, turnIds);
+    },
+    currentRoster: async (data) => {
+      const { getDb } = await import('../../../db/index.js');
+      const { listGroupMembers } = await import('../../../db/chat/conversationMemberRepository.js');
+      const { findAgentById } = await import('../../../db/agents/agentRepository.js');
+      const { agentOpensOn } = await import('../../agent-availability.js');
+      const members = new Set(await listGroupMembers(getDb(), data.userId, data.conversationId));
+      return Promise.all(
+        data.roster.map(async (member) => {
+          const found = members.has(member.info.id)
+            ? await findAgentById(getDb(), member.info.id)
+            : null;
+          // Retain the originally authorized roster. This refresh is not a new private-standing grant.
+          const reachable =
+            member.available !== false &&
+            found !== null &&
+            found.status === 'active' &&
+            (await agentOpensOn(found, data.surfaceApplicationId)) === 'reachable';
+          return { ...member, available: reachable };
+        }),
+      );
+    },
     select: async (input) => {
       const { selectRoomDecision } = await import('./selector.js');
       return selectRoomDecision(input);
@@ -182,6 +212,20 @@ export async function appendRoomReply(
   const { lockMessageThread } = await import('../../../db/chat/messageLock.js');
   return db.transaction(async (tx) => {
     await lockMessageThread(tx, input.userId, input.conversationId);
+    if (input.expectedPersonRequest) {
+      const { findLatestUserMessage, listMessages } = await import(
+        '../../../db/chat/messageRepository.js'
+      );
+      const latest = await findLatestUserMessage(tx, input.userId, input.conversationId);
+      const row =
+        latest?.id === input.expectedPersonRequest.id
+          ? (await listMessages(tx, input.userId, input.conversationId)).find(
+              (r) => r.id === latest.id,
+            )
+          : undefined;
+      if (!row || !isDeepStrictEqual(row.content, input.expectedPersonRequest.content))
+        throw new RoomRequestSupersededError();
+    }
     const last = await findLastMessage(tx, input.userId, input.conversationId);
     const seq = last?.seq == null ? 0 : last.seq + 1;
     const createdAt = new Date();

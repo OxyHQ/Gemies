@@ -285,15 +285,18 @@ describe('serveGroupTurn as a subscriber of the room', () => {
     expect(t.sse.done).not.toHaveBeenCalled();
   });
 
-  it('a chain that ends (superseded, capped) settles the request', async () => {
-    const t = setup({
-      firstRoundSize: 3,
-      onStart: async (publish) => {
-        await publish(e('group.idle', { reason: 'superseded' }));
-      },
-    });
-    expect((await t.run())?.settled).toBe(true);
-  });
+  it.each(['superseded', 'waiting_person'])(
+    'a %s chain settles quietly without a failure',
+    async (reason) => {
+      const t = setup({
+        firstRoundSize: 3,
+        onStart: async (publish) => {
+          await publish(e('group.idle', { reason }));
+        },
+      });
+      expect(await t.run()).toMatchObject({ settled: true, status: 'quiet' });
+    },
+  );
 
   it('gives the minted authority back when the first step cannot be queued', async () => {
     const t = setup({

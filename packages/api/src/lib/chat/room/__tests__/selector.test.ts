@@ -32,6 +32,16 @@ vi.mock('../../../models/power-levels.js', () => ({
 vi.mock('../../../logger.js', () => ({ log: { agents: { info: h.info } } }));
 const { selectRoomDecision } = await import('../selector.js');
 const { ROOM_SELECTION_SYSTEM, REACTION_SELECTION_SYSTEM } = await import('../decision.js');
+const obligations = [
+  {
+    id: 'o1',
+    recipientId: 'e',
+    task: 'Describe capabilities',
+    dependsOn: [],
+    state: 'pending',
+    evidence: [],
+  },
+];
 const input = {
   userId: 'u',
   conversationId: 'room',
@@ -57,6 +67,7 @@ beforeEach(() => {
   h.generate.mockResolvedValue({
     object: {
       choice: 'person-request:e',
+      obligations,
     },
     usage: { inputTokens: 12, outputTokens: 4, totalTokens: 16 },
   });
@@ -91,13 +102,15 @@ describe('room selection inference accounting', () => {
     expect(call.maxOutputTokens).toBe(8192);
     expect(call.maxRetries).toBe(1);
     expect(call.abortSignal).toBeInstanceOf(AbortSignal);
-    expect(call.system).toBe(ROOM_SELECTION_SYSTEM);
+    expect(call.system).toContain(ROOM_SELECTION_SYSTEM);
+    expect(call.system).toContain('preserve every');
     expect(
       call.schema.parse({
         choice: 'clarify-person-request:e',
+        obligations: [],
       }),
-    ).toEqual({ choice: 'clarify-person-request:e' });
-    expect(Object.keys(call.schema.shape)).toEqual(['choice']);
+    ).toEqual({ obligations: [], choice: 'clarify-person-request:e' });
+    expect(Object.keys(call.schema.shape)).toEqual(['obligations', 'choice']);
     expect(JSON.parse(call.prompt).allowedChoices).toContainEqual({
       id: 'person-request:e',
       action: 'speak',
@@ -113,6 +126,19 @@ describe('room selection inference accounting', () => {
     expect(h.refund).not.toHaveBeenCalled();
   });
 
+  it('drains a v2 job with its original choice-only contract and no plan extraction', async () => {
+    h.generate.mockResolvedValue({ object: { choice: 'person-request:e' }, usage: {} });
+    expect(await selectRoomDecision({ ...input, obligationMode: 'legacy' })).toEqual({
+      action: 'speak',
+      agentId: 'e',
+      reason: 'directed',
+    });
+    const call = h.generate.mock.calls[0]?.[0];
+    expect(Object.keys(call.schema.shape)).toEqual(['choice']);
+    expect(call.system).not.toContain('Before choosing, return obligations');
+    expect(h.generate).toHaveBeenCalledOnce();
+  });
+
   it('lets parent cancellation preempt the general planning deadline', async () => {
     await assertParentCancels(input);
   });
@@ -125,9 +151,17 @@ describe('room selection inference accounting', () => {
 
   it('uses only the authoritative source choice and discards unsolicited explanatory output', async () => {
     const assessment = 'Transient description of pending work; never stored or logged.';
-    h.generate.mockResolvedValue({ object: { assessment, choice: 'person-request:e' }, usage: {} });
+    h.generate.mockResolvedValue({
+      object: { assessment, choice: 'person-request:e', obligations },
+      usage: {},
+    });
     const decision = await selectRoomDecision(input);
-    expect(decision).toEqual({ action: 'speak', agentId: 'e', reason: 'directed' });
+    expect(decision).toMatchObject({
+      action: 'speak',
+      agentId: 'e',
+      reason: 'directed',
+      obligationPlan: { obligations },
+    });
     expect(JSON.stringify(h.info.mock.calls)).not.toContain(assessment);
     expect(JSON.stringify(h.settle.mock.calls)).not.toContain(assessment);
   });

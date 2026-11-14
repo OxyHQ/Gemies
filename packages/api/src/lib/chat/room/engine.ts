@@ -1,3 +1,12 @@
+import {
+  RoomRequestSupersededError,
+  type RoomReactionContribution,
+  assertObligationBinding,
+  roomRequestDigest,
+  validateObligationSelection,
+  type RoomObligationPlan,
+  type RoomSelectionResult,
+} from './obligations.js';
 /**
  * The room engine: one STEP of a group room's chain (ADR 0025).
  *
@@ -5,7 +14,7 @@
  * and each step is a job (`queue.ts`): take the room's lock, check the chain is still the latest,
  * read the transcript as it is NOW, run the member's turn (`runAgentTurn`, so credits, memory per
  * actor and typed failures are the agent turn's own), store the reply, publish what happened, decide
- * who speaks next (structured v2 selection; legacy jobs drain through `planNext`) and enqueue that step. Nothing here knows about HTTP.
+ * who speaks next (structured selection; legacy jobs drain through `planNext`) and enqueue that step. Nothing here knows about HTTP.
  *
  * ## Failure semantics
  *
@@ -17,7 +26,7 @@
  * answer twice.
  */
 
-import type { RoomDecision, RoomSelectionInput, RoomSpeakerDecision } from './decision.js';
+import type { RoomSelectionInput, RoomSpeakerDecision } from './decision.js';
 import { validateRoomDecision } from './decision.js';
 import { randomUUID } from 'node:crypto';
 import type { HydratedAgent } from '../../agent-identity.js';
@@ -49,8 +58,10 @@ import type { prepareAgentReactionTurn } from '../reactions/agent-runtime.js';
 
 /** One step of a chain, as the queue carries it. JSON only: it crosses Redis. */
 export interface RoomJobData {
-  /** v1 jobs drain on the legacy queue; only v2 jobs are created now. */
-  readonly version?: 2;
+  /** New admissions are v3; v2 and v1 jobs drain with their original selection contract. */
+  readonly version?: 2 | 3;
+  readonly obligationPlan?: RoomObligationPlan;
+  readonly requestDigest?: string;
   readonly phase?: 'select' | 'speak';
   readonly decision?: RoomSpeakerDecision;
   readonly userId: string;
@@ -116,7 +127,13 @@ export interface RoomEngineDeps {
     actorId: string,
     turnId: string,
   ) => Promise<void>;
-  readonly select?: (input: RoomSelectionInput) => Promise<RoomDecision>;
+  readonly reactionContributions?: (
+    userId: string,
+    conversationId: string,
+    turnIds: readonly string[],
+  ) => Promise<readonly RoomReactionContribution[]>;
+  readonly currentRoster?: (data: RoomJobData) => Promise<readonly RoomMember[]>;
+  readonly select?: (input: RoomSelectionInput) => Promise<RoomSelectionResult>;
   readonly lock: RoomLock;
   readonly publish: (event: RoomEvent) => Promise<void> | void;
   /** Queues the next step. */
@@ -141,6 +158,7 @@ export interface RoomEngineDeps {
      * kept on its own message as a gemie's answer to another gemie is (ADR 0042), so a reload and a share show them where
      * they were seen live. Never its other tools: their results are the person's data.
      */
+    readonly expectedPersonRequest?: { id: string; content: unknown };
     readonly toolInvocations?: readonly ToolInvocation[];
   }) => Promise<StoredReply>;
   readonly now: () => number;
@@ -175,6 +193,7 @@ async function storeWithRetry(
     try {
       return await deps.storeReply(input);
     } catch (error: unknown) {
+      if (error instanceof RoomRequestSupersededError) throw error;
       lastError = error;
       log.general.warn(
         { err: error, conversationId: input.conversationId, attempt: attempt + 1 },
@@ -201,6 +220,18 @@ export function processRoomStep(data: RoomJobData, deps: RoomEngineDeps): Promis
   return deps.lock.run(roomKeyOf(data.userId, data.conversationId), () => runStep(data, deps));
 }
 
+async function requestCurrent(data: RoomJobData, deps: RoomEngineDeps) {
+  if (
+    isSuperseded(data.triggerId, await deps.latestPersonMessageId(data.userId, data.conversationId))
+  )
+    return false;
+  if (data.version !== 3) return true;
+  const row = (await deps.loadTranscript(data.userId, data.conversationId)).find(
+    (r) => r.id === data.triggerId,
+  );
+  return row?.role === 'user' && roomRequestDigest(row.content) === data.requestDigest;
+}
+
 async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomStepOutcome> {
   const { userId, conversationId, triggerId } = data;
   // Events leave in the order they were made: a delta never overtakes the one before it.
@@ -222,7 +253,8 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
   if (isSuperseded(triggerId, latest)) return end('superseded', 'skipped');
 
   const since = new Date(deps.now() - ROOM_REPLY_WINDOW_MS);
-  if (roomRateExceeded(await deps.repliesSince(userId, conversationId, since))) {
+  const rateExceeded = roomRateExceeded(await deps.repliesSince(userId, conversationId, since));
+  if (data.version !== 3 && rateExceeded) {
     return end('rate_limited', 'ended');
   }
 
@@ -230,11 +262,55 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
   const triggerIndex = rows.findIndex((row) => row.id === triggerId);
   if (triggerIndex === -1) return end('superseded', 'skipped');
 
-  if (data.version === 2) {
-    if (data.turns >= MAX_TURNS_PER_MESSAGE) return end('turn_cap', 'ended');
-    if (data.replies >= MAX_REPLIES_PER_MESSAGE) return end('reply_cap', 'ended');
+  if (data.version === 3) {
+    if (data.requestDigest !== roomRequestDigest(rows[triggerIndex]!.content))
+      return end('superseded', 'skipped');
+    if (deps.currentRoster) data = { ...data, roster: await deps.currentRoster(data) };
+    if (data.obligationPlan) {
+      try {
+        assertObligationBinding(data.obligationPlan, { ...data, rows });
+      } catch {
+        return end('superseded', 'skipped');
+      }
+    }
+  }
+  const replyId = replyIdOf(triggerId, data.turns);
+  const alreadyStored = rows.find((row) => row.clientMessageId === replyId);
+  const reactionTurnId = agentReactionTurnId(replyId, {
+    id: rows[triggerIndex]!.clientMessageId ?? triggerId,
+    content: rows[triggerIndex]!.content,
+  });
+  // Replaying a committed turn consumes neither another contribution nor another actor turn.
+  const completedReaction =
+    data.version === 3 && data.phase === 'speak' && !alreadyStored
+      ? await deps.reactionCompleted?.(userId, conversationId, data.speakerId, reactionTurnId)
+      : undefined;
+  const replay =
+    data.version === 3 &&
+    data.phase === 'speak' &&
+    (alreadyStored?.agentId === data.speakerId || completedReaction === true);
+  if (data.version === 3 && rateExceeded && !replay) return end('rate_limited', 'ended');
+  if (data.version !== undefined) {
+    if (!replay && data.turns >= MAX_TURNS_PER_MESSAGE) return end('turn_cap', 'ended');
+    if (!replay && data.replies >= MAX_REPLIES_PER_MESSAGE) return end('reply_cap', 'ended');
     if (data.phase === 'select') {
+      const reactionContributions =
+        data.version === 3
+          ? ((await deps.reactionContributions?.(
+              userId,
+              conversationId,
+              Array.from(
+                { length: Math.min(data.turns + 1, MAX_TURNS_PER_MESSAGE + 1) },
+                (_, turn) =>
+                  agentReactionTurnId(replyIdOf(triggerId, turn), {
+                    id: rows[triggerIndex]!.clientMessageId ?? triggerId,
+                    content: rows[triggerIndex]!.content,
+                  }),
+              ),
+            )) ?? [])
+          : undefined;
       const selectionInput: RoomSelectionInput = {
+        reactionContributions,
         userId,
         conversationId,
         triggerId,
@@ -243,30 +319,45 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
         lastSpeakerId: data.lastSpeakerId,
         depth: data.depth,
         space: data.space,
+        ...(data.version === 3
+          ? { obligationPlan: data.obligationPlan }
+          : { obligationMode: 'legacy' as const }),
       };
-      let decision: RoomDecision;
+      let decision: RoomSelectionResult;
       try {
         if (!deps.select) throw new Error('No room selector configured');
-        decision = validateRoomDecision(await deps.select(selectionInput), selectionInput);
+        const selected = await deps.select(selectionInput);
+        const authorized = validateRoomDecision(selected, selectionInput);
+        if (data.version === 3) {
+          if (!selected.obligationPlan) throw new Error('Room obligation plan missing');
+          assertObligationBinding(selected.obligationPlan, selectionInput);
+          decision = validateObligationSelection(
+            selected.obligationPlan.obligations,
+            authorized,
+            selectionInput,
+          );
+        } else decision = authorized;
       } catch {
-        if (isSuperseded(triggerId, await deps.latestPersonMessageId(userId, conversationId))) {
+        if (!(await requestCurrent(data, deps))) {
           return end('superseded', 'skipped');
         }
         // Model errors may contain prompts. Log only identifiers, never the raw generation error.
         log.agents.warn({ conversationId, triggerId }, 'Room selection failed');
         return end('error', 'ended');
       }
-      if (isSuperseded(triggerId, await deps.latestPersonMessageId(userId, conversationId))) {
+      if (!(await requestCurrent(data, deps))) {
         return end('superseded', 'skipped');
       }
-      if (decision.action === 'idle') return end('done', 'ended');
+      if (decision.action === 'idle')
+        return end(decision.waitingForPerson ? 'waiting_person' : 'done', 'ended');
       if (decision.action === 'unavailable') return end('error', 'ended');
       const speaker = decision.agentId!;
       await deps.enqueue({
         ...data,
         phase: 'speak',
+        ...(data.version === 3 ? { obligationPlan: decision.obligationPlan } : {}),
         speakerId: speaker,
-        decision: { ...decision, action: decision.action, agentId: speaker },
+        decision: { action: decision.action, agentId: speaker, reason: decision.reason },
         handedByAgentId: decision.reason === 'handoff' ? data.lastSpeakerId : null,
         depth: data.depth + (decision.reason === 'handoff' ? 1 : 0),
         turns: data.turns + 1,
@@ -277,24 +368,16 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
     if (data.phase !== 'speak' || !data.decision || data.decision.agentId !== data.speakerId) {
       return end('error', 'ended');
     }
-    if (infoOf(data.roster, data.speakerId)?.available === false) return end('error', 'ended');
   }
 
   const member = infoOf(data.roster, data.speakerId);
-  const replyId = replyIdOf(triggerId, data.turns);
-  const alreadyStored = rows.find((row) => row.clientMessageId === replyId);
-
-  const reactionTurnId = agentReactionTurnId(replyId, {
-    id: rows[triggerIndex]!.clientMessageId ?? triggerId,
-    content: rows[triggerIndex]!.content,
-  });
   let reply: string | { reactionOnly: true } | null = null;
   if (alreadyStored) {
     // A retried step whose reply was stored before the failure: it spoke, do not answer twice.
-    if (data.version === 2 && alreadyStored.agentId !== data.speakerId)
+    if (data.version !== undefined && alreadyStored.agentId !== data.speakerId)
       return end('error', 'ended');
     reply = textOf(alreadyStored.content);
-    if (data.version === 2 && member) {
+    if (data.version !== undefined && member) {
       // The database commit may have preceded a lost event or failed next-job enqueue. Replay the
       // SAME turn and stored message so every subscriber converges, without another turn.
       await emit('alia.agent_start', {
@@ -320,9 +403,10 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
       });
     }
   } else if (
-    data.version === 2 &&
+    data.version !== undefined &&
     member &&
-    (await deps.reactionCompleted?.(userId, conversationId, member.info.id, reactionTurnId))
+    (completedReaction ??
+      (await deps.reactionCompleted?.(userId, conversationId, member.info.id, reactionTurnId)))
   ) {
     await deps.replayReactions?.(userId, conversationId, member.info.id, reactionTurnId);
     await emit('alia.agent_start', {
@@ -333,15 +417,17 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
     await emit('alia.agent_end', { consultId: replyId, status: 'completed', reactionOnly: true });
     reply = { reactionOnly: true };
   } else if (member) {
+    if (member.available === false) return end('error', 'ended');
     reply = await speak({ data, deps, member, rows, triggerIndex, replyId, emit });
   }
 
-  if (data.version === 2) {
-    if (isSuperseded(triggerId, await deps.latestPersonMessageId(userId, conversationId))) {
+  if (data.version !== undefined) {
+    if (!(await requestCurrent(data, deps))) {
       return end('superseded', 'skipped');
     }
     if (reply === null) return end('error', 'ended');
-    if (data.decision?.action === 'clarify') return end('done', 'ended');
+    if (data.decision?.action === 'clarify')
+      return end(data.version === 3 ? 'waiting_person' : 'done', 'ended');
     const { decision: _decision, ...nextData } = data;
     await deps.enqueue({
       ...nextData,
@@ -397,10 +483,10 @@ async function speak(input: {
 }): Promise<string | { reactionOnly: true } | null> {
   const { data, deps, member, rows, triggerIndex, replyId, emit } = input;
   const { info } = member;
-  const consultId = data.version === 2 ? replyId : randomUUID();
+  const consultId = data.version !== undefined ? replyId : randomUUID();
   const roster = data.roster.map((m) => m.info);
   const originalText = textOf(rows[triggerIndex]?.content);
-  const personText = data.version === 2 ? originalText : originalText.trim();
+  const personText = data.version !== undefined ? originalText : originalText.trim();
 
   const fail = async (error: Record<string, unknown>) => {
     await emit('alia.agent_end', { consultId, status: 'failed', error });
@@ -409,14 +495,7 @@ async function speak(input: {
 
   try {
     const agent = await deps.loadAgent(info.id);
-    if (
-      data.version === 2 &&
-      isSuperseded(
-        data.triggerId,
-        await deps.latestPersonMessageId(data.userId, data.conversationId),
-      )
-    )
-      return null;
+    if (data.version !== undefined && !(await requestCurrent(data, deps))) return null;
     await emit('alia.agent_start', {
       consultId,
       agent: {
@@ -431,7 +510,7 @@ async function speak(input: {
     if (agent === null) return await fail({ code: 'agent_unavailable' });
     const trigger = rows[triggerIndex]!;
     const conversationReaction =
-      data.version === 2
+      data.version !== undefined
         ? await deps.prepareReaction?.({
             userId: data.userId,
             conversationId: data.conversationId,
@@ -479,7 +558,7 @@ async function speak(input: {
       agent,
       ...(conversationReaction ? { conversationReaction } : {}),
       task:
-        data.version === 2
+        data.version !== undefined
           ? personText
           : roomPrompt({
               self: info,
@@ -490,7 +569,7 @@ async function speak(input: {
               space: data.space ?? null,
             }),
       history,
-      ...(data.version === 2
+      ...(data.version !== undefined
         ? {
             room: {
               instructions: roomInstructions({
@@ -512,7 +591,7 @@ async function speak(input: {
       payerOxyUserId: data.userId,
       observer: {
         onTextDelta: (content) =>
-          data.version === 2
+          data.version !== undefined
             ? void emit('alia.agent_delta', { consultId, content })
             : gate.push(content),
         onToolCall: ({ toolCallId, name, input: args }) => {
@@ -529,23 +608,17 @@ async function speak(input: {
         },
       },
     });
-    const passed = data.version !== 2 && gate.finish();
+    const passed = data.version === undefined && gate.finish();
 
     if (outcome.error !== undefined || (outcome.response.trim() === '' && !outcome.reactionOnly)) {
       return await fail({ code: 'agent_unavailable' });
     }
-    if (data.version !== 2 && (passed || isPass(outcome.response))) {
+    if (data.version === undefined && (passed || isPass(outcome.response))) {
       await emit('alia.agent_end', { consultId, status: 'declined' });
       return null;
     }
 
-    if (
-      data.version === 2 &&
-      isSuperseded(
-        data.triggerId,
-        await deps.latestPersonMessageId(data.userId, data.conversationId),
-      )
-    ) {
+    if (data.version !== undefined && !(await requestCurrent(data, deps))) {
       await emit('alia.agent_end', { consultId, status: 'declined' });
       return null;
     }
@@ -560,6 +633,9 @@ async function speak(input: {
       clientMessageId: replyId,
       content,
       agentInfo: info,
+      ...(data.version === 3
+        ? { expectedPersonRequest: { id: data.triggerId, content: rows[triggerIndex]!.content } }
+        : {}),
       ...(outcome.canvas ? { toolInvocations: outcome.canvas } : {}),
     });
     await emit('alia.agent_end', {
@@ -580,6 +656,10 @@ async function speak(input: {
     });
     return content;
   } catch (error: unknown) {
+    if (error instanceof RoomRequestSupersededError) {
+      await emit('alia.agent_end', { consultId, status: 'declined' });
+      return null;
+    }
     if (error instanceof RoomStoreError) {
       // Infrastructure, not the member: close its turn for the watchers, then let the queue retry the
       // step (the reply id is derived from the step, so a retry that finds it stored does not repeat).
