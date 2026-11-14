@@ -196,18 +196,24 @@ const settled = () => H.updates.at(-1) ?? {};
 describe('a run that reaches its token budget', () => {
   it('writes its answer from what it found, without tools, within the budget', async () => {
     H.script = [
-      listsEmails(12_000),
-      listsEmails(12_000),
+      listsEmails(8_000),
+      listsEmails(8_000),
       () => ({ text: 'Hola Nate 👋 Tienes 20 emails sin leer.', usage: { totalTokens: 3_000 } }),
     ];
 
     await runAgentSession('run-1');
 
-    // Two steps, then no third: the budget had room for one more call, which is the answer.
+    // Two steps, then no third: the budget had room for two more calls, that step and the answer.
     expect(H.calls).toHaveLength(3);
-    const answer = H.calls[2] as { tools?: unknown; messages: Array<{ content: unknown }> };
+    const answer = H.calls[2] as {
+      tools?: unknown;
+      maxOutputTokens?: number;
+      messages: Array<{ content: unknown }>;
+    };
     expect(answer.tools).toBeUndefined();
     expect(answer.messages.at(-1)?.content).toBe(SYNTHESIS_REQUEST);
+    // What it may write is what the budget has left, at most a reply's length.
+    expect(answer.maxOutputTokens).toBeLessThanOrEqual(2_048);
     expect(settled()).toMatchObject({
       status: 'completed',
       result: 'Hola Nate 👋 Tienes 20 emails sin leer.',
@@ -216,7 +222,7 @@ describe('a run that reaches its token budget', () => {
   });
 
   it('fails, never "completed" with its status line, when it cannot write one', async () => {
-    H.script = [listsEmails(12_000), listsEmails(12_000), () => ({ text: '', usage: {} })];
+    H.script = [listsEmails(8_000), listsEmails(8_000), () => ({ text: '', usage: {} })];
 
     await runAgentSession('run-1');
 
@@ -224,6 +230,15 @@ describe('a run that reaches its token budget', () => {
       status: 'failed',
       result: 'Stopped at the token budget without an answer',
     });
+  });
+
+  it('makes no answer call the budget cannot hold, and fails', async () => {
+    H.script = [listsEmails(29_800)];
+
+    await runAgentSession('run-1');
+
+    expect(H.calls).toHaveLength(1);
+    expect(settled()).toMatchObject({ status: 'failed' });
   });
 });
 

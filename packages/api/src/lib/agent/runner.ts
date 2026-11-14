@@ -65,6 +65,7 @@ import {
 } from '../../db/automation/automationDefinitionRepository.js';
 import { buildContextMessages, buildSystemPrompt } from './run-context.js';
 import { owedAnswerRequest } from '../chat/tool-synthesis.js';
+import { estimateMessageTokens, estimateTokenCount } from '../token-counter.js';
 import { holdRunLease, type RunLease } from './run-lease.js';
 import { runtimeGemieAccountId } from '../gemie-oxy-actor.js';
 
@@ -435,8 +436,9 @@ async function driveAgentSession(
   /** Set when the run stopped short of an answer. */
   let stopped: RunStop | null = null;
   /**
-   * The most one step has cost. The loop stops while the budget still holds one more, so a run
-   * that ran out of room writes its answer within its budget instead of past it.
+   * The most one step has cost. The loop takes another step only while the budget still holds two
+   * more calls, that step and the answer after it, so a run that runs out of room writes its
+   * answer within its budget instead of past it.
    */
   let largestStepTokens = 0;
 
@@ -492,7 +494,7 @@ async function driveAgentSession(
       orchestrated === null &&
       !stateMachine.isTerminal() &&
       totalSteps < session.config.maxSteps &&
-      totalTokens + largestStepTokens < session.config.maxTokens
+      totalTokens + 2 * largestStepTokens < session.config.maxTokens
     ) {
       if (lease.lost) {
         abandoned = true;
@@ -785,7 +787,7 @@ async function driveAgentSession(
       stopped ??=
         totalSteps >= session.config.maxSteps
           ? 'steps'
-          : totalTokens + largestStepTokens >= session.config.maxTokens
+          : totalTokens + 2 * largestStepTokens >= session.config.maxTokens
             ? 'tokens'
             : null;
     }
@@ -794,6 +796,7 @@ async function driveAgentSession(
         agentModelId: agent.modelId,
         system: systemPrompt,
         messages: buildContextMessages(eventStream, todoManager, stateMachine, iteration),
+        remainingTokens: session.config.maxTokens - totalTokens,
       });
       totalTokens += answer.tokens;
       if (answer.text) {
@@ -943,22 +946,46 @@ async function driveAgentSession(
   }
 }
 
+/** The most an owed answer writes: a reply to the person, not a report. */
+const OWED_ANSWER_MAX_OUTPUT_TOKENS = 2_048;
+
 /**
  * The answer a run owes when it stopped short: one tools-disabled call over everything it observed
- * (`owedAnswerRequest`, the chat's own synthesis request), in the person's language. Its tokens
- * count against the run; an inference failure here is no answer, never a thrown run.
+ * (`owedAnswerRequest`, the chat's own synthesis request), in the person's language. It spends
+ * only what the run's budget has left: its input is estimated first, and a call that would not fit
+ * is not made (the run then has no answer). Its tokens count against the run; an inference failure
+ * here is no answer, never a thrown run.
  */
 async function writeOwedAnswer(input: {
   agentModelId: string | null | undefined;
   system: string;
   messages: ModelMessage[];
+  remainingTokens: number;
 }): Promise<{ text: string; tokens: number }> {
+  const inputTokens =
+    estimateTokenCount(input.system) +
+    input.messages.reduce(
+      (sum, message) =>
+        sum +
+        estimateMessageTokens(
+          message.role,
+          typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+        ),
+      0,
+    );
+  const outputTokens = Math.min(OWED_ANSWER_MAX_OUTPUT_TOKENS, input.remainingTokens - inputTokens);
+  if (outputTokens < OWED_ANSWER_MAX_OUTPUT_TOKENS / 4) return { text: '', tokens: 0 };
   const resolved = await resolveStoredModel(input.agentModelId).catch(() => null);
   if (!resolved) return { text: '', tokens: 0 };
   try {
     const result = await generateText(
       owedAnswerRequest(
-        { model: getAIModel(resolved, 'agent_run'), system: input.system, maxRetries: 0 },
+        {
+          model: getAIModel(resolved, 'agent_run'),
+          system: input.system,
+          maxRetries: 0,
+          maxOutputTokens: outputTokens,
+        },
         input.messages,
       ),
     );

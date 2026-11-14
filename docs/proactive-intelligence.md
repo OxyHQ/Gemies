@@ -200,8 +200,9 @@ a run. A **heartbeat** wakes the agent once with the list, and only when somethi
 - **What a requested run delivers**: its answer, never its status. A run that
   reaches its token budget, its steps, its time or repeated tool errors writes
   its answer from what it found (one tools-disabled call, the chat's synthesis
-  request); the loop stops while the budget still holds one more step, so that
-  call fits. A run with no words at all is `failed` and delivers a typed failure
+  request); the loop takes a step only while the budget holds two more calls
+  (that step and the answer), and the answer's output is capped to what the
+  budget has left after its estimated input; one that cannot fit is not made. A run with no words at all is `failed` and delivers a typed failure
   (`{ type: 'failure', code: 'task_unfinished' }`), which the app draws in the
   reader's language (`@gemies/sdk` 6.5.0) and which is relayed to no channel; the
   notification names what was asked. `runResultMessage` in
