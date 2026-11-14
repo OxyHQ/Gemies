@@ -257,24 +257,17 @@ export class DiscordBotAdapter implements BotAdapter {
 
         const thinkingMsg = await message.reply('Thinking...');
 
-        // Platform instructions as first system message
-        const apiMessages = [
-          {
-            role: 'system',
-            content:
-              'The user is chatting via Discord. Be concise and friendly. Use Discord markdown. Keep responses under 1800 characters when possible.',
-          },
-          ...messages_history,
-        ];
-
         const result = await apiClient.chatCompletion(
           { kind: 'bot', platformUserId: botUser.platformUserId },
-          apiMessages,
+          messages_history,
           {
             // Unset, or no longer in the catalogue, means the request names no
             // model and the server's default applies. See `shared/catalogue.ts`.
             model: await apiClient.requestModel(botUser.preferredModel),
             conversationId,
+            // The request's context, never a message of the conversation.
+            clientContext:
+              'The user is chatting via Discord. Be concise and friendly. Use Discord markdown. Keep responses under 1800 characters when possible.',
           },
         );
 

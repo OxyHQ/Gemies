@@ -846,9 +846,13 @@ export async function buildChatRequestContext(
     reasoningEffort = body.reasoningEffort;
   }
 
-  // Extract client context from first system message if present (from editor/client)
+  // What the client says about where the turn happens: its `clientContext` (a channel's, an
+  // embedding app's), or the first system message of an OpenAI-shaped request. Context of the
+  // turn, never a message of the conversation: the saver stores neither.
   let clientContext: string | undefined;
-  if (messages.length > 0 && messages[0].role === 'system') {
+  if (typeof body.clientContext === 'string' && body.clientContext.trim() !== '') {
+    clientContext = body.clientContext;
+  } else if (messages.length > 0 && messages[0].role === 'system') {
     clientContext = messages[0].content as string;
   }
 

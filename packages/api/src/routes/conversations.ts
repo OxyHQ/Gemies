@@ -31,7 +31,6 @@ import {
   deleteMessages,
   listMessages,
   replaceMessages,
-  toStoredMessage,
   voteMessage,
   type MessageRow,
   type NewMessage,
@@ -41,6 +40,7 @@ import {
   shareConversation,
 } from '../db/chat/conversationShareRepository.js';
 import { keepAgentOutreach } from '../lib/conversation-saver.js';
+import { toClientMessages } from '../lib/chat/client-message.js';
 import {
   CONVERSATION_SOURCES,
   MESSAGE_ROLES,
@@ -486,7 +486,7 @@ router.get('/:id', authenticateTokenOrApiKey, async (req: Request, res: Response
 
     res.json({
       ...summary,
-      messages: rows.map(toStoredMessage),
+      messages: toClientMessages(rows),
       realtimeSeq,
     });
   } catch (error: unknown) {

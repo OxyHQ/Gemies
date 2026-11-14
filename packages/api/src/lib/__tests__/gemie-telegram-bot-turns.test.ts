@@ -406,12 +406,19 @@ describe('asked for its person’s apps in a turn that cannot reach them', () =>
       { from: { ...stranger(), languageCode: 'es' } },
     );
     expect(said).toContain('once its person links their Telegram');
-    expect(said).toContain('Vincular mi Telegram');
+    // Steps for the model to retell in the sender's language, never a screen label in English
+    // quoted inside an answer in Spanish.
+    expect(said).toContain('Telegram bot section');
+    expect(said).not.toContain('Link my Telegram');
+    expect(said).not.toContain('›');
     expect(state.model[0]?.system).toContain('never say the capability does not exist');
   });
 
   it('tells anyone else on a linked bot that only its person, in private, can', async () => {
-    expect(await access({}, { from: stranger() })).toContain('This sender is not that account');
+    const said = await access({}, { from: stranger() });
+    expect(said).toContain('This sender is not that account');
+    // Linked already: how to link is never said.
+    expect(said).not.toContain('Telegram bot section');
   });
 
   it('in a group, says never there', async () => {

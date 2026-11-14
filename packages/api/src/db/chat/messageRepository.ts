@@ -67,21 +67,18 @@ export interface MessageRow {
 }
 
 /**
- * What `GET /conversations/:id` puts on the wire.
+ * A stored message as the SERVER reads it back: the voice call's history, a room's transcript,
+ * the saver's own reconciliation. Never what a client receives: every client-facing read
+ * serializes through `lib/chat/client-message.ts`, an allow-list over the row.
  *
- * ## The field the client reads is `id`, and it is the CLIENT's id
+ * ## `id` is the CLIENT's id
  *
- * The AI SDK's client-assigned id travels in a field literally called `id`,
- * beside `_id`. `packages/app/src/features/chat/runtime/use-conversations.ts` declares
- * `Message.id` and `components/chat-interface.tsx:605` puts that value in the
- * vote URL, so `id` on the wire has to keep meaning the client's id — not the
- * row's primary key, which is what a naive `_id -> id` rename would have made
- * it. The column is `client_message_id` precisely so the two cannot be confused
- * in the schema; here is where the wire name is restored.
+ * The AI SDK's client-assigned id travels in a field literally called `id`, and the vote, reaction
+ * and read-aloud routes find a message by it, so `id` keeps meaning the client's id, not the row's
+ * primary key. The column is `client_message_id` precisely so the two cannot be confused in the
+ * schema; here is where the name is restored.
  *
- * Optional fields are OMITTED rather than sent as `null`, because `.lean()` left
- * an unset optional off the document entirely and a client distinguishing
- * "absent" from "null" would see a change that is invisible from the server.
+ * Optional fields are OMITTED rather than sent as `null`.
  */
 export interface StoredMessage {
   readonly id?: string;
@@ -239,9 +236,10 @@ export async function listMessagesFromSeq(
  * and a line per file with its transcript, so a later turn knows what was sent
  * without the media being read again.
  *
- * The `desc` + reverse is the source's own shape. `created_at DESC` alone is not
- * a total order — two turns of one exchange can land in the same millisecond —
- * so `seq DESC NULLS LAST` breaks the tie ahead of it, and the webhook writers give their two turns distinct timestamps.
+ * Newest first by position, then reversed: `seq` is the thread's order, the one every other read
+ * uses (`listMessages`). A message's `created_at` is when it was written, and a thread whose times
+ * a rewrite flattened and that got some back (0172) is not in time order; a legacy row without
+ * `seq` sorts as the oldest, by its time.
  */
 export async function listRecentTurns(
   db: ApiDatabase,
@@ -253,7 +251,7 @@ export async function listRecentTurns(
     .select({ role: messages.role, content: messages.content })
     .from(messages)
     .where(and(eq(messages.oxyUserId, oxyUserId), eq(messages.conversationId, conversationId)))
-    .orderBy(desc(messages.createdAt), sql`${messages.seq} desc nulls last`)
+    .orderBy(sql`${messages.seq} desc nulls last`, desc(messages.createdAt))
     .limit(limit);
   return rows
     .reverse()
@@ -645,7 +643,7 @@ export async function findClientMessageContent(
 
 /** How many messages this user holds in a thread. */
 export async function countMessages(
-  db: ApiDatabase,
+  db: Executor,
   oxyUserId: string,
   conversationId: string,
 ): Promise<number> {
@@ -837,7 +835,16 @@ export async function rewriteMessages(
     const stored = await hydrateReactionRows(tx, oxyUserId, conversationId, rawStored);
     const byId = new Map(stored.map((row) => [row.clientMessageId ?? row.id, row]));
     const retained = new Set<string>();
-    const rows = build(stored).map((row, seq) => {
+    // A message is stored once per thread (`messages_oxy_user_conversation_client_message_key`):
+    // a history that repeats an id keeps its first copy.
+    const seen = new Set<string>();
+    const built = build(stored).filter((row) => {
+      if (row.clientMessageId === undefined) return true;
+      if (seen.has(row.clientMessageId)) return false;
+      seen.add(row.clientMessageId);
+      return true;
+    });
+    const rows = built.map((row, seq) => {
       const previous =
         row.clientMessageId === undefined ? undefined : byId.get(row.clientMessageId);
       // A client may omit display metadata; that does not change who authored
@@ -870,6 +877,12 @@ export async function rewriteMessages(
         conversationId,
         oxyUserId,
         seq,
+        // A message was written when it was first stored, whatever rewrites the thread later: a
+        // rewrite used to stamp every message with its own time, and a whole thread then read as
+        // written in one millisecond.
+        ...(previous && previous.role === effectiveRow.role
+          ? { createdAt: previous.createdAt }
+          : {}),
         ...(preserve
           ? {
               ...(previous.vote === null ? {} : { vote: previous.vote as MessageVote }),
@@ -1055,6 +1068,27 @@ export async function clientMessageExists(
     )
     .limit(1);
   return row !== undefined;
+}
+
+/** Which of these client ids this person already holds in this thread. */
+export async function existingClientMessageIds(
+  db: Executor,
+  oxyUserId: string,
+  conversationId: string,
+  clientMessageIds: readonly string[],
+): Promise<Set<string>> {
+  if (clientMessageIds.length === 0) return new Set();
+  const rows = await db
+    .select({ id: messages.clientMessageId })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.oxyUserId, oxyUserId),
+        eq(messages.conversationId, conversationId),
+        inArray(messages.clientMessageId, [...clientMessageIds]),
+      ),
+    );
+  return new Set(rows.flatMap((row) => (row.id === null ? [] : [row.id])));
 }
 
 // ---------------------------------------------------------------------------

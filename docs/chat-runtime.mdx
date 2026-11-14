@@ -493,10 +493,45 @@ is still showing sends each message with its `id` and names the reply it is
 drawing in `assistantMessageId`; a consulted agent's answers in that turn are
 stored as `<assistantMessageId>-agent-<n>`, in the order of their
 `alia.agent_start` events (`docs/agent-embedding.md` §4). A message sent
-without an id is named by its position, `msg-<seq>`. A malformed
+without an id keeps the id of the stored message it is (same role and content,
+in order), or gets a new UUIDv7; never its position, which a rewrite gave to
+another message. An id is stored once per conversation
+(`messages_oxy_user_conversation_client_message_key`): a writer appends only the
+ids a conversation lacks, so a channel's retried delivery keeps its message once.
+A rewrite keeps every message's `createdAt`, the time it was first stored. A malformed
 `assistantMessageId` (not a string of 1–128 characters) is refused with `400
 invalid_request`. A turn is stored when it completes, so a failed turn has no
 row to address.
+
+A conversation holds only its person's and its gemie's messages
+(`messages_role_check`: `user`, `assistant`). A system message in a request is
+the turn's context (the first system message of an OpenAI-shaped request, or the
+`clientContext` field a channel and an embedding app send), merged into the
+system prompt and never stored.
+
+### What a client receives
+
+Every client-facing read of a conversation serializes a message through ONE
+allow-list, `lib/chat/client-message.ts`: `GET /conversations/:id`, a gemie
+thread's pages and the realtime `conversation` frame's `appended`, for every
+conversation (the app's, a channel's, a group room, a gemie-to-gemie transcript).
+A message is `{ id, role, content, toolInvocations?, reactions?, reactionRevision,
+agentInfo?, seq?, createdAt }`: `role` is `user` or `assistant` (any other row is
+left out); `content` is a string or its `text`, `image_url` and `file` parts; each
+tool call is `{ toolCallId, toolName, state, args?, result? }` with its result in
+the client's form (`clientToolResult` in `lib/tools/result-truncation.ts`): the
+tool's own result as the model read it (a host app's card draws from it), never
+an image's bytes, the same form the live `alia.tool_result` frame carries and the
+stored call keeps. A result too large for the model's budget is compacted (no
+`null` field, no `_id` echoing `id`), then its lists are cut to their head with a
+marker; it stays JSON, never an escaped preview string. The vote and an
+interrupted answer's offset are the server's and are not sent.
+`lib/chat/__tests__/client-message.test.ts` pins the shape. A share link is
+narrower still (`lib/shared-conversation.ts`).
+
+A reply written over several steps is one text: each step's words start a new
+paragraph (`\n\n`) after the words before them, live and in the stored reply
+(`lib/chat/stream-runner.ts`).
 
 Usage records persist the requested model and the revision-pinned model reference that
 served it. Provider/deployment detail remains internal to the Oxy/Kaana receipt
