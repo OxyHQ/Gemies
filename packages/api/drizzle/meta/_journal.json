@@ -1226,6 +1226,13 @@
       "when": 1794652866174,
       "tag": "0174_messages_role_check_validate",
       "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1794657832861,
+      "tag": "0175_channel_tasks_renew_before_they_lapse",
+      "breakpoints": true
     }
   ]
 }

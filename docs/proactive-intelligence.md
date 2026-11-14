@@ -147,6 +147,10 @@ and finished from the store:
   the person through the Telegram they linked to the gemie (`sendTelegramMessage`), and from their
   Telegram Business account to a contact (`sendAccountMessage`, where Telegram allows it). The link
   never expires on Gemies' side (ADR 0037).
+- **A channel's authority never lapses unseen.** Each channel's Oxy task keeps the expiry Oxy gave
+  it; the app renews it with the person's session within 30 days of it, and the minute sweep marks
+  one that lapsed or that Oxy refused and tells the person once, with a one-tap reauthorisation
+  ([Integrations](./integrations.mdx#channel-tasks-are-renewed-before-they-lapse)).
 - Redis is required in production: the API refuses to boot without `REDIS_URL`
   (`lib/boot-guards.ts`), because without it every queue runs jobs inline and a restart loses them.
 

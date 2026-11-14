@@ -150,3 +150,9 @@ account to the gemie it belonged to, which answers it; `0157` (post) does the sa
 replaced image linked while it drained, never overriding a choice made since, drops `agent_id` and
 removes `messaging` from every gemie's grants. Production held 0 connected accounts and 4 gemies with
 `messaging` when they were written.
+
+## Amendment (2026-11-14, ADR 0037): an account's task is renewed before it lapses
+
+An account's Oxy task keeps the expiry Oxy gave it and is renewed with the person's present session
+before it lapses, like every channel's; when renewal needs them, they are told once, with a one-tap
+reauthorisation. The decision is ADR 0037's amendment of 2026-11-14.

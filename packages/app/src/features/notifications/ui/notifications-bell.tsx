@@ -3,12 +3,15 @@ import {
   useMarkAsRead,
   useNotifications,
 } from '@/features/notifications/runtime/use-notifications';
-import { notificationCenterItems } from '@/features/notifications/model/notification-center-items';
+import {
+  notificationCenterItems,
+  notificationHref,
+} from '@/features/notifications/model/notification-center-items';
 import { notificationIcon } from '@/features/notifications/ui/notification-icons';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { NotificationBell } from '@oxy.so/bloom/app-shell';
 import { useOxy } from '@oxy.so/services/ui/client';
-import { useRouter } from 'expo-router';
+import { type Href, useRouter } from 'expo-router';
 import React from 'react';
 
 /**
@@ -16,7 +19,7 @@ import React from 'react';
  * Bloom's notification center in the popover under it. Signed out there is no inbox, so nothing
  * is drawn.
  *
- * Opening an item's "open" action marks it read and goes to its conversation; "Mark all read"
+ * Opening an item's "open" action marks it read and goes where it points (`notificationHref`); "Mark all read"
  * clears the count. The center keeps its own tabs and read state.
  */
 export const NotificationsBell = React.memo(function NotificationsBell() {
@@ -39,7 +42,8 @@ export const NotificationsBell = React.memo(function NotificationsBell() {
       if (actionId !== 'open') return;
       const notification = notifications?.find((item) => item._id === notificationId);
       if (notification?.status !== 'read') markAsRead.mutate(notificationId);
-      if (notification?.conversationId) router.push(`/(app)/c/${notification.conversationId}`);
+      const href = notification ? notificationHref(notification) : null;
+      if (href) router.push(href as Href);
     },
     [notifications, markAsRead, router],
   );

@@ -5,7 +5,14 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OxyToolExecutionContext } from '../tools/oxy-services.js';
 
-const state = vi.hoisted(() => ({ client: undefined as unknown }));
+const state = vi.hoisted(() => ({ client: undefined as unknown, refused: [] as string[] }));
+// The real refusal predicate over the real SDK's error; only the binding it lapses is observed.
+vi.mock('../oxy-task-authority.js', async (actual) => ({
+  ...(await actual<typeof import('../oxy-task-authority.js')>()),
+  standingTaskRefused: async (taskId: string) => {
+    state.refused.push(taskId);
+  },
+}));
 vi.mock('../oxy.js', () => ({
   get oxy() {
     return state.client;
@@ -25,7 +32,7 @@ let calls: Array<{
   authorization?: string;
   body: Record<string, unknown>;
 }>;
-let denied: { path: string; status: number } | undefined;
+let denied: { path: string; status: number; message?: string } | undefined;
 let module: typeof import('../tools/oxy-services.js');
 const context: OxyToolExecutionContext = {
   requesterAccountId: 'owned-user',
@@ -39,6 +46,7 @@ beforeEach(async () => {
   vi.resetModules();
   calls = [];
   denied = undefined;
+  state.refused = [];
   const catalog = () => ({
     schemaVersion: '1',
     appId: 'inbox',
@@ -79,7 +87,7 @@ beforeEach(async () => {
     res.setHeader('Content-Type', 'application/json');
     if (denied?.path === path) {
       res.writeHead(denied.status);
-      res.end(JSON.stringify({ error: 'synthetic refusal' }));
+      res.end(JSON.stringify({ error: 'synthetic refusal', message: denied.message }));
       return;
     }
     const data: Record<string, unknown> = {
@@ -205,4 +213,39 @@ describe('non-pilot catalog and ticket authority through installed SDK', () => {
       ]);
     },
   );
+
+  describe('a channel turn’s task', () => {
+    const channelContext: OxyToolExecutionContext = {
+      requesterAccountId: 'owned-user',
+      ownerAccountId: 'owned-user',
+      actor: { type: 'alia', ownerAccountId: 'owned-user' },
+      runId: 'owned-run',
+      taskId: 'channel-task',
+    };
+    async function invokeAsChannel() {
+      const tools = await module.buildOxyServiceTools('owned-user', channelContext);
+      const tool = tools.oxy_inbox__searchEmails as unknown as
+        | { execute(args: Record<string, unknown>): Promise<unknown> }
+        | undefined;
+      return tool ? tool.execute({}) : undefined;
+    }
+    const taskPath = '/capabilities/tasks/channel-task/execution-authorizations';
+
+    it('lapses the channel holding a task Oxy no longer honours', async () => {
+      denied = { path: taskPath, status: 403, message: 'Task authority is no longer active.' };
+      expect(await invokeAsChannel()).toMatchObject({ error: 'oxy_app_unavailable' });
+      await vi.waitFor(() => expect(state.refused).toEqual(['channel-task']));
+      expect(calls.some((c) => c.path === '/product/search')).toBe(false);
+    });
+
+    it('keeps the channel when Oxy refuses the operation, not the task', async () => {
+      denied = {
+        path: taskPath,
+        status: 403,
+        message: 'The resource must belong to the authenticated requester account.',
+      };
+      expect(await invokeAsChannel()).toMatchObject({ error: 'oxy_app_unavailable' });
+      expect(state.refused).toEqual([]);
+    });
+  });
 });

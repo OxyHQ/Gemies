@@ -2,7 +2,7 @@ import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { ApiDatabase } from '../index.js';
 import { bots, botUsers } from '../schema/bots.js';
 import { connectedAccountGrants, connectedAccounts } from '../schema/integrations.js';
-import { createOxyTask, revokeOxyTask } from '../../lib/oxy-task-authority.js';
+import { mintOxyTask, type OxyTask, revokeOxyTask } from '../../lib/oxy-task-authority.js';
 import { personAssistantActor } from '../../lib/gemie-oxy-actor.js';
 
 /** Run only from a controlled server process. Never return/log a stored bearer. */
@@ -10,7 +10,7 @@ export async function migrateChannelTaskAuthority(
   db: ApiDatabase,
   options: {
     apply: boolean;
-    createTask?: typeof createOxyTask;
+    createTask?: typeof mintOxyTask;
     revokeTask?: typeof revokeOxyTask;
   },
 ): Promise<{
@@ -20,7 +20,7 @@ export async function migrateChannelTaskAuthority(
   retry: number;
   changed: number;
 }> {
-  const create = options.createTask ?? createOxyTask;
+  const create = options.createTask ?? mintOxyTask;
   const revoke = options.revokeTask ?? revokeOxyTask;
   const rows = await db
     .select({
@@ -36,7 +36,7 @@ export async function migrateChannelTaskAuthority(
   const result = { candidates: rows.length, active: 0, reauthRequired: 0, retry: 0, changed: 0 };
   if (!options.apply) return result;
   for (const row of rows) {
-    let taskId: string | null = null;
+    let task: OxyTask | null = null;
     if (
       row.isLinked &&
       row.oxyUserId &&
@@ -47,7 +47,7 @@ export async function migrateChannelTaskAuthority(
       try {
         // Oxy verifies original shared-session provenance and account equality.
         // A matching account id alone never establishes first-party authority.
-        taskId = await create({
+        task = await create({
           accessToken: row.token,
           effectiveAccountId: row.oxyUserId,
           actor: personAssistantActor(row.oxyUserId),
@@ -66,8 +66,10 @@ export async function migrateChannelTaskAuthority(
     const updated = await db
       .update(botUsers)
       .set({
-        oxyTaskId: taskId,
-        oxyTaskState: taskId ? 'active' : 'reauth_required',
+        oxyTaskId: task?.id ?? null,
+        oxyTaskState: task ? 'active' : 'reauth_required',
+        // Dated as Oxy answered, so it is renewed before it lapses (`lib/channel-task-authority.ts`).
+        oxyTaskExpiresAt: task?.expiresAt ?? null,
         metadata: sql`${botUsers.metadata} - 'sessionToken'`,
       })
       .where(
@@ -83,11 +85,11 @@ export async function migrateChannelTaskAuthority(
       )
       .returning({ id: botUsers.id });
     if (!updated.length) {
-      if (taskId) await revoke(taskId);
+      if (task) await revoke(task.id);
       result.changed++;
       continue;
     }
-    if (taskId) result.active++;
+    if (task) result.active++;
     else result.reauthRequired++;
   }
   return result;

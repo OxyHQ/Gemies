@@ -15,6 +15,7 @@ import { findSystemBot, findBotUser } from '../db/integrations/botRepository.js'
 import { findConnectedAccountBySession } from '../db/integrations/connectedAccountRepository.js';
 import { findActiveGemieBotByTelegramId } from '../db/integrations/gemieBotRepository.js';
 import { isPersonTurn } from '../domain/gemie-bot-person.js';
+import { type ChannelTaskHold, liveChannelTaskId } from '../domain/channel-task.js';
 import type { ChannelId } from '../lib/channels/types.js';
 
 export function channelAccountOf(req: Request): string | undefined {
@@ -90,6 +91,16 @@ export async function authenticateChannelAccount(
   });
 }
 
+/**
+ * The binding's task for the turn, only while it may still be live: never one Oxy refused or one
+ * past the expiry Oxy gave it (`liveChannelTaskId`). Without one the turn runs with no authority of
+ * the person's, and their channel is already marked as needing them (`channel-task-authority.ts`).
+ */
+function withLiveTask(hold: ChannelTaskHold): { taskId?: string } {
+  const taskId = liveChannelTaskId(hold);
+  return taskId ? { taskId } : {};
+}
+
 async function resolveChannelAccount(
   req: Request,
   res: Response,
@@ -120,10 +131,12 @@ async function resolveChannelAccount(
       // (the integrations process asks only after the API said `personTurn`), and only with the
       // authority they granted the gemie there. Anybody else on the bot is never an account here.
       const bot = await findActiveGemieBotByTelegramId(getDb(), gemieBotId);
+      const taskId = bot ? liveChannelTaskId(bot) : undefined;
       if (
-        bot?.oxyTaskId &&
+        bot &&
+        taskId &&
         isLiveEntityId(bot.userId) &&
-        isPersonTurn(bot, { chatKind: 'direct', from: { id: platformUserId } })
+        isPersonTurn(bot, { chatKind: 'direct', from: { id: platformUserId } }, taskId)
       ) {
         context = {
           kind: 'gemie_bot',
@@ -131,7 +144,7 @@ async function resolveChannelAccount(
           gemieId: bot.agentId,
           platform,
           identityId: bot.id,
-          taskId: bot.oxyTaskId,
+          taskId,
         };
       }
     } else if (
@@ -148,7 +161,7 @@ async function resolveChannelAccount(
           accountId: link.oxyUserId,
           platform,
           identityId: link.id,
-          ...(link.oxyTaskState === 'active' && link.oxyTaskId ? { taskId: link.oxyTaskId } : {}),
+          ...withLiveTask(link),
         };
       }
     } else if (
@@ -166,9 +179,7 @@ async function resolveChannelAccount(
           gemieId: connection.answeringAgentId,
           platform,
           identityId: connection.id,
-          ...(connection.oxyTaskState === 'active' && connection.oxyTaskId
-            ? { taskId: connection.oxyTaskId }
-            : {}),
+          ...withLiveTask(connection),
         };
       }
     }

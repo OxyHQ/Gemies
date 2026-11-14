@@ -131,7 +131,7 @@ function answerFailure(res: Response, err: unknown, what: string): void {
 
 /** An account as the panel reads it: its session, its grants, its answering gemie and its replies. */
 function serializeAccount(account: ConnectedAccountRow, grants: readonly ConnectedAccountGrant[]) {
-  const { sessionId: _session, oxyTaskId: _task, ...shown } = account;
+  const { sessionId: _session, oxyTaskId: _task, oxyTaskExpiresAt: _expires, ...shown } = account;
   const own = grants.filter((grant) => grant.accountId === account.id);
   return {
     ...shown,
@@ -338,7 +338,9 @@ router.get('/:accountId/chats', authenticateToken, async (req: Request, res: Res
 
 /**
  * POST /me/accounts/:accountId/reauthorize — renew the task its answering gemie acts with, no new
- * provider link. An account nobody answers holds no task: `409 no_answering_gemie`.
+ * provider link: the new task replaces the old one, which is released after. An account nobody
+ * answers holds no task: `409 no_answering_gemie`. `@gemies/sdk` before 6.5 calls it; newer ones
+ * renew every channel at once (`POST /me/channel-tasks/renew`).
  */
 router.post('/:accountId/reauthorize', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -353,7 +355,6 @@ router.post('/:accountId/reauthorize', authenticateToken, async (req: Request, r
     }
     const gemie = await grantableGemieOf(res, caller, answeringId);
     if (!gemie) return;
-    await revokeAccountTask(account);
     await bindAccountTask({
       account,
       gemie,

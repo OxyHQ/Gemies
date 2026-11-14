@@ -89,8 +89,8 @@ describe('controlled channel-task conversion', () => {
       platform: 'telegram',
     });
     const updates = await Promise.all([
-      setConnectedAccountTask(db, row.id, 'root-a', null),
-      setConnectedAccountTask(db, row.id, 'root-b', null),
+      setConnectedAccountTask(db, row.id, { id: 'root-a', expiresAt: new Date() }, null),
+      setConnectedAccountTask(db, row.id, { id: 'root-b', expiresAt: new Date() }, null),
     ]);
     expect(updates.filter(Boolean)).toHaveLength(1);
     const saved = await findPersonAccount(db, row.id, 'rotation-person');
@@ -106,7 +106,7 @@ describe('controlled channel-task conversion', () => {
     const createTask = vi.fn(async (input) => {
       expect(input.effectiveAccountId).toBe('original-person');
       expect(input.accessToken).toBe('valid-session');
-      return 'verified-task';
+      return { id: 'verified-task', expiresAt: new Date('2027-11-14T00:00:00Z') };
     });
     const counts = await migrateChannelTaskAuthority(db, { apply: true, createTask });
     expect(counts.active).toBe(1);
@@ -114,6 +114,7 @@ describe('controlled channel-task conversion', () => {
     expect(stored).toMatchObject({
       oxyTaskId: 'verified-task',
       oxyTaskState: 'active',
+      oxyTaskExpiresAt: new Date('2027-11-14T00:00:00Z'),
       metadata: { keep: true },
     });
   });
@@ -153,7 +154,7 @@ describe('controlled channel-task conversion', () => {
         .update(botUsers)
         .set({ isLinked: false, oxyUserId: null, metadata: {} })
         .where(eq(botUsers.id, row.id));
-      return 'racing-task';
+      return { id: 'racing-task', expiresAt: new Date() };
     });
     expect(
       (await migrateChannelTaskAuthority(db, { apply: true, createTask, revokeTask })).changed,

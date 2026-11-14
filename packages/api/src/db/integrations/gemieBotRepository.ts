@@ -6,8 +6,9 @@
  * set the bot up or stop it). Every other read leaves it out.
  */
 
-import { and, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { decrypt } from '../../lib/crypto-utils.js';
+import type { OxyTask } from '../../lib/oxy-task-authority.js';
 import type { ApiDatabase } from '../index';
 import { bots, gemieBotTurns, type BotGroupReplies, type BotStatus } from '../schema/bots';
 
@@ -33,6 +34,9 @@ export interface GemieBotRow {
   linkedTelegramName: string | null;
   /** The Oxy task `userId` granted the gemie for their own turns here; `null` before they link. */
   oxyTaskId: string | null;
+  oxyTaskState: 'active' | 'reauth_required';
+  /** When Oxy said that task lapses; `null` while there is none, or for one never dated. */
+  oxyTaskExpiresAt: Date | null;
   totalMessages: number;
   lastMessageAt: Date | null;
   /** The last failure to give the bot its gemie's profile, while it is still behind; else null. */
@@ -53,6 +57,8 @@ const COLUMNS = {
   linkedTelegramUserId: bots.linkedTelegramUserId,
   linkedTelegramName: bots.linkedTelegramName,
   oxyTaskId: bots.oxyTaskId,
+  oxyTaskState: bots.oxyTaskState,
+  oxyTaskExpiresAt: bots.oxyTaskExpiresAt,
   totalMessages: bots.totalMessages,
   lastMessageAt: bots.lastMessageAt,
   profileSyncError: bots.profileSyncError,
@@ -223,10 +229,31 @@ export async function deleteGemieBot(db: Executor, agentId: string): Promise<str
   return row?.oxyTaskId ?? null;
 }
 
+/** A task's columns on the bot: `active`, Oxy's expiry, no notice sent; none is `reauth_required`. */
+function taskColumns(task: OxyTask | null) {
+  return {
+    oxyTaskId: task?.id ?? null,
+    oxyTaskState: task ? ('active' as const) : ('reauth_required' as const),
+    oxyTaskExpiresAt: task?.expiresAt ?? null,
+    oxyTaskNotifiedAt: null,
+  };
+}
+
+/** The person's own gemie bot, while it still holds exactly `taskId` (or none). */
+function personsBotHolding(agentId: string, userId: string, taskId: string | null) {
+  return and(
+    isGemieBot,
+    eq(bots.agentId, agentId),
+    eq(bots.userId, userId),
+    taskId === null ? isNull(bots.oxyTaskId) : eq(bots.oxyTaskId, taskId),
+  );
+}
+
 /**
  * A new one-time link for the bot's person (`userId`, and only them), with the Oxy task they grant
  * the gemie for their turns there. `replaced` is a task the bot held before, for the caller to
- * revoke; `null` when the row is not theirs (nothing is written then).
+ * release after this write; `null` when the row is not theirs, or changed meanwhile (nothing is
+ * written then).
  */
 export async function setGemieBotLinkCode(
   db: Executor,
@@ -235,7 +262,7 @@ export async function setGemieBotLinkCode(
     userId: string;
     codeHash: string;
     expiresAt: Date;
-    oxyTaskId: string;
+    oxyTask: OxyTask;
   },
 ): Promise<{ bot: GemieBotRow; replaced: string | null } | null> {
   const [before] = await db
@@ -249,15 +276,36 @@ export async function setGemieBotLinkCode(
     .set({
       linkCodeHash: input.codeHash,
       linkCodeExpiresAt: input.expiresAt,
-      oxyTaskId: input.oxyTaskId,
+      ...taskColumns(input.oxyTask),
     })
-    .where(and(isGemieBot, eq(bots.agentId, input.agentId), eq(bots.userId, input.userId)))
+    .where(personsBotHolding(input.agentId, input.userId, before.oxyTaskId))
     .returning(COLUMNS);
   if (!row) return null;
   return {
     bot: asGemieBot(row),
-    replaced: before.oxyTaskId && before.oxyTaskId !== input.oxyTaskId ? before.oxyTaskId : null,
+    replaced: before.oxyTaskId && before.oxyTaskId !== input.oxyTask.id ? before.oxyTaskId : null,
   };
+}
+
+/**
+ * Renew the task the bot's person granted, keeping their Telegram link: only while the bot still
+ * holds `expectedTaskId`. False when it changed meanwhile (nothing is written then).
+ */
+export async function replaceGemieBotTask(
+  db: Executor,
+  input: { agentId: string; userId: string; expectedTaskId: string | null; task: OxyTask },
+): Promise<boolean> {
+  const rows = await db
+    .update(bots)
+    .set(taskColumns(input.task))
+    .where(
+      and(
+        personsBotHolding(input.agentId, input.userId, input.expectedTaskId),
+        isNotNull(bots.linkedTelegramUserId),
+      ),
+    )
+    .returning({ id: bots.id });
+  return rows.length === 1;
 }
 
 /**
@@ -314,7 +362,7 @@ export async function unlinkGemieBotPerson(
       linkedTelegramName: null,
       linkCodeHash: null,
       linkCodeExpiresAt: null,
-      oxyTaskId: null,
+      ...taskColumns(null),
     })
     .where(and(isGemieBot, eq(bots.agentId, agentId), eq(bots.userId, userId)))
     .returning(COLUMNS);

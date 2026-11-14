@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { getErrorMessage } from '../errors/index.js';
 import { log } from '../logger.js';
 import { revokeOxyExecutionAuthorization } from '../oxy-capability-authority.js';
+import { isTaskAuthorityRefusal, standingTaskRefused } from '../oxy-task-authority.js';
 import { agency, type BoundTool } from './oxy-catalog-defs.js';
 import {
   OxyAuthorityUnavailableError,
@@ -109,8 +110,20 @@ async function createDirectExecutionAuthorization(
     runId,
     expiresAt: new Date(Date.now() + 2 * 60_000).toISOString(),
   });
-  if (context.taskId)
-    return (await agency().createTaskExecutionAuthorization(context.taskId, terms)).id;
+  if (context.taskId) {
+    const taskId = context.taskId;
+    try {
+      return (await agency().createTaskExecutionAuthorization(taskId, terms)).id;
+    } catch (error: unknown) {
+      // Oxy refused the task itself: a channel holding it needs its person, told once.
+      if (isTaskAuthorityRefusal(error)) {
+        void standingTaskRefused(taskId).catch((err: unknown) =>
+          log.general.warn({ err }, 'Could not mark a refused channel task'),
+        );
+      }
+      throw error;
+    }
+  }
   if (!context.userAccessToken)
     throw new Error('No verified requester authority exists for this operation');
   return (

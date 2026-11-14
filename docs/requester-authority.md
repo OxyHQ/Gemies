@@ -85,6 +85,13 @@ Events bind publisher, effective account and declared event type, and
 `(appId, eventId)` is the idempotency key, so a duplicate delivery cannot create
 a second effect.
 
+A standing binding (a gemie's work, a channel: a connected account, a bot link, a
+gemie bot's person) stores its task id and the expiry Oxy answered, never a bearer.
+Only the requester's present session mints its next task, so the apps renew it
+silently while they are in them and, when that needs them, they are told once with
+a one-tap reauthorisation. A task Oxy refuses, or one past its expiry, is never
+handed to a turn ([channel tasks](./integrations.mdx#channel-tasks-are-renewed-before-they-lapse)).
+
 Oxy owns task roots, external grants, account policy, catalogue registrations,
 short-lived proofs and audit. Alia owns goals, sessions, automation definitions,
 events, runs and steps. Expiry and revocation deny immediately; task

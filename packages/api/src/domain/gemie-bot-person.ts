@@ -8,13 +8,15 @@
  * is, and the channel middleware, which verifies the identity `/alia/chat` then runs as.
  */
 export function isPersonTurn(
-  bot: { readonly linkedTelegramUserId: string | null; readonly oxyTaskId: string | null },
+  bot: { readonly linkedTelegramUserId: string | null },
   message: { readonly chatKind: 'direct' | 'group'; readonly from: { readonly id: string } },
+  /** The task they granted, while it stands (`liveChannelTaskId` in `channel-task.ts`). */
+  liveTaskId: string | undefined,
 ): boolean {
   return (
     message.chatKind === 'direct' &&
     bot.linkedTelegramUserId !== null &&
-    bot.oxyTaskId !== null &&
+    liveTaskId !== undefined &&
     message.from.id === bot.linkedTelegramUserId
   );
 }

@@ -20,7 +20,8 @@
  * as "any".
  */
 
-import { and, desc, eq, gt, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import type { OxyTask } from '../../lib/oxy-task-authority';
 import type { ApiDatabase } from '../index';
 import { botUsers, bots, type BotStatus, type BotUserAuthTokenMode } from '../schema/bots';
 
@@ -119,6 +120,7 @@ export interface BotUserRow {
   oxyUserId: string | null;
   oxyTaskId: string | null;
   oxyTaskState: 'active' | 'reauth_required';
+  oxyTaskExpiresAt: Date | null;
   isLinked: boolean;
   linkedAt: Date | null;
   username: string | null;
@@ -141,6 +143,7 @@ const BOT_USER_COLUMNS = {
   oxyUserId: botUsers.oxyUserId,
   oxyTaskId: botUsers.oxyTaskId,
   oxyTaskState: botUsers.oxyTaskState,
+  oxyTaskExpiresAt: botUsers.oxyTaskExpiresAt,
   isLinked: botUsers.isLinked,
   linkedAt: botUsers.linkedAt,
   username: botUsers.username,
@@ -290,11 +293,20 @@ export async function upsertBotUser(db: ApiDatabase, input: UpsertBotUser): Prom
  * way would stay live until its 15-minute
  * expiry and could be redeemed again, by anyone holding it, into a DIFFERENT
  * account. Explicit `null` is what makes it single-use.
+ *
+ * Written only while the row still holds `expectedTaskId` (and the token, when one is given), so
+ * the task it held is released by the caller after this write, never before: a token that expired
+ * mid-request leaves the row with the task it had, still live.
  */
 export async function linkBotUser(
   db: ApiDatabase,
   id: string,
-  input: { oxyUserId: string; oxyTaskId: string; authToken?: string },
+  input: {
+    oxyUserId: string;
+    oxyTask: OxyTask;
+    expectedTaskId: string | null;
+    authToken?: string;
+  },
 ): Promise<BotUserRow | null> {
   const [row] = await db
     .update(botUsers)
@@ -304,13 +316,13 @@ export async function linkBotUser(
       linkedAt: new Date(),
       authToken: null,
       authTokenExpiry: null,
-      oxyTaskId: input.oxyTaskId,
-      oxyTaskState: 'active',
+      ...taskColumns(input.oxyTask),
       metadata: sql`${botUsers.metadata} - 'sessionToken'`,
     })
     .where(
       and(
         eq(botUsers.id, id),
+        expectedTask(input.expectedTaskId),
         ...(input.authToken
           ? [eq(botUsers.authToken, input.authToken), gt(botUsers.authTokenExpiry, new Date())]
           : []),
@@ -319,6 +331,21 @@ export async function linkBotUser(
     .returning(BOT_USER_COLUMNS);
 
   return row ?? null;
+}
+
+/** A row holding exactly this task, or none. */
+function expectedTask(taskId: string | null) {
+  return taskId === null ? isNull(botUsers.oxyTaskId) : eq(botUsers.oxyTaskId, taskId);
+}
+
+/** A new task's columns: `active`, Oxy's expiry, no notice sent; none is `reauth_required`. */
+function taskColumns(task: OxyTask | null) {
+  return {
+    oxyTaskId: task?.id ?? null,
+    oxyTaskState: task ? ('active' as const) : ('reauth_required' as const),
+    oxyTaskExpiresAt: task?.expiresAt ?? null,
+    oxyTaskNotifiedAt: null,
+  };
 }
 
 /**
@@ -335,8 +362,7 @@ export async function unlinkBotUser(db: ApiDatabase, id: string): Promise<void> 
       isLinked: false,
       conversationId: null,
       linkedAt: null,
-      oxyTaskId: null,
-      oxyTaskState: 'reauth_required',
+      ...taskColumns(null),
       metadata: sql`${botUsers.metadata} - 'sessionToken'`,
     })
     .where(eq(botUsers.id, id));
@@ -350,8 +376,7 @@ export async function logoutBotUser(db: ApiDatabase, id: string): Promise<void> 
       oxyUserId: null,
       isLinked: false,
       conversationId: null,
-      oxyTaskId: null,
-      oxyTaskState: 'reauth_required',
+      ...taskColumns(null),
       metadata: sql`${botUsers.metadata} - 'sessionToken'`,
     })
     .where(eq(botUsers.id, id));
@@ -391,23 +416,17 @@ export async function replaceBotUserTask(
   id: string,
   accountId: string,
   expectedTaskId: string | null,
-  taskId: string,
+  task: OxyTask,
 ): Promise<boolean> {
   const rows = await db
     .update(botUsers)
-    .set({
-      oxyTaskId: taskId,
-      oxyTaskState: 'active',
-      metadata: sql`${botUsers.metadata} - 'sessionToken'`,
-    })
+    .set({ ...taskColumns(task), metadata: sql`${botUsers.metadata} - 'sessionToken'` })
     .where(
       and(
         eq(botUsers.id, id),
         eq(botUsers.isLinked, true),
         eq(botUsers.oxyUserId, accountId),
-        expectedTaskId === null
-          ? isNull(botUsers.oxyTaskId)
-          : eq(botUsers.oxyTaskId, expectedTaskId),
+        expectedTask(expectedTaskId),
       ),
     )
     .returning({ id: botUsers.id });

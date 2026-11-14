@@ -27,7 +27,14 @@ vi.mock('../../../db/proactive/emailOutreachRepository.js', () => ({
   settleEmailOutreach: H.settle,
 }));
 vi.mock('../../inference/kaana-text.js', () => ({ generateTextViaKaana: H.generate }));
-vi.mock('../../memory/user-memory-service.js', () => ({ getUserLanguage: H.language }));
+vi.mock('../../memory/user-memory-service.js', () => ({
+  messageLanguageOf: async (id: string) =>
+    String(await H.language(id))
+      .toLowerCase()
+      .startsWith('es')
+      ? 'es'
+      : 'en',
+}));
 vi.mock('../../agent/alia-outreach.js', () => ({
   aliaCheckInRefusal: H.aliaRefusal,
   postAliaCheckIn: H.postAlia,

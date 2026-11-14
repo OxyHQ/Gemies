@@ -105,4 +105,9 @@ export const ACCOUNT_ROUTES = {
   /** A gemie's grant of one account: `PUT` grants it, `DELETE` revokes it. */
   grant: (accountId: string, gemieId: string) =>
     `/me/accounts/${encodeURIComponent(accountId)}/gemies/${encodeURIComponent(gemieId)}`,
+  /**
+   * `POST` renews every channel of the caller whose Oxy task needs it — a connected account, a
+   * system bot link, a gemie bot they linked their Telegram to — with their present session.
+   */
+  renewChannelTasks: '/me/channel-tasks/renew',
 } as const;

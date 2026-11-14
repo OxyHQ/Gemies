@@ -272,3 +272,34 @@ full rewrite had stored the history the channel sent, prompt included, stamping 
   notification of a gemie's own message), where restoring it keeps the conversation in time order.
 - **Messages and their conversation are written together.** An append stores its messages and the
   conversation row in one transaction, and an append that stored nothing (a retry) changes neither.
+
+## Amendment (2026-11-14, later): a channel's authority is renewed before it lapses, never unseen
+
+**Context.** Every channel task — a gemie bot's person's (decision 5's amendment), a connected
+account's (ADR 0035) and a system bot link's — was minted for 365 days and its expiry was stored
+nowhere. Nothing marked one that lapsed, or that Oxy refused, so channel turns kept handing out a
+dead task and the app's renewal, which only looked at `reauth_required`, never ran: a year after
+linking, autonomy on the channel would have stopped without a word (OxyHQ/Alia#897, "Old channel
+tasks expire without renewal"). A relink also revoked the old task before its conditional write, so
+a link token that expired mid-request left the row `active` with a revoked task.
+
+**Decision.** The owner approved:
+
+1. **Each channel task stores its expiry**, the one Oxy answers when it is minted
+   (`oxy_task_expires_at` on `connected_accounts`, `bot_users` and `bots`; `bots` gains the
+   `oxy_task_state` the other two have). Every mint goes through `bindOxyTask`, which writes the new
+   task conditionally and releases the one it replaced only after the write.
+2. **It is renewed the way every standing authority is.** Oxy mints a task only from the person's
+   present session and Gemies stores no bearer, so the apps renew silently while the person is in
+   them (`POST /me/channel-tasks/renew`, `useChannelTaskRenewal` in the SDK): whatever is lapsed,
+   undated, or within 30 days of its expiry.
+3. **When renewal needs the person, they are told once**: the run reaper's minute sweep marks
+   `reauth_required` every task past its expiry, and a tool call that Oxy refuses for the task itself
+   (`Task authority is no longer active.`) does the same. Within 7 days of the expiry, or once
+   lapsed, the person gets one notification that opens the one-tap page
+   (`/channels/reauthorize`), and a message on the channel itself where it can still write.
+4. **Channel turns never get a task known to be dead** (`liveChannelTaskId`). On a gemie bot, the
+   person whose task lapsed is a third party until they reauthorise, and the bot tells them where.
+
+Migration `0175` (pre) adds the columns and dates every existing task by the earliest it can lapse
+(created after its row and after its column existed, for 365 days).

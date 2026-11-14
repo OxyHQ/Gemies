@@ -1,5 +1,21 @@
 # @gemies/sdk
 
+## 6.5.0
+
+- **A person's channels keep their authority** (Gemies ADR 0037, amendment of 2026-11-14). Each
+  channel's Oxy task — a connected account a gemie answers, a system bot link, a gemie bot they
+  linked their Telegram to — lapses after the time Oxy gave it, and only their present session can
+  renew it. New in `@gemies/sdk/accounts`:
+  - `useChannelTaskRenewal()`: the silent renewal, once a session for the signed-in account. Mount
+    it once where the app is signed in (it draws nothing); it renews whatever is lapsed, undated or
+    within 30 days of its expiry (`POST /me/channel-tasks/renew`).
+  - `useReauthorizeChannels()`: the one tap, a mutation for the page a channel's notice opens
+    (`/channels/reauthorize`). It answers `{ renewed, failed }`, each a `ChannelTaskRef`.
+  - `renewChannelTasks(api)`, `CHANNEL_TASK_KINDS`, and the types `ChannelTaskKind`,
+    `ChannelTaskRef` and `ChannelTaskRenewal`.
+- `useConnectedAccounts` renews through the same call when an answered account's task lapsed, once
+  for all of them, instead of one `POST /me/accounts/:id/reauthorize` per account.
+
 ## 6.4.0
 
 - **Stop no longer cancels an answer that had already finished.** The stop endpoint answers

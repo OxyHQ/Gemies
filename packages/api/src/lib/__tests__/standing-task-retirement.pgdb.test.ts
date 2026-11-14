@@ -62,7 +62,7 @@ it('never retires the task a gemie bot’s person granted, only a session’s ow
     userId: owner,
     codeHash: 'h',
     expiresAt: new Date(Date.now() + 60_000),
-    oxyTaskId: botTask,
+    oxyTask: { id: botTask, expiresAt: new Date(Date.now() + 86_400_000) },
   });
   const ownTask = randomUUID();
   for (const oxyTaskId of [botTask, ownTask]) {

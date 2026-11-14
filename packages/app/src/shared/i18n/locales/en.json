@@ -1472,7 +1472,9 @@
         "loadFailed": "Could not load this. Try again.",
         "unavailable": "A Telegram bot cannot be connected here right now.",
         "syncFailed": "Telegram does not show {{name}}’s latest name, description or picture yet. It keeps trying by itself.",
-        "retrySync": "Try again now"
+        "retrySync": "Try again now",
+        "personLapsed": "{{name}} can no longer use your apps in your private chat with the bot: the permission you gave it there lapsed. Reauthorise it to keep your link.",
+        "reauthorize": "Reauthorise"
       },
       "connectors": {
         "title": "Connectors",
@@ -1880,6 +1882,15 @@
       "moreActions": "More actions",
       "addRoutingRule": "Add routing rule",
       "removeRoutingRule": "Remove routing rule"
+    },
+    "channelReauthorize": {
+      "title": "Reauthorise your channels",
+      "doneTitle": "Your channels work again",
+      "doneDescription": "Your gemies can use your apps again on your connected accounts and bots, as before.",
+      "nothingDescription": "Nothing needed you: every channel of yours can already use your apps.",
+      "failedTitle": "Some channels still need you",
+      "failedDescription": "They could not be reauthorised now. Try again, or open the channel in Settings or in its gemie’s editor.",
+      "backToChat": "Back to your chats"
     }
   },
   "panels": {

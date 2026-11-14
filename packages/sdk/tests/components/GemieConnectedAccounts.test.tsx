@@ -330,9 +330,20 @@ describe('a connected account in Settings', () => {
       account({ oxyTaskState: 'reauth_required', answeringGemieId: 'scout' }),
       account({ _id: 'acc-10', oxyTaskState: 'reauth_required' }),
     ];
+    api.post.mockImplementation(async (path: string) =>
+      path === '/me/channel-tasks/renew'
+        ? { data: { renewed: [{ kind: 'account', id: 'acc-9' }], failed: [] } }
+        : { data: {} },
+    );
     await render();
-    expect(api.post).toHaveBeenCalledWith('/me/accounts/acc-9/reauthorize');
-    expect(api.post).not.toHaveBeenCalledWith('/me/accounts/acc-10/reauthorize');
+    // Every channel of the person's that needs it, in one renewal; none per account.
+    expect(api.post.mock.calls).toEqual([['/me/channel-tasks/renew']]);
+  });
+
+  it('asks for no renewal while every answered account’s task stands', async () => {
+    accounts = [account({ answeringGemieId: 'scout' }), account({ _id: 'acc-10' })];
+    await render();
+    expect(api.post).not.toHaveBeenCalled();
   });
 });
 

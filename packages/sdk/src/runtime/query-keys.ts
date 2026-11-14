@@ -32,6 +32,8 @@ export const gemieQueryKeys = {
     all: ['connected-accounts'] as const,
     qr: (accountId: string) => ['connected-account-qr', accountId] as const,
     chats: (accountId: string) => ['connected-account-chats', accountId] as const,
+    /** The signed-in account's silent channel-task renewal, once a session (`channel-tasks.ts`). */
+    channelTaskRenewal: (userId: string) => ['channel-task-renewal', userId] as const,
   },
   /** An agent the chat is opened on: its profile and the state of its feature gates. */
   agents: {

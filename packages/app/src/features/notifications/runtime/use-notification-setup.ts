@@ -8,11 +8,12 @@
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import { useRouter } from 'expo-router';
+import { type Href, useRouter } from 'expo-router';
 import { useOxy } from '@oxy.so/services/ui/client';
 import apiClient from '@/shared/api/client';
 import i18n from '@/shared/i18n';
 import { agentThreadHref } from '@/shared/routing/agent-address';
+import { notificationHref } from '@/features/notifications/model/notification-center-items';
 
 // ── Constants ──────────────────────────────────────────────────────
 /**
@@ -94,7 +95,7 @@ export function useNotificationSetup() {
     };
   }, [isAuthenticated, user?.id]);
 
-  // ── Notification tap handler (deep-link to conversation) ───────
+  // ── Notification tap handler (deep-link to its thread, page or conversation) ───────
   useEffect(() => {
     if (Platform.OS === 'web') return;
     const Notifications = require('expo-notifications') as typeof import('expo-notifications');
@@ -111,10 +112,18 @@ export function useNotificationSetup() {
           : typeof data?.agentId === 'string' && data.agentId
             ? { gemieId: data.agentId }
             : undefined;
+      const href =
+        thread === undefined
+          ? notificationHref({
+              data,
+              conversationId:
+                typeof data?.conversationId === 'string' ? data.conversationId : undefined,
+            })
+          : null;
       if (thread !== undefined) {
         router.push(agentThreadHref(thread));
-      } else if (data?.conversationId) {
-        router.push(`/(app)/c/${data.conversationId}`);
+      } else if (href) {
+        router.push(href as Href);
       }
     });
 
