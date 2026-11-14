@@ -25,6 +25,7 @@ import {
   type LifecycleContext,
   type TurnObservation,
 } from '../chat-lifecycle.js';
+import { turnOwnerId } from './turn-owner.js';
 import { buildCompletionResponse } from './response-shapes.js';
 import { log } from '../logger.js';
 import type { CreditReservation, CreditUsage } from '../credits-manager.js';
@@ -156,7 +157,7 @@ export async function runNonStreaming(params: NonStreamingParams): Promise<void>
 
   // Build lifecycle context for post-request operations
   const lifecycleCtx: LifecycleContext = {
-    userId: req.user?.id,
+    userId: turnOwnerId(req),
     conversationId,
     agentId,
     assistantMessageId,

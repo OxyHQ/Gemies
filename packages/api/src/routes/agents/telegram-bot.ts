@@ -39,6 +39,7 @@ import {
 import { oxyActorFor } from '../../lib/gemie-oxy-actor.js';
 import { syncGemieBotProfileNow } from '../../lib/gemie-telegram-bot-profile.js';
 import { log } from '../../lib/logger.js';
+import { publishGemieChanged } from '../../lib/realtime/account.js';
 import { createOxyTask, revokeReleasedTask } from '../../lib/oxy-task-authority.js';
 import { authenticateToken } from '../../middleware/auth.js';
 
@@ -96,6 +97,11 @@ function present(bot: GemieBotRow, caller: Caller, live: TelegramBotLiveStatus |
      * app (ADR 0037, amendment). Anybody else on the bot is a third party.
      */
     personLinked: bot.linkedTelegramUserId !== null && bot.oxyTaskId !== null,
+    /** Who is linked, as their Telegram showed them (`@username`, else their name); null when nobody. */
+    linkedAs:
+      bot.linkedTelegramUserId !== null && bot.oxyTaskId !== null
+        ? (bot.linkedTelegramName ?? null)
+        : null,
     totalMessages: bot.totalMessages,
     lastMessageAt: bot.lastMessageAt,
     /**
@@ -298,6 +304,7 @@ router.delete('/:id/telegram-bot/link', authenticateToken, async (req: Request, 
     if (!personOnly(bot, caller, res)) return;
     const unlinked = await unlinkGemieBotPerson(db, caller.gemie._id, caller.oxyUserId);
     await revokeReleasedTask(unlinked?.released ?? null);
+    void publishGemieChanged(caller.oxyUserId, caller.gemie._id, 'updated').catch(() => undefined);
     res.json({ bot: present(unlinked?.bot ?? bot, caller, await liveStatus(bot.agentId)) });
   } catch (err: unknown) {
     answerFailure(res, err, 'Unlinking a Telegram account from a gemie bot');

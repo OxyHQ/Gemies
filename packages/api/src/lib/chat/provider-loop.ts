@@ -43,6 +43,7 @@ import {
   type LifecycleContext,
   type TurnObservation,
 } from '../chat-lifecycle.js';
+import { turnOwnerId } from './turn-owner.js';
 import { log } from '../logger.js';
 import { recordEvent } from '../observability/index.js';
 import type { ReasoningEffort } from '../models/catalogue.js';
@@ -233,7 +234,7 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
    * `tokenUsage` is captured asynchronously by `onFinish`.
    */
   const lifecycleContext = (): LifecycleContext => ({
-    userId: req.user?.id,
+    userId: turnOwnerId(req),
     conversationId,
     agentId,
     assistantMessageId,

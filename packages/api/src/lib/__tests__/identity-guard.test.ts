@@ -21,7 +21,7 @@ describe('buildIdentityGuard', () => {
   it('falls back to the plain Alia brand when no model name is given', () => {
     const guard = buildIdentityGuard();
     expect(guard).toContain('You are Alia,');
-    expect(guard).toContain('one of the models Alia offers');
+    expect(guard).toContain('one of the models Gemies offers');
     // Never emits an empty/placeholder identity.
     expect(guard).not.toContain('You are ,');
   });
@@ -80,7 +80,9 @@ describe('an agent speaks under its own name', () => {
     // person to keep digging. Both facts are the product's own.
     const guard = buildIdentityGuard(AGENT);
 
-    expect(guard).toContain('Alia');
+    // A gemie runs on Gemies, never "the Alia platform" (Gemies ADR 0034): Alia is one gemie.
+    expect(guard).toContain('running on Gemies');
+    expect(guard).not.toMatch(/Alia (AI )?platform|platform you run on.*Alia/);
     expect(guard).toContain(
       'The model powering this conversation is Example Model 2, published by Example Labs',
     );

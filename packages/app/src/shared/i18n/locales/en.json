@@ -1414,6 +1414,8 @@
         "personHintLinked": "{{name}} recognises you in your private chat with the bot: there it uses your apps, accounts, memory and tasks, as here. Anyone else, and any group, gets only {{name}} itself.",
         "linkMine": "Link my Telegram",
         "unlinkMine": "Unlink",
+        "linkedAs": "Linked as {{who}}.",
+        "relinkMine": "Link another account",
         "linkOpened": "Telegram opened: tap Start in the chat with the bot to finish.",
         "unlinked": "{{name}} no longer recognises your Telegram.",
         "linkFailed": "Could not do it: {{reason}}",

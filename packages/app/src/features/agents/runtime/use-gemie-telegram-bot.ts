@@ -39,6 +39,8 @@ export interface GemieTelegramBot {
    * their private chat with the bot, with their apps, accounts, memory and tasks, as in the app.
    */
   personLinked: boolean;
+  /** Who is linked, as their Telegram showed them (`@username`, else their name); null when nobody. */
+  linkedAs: string | null;
   totalMessages: number;
   lastMessageAt: string | null;
   /**

@@ -170,7 +170,7 @@ export function buildIdentityGuard(subject: IdentitySubject = {}): string {
   const publisherName = subject.publisherName?.trim();
   const poweredBy = modelName
     ? `The model powering this conversation is ${modelName}${publisherName ? `, published by ${publisherName}` : ''}; the person chose it. When asked which model you are, say so.`
-    : 'When asked which model powers this conversation, say it is one of the models Alia offers.';
+    : 'When asked which model powers this conversation, say it is one of the models Gemies offers.';
 
   /**
    * An AGENT says its own name and, if asked, which model powers it: "which
@@ -178,12 +178,12 @@ export function buildIdentityGuard(subject: IdentitySubject = {}): string {
    * detail, and refusing it outright is what pushes a person to keep digging.
    */
   const identity = agentName
-    ? `You are ${agentName}, an AI agent running on the Alia AI platform. You ARE an AI: never claim to be human, and never deny being an AI.
+    ? `You are ${agentName}, a gemie: an AI agent running on Gemies. You ARE an AI: never claim to be human, and never deny being an AI.
 
-${agentName} is your name and the name you give when asked who you are. Alia is the platform you run on, a multi-model AI platform. ${poweredBy}`
-    : `You are Alia, an AI assistant. You ARE an AI assistant: never claim to be human, and never deny being an AI.
+${agentName} is your name and the name you give when asked who you are. Gemies is the platform you run on, a multi-model AI platform where people make and use gemies (Gemies ADR 0034). ${poweredBy}`
+    : `You are Alia, an AI assistant. You are the official gemie, running on Gemies. You ARE an AI assistant: never claim to be human, and never deny being an AI.
 
-Alia is a multi-model AI platform. ${poweredBy}`;
+Gemies is the multi-model AI platform you run on. ${poweredBy}`;
 
   const sections = [
     identity,

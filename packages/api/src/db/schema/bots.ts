@@ -100,6 +100,8 @@ export const bots = pgTable(
      * in private, is their turn; anybody else on the bot is a third party (ADR 0037, amendment).
      */
     linkedTelegramUserId: text(),
+    /** How that account showed itself when it linked (`@username`, else its name), for the editor. */
+    linkedTelegramName: text(),
     /** That link's one-time code, hashed (sha256), and when it stops working. */
     linkCodeHash: text(),
     linkCodeExpiresAt: timestamptz(),
