@@ -88,9 +88,11 @@ describe('controlled channel-task conversion', () => {
       oxyUserId: 'rotation-person',
       platform: 'telegram',
     });
+    // This tests competing active rotations. The expiry sweep runs in another suite on this DB.
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const updates = await Promise.all([
-      setConnectedAccountTask(db, row.id, { id: 'root-a', expiresAt: new Date() }, null),
-      setConnectedAccountTask(db, row.id, { id: 'root-b', expiresAt: new Date() }, null),
+      setConnectedAccountTask(db, row.id, { id: 'root-a', expiresAt }, null),
+      setConnectedAccountTask(db, row.id, { id: 'root-b', expiresAt }, null),
     ]);
     expect(updates.filter(Boolean)).toHaveLength(1);
     const saved = await findPersonAccount(db, row.id, 'rotation-person');
