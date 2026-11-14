@@ -1,4 +1,4 @@
-import type { AgentMessage, ConversationSource } from '../domain/conversation.js';
+import type { ConversationSource } from '../domain/conversation.js';
 import type { Request } from 'express';
 import {
   saveConversation,
@@ -128,7 +128,6 @@ export async function saveConversationResult(
     args?: unknown;
     result?: unknown;
   }>,
-  agentMessages?: AgentMessage[],
 ): Promise<void> {
   const {
     userId,
@@ -150,7 +149,6 @@ export async function saveConversationResult(
       assistantMessageId,
       toolInvocations,
       agentId,
-      agentMessages: agentMessages && agentMessages.length > 0 ? agentMessages : undefined,
       ...(originApp === undefined ? {} : { originApp }),
       channelSource,
     });

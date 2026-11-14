@@ -1,7 +1,6 @@
 import { AgentThinking } from '@oxy.so/bloom/agent-thinking';
 import { AiChatThread, type AiChatThreadHandle } from '@oxy.so/bloom/ai-chat';
 import { ChatDateHeader } from '@oxy.so/bloom/chat-screen';
-import { Button } from '@oxy.so/bloom/button';
 import { Divider } from '@oxy.so/bloom/divider';
 import { ThreadSkeleton } from './ThreadSkeleton';
 import * as Skeleton from '@oxy.so/bloom/skeleton';
@@ -27,7 +26,6 @@ import { useBubbles } from '../../lib/bubbles';
 import { useLabels } from '../../lib/labels';
 import type { AgentActivityState } from '../../runtime/thread/agent-activity';
 import type { FailedTurn } from '../../runtime/turn-failure';
-import { type AgentExchange, agentExchange } from '../../runtime/thread/agent-exchange';
 import type { Message } from '../../runtime/types';
 import type { MessageReactionSnapshot } from '../../runtime/message-reactions';
 import type { ThreadHistory } from '../../runtime/thread/thread-history';
@@ -62,8 +60,6 @@ export interface GemieThreadProps {
   isLoading: boolean;
   /** The conversation's messages are still on their way. */
   conversationLoading?: boolean;
-  /** The agents taking part in this conversation (the direct agent or a group's members): they speak as themselves, with no "chat with" line. */
-  memberIds?: ReadonlySet<string>;
   history?: ThreadHistory;
   /**
    * The message a jump was aimed at, by cursor, or `null` at the present. A window is half before
@@ -104,11 +100,6 @@ export interface GemieThreadProps {
   onReply?: (text: string) => void;
   /** A saved reaction updates the live message as well as the query cache. */
   onReactionChange?: (update: MessageReactionSnapshot) => void;
-  /**
-   * Open the internal conversation of an agent that came into this one (the "Chatted with" line).
-   * Omitted, the line is plain text.
-   */
-  onOpenAgentChat?: (exchange: AgentExchange) => void;
   /** A conversation read by somebody it was shared with: no votes, no read-aloud, no regenerate. */
   readOnly?: boolean;
 }
@@ -138,7 +129,6 @@ export const GemieThread = memo(function GemieThread({
   conversationId,
   isLoading,
   conversationLoading = false,
-  memberIds,
   history: historyProps,
   focusCursor,
   failedTurn = null,
@@ -153,7 +143,6 @@ export const GemieThread = memo(function GemieThread({
   onScroll,
   onReply,
   onReactionChange,
-  onOpenAgentChat,
   readOnly = false,
 }: GemieThreadProps) {
   const { t } = useLabels();
@@ -163,25 +152,13 @@ export const GemieThread = memo(function GemieThread({
 
   useFailedTurnToast(failedTurn, onRetryTurn);
 
-  const {
-    rows,
-    live,
-    history,
-    ids,
-    arrived,
-    dayLabels,
-    seamIds,
-    speakers,
-    consulted,
-    lastReplyIndex,
-    timingOf,
-  } = useThreadRows({
-    messages,
-    history: pastMessages,
-    conversationId,
-    conversationLoading,
-    memberIds,
-  });
+  const { rows, live, history, ids, arrived, dayLabels, seamIds, lastReplyIndex, timingOf } =
+    useThreadRows({
+      messages,
+      history: pastMessages,
+      conversationId,
+      conversationLoading,
+    });
 
   // ── The thought panel: this conversation as it reads it, and opening it on a turn ──
   const thoughtScope = useThoughtScope({
@@ -302,9 +279,6 @@ export const GemieThread = memo(function GemieThread({
     );
   }
 
-  const chattedWith = (messageId: string): string =>
-    t('chat.chattedWith', { name: speakers.get(messageId)?.agentName ?? '' });
-
   const renderRow = (message: Message, index: number) => {
     const fromHistory = index < history.length;
     const timing = timingOf(message.id);
@@ -314,53 +288,29 @@ export const GemieThread = memo(function GemieThread({
       <Fragment key={message.id || `row-${index}`}>
         {seamIds.has(message.id) ? <Divider spacing={16}>{t('chat.newStretch')}</Divider> : null}
         {dayLabel === undefined ? null : <ChatDateHeader label={dayLabel} placement="inline" />}
-        {/* Where another agent comes into the conversation: whom the person is chatting with now. */}
-        {speakers.has(message.id) ? (
-          <Divider spacing={16}>
-            {onOpenAgentChat === undefined ? (
-              chattedWith(message.id)
-            ) : (
-              <Button
-                appearance="subtle"
-                tone="neutral"
-                size="xs"
-                onPress={() => {
-                  const exchange = agentExchange(rows, message.id, memberIds);
-                  if (exchange !== null) onOpenAgentChat(exchange);
-                }}
-              >
-                {chattedWith(message.id)}
-              </Button>
-            )}
-          </Divider>
-        ) : null}
-        {/* What a consulted agent said is not drawn under its line: the lead answers with it, and
-            the line opens the exchange. Without a way to open it, it stays where it was. */}
-        {onOpenAgentChat !== undefined && consulted.has(message.id) ? null : (
-          <ThreadRow
-            message={message}
-            // Only a message that arrived while this conversation was open animates in; none of the
-            // history ever does.
-            isNew={!fromHistory && arrived.has(message.id)}
-            isLastReply={isLastReply}
-            // Only the last reply reads it: handing it to every row would re-render the whole thread
-            // when a turn starts and when it ends.
-            isLoading={isLastReply ? isLoading : false}
-            conversationId={conversationOf(index)}
-            onLayout={index === focusIndex ? handleFocusLayout : undefined}
-            actions={actions}
-            readAloudState={readAloud.stateOf(message.id)}
-            readAloudBlocked={readAloud.blocked}
-            onRegenerate={canRegenerate(message, index) ? onRegenerate : undefined}
-            // A question of an earlier conversation is not in the list an edit cuts, so the "edit"
-            // would silently become a new turn.
-            onStartEdit={
-              message.role === 'user' && !fromHistory && !callActive ? onStartEdit : undefined
-            }
-            workStartedAt={timing.startedAt}
-            workEndedAt={timing.endedAt}
-          />
-        )}
+        <ThreadRow
+          message={message}
+          // Only a message that arrived while this conversation was open animates in; none of the
+          // history ever does.
+          isNew={!fromHistory && arrived.has(message.id)}
+          isLastReply={isLastReply}
+          // Only the last reply reads it: handing it to every row would re-render the whole thread
+          // when a turn starts and when it ends.
+          isLoading={isLastReply ? isLoading : false}
+          conversationId={conversationOf(index)}
+          onLayout={index === focusIndex ? handleFocusLayout : undefined}
+          actions={actions}
+          readAloudState={readAloud.stateOf(message.id)}
+          readAloudBlocked={readAloud.blocked}
+          onRegenerate={canRegenerate(message, index) ? onRegenerate : undefined}
+          // A question of an earlier conversation is not in the list an edit cuts, so the "edit"
+          // would silently become a new turn.
+          onStartEdit={
+            message.role === 'user' && !fromHistory && !callActive ? onStartEdit : undefined
+          }
+          workStartedAt={timing.startedAt}
+          workEndedAt={timing.endedAt}
+        />
       </Fragment>
     );
   };

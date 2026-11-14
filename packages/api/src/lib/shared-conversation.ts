@@ -1,9 +1,9 @@
 /**
  * What a share link shows: the conversation's words, its images, who said
  * them, and the canvas artifacts drawn in it — and nothing else
- * (`GET /v1/shared/:token`, `docs/agent-embedding.md` §6). An agent consulted in
- * the conversation keeps the ones it drew on its own message
- * (`consultedAgentMessage`), and they are shared by the same rule as the lead's.
+ * (`GET /v1/shared/:token`, `docs/agent-embedding.md` §6). Any gemie that drew
+ * one on its own message (a group member, either side of a conversation between
+ * gemies) has it shared by the same rule as the lead's.
  *
  * Built as an ALLOW-list over what is stored. A tool's input or output is the
  * person's own data fetched from their apps (their inbox, their listings), so

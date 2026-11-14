@@ -48,7 +48,6 @@ vi.mock('@oxy.so/bloom/toast', () => ({ toast: { error: vi.fn() } }));
 
 import { GemieRuntimeProvider, type GemieRuntimeHost } from '../../src/runtime/config';
 import type { GemieHostTools } from '../../src/runtime/host-tools';
-import type { Message } from '../../src/runtime/types';
 import { useConversationStream } from '../../src/runtime/use-conversation-stream';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -113,68 +112,23 @@ afterEach(async () => {
   }
 });
 
-describe('a consultation', () => {
-  it('streams into its own message, above the lead’s reply, under the agent’s identity', async () => {
+describe('member frames', () => {
+  it('draw nothing outside a group turn: a gemie writes to another in their own conversation', async () => {
     harness.replies.push({
       status: 200,
       frames: [
         consult('agent_start', { agent: SINDI, task: 'find flats' }),
-        consult('agent_delta', { content: 'Two ' }),
-        consult('agent_tool', {
-          phase: 'call',
-          toolCallId: 't1',
-          name: 'oxy_homiio__searchListings',
-          input: { city: 'Barcelona' },
-        }),
-        consult('agent_tool', {
-          phase: 'result',
-          toolCallId: 't1',
-          name: 'oxy_homiio__searchListings',
-          output: { listings: [1, 2] },
-        }),
-        consult('agent_delta', { content: 'flats.' }),
+        consult('agent_delta', { content: 'Two flats.' }),
         consult('agent_end', { status: 'completed' }),
-        content('Sindi found two.'),
+        content('I wrote to Sindi.'),
         done,
       ],
     });
     await mount({ conversationId: 'c1' });
     await send();
 
-    const [, agent, reply] = api.messages as [Message, Message, Message];
-    expect(agent.agentInfo).toEqual(SINDI);
-    expect(agent.content).toBe('Two flats.');
-    expect(agent.isStreaming).toBe(false);
-    expect(agent.turnOutcome).toBe('completed');
-    expect(agent.toolInvocations).toEqual([
-      {
-        toolCallId: 't1',
-        toolName: 'oxy_homiio__searchListings',
-        state: 'result',
-        args: { city: 'Barcelona' },
-        result: { listings: [1, 2] },
-      },
-    ]);
-    // Named as the server stores it: `<reply>-agent-<n>`, n the order of its start.
-    expect(agent.id).toBe(`${reply.id}-agent-0`);
-    expect(reply.content).toBe('Sindi found two.');
-  });
-
-  it('is settled with the turn when the stream ends before its end frame', async () => {
-    harness.replies.push({
-      status: 200,
-      frames: [
-        consult('agent_start', { agent: SINDI }),
-        consult('agent_delta', { content: 'Hi' }),
-        done,
-      ],
-    });
-    await mount({ conversationId: 'c1' });
-    await send();
-
-    const agent = api.messages.find((m) => m.agentInfo);
-    expect(agent?.isStreaming).toBe(false);
-    expect(agent?.content).toBe('Hi');
+    expect(api.messages.some((m) => m.agentInfo)).toBe(false);
+    expect(api.messages.map((m) => m.content)).toEqual(['hello', 'I wrote to Sindi.']);
   });
 
   it('drops a malformed frame whole, and the retired `alia.agent` frame is nothing', async () => {

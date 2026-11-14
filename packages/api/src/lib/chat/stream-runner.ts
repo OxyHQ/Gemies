@@ -16,16 +16,12 @@
  *     catch's rethrow-vs-retry decision. Mutated in place.
  *   - `onFirstChunk()` — clears the route's first-byte timer the moment the
  *     provider responds, so a slow-but-alive stream isn't aborted at 20s.
- * `agentMessages` is read, not written: `consultAgent` appends each consulted
- * agent's answer to it (the route hands the tool pipeline the same array), and an
- * answer there is one the turn already has.
  *
  * Import seams (`ai`, `../chat-core.js`, `../logger.js`, `../errors/index.js`,
  * `../streaming-helpers.js`, `../observability/index.js`) match the paths the
  * route used inline so the timeout suite's module mocks keep intercepting them.
  */
 import { clientToolResult } from '../tools/result-truncation.js';
-import type { AgentMessage } from '../../domain/conversation.js';
 import type { Response } from 'express';
 import type { TextStreamPart, ToolSet } from 'ai';
 import type { ResolvedModel } from '../chat-core.js';
@@ -100,8 +96,6 @@ export interface RunStreamParams<TOOLS extends ToolSet> {
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK config is dynamically extended; strict SDK param types don't support this pattern
   baseConfig: any;
   toolNameMapping: Map<string, string>;
-  /** The consulted agents' answers so far, appended by `consultAgent` (`answers`). */
-  agentMessages: AgentMessage[];
   /** Running tool-call count carried across provider attempts. */
   toolCallCount: number;
   /** Shared with the first-byte timer + provider-retry catch; mutated in place. */
@@ -165,7 +159,6 @@ export async function runStream<TOOLS extends ToolSet>(
     resolved,
     baseConfig,
     toolNameMapping,
-    agentMessages,
     state,
     onFirstChunk,
     idle,
@@ -522,15 +515,9 @@ export async function runStream<TOOLS extends ToolSet>(
       let finishReason: string = chunk.finishReason || 'stop';
 
       // A normal, bounded agent loop can finish immediately after its last
-      // tool result. Unless another agent already supplied the answer as its
-      // own product event, that is progress without a response and needs one
-      // final tools-disabled synthesis pass.
-      if (
-        answerOwed &&
-        !endedAtQuestion() &&
-        agentMessages.length === 0 &&
-        toolInvocations.some((t) => t.state === 'result')
-      ) {
+      // tool result. That is progress without a response and needs one final
+      // tools-disabled synthesis pass.
+      if (answerOwed && !endedAtQuestion() && toolInvocations.some((t) => t.state === 'result')) {
         log.v1.info(
           { toolResultCount: toolInvocations.filter((t) => t.state === 'result').length },
           'Stream finished after tool results without an answer; synthesizing without tools',
@@ -569,14 +556,13 @@ export async function runStream<TOOLS extends ToolSet>(
         }
       }
 
-      // Nothing to show for the turn: no words, no tool, no agent answer. A
+      // Nothing to show for the turn: no words, no tool. A
       // `length` stop that spent the whole budget thinking lands here too.
       if (
         assistantResponse === '' &&
         withheldEarlier === '' &&
         markup.withheld === '' &&
-        toolInvocations.length === 0 &&
-        agentMessages.length === 0
+        toolInvocations.length === 0
       ) {
         throw emptyResponseError(finishReason);
       }

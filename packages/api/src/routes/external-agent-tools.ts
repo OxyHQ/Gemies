@@ -14,7 +14,10 @@ import { getDb } from '../db/index.js';
 import { findExternalLink } from '../db/agents/externalAgentRepository.js';
 import { EXTERNAL_TOOL_REQUESTS_PER_MINUTE } from '../domain/external-agent.js';
 import { externalAgentCredentialMatches } from '../lib/external-agents/credential.js';
-import { serveExternalAgentTools } from '../lib/external-agents/tool-server.js';
+import {
+  EXTERNAL_AGENT_CONVERSATION_HEADER,
+  serveExternalAgentTools,
+} from '../lib/external-agents/tool-server.js';
 import { log } from '../lib/logger.js';
 import { checkWindowLimit } from '../lib/sliding-window-limiter.js';
 
@@ -69,8 +72,16 @@ router.all('/:agentId', (req: Request, res: Response, next: NextFunction) => {
       res.setHeader('Allow', 'POST');
       return jsonRpcError(res, 405, -32000, 'Method not allowed');
     }
+    // The conversation the run belongs to, which the daemon names; the tool server checks it.
+    const conversation = req.headers[EXTERNAL_AGENT_CONVERSATION_HEADER];
     await serveExternalAgentTools(
-      { agentId, ownerOxyUserId: link.ownerOxyUserId },
+      {
+        agentId,
+        ownerOxyUserId: link.ownerOxyUserId,
+        ...(typeof conversation === 'string' && conversation !== ''
+          ? { conversationId: conversation.slice(0, 128) }
+          : {}),
+      },
       req,
       res,
       req.body,

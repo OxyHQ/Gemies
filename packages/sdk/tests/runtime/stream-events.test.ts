@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   lockedFeatureOf,
-  parseConsultEvent,
+  parseMemberTurnEvent,
   parseHostAction,
 } from '../../src/runtime/stream-events';
 
@@ -9,10 +9,10 @@ import {
 
 const v1 = (payload: Record<string, unknown>) => ({ eventVersion: 1, consultId: 'k1', ...payload });
 
-describe('parseConsultEvent', () => {
+describe('parseMemberTurnEvent', () => {
   it('reads each of the four frames', () => {
     expect(
-      parseConsultEvent(
+      parseMemberTurnEvent(
         'alia.agent_start',
         v1({
           agent: { id: 'a', name: 'Sindi', handle: 'sindibot', color: 'teal', character: { x: 1 } },
@@ -25,13 +25,13 @@ describe('parseConsultEvent', () => {
       agent: { id: 'a', name: 'Sindi', handle: 'sindibot', color: 'teal', character: { x: 1 } },
       task: 'find',
     });
-    expect(parseConsultEvent('alia.agent_delta', v1({ content: 'hi' }))).toEqual({
+    expect(parseMemberTurnEvent('alia.agent_delta', v1({ content: 'hi' }))).toEqual({
       type: 'delta',
       consultId: 'k1',
       content: 'hi',
     });
     expect(
-      parseConsultEvent(
+      parseMemberTurnEvent(
         'alia.agent_tool',
         v1({ phase: 'result', toolCallId: 't', name: 'oxy_homiio__x', output: [1] }),
       ),
@@ -44,7 +44,7 @@ describe('parseConsultEvent', () => {
       output: [1],
     });
     expect(
-      parseConsultEvent(
+      parseMemberTurnEvent(
         'alia.agent_end',
         v1({ status: 'failed', error: { code: 'out_of_reach' } }),
       ),
@@ -53,7 +53,7 @@ describe('parseConsultEvent', () => {
 
   it('preserves the canonical stored message ID and rejects malformed IDs', () => {
     expect(
-      parseConsultEvent(
+      parseMemberTurnEvent(
         'alia.agent_end',
         v1({ status: 'completed', messageId: 'group-reply-p1-1' }),
       ),
@@ -65,33 +65,35 @@ describe('parseConsultEvent', () => {
     });
     for (const messageId of ['', 3, null]) {
       expect(
-        parseConsultEvent('alia.agent_end', v1({ status: 'completed', messageId })),
+        parseMemberTurnEvent('alia.agent_end', v1({ status: 'completed', messageId })),
       ).toBeNull();
     }
   });
 
   it('refuses another version, a frame without its consult, and missing or mistyped fields', () => {
     const start = { agent: { id: 'a', name: 'Sindi' } };
-    expect(parseConsultEvent('alia.agent_start', { ...v1(start), eventVersion: 2 })).toBeNull();
-    expect(parseConsultEvent('alia.agent_start', { eventVersion: 1, ...start })).toBeNull();
-    expect(parseConsultEvent('alia.agent_start', v1({ agent: { id: 'a' } }))).toBeNull();
-    expect(parseConsultEvent('alia.agent_delta', v1({ content: 3 }))).toBeNull();
+    expect(parseMemberTurnEvent('alia.agent_start', { ...v1(start), eventVersion: 2 })).toBeNull();
+    expect(parseMemberTurnEvent('alia.agent_start', { eventVersion: 1, ...start })).toBeNull();
+    expect(parseMemberTurnEvent('alia.agent_start', v1({ agent: { id: 'a' } }))).toBeNull();
+    expect(parseMemberTurnEvent('alia.agent_delta', v1({ content: 3 }))).toBeNull();
     expect(
-      parseConsultEvent('alia.agent_tool', v1({ phase: 'done', toolCallId: 't', name: 'x' })),
+      parseMemberTurnEvent('alia.agent_tool', v1({ phase: 'done', toolCallId: 't', name: 'x' })),
     ).toBeNull();
     expect(
-      parseConsultEvent(
+      parseMemberTurnEvent(
         'alia.agent_tool',
         v1({ phase: 'call', toolCallId: 't', name: 'x', input: 'not an object' }),
       ),
     ).toBeNull();
-    expect(parseConsultEvent('alia.agent_end', v1({ status: 'ok' }))).toBeNull();
-    expect(parseConsultEvent('alia.agent_end', v1({ status: 'completed', content: 1 }))).toBeNull();
+    expect(parseMemberTurnEvent('alia.agent_end', v1({ status: 'ok' }))).toBeNull();
+    expect(
+      parseMemberTurnEvent('alia.agent_end', v1({ status: 'completed', content: 1 })),
+    ).toBeNull();
   });
 
   it('reads nothing from the retired single `alia.agent` frame', () => {
     expect(
-      parseConsultEvent('alia.agent', {
+      parseMemberTurnEvent('alia.agent', {
         eventVersion: 1,
         agentId: 'a',
         agentName: 'A',

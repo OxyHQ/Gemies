@@ -3,8 +3,9 @@ import type { GemieAgentProfile } from '../runtime/agents';
 import type { Message } from '../runtime/types';
 import { readAgentCharacter } from './agent-character';
 import { ALIA_AVATAR } from './alia-character';
+import { ALIA_GEMIE_ID } from './alia-gemie';
 
-/** Somebody in the conversation who answers: its lead, or an agent the lead consulted. */
+/** Somebody in the conversation who answers: its lead, a group's member, or a gemie of a conversation between gemies. */
 export interface GemieParticipant {
   id: string;
   name: string;
@@ -28,7 +29,7 @@ export interface GemieLead extends GemieParticipant {
 /** Who is in the conversation, as the header draws it: the lead, then whoever has joined. */
 export interface GemieChatParticipants {
   lead: GemieLead;
-  /** The consulted agents that have joined the header, in the order they joined. */
+  /** The others in it: a group's other members, or the gemie the lead talks to. */
   joined: GemieParticipant[];
   /**
    * The conversation they are in, so the header can say live what one of them is doing
@@ -73,31 +74,24 @@ export function leadOf(profile: GemieAgentProfile | null | undefined): GemieLead
   };
 }
 
-/** A consulted agent as a message carries it (`agentInfo`). */
+/**
+ * The character a gemie is drawn as, from what a message carries of it. Alia's gemie carries no
+ * character of its own (her look is the app's, `ALIA_AVATAR`), so she is drawn as herself rather
+ * than as the default a missing character falls back to.
+ */
+export function agentCharacterOf(agentInfo: NonNullable<Message['agentInfo']>): AvatarCharacter {
+  return agentInfo.id === ALIA_GEMIE_ID
+    ? ALIA_AVATAR
+    : readAgentCharacter(agentInfo.character, agentInfo.color);
+}
+
+/** A gemie as a message carries it (`agentInfo`). */
 export function participantOf(agentInfo: NonNullable<Message['agentInfo']>): GemieParticipant {
   return {
     id: agentInfo.id,
     name: agentInfo.name,
     handle: agentInfo.handle,
-    character: readAgentCharacter(agentInfo.character, agentInfo.color),
+    character: agentCharacterOf(agentInfo),
     color: agentInfo.color,
   };
-}
-
-/**
- * The agents that answered in `messages`, besides the lead, in the order they first did — each
- * with whether its first answer is the one being streamed now (it is joining) or one already
- * written (it was there when the chat opened).
- */
-export function consultedAgents(
-  messages: readonly Message[],
-  leadId: string,
-): Array<{ participant: GemieParticipant; live: boolean }> {
-  const seen = new Map<string, { participant: GemieParticipant; live: boolean }>();
-  for (const message of messages) {
-    const info = message.agentInfo;
-    if (!info || info.id === leadId || seen.has(info.id)) continue;
-    seen.set(info.id, { participant: participantOf(info), live: message.isStreaming === true });
-  }
-  return [...seen.values()];
 }

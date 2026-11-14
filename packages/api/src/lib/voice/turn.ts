@@ -147,7 +147,7 @@ export interface VoiceTurnInput {
   readonly requestId: string;
   /** The call's gemie: the one it named, or Alia's. */
   readonly linkedAgent: HydratedAgent;
-  /** The app the call comes from (ADR 0021), for `consultAgent` and `searchAgents`. */
+  /** The app the call comes from (ADR 0021), for `searchAgents`. */
   readonly surfaceApplicationId: string | null;
   readonly userMemory: UserMemoryProfile | null;
   readonly oxyUser: OxyUserProfile | null;

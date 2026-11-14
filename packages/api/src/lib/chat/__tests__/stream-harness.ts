@@ -47,7 +47,6 @@ export async function runChunks(
   extra: Partial<RunStreamParams> = {},
 ) {
   const { res, written } = responseDouble();
-  const agentMessages: RunStreamParams['agentMessages'] = [];
   const outcome = await runStream({
     result: { fullStream: streamOf(chunks) },
     res,
@@ -57,11 +56,10 @@ export async function runChunks(
     resolved: { modelId: 'acme/chat-1' } as unknown as RunStreamParams['resolved'],
     baseConfig,
     toolNameMapping: new Map(),
-    agentMessages,
     toolCallCount: 0,
     state: { hasStreamedContent: false },
     onFirstChunk,
     ...extra,
   });
-  return { ...outcome, written, agentMessages };
+  return { ...outcome, written };
 }

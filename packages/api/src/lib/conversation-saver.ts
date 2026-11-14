@@ -30,7 +30,6 @@ import {
   isMessageRole,
   usableMessageId,
   type AgentInfo,
-  type AgentMessage,
   type ConversationSource,
   type MessageContent,
   type MessageRole,
@@ -87,9 +86,8 @@ export interface SaveConversationParams {
   assistantResponse: string;
   /**
    * The id the client drew this turn's reply under — the request's
-   * `assistantMessageId`. The reply is stored under it, and so are the agent
-   * answers that came with it ({@link agentMessageId}). Absent, they are named
-   * by position like any other message the client did not name.
+   * `assistantMessageId`. The reply is stored under it. Absent, it is named by
+   * position like any other message the client did not name.
    */
   assistantMessageId?: string;
   toolInvocations?: ToolInvocation[];
@@ -98,12 +96,9 @@ export interface SaveConversationParams {
   agentId: string;
   /** The embedding app (`host.app`); it labels the conversation only if this turn creates it. */
   originApp?: string;
-  /** The consulted agents' answers, each stored as its own message before the reply. */
-  agentMessages?: AgentMessage[];
   /**
-   * A group turn has no lead: every reply is a member's, in `agentMessages`. Set, the turn stores
-   * no reply of its own (`assistantResponse` is ignored) and the conversation's last message is the
-   * last member's.
+   * A group turn has no lead: every reply is a member's, stored by the room as it lands. Set, the
+   * turn stores the person's message and no reply of its own (`assistantResponse` is ignored).
    */
   omitLeadReply?: boolean;
   /**
@@ -112,18 +107,6 @@ export interface SaveConversationParams {
    * ({@link appendChannelTurn}), and a conversation it creates is labelled with it.
    */
   channelSource?: ConversationSource;
-}
-
-/**
- * The id of the `index`-th consulted agent's answer (0-based, in the order of
- * its `alia.agent_start`) of a turn whose reply is `assistantMessageId`.
- *
- * Derived on both sides rather than sent, so a client that drew the answer
- * live and the conversation it reloads later name it the same way
- * (`docs/agent-embedding.md` §4).
- */
-export function agentMessageId(assistantMessageId: string, index: number): string {
-  return `${assistantMessageId}-agent-${index}`;
 }
 
 /** Two messages are equal for append purposes if role and content match. */
@@ -185,7 +168,6 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
     source,
     agentId,
     originApp,
-    agentMessages,
     omitLeadReply = false,
     channelSource,
   } = params;
@@ -227,18 +209,6 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
     (channelMessage?.id === undefined ? undefined : channelReplyMessageId(channelMessage.id));
 
   const turnTail: InputMessage[] = [
-    // Insert agent messages before the final assistant response
-    ...(agentMessages || []).map((am, index) => ({
-      role: am.role,
-      content: am.content,
-      agentInfo: am.agentInfo,
-      ...(am.toolInvocations && am.toolInvocations.length > 0
-        ? { toolInvocations: am.toolInvocations }
-        : {}),
-      ...(assistantMessageId === undefined
-        ? {}
-        : { id: agentMessageId(assistantMessageId, index) }),
-    })),
     ...(omitLeadReply
       ? []
       : [
@@ -254,9 +224,7 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
   const title = extractConversationTitle(assistantResponse, messages);
 
   // Update conversation metadata
-  const preview = stripTitleTags(
-    omitLeadReply ? (agentMessages?.at(-1)?.content ?? '') : assistantResponse,
-  ).slice(0, 100);
+  const preview = stripTitleTags(omitLeadReply ? '' : assistantResponse).slice(0, 100);
   const writeMetadata = (db: Executor = getDb()) =>
     upsertConversation(db, {
       oxyUserId: userId,
