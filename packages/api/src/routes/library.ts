@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, ownSessionProof } from '../middleware/auth.js';
 import { getDb } from '../db/index.js';
 import {
   createLibraryFile,
@@ -128,7 +128,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     // transaction records Alia's use of it.
     const stored = await storePrivateContent({
       kind: 'library_file',
-      owner: { kind: 'person', oxyUserId: userId },
+      owner: { kind: 'person', oxyUserId: userId, requester: ownSessionProof(req) },
       bytes: file.buffer,
       mime: file.mimetype,
       name: file.originalname,

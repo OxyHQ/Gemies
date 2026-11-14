@@ -7,7 +7,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const stored = vi.hoisted(() => ({
-  calls: [] as Array<{ oxyUserId: string; mime: string; name: string }>,
+  calls: [] as Array<{ oxyUserId: string; taskId: string; mime: string; name: string }>,
   fail: false,
 }));
 const heard = vi.hoisted(() => ({
@@ -17,11 +17,18 @@ const heard = vi.hoisted(() => ({
 }));
 
 vi.mock('../files/oxy-files.js', () => ({
-  storeChannelMedia: vi.fn(async (input: { oxyUserId: string; mime: string; name: string }) => {
-    if (stored.fail) throw new Error('Oxy is down');
-    stored.calls.push({ oxyUserId: input.oxyUserId, mime: input.mime, name: input.name });
-    return `file-${stored.calls.length}`;
-  }),
+  storeChannelMedia: vi.fn(
+    async (input: { oxyUserId: string; taskId: string; mime: string; name: string }) => {
+      if (stored.fail) throw new Error('Oxy is down');
+      stored.calls.push({
+        oxyUserId: input.oxyUserId,
+        taskId: input.taskId,
+        mime: input.mime,
+        name: input.name,
+      });
+      return `file-${stored.calls.length}`;
+    },
+  ),
 }));
 vi.mock('../kaana/transport.js', () => ({ getKaanaClient: () => ({ dispose() {} }) }));
 vi.mock('../voice/transcribe.js', async (importOriginal) => {
@@ -45,7 +52,12 @@ import { channelMessageSchema, prepareChannelTurn } from '../channel-messages.js
 const b64 = (text: string) => Buffer.from(text).toString('base64');
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0]).toString('base64');
 const turn = (message: Parameters<typeof prepareChannelTurn>[0]['message'], extra = {}) =>
-  prepareChannelTurn({ message, ownerUserId: 'owner-1', payerAccountId: 'gemie-1', ...extra });
+  prepareChannelTurn({
+    message,
+    owner: { oxyUserId: 'owner-1', taskId: 'task-1' },
+    payerAccountId: 'gemie-1',
+    ...extra,
+  });
 
 beforeEach(() => {
   stored.calls.length = 0;
@@ -55,7 +67,7 @@ beforeEach(() => {
 });
 
 describe('a channel message, as the turn carries it', () => {
-  it('keeps a sticker as the person’s file and shows the gemie its image, emoji and set', async () => {
+  it('keeps a sticker as the person’s file, under their task, and shows the gemie its image, emoji and set', async () => {
     const result = await turn({
       text: '',
       media: [
@@ -72,7 +84,7 @@ describe('a channel message, as the turn carries it', () => {
       { type: 'file', file: { file_id: 'file-1', filename: 'sticker.webp', mime: 'image/webp' } },
     ]);
     expect(stored.calls).toEqual([
-      { oxyUserId: 'owner-1', mime: 'image/webp', name: 'sticker.webp' },
+      { oxyUserId: 'owner-1', taskId: 'task-1', mime: 'image/webp', name: 'sticker.webp' },
     ]);
     expect(result.modelParts).toEqual([
       { type: 'text', text: '[Sticker 😂 from the set "HappyCats"]' },
@@ -208,6 +220,28 @@ describe('a channel message, as the turn carries it', () => {
     });
     expect(result.content).toEqual([
       { type: 'text', text: '[File: film.mkv (too large to fetch)]' },
+    ]);
+  });
+
+  it('keeps nothing without the person’s task (a third party), yet shows and transcribes it', async () => {
+    const result = await turn(
+      {
+        text: '',
+        media: [
+          { kind: 'photo', file: { mime: 'image/jpeg', data: JPEG } },
+          { kind: 'voice', durationSeconds: 4, file: { mime: 'audio/ogg', data: b64('ogg') } },
+        ],
+      },
+      { owner: null },
+    );
+    expect(stored.calls).toEqual([]);
+    expect(heard.calls).toEqual(['gemie-1']);
+    expect(result.content).toEqual([
+      { type: 'text', text: '[Photo]\n[Voice note, 0:04] It says: hola, ¿quedamos mañana?' },
+    ]);
+    expect(result.modelParts).toEqual([
+      { type: 'text', text: '[Photo]\n[Voice note, 0:04] It says: hola, ¿quedamos mañana?' },
+      { type: 'image', image: expect.any(Uint8Array), mediaType: 'image/jpeg' },
     ]);
   });
 

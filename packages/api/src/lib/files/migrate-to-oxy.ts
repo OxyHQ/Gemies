@@ -25,6 +25,11 @@
  *   spends at most `MIGRATION_UPLOADS_PER_MINUTE` of them, leaving the rest to
  *   Alia's live writes, and an item Oxy answers 429 waits a minute and is tried
  *   again rather than reported failed — a run of any size finishes unattended.
+ * - **Only what Alia owns.** A person's file is stored in Oxy only with that
+ *   person's own requester proof (their session or a task they granted; Oxy's
+ *   `requireUserMediaOwner`), and a backfill acts for nobody. A person's
+ *   library upload or skill file is reported `skipped` and stays on legacy
+ *   storage, never sent to Oxy under Alia's name.
  */
 
 import type { Readable } from 'node:stream';
@@ -160,6 +165,10 @@ export async function* migrateKind(
   }
 }
 
+/** Why a person's file is not copied: no proof that the work is theirs. */
+const PERSON_FILE_NEEDS_REQUESTER =
+  "a person's file is stored in Oxy only with their own requester proof, which a backfill does not hold";
+
 interface WorkItem {
   readonly cursor: string;
   readonly entityId: string;
@@ -239,6 +248,9 @@ async function migrateItem(
   pace: (calls: number) => Promise<void>,
 ): Promise<MigrationLine | typeof RATE_LIMITED> {
   const base = { kind, entityId: item.entityId };
+  if (item.owner.kind === 'person') {
+    return { ...base, outcome: 'skipped', reason: PERSON_FILE_NEEDS_REQUESTER };
+  }
   try {
     const read =
       kind === 'show-covers'

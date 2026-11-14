@@ -20,6 +20,7 @@ const H = vi.hoisted(() => ({
   read: vi.fn(),
   metric: vi.fn(),
   fallback: vi.fn(),
+  requester: vi.fn(),
 }));
 
 vi.mock('../../../db/index.js', () => ({ getDb: () => ({}) }));
@@ -61,6 +62,7 @@ const {
   OxyFileIntegrityError,
   OxyFilesUnavailableError,
   setOxyFilesClientForTests,
+  storeChannelMedia,
   storePrivateContent,
   storeShowCover,
   uploadRoute,
@@ -69,8 +71,22 @@ const { parseStoredLocator, storedLocator } = await import('../../../domain/oxy-
 
 const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
+/**
+ * A person's media is stored only through the requester facade (`withRequester`), never on
+ * Alia's bare client, so the bare client here has no user-media uploads at all.
+ */
 function fakeOxy(overrides: Record<string, unknown>): OxyServer {
-  return { assets: overrides } as unknown as OxyServer;
+  const { uploadUserMedia, uploadUserMediaLarge, ...bare } = overrides;
+  const asPerson = { uploadUserMedia, uploadUserMediaLarge };
+  return {
+    assets: {
+      ...bare,
+      withRequester: (proof: unknown) => {
+        H.requester(proof);
+        return asPerson;
+      },
+    },
+  } as unknown as OxyServer;
 }
 
 beforeEach(() => {
@@ -115,7 +131,11 @@ describe('show covers', () => {
 describe('private content', () => {
   const input = {
     kind: 'library_file' as const,
-    owner: { kind: 'person' as const, oxyUserId: 'u1' },
+    owner: {
+      kind: 'person' as const,
+      oxyUserId: 'u1',
+      requester: { requesterToken: 'session-of-u1' },
+    },
     bytes: Buffer.from('%PDF'),
     mime: 'application/pdf',
     name: 'a.pdf',
@@ -161,7 +181,20 @@ describe('private content', () => {
         visibility: 'private',
       }),
     );
+    // As the person, with their own session: Oxy stores user media only for that account.
+    expect(H.requester).toHaveBeenCalledWith({ requesterToken: 'session-of-u1' });
     expect(H.upload).not.toHaveBeenCalled();
+  });
+
+  it('never asks Oxy to store a person’s file without their requester proof', async () => {
+    const uploadUserMediaLarge = vi.fn();
+    setOxyFilesClientForTests(() => fakeOxy({ uploadUserMediaLarge }));
+    await expect(
+      storePrivateContent({ ...input, owner: { ...input.owner, requester: null } }),
+    ).resolves.toEqual(legacy);
+    expect(uploadUserMediaLarge).not.toHaveBeenCalled();
+    expect(H.requester).not.toHaveBeenCalled();
+    expect(H.fallback).toHaveBeenCalledWith('library_file', 'no_requester');
   });
 
   it('streams a person’s small image as their PRIVATE media', async () => {
@@ -177,6 +210,7 @@ describe('private content', () => {
       'image/png',
       expect.objectContaining({ visibility: 'private', originalName: 'a.png' }),
     );
+    expect(H.requester).toHaveBeenCalledWith({ requesterToken: 'session-of-u1' });
   });
 
   it('stores a spoken clip as Alia’s private application file', async () => {
@@ -277,6 +311,63 @@ describe('private content', () => {
       fakeOxy({ uploadUserMediaLarge: async () => ({ file: stored('public') }) }),
     );
     await expect(copyIntoOxy(input)).rejects.toThrow(/stored a private library_file as public/);
+    expect(H.order).toEqual([]);
+  });
+});
+
+describe('channel media', () => {
+  const webp = Buffer.from('RIFF0000WEBP');
+  const media = {
+    oxyUserId: 'u1',
+    taskId: 'task-of-u1',
+    bytes: webp,
+    mime: 'image/webp',
+    name: 'sticker.webp',
+  };
+
+  it('is stored as the person’s private media under the task they granted on the channel', async () => {
+    const uploadUserMedia = vi.fn(async () => ({
+      id: 'oxy-sticker',
+      sha256: sha(webp),
+      visibility: 'private',
+    }));
+    setOxyFilesClientForTests(() => fakeOxy({ uploadUserMedia }));
+    await expect(storeChannelMedia(media)).resolves.toBe('oxy-sticker');
+    expect(H.requester).toHaveBeenCalledWith({ taskId: 'task-of-u1' });
+    expect(uploadUserMedia).toHaveBeenCalledWith(
+      'u1',
+      webp,
+      'image/webp',
+      expect.objectContaining({ visibility: 'private', originalName: 'sticker.webp' }),
+    );
+  });
+
+  it('a voice note or a document goes the same way, by the upload its type needs', async () => {
+    const pdf = Buffer.from('%PDF-1.7');
+    const uploadUserMediaLarge = vi.fn(async () => ({
+      file: { id: 'oxy-doc', sha256: sha(pdf), visibility: 'private' },
+    }));
+    setOxyFilesClientForTests(() => fakeOxy({ uploadUserMediaLarge }));
+    await expect(
+      storeChannelMedia({ ...media, bytes: pdf, mime: 'application/pdf', name: 'a.pdf' }),
+    ).resolves.toBe('oxy-doc');
+    expect(H.requester).toHaveBeenCalledWith({ taskId: 'task-of-u1' });
+  });
+
+  it('is never written to the legacy bucket when Oxy refuses it', async () => {
+    setOxyFilesClientForTests(() =>
+      fakeOxy({
+        uploadUserMedia: async () => {
+          throw Object.assign(
+            new Error('User media requires the authenticated requester account.'),
+            {
+              status: 403,
+            },
+          );
+        },
+      }),
+    );
+    await expect(storeChannelMedia(media)).rejects.toThrow(/requester account/);
     expect(H.order).toEqual([]);
   });
 });

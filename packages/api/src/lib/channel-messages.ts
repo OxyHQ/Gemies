@@ -5,7 +5,9 @@
  *
  * - Its media is kept as the person's private Oxy file (`storeChannelMedia`), and the conversation
  *   keeps a `file` part for it, like an attachment made in the app: the app shows it, and a later
- *   turn reads what it was in words (`turnContentText`).
+ *   turn reads what it was in words (`turnContentText`). It is kept only on the person's own turn,
+ *   under the task they granted the gemie on that channel: a third party's media is never stored
+ *   as theirs, and the gemie still sees it on the turn it arrived.
  * - A voice note or an audio file is transcribed through the same speech path as dictation; its
  *   transcript travels with its `file` part, so no turn hears it twice.
  * - A sticker is its image with its emoji and set; a video, a round video or a GIF is its first
@@ -236,13 +238,25 @@ async function transcribe(
 }
 
 /**
- * The turn's user message for a channel message: its media kept in `ownerUserId`'s Oxy Files and
- * transcribed for `payerAccountId`, the account whose turn it is. `speaker` names who wrote it in a
- * group. `keep: false` (an edit) keeps nothing and transcribes nothing: only its words are new.
+ * Whose Oxy Files keep a channel message's media, and the task that lets Gemies write there: the
+ * durable authority the person granted the gemie on that channel, whose effective account is
+ * theirs. A channel message carries no session, so this task is the only requester proof there is.
+ */
+export interface ChannelMediaOwner {
+  readonly oxyUserId: string;
+  readonly taskId: string;
+}
+
+/**
+ * The turn's user message for a channel message: its media kept in `owner`'s Oxy Files and
+ * transcribed for `payerAccountId`, the account whose turn it is. `owner: null` keeps nothing — a
+ * third party's turn, or an account whose authority lapsed — and the media is still shown and
+ * transcribed. `speaker` names who wrote it in a group. `keep: false` (an edit) keeps nothing and
+ * transcribes nothing: only its words are new.
  */
 export async function prepareChannelTurn(input: {
   message: GemieChannelMessage;
-  ownerUserId: string;
+  owner: ChannelMediaOwner | null;
   payerAccountId: string;
   speaker?: string;
   modelAcceptsFiles?: boolean;
@@ -268,10 +282,13 @@ export async function prepareChannelTurn(input: {
       : null;
     const readable = audio || readableByEveryModel(bytes.mime) || input.modelAcceptsFiles === true;
     let fileId: string | null = null;
-    if (readable) {
+    if (!readable) {
+      line = line.replace(/]$/, `; its type (${bytes.mime}) cannot be read here]`);
+    } else if (input.owner) {
       try {
         fileId = await storeChannelMedia({
-          oxyUserId: input.ownerUserId,
+          oxyUserId: input.owner.oxyUserId,
+          taskId: input.owner.taskId,
           bytes: bytes.data,
           mime: bytes.mime,
           name: bytes.name,
@@ -280,8 +297,6 @@ export async function prepareChannelTurn(input: {
         log.channels.warn({ err: error }, 'Media that arrived on a channel could not be kept');
         line = line.replace(/]$/, '; it could not be kept]');
       }
-    } else {
-      line = line.replace(/]$/, `; its type (${bytes.mime}) cannot be read here]`);
     }
 
     if (heard && 'failed' in heard) line = line.replace(/]$/, `; ${heard.failed}]`);

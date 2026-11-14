@@ -50,7 +50,7 @@ import {
   type PublicSkill,
 } from '../db/agents/skillRepository.js';
 import { SKILL_SOURCES, type SkillSource } from '../domain/skill.js';
-import { authenticateToken, optionalAuth } from '../middleware/auth.js';
+import { authenticateToken, optionalAuth, ownSessionProof } from '../middleware/auth.js';
 import { resolveUtilityModel, getAIModel } from '../lib/chat-core.js';
 import { openStoredContent } from '../lib/files/oxy-files.js';
 import { log } from '../lib/logger.js';
@@ -198,6 +198,7 @@ router.post('/import', authenticateToken, async (req: Request, res: Response) =>
       const result = await storeSkillBundle(getDb(), skill.bundle, {
         source: 'github',
         ownerOxyUserId: req.user.id,
+        ownerRequester: ownSessionProof(req),
         sourceRepo: `${imported.source.owner}/${imported.source.repo}`,
         sourcePath: skill.directory,
         sourceUrl: sourceUrl(imported.source, imported.commit, skill.directory),
@@ -277,6 +278,7 @@ router.post('/upload', authenticateToken, upload.any(), async (req: Request, res
     const result = await storeSkillBundle(getDb(), bundle, {
       source: 'upload',
       ownerOxyUserId: req.user.id,
+      ownerRequester: ownSessionProof(req),
       createdByOxyUserId: req.user.id,
     });
     await installSkill(getDb(), req.user.id, result.skill._id);
@@ -359,6 +361,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     const result = await storeSkillBundle(getDb(), bundle, {
       source: 'authored',
       ownerOxyUserId: req.user.id,
+      ownerRequester: ownSessionProof(req),
       createdByOxyUserId: req.user.id,
       displayName: parsed.data.displayName,
       tags: parsed.data.tags,
@@ -594,6 +597,7 @@ router.post('/:id/versions', authenticateToken, async (req: Request, res: Respon
     const result = await storeSkillBundle(getDb(), bundle, {
       source: skill.source,
       ownerOxyUserId: req.user.id,
+      ownerRequester: ownSessionProof(req),
       createdByOxyUserId: req.user.id,
     });
     res

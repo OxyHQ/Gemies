@@ -35,6 +35,12 @@
  *   (`uploadAppFileLarge` / `uploadUserMediaLarge`, up to 8 GiB). A person's
  *   file stored this way is readable by Alia under the consent grant Oxy
  *   writes when Alia stores it for them, until the person revokes it.
+ * - A person's file is written WITH THAT PERSON'S OWN REQUESTER PROOF
+ *   (`ContentOwner.requester`): their session on a request they made, or the
+ *   task they granted for a channel. Oxy stores user media for a first-party
+ *   workload only into the account that proof verifies (its
+ *   `requireUserMediaOwner`); Alia naming the owner is never enough. Without a
+ *   proof nothing is sent to Oxy.
  *
  * Private content always goes to Oxy first. A write Oxy does not take — a
  * refused type, a person's file not stored private, bytes other than the ones
@@ -56,7 +62,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
-import type { OxyServer } from '@oxy.so/core/server';
+import type { OxyServer, RequesterProof } from '@oxy.so/core/server';
 import type { LegacyReadKind, LegacyStoredObjectKind } from '../../domain/oxy-files.js';
 import { getDb, type ApiDatabase } from '../../db/index.js';
 import {
@@ -76,6 +82,20 @@ export class OxyFilesUnavailableError extends Error {
   constructor() {
     super('Alia has no Oxy service identity, so it cannot store or read Oxy files');
     this.name = 'OxyFilesUnavailableError';
+  }
+}
+
+/**
+ * Raised, before anything is sent, for a person's file with no requester proof of theirs: Oxy
+ * would refuse it, because a first-party workload stores user media only for the account a
+ * verified session or task names.
+ */
+export class OxyFileRequesterMissingError extends Error {
+  constructor() {
+    super(
+      "A person's file is stored in Oxy only with their own requester proof, and none was given",
+    );
+    this.name = 'OxyFileRequesterMissingError';
   }
 }
 
@@ -199,10 +219,18 @@ export function seriesCoverColumns(cover: ShowCover): {
 /** The kinds of private content: library uploads, spoken clips, skill files. */
 type PrivateContentKind = LegacyStoredObjectKind;
 
-/** Who owns a stored file: Alia itself, or one person. */
+/**
+ * Who owns a stored file: Alia itself, or one person — with the proof that the work is that
+ * person's (their session, or a task they granted), or `null` when there is none (a backfill, a
+ * delegated call), and then Oxy is not asked.
+ */
 export type ContentOwner =
   | { readonly kind: 'alia' }
-  | { readonly kind: 'person'; readonly oxyUserId: string };
+  | {
+      readonly kind: 'person';
+      readonly oxyUserId: string;
+      readonly requester: RequesterProof | null;
+    };
 
 /** Where one stored file is. A row stores both columns; at least one is set. */
 export interface StoredContent {
@@ -285,18 +313,21 @@ export async function copyIntoOxy(input: Omit<StoreContentInput, 'legacyKey'>): 
 /**
  * Keep media that arrived for a person on a channel (a photo sent to their gemie's bot, a voice
  * note in their connected account) as THEIR private Oxy file, like an attachment they made in the
- * app: Oxy only, no legacy copy. Answers the file id; throws when Oxy does not take it, and the
- * caller says so in the conversation instead.
+ * app: Oxy only, no legacy copy. Written under the channel's task — the durable authority the
+ * person granted the gemie there, whose effective account is theirs — since a channel message
+ * carries no session. Answers the file id; throws when Oxy does not take it, and the caller says
+ * so in the conversation instead.
  */
 export async function storeChannelMedia(input: {
   readonly oxyUserId: string;
+  readonly taskId: string;
   readonly bytes: Buffer;
   readonly mime: string;
   readonly name: string;
 }): Promise<string> {
   return storeInOxy({
     kind: 'channel_media',
-    owner: { kind: 'person', oxyUserId: input.oxyUserId },
+    owner: { kind: 'person', oxyUserId: input.oxyUserId, requester: { taskId: input.taskId } },
     bytes: input.bytes,
     mime: input.mime,
     name: input.name,
@@ -359,14 +390,17 @@ async function uploadPrivate(input: OxyOnlyInput, sha256: string): Promise<Uploa
     });
     return file;
   }
+  // As the person: Oxy checks the owner against the account this proof verifies.
+  if (input.owner.requester === null) throw new OxyFileRequesterMissingError();
+  const asPerson = assets.withRequester(input.owner.requester);
   if (route === 'streamed') {
-    return assets.uploadUserMedia(input.owner.oxyUserId, input.bytes, input.mime, {
+    return asPerson.uploadUserMedia(input.owner.oxyUserId, input.bytes, input.mime, {
       visibility: 'private',
       originalName: input.name,
       timeout: UPLOAD_TIMEOUT_MS,
     });
   }
-  const { file } = await assets.uploadUserMediaLarge(input.owner.oxyUserId, input.bytes, {
+  const { file } = await asPerson.uploadUserMediaLarge(input.owner.oxyUserId, input.bytes, {
     mime: input.mime,
     sha256,
     filename: input.name,
@@ -398,6 +432,7 @@ function isContentBlocked(error: unknown): boolean {
 /** A closed label for why a write fell back, for the metric and the log. */
 function fallbackReason(error: unknown): string {
   if (error instanceof OxyFilesUnavailableError) return 'no_service_identity';
+  if (error instanceof OxyFileRequesterMissingError) return 'no_requester';
   if (error instanceof OxyFileVisibilityError) return 'not_private';
   if (error instanceof OxyFileIntegrityError) return 'hash_mismatch';
   const status = errorStatus(error);

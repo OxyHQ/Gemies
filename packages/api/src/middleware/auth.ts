@@ -8,6 +8,7 @@ import {
   type OxyRequestUser,
   type OxyServiceAppContext,
   type OxyServiceActingAsContext,
+  type RequesterProof,
 } from '@oxy.so/core/server';
 import { log } from '../lib/logger.js';
 import { authenticateChannelAccount, hasChannelContext } from './channel-auth.js';
@@ -62,6 +63,17 @@ const onOxyRefusal = ({ code, stage, reason, status, optional }: OxyAuthRefusal)
  * an outage, never a refusal and never a pass.
  */
 const authOptions = { auth: { onRefusal: onOxyRefusal } } as const;
+
+/**
+ * The proof that a request is its person's own work, to forward to Oxy when Alia acts as them (a
+ * file stored as theirs): their verified session bearer on a direct request. `null` for a service
+ * token, a channel message or a machine credential, none of which is the person's session.
+ */
+export function ownSessionProof(req: Request): RequesterProof | null {
+  return req.user?.id && !req.serviceApp && !req.channelContext && req.accessToken
+    ? { requesterToken: req.accessToken }
+    : null;
+}
 
 /** Oxy authentication for a user bearer OR a service token, delegated or not. */
 export const authenticateToken = createOxyAuthMiddleware(oxy, authOptions);

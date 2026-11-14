@@ -77,9 +77,10 @@ router.post('/messages', authenticateToken, async (req: Request, res: Response) 
   const parsed = incomingSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid message' });
   try {
+    // Kept as the person's under the account's task; without one nothing of it is stored.
     const turn = await prepareChannelTurn({
       message: parsed.data.message,
-      ownerUserId: context.accountId,
+      owner: context.taskId ? { oxyUserId: context.accountId, taskId: context.taskId } : null,
       payerAccountId: context.accountId,
     });
     // Files are read on the turn with the account's task; without one, the turn reads their words.
