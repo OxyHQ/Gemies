@@ -11,6 +11,7 @@ import type { RoomEvent } from '../../room/bus.js';
 import type { RoomEngineDeps, TranscriptRow } from '../../room/engine.js';
 import { type GemieStepData, abandonGemieChain, processGemieStep } from '../engine.js';
 import { DEFAULT_GEMIE_CHAIN_BOUNDS, gemieMessageIdOf } from '../policy.js';
+import { createLocalRoomLock } from '../../room/lock.js';
 
 vi.mock('../../../logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -511,4 +512,137 @@ describe('peer reactions within an already admitted chain', () => {
       }),
     );
   });
+});
+
+describe('peer reaction contribution bounds', () => {
+  it.each(['rate', 'messages', 'tokens'] as const)(
+    'withholds a new continuation reaction when the reply fills the %s budget',
+    async (boundary) => {
+      const bounds = {
+        maxMessages: boundary === 'messages' ? 2 : 8,
+        maxTokens: boundary === 'tokens' ? 100 : 120_000,
+      };
+      const w = world(
+        {
+          lumen: async () => ({ text: 'Hecho.' }),
+          pepe: async () => ({ text: 'Ya está comprobado.' }),
+        },
+        bounds,
+      );
+      const prepare = vi.fn<NonNullable<RoomEngineDeps['prepareReaction']>>(async () => undefined);
+      let recent = boundary === 'rate' ? 59 : 0;
+      const keys: string[] = [];
+      const deps = {
+        ...w.deps,
+        room: {
+          ...w.deps.room,
+          prepareReaction: prepare,
+          repliesSince: async () => recent,
+          lock: {
+            run: <T>(key: string, work: () => Promise<T>) => {
+              keys.push(key);
+              return work();
+            },
+          },
+        },
+      };
+      await w.start('Comprueba el enlace.');
+      await processGemieStep(w.queue.shift()!, deps);
+      if (boundary === 'rate') recent = 60;
+      const continuation = w.queue.shift()!;
+      expect(await processGemieStep(continuation, deps)).toBe('ended');
+      expect(prepare).toHaveBeenCalledTimes(1); // Recipient had the final slot; continuation has none.
+      expect(w.said('chat')).toEqual(['Pepe: Ya está comprobado.']);
+      expect(keys.slice(-2)).toEqual(['person:between', 'person:chat']);
+      // A completed contribution is historical delivery, so replay remains possible at the limit.
+      const replay = vi.fn(async () => undefined);
+      w.rowsOf('chat').length = 0;
+      const turns = w.turns.length;
+      expect(
+        await processGemieStep(continuation, {
+          ...deps,
+          room: { ...deps.room, reactionCompleted: async () => true, replayReactions: replay },
+        }),
+      ).toBe('ended');
+      expect(replay).toHaveBeenCalledOnce();
+      expect(w.turns).toHaveLength(turns);
+    },
+  );
+
+  it('deduplicates equal lock scopes and admits no reply when the chain is already full', async () => {
+    const w = world(
+      { lumen: async () => ({ text: 'Never runs' }), pepe: async () => ({ text: '' }) },
+      { maxMessages: 1, maxTokens: 100 },
+    );
+    const keys: string[] = [];
+    const deps = {
+      ...w.deps,
+      room: {
+        ...w.deps.room,
+        lock: {
+          run: <T>(key: string, work: () => Promise<T>) => {
+            keys.push(key);
+            return work();
+          },
+        },
+      },
+    };
+    await w.start('Gracias.');
+    await processGemieStep(w.queue.shift()!, deps);
+    expect(w.turns).toHaveLength(0);
+    const continuation = { ...w.queue.shift()!, originConversationId: 'between' };
+    await processGemieStep(continuation, deps);
+    expect(keys).toEqual(['person:between', 'person:between']);
+    expect(w.said('between')).toHaveLength(1);
+  });
+});
+
+it('serializes continuations from different origins before testing the last peer reaction slot', async () => {
+  let recent = 59,
+    entered!: () => void,
+    release!: () => void,
+    runs = 0;
+  const ready = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const w = world({
+    lumen: async () => ({ text: 'Hecho.' }),
+    pepe: async () => {
+      runs++;
+      if (runs === 1) {
+        entered();
+        await gate;
+        recent++;
+        return { text: '', reactionOnly: true };
+      }
+      return { text: 'He recibido la respuesta.' };
+    },
+  });
+  await w.start('Comprueba el enlace.');
+  await processGemieStep(w.queue.shift()!, w.deps);
+  const continuation = w.queue.shift()!;
+  const prepare = vi.fn<NonNullable<RoomEngineDeps['prepareReaction']>>(async () => undefined);
+  const deps = {
+    ...w.deps,
+    room: {
+      ...w.deps.room,
+      lock: createLocalRoomLock(),
+      prepareReaction: prepare,
+      repliesSince: async () => recent,
+    },
+  };
+  const first = processGemieStep(continuation, deps);
+  await ready;
+  const second = processGemieStep(
+    { ...continuation, originConversationId: 'another-chat', turn: continuation.turn + 1 },
+    deps,
+  );
+  release();
+  expect(await Promise.all([first, second])).toEqual(['ended', 'ended']);
+  expect(prepare).toHaveBeenCalledOnce();
+  expect(runs).toBe(2);
+  expect(recent).toBe(60);
 });

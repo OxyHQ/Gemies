@@ -178,10 +178,20 @@ export function processGemieStep(
   data: GemieStepData,
   deps: GemieEngineDeps,
 ): Promise<GemieStepOutcome> {
-  const writesIn = data.phase === 'reply' ? data.conversationId : data.originConversationId;
-  return deps.room.lock.run(roomKeyOf(data.userId, writesIn), () =>
-    data.phase === 'reply' ? reply(data, deps) : continueChain(data, deps),
-  );
+  // A continuation can now write feedback in the pair as well as its report in the origin.
+  // Serialize both scopes in stable order: two continuations cannot claim the last pair slot.
+  const conversations =
+    data.phase === 'reply'
+      ? [data.conversationId]
+      : [data.conversationId, data.originConversationId];
+  const keys = [...new Set(conversations.map((id) => roomKeyOf(data.userId, id)))].sort();
+  const run = (index: number): Promise<GemieStepOutcome> =>
+    index === keys.length
+      ? data.phase === 'reply'
+        ? reply(data, deps)
+        : continueChain(data, deps)
+      : deps.room.lock.run(keys[index]!, () => run(index + 1));
+  return run(0);
 }
 
 /** The gemie that was written to answers, in the conversation between them. */
@@ -237,6 +247,8 @@ async function reply(data: GemieStepData, deps: GemieEngineDeps): Promise<GemieS
   }
 
   if (
+    data.messages >= deps.bounds.maxMessages ||
+    data.tokens >= deps.bounds.maxTokens ||
     roomRateExceeded(
       await room.repliesSince(userId, conversationId, new Date(room.now() - ROOM_REPLY_WINDOW_MS)),
     )
@@ -434,8 +446,18 @@ async function continueChain(
   if (agent === null) return endChain(data, deps, 'error');
   // A textual peer reply can be acknowledged in its own conversation. A reaction-only reply
   // does not manufacture a new peer message or capability to send a reciprocal reaction.
+  const mayReact =
+    data.messages < bounds.maxMessages &&
+    data.tokens < bounds.maxTokens &&
+    !roomRateExceeded(
+      await room.repliesSince(
+        userId,
+        data.conversationId,
+        new Date(room.now() - ROOM_REPLY_WINDOW_MS),
+      ),
+    );
   const conversationReaction =
-    peerReply && reactionTurnId
+    peerReply && reactionTurnId && mayReact
       ? await room.prepareReaction?.({
           userId,
           conversationId: data.conversationId,
