@@ -702,6 +702,7 @@
     "copied": "Copied!",
     "turnActions": "Message actions",
     "consultFailed": "%{name} couldn't answer.",
+    "taskUnfinished": "%{name} couldn't finish this task.",
     "shareFailed": "Couldn't create the share link.",
     "sharedFailed": "Couldn't load this conversation.",
     "sharedGone": "This shared conversation is no longer available."
