@@ -14,6 +14,7 @@ import {
 } from './engine.js';
 import { gemieChainBounds } from './policy.js';
 import { enqueueGemieStep } from './queue.js';
+import { outreachMessageIdOf } from '../../agent/agent-outreach.js';
 
 export interface GemieRuntime {
   readonly deps: GemieEngineDeps;
@@ -46,6 +47,23 @@ export function gemieRuntime(): GemieRuntime {
       return roomRuntime().deps;
     },
     enqueue: enqueueGemieStep,
+    tellPerson: async (input) => {
+      const { postAgentMessage } = await import('../../agent/agent-outreach.js');
+      const post = (conversationId?: string) =>
+        postAgentMessage({
+          oxyUserId: input.userId,
+          agentId: input.agentId,
+          kind: 'result',
+          idempotencyKey: input.key,
+          content: input.content,
+          ...(conversationId ? { conversationId } : {}),
+        });
+      // The chat it wrote from; its thread with the person when that chat is gone.
+      let outcome = await post(input.conversationId);
+      if (!outcome.posted && outcome.reason === 'conversation_not_found') outcome = await post();
+      return outcome.posted ? { messageId: outcome.messageId } : null;
+    },
+    toldIdOf: (key) => outreachMessageIdOf('result', key),
     bounds: gemieChainBounds(),
   };
   runtime = {

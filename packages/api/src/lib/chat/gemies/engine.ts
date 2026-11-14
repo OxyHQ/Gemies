@@ -87,6 +87,20 @@ export interface GemieStepData {
 export interface GemieEngineDeps {
   /** The room's world: lock, bus, transcript, agent turn, store, task revocation, clock. */
   readonly room: RoomEngineDeps;
+  /**
+   * The gemie that wrote tells the person what it found, in their chat with it, as a gemie posts
+   * there on its own (`lib/agent/agent-outreach.ts`): stored, live on every surface, relayed to the
+   * Telegram chat that conversation is, and notified. Idempotent by `key`. `null` when it could not.
+   */
+  readonly tellPerson: (input: {
+    readonly userId: string;
+    readonly agentId: string;
+    readonly conversationId: string;
+    readonly content: string;
+    readonly key: string;
+  }) => Promise<{ readonly messageId: string } | null>;
+  /** The id {@link tellPerson} stores a message under for `key`, so a retried step finds it. */
+  readonly toldIdOf: (key: string) => string;
   readonly enqueue: (job: GemieStepData) => Promise<void>;
   readonly bounds: GemieChainBounds;
 }
@@ -350,7 +364,7 @@ async function continueChain(
     room.loadTranscript(userId, data.originConversationId),
     room.loadTranscript(userId, data.conversationId),
   ]);
-  const reported = originRows.find((row) => row.clientMessageId === reportId);
+  const reported = originRows.find((row) => row.clientMessageId === deps.toldIdOf(reportId));
   const wrote = pairRows.find((row) => row.clientMessageId === nextMessageId);
   const writeAgain = (tokens: number) =>
     deps.enqueue({
@@ -372,9 +386,8 @@ async function continueChain(
         consultId: reportId,
         status: 'completed',
         content,
-        messageId: reportId,
+        messageId: reported.clientMessageId,
       });
-      await emit('group.message', storedMessage(reportId, content, null, reported));
     }
     if (!wrote) return endChain(data, deps, 'done');
     await writeAgain(data.tokens);
@@ -470,20 +483,20 @@ async function continueChain(
     );
   } else {
     try {
-      const stored = await room.storeReply({
+      const told = await deps.tellPerson({
         userId,
+        agentId: initiator.info.id,
         conversationId: data.originConversationId,
-        clientMessageId: reportId,
         content,
-        agentInfo: null,
+        key: reportId,
       });
+      if (told === null) throw new Error('The chat to tell the person in is gone');
       await emit('alia.agent_end', {
         consultId: reportId,
         status: 'completed',
         content,
-        messageId: stored.id,
+        messageId: told.messageId,
       });
-      await emit('group.message', storedMessage(stored.id, content, null, stored));
     } catch (error: unknown) {
       log.general.error(
         { err: error, chainId: data.chainId },

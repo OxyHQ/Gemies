@@ -609,10 +609,13 @@ later (the sidebar's **Between gemies**), read-only: they never write in it.
 
 Alia always has the tool (`agent` is in her grants and her `reach = 'person'` reaches every gemie the
 person can open); another gemie has it through the `agent` family, separate from `delegation` (which
-finds and creates agents in the catalogue, `searchAgents` / `createAgent`). It exists only on a turn
-in the person's own chat with the gemie — their own session's, or an external agent's run that names
-that chat (ADR 0039's tool lane checks it): a channel, a voice call or an unattended run has none.
-External agents are participants like any gemie: written to, they answer through their daemon.
+finds and creates agents in the catalogue, `searchAgents` / `createAgent`). It exists on every turn
+where the person is the one talking to the gemie, on any channel — the app or the gemie's own
+Telegram bot — and on an external agent's run that names that chat (ADR 0039's tool lane checks it);
+a contact on a connected account, a voice call or an unattended run has none. The tool names the
+person's gemies and connected agents, and `to` takes an id, an @handle or a name ("Claude");
+`searchAgents` finds them by name before the public directory. External agents are participants like
+any gemie: written to, they answer through their daemon.
 
 A NEW agent is created with the bare `agent` grant when its creator names no grants
 (`DEFAULT_NEW_AGENT_GRANTS`: the server's `POST /agents` and the chat `createAgent` tool), so it can

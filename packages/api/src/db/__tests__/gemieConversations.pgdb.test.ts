@@ -193,6 +193,23 @@ describe('a chain of several turns, on Postgres', () => {
       enqueue: async (job: GemieStepData) => {
         queue.push(job);
       },
+      // The person is told in their chat, as a gemie posts there on its own.
+      tellPerson: async (input: {
+        userId: string;
+        conversationId: string;
+        content: string;
+        key: string;
+      }) => {
+        const stored = await real.storeReply({
+          userId: input.userId,
+          conversationId: input.conversationId,
+          clientMessageId: `told-${input.key}`,
+          content: input.content,
+          agentInfo: null,
+        });
+        return { messageId: stored.id };
+      },
+      toldIdOf: (key: string) => `told-${key}`,
       bounds: DEFAULT_GEMIE_CHAIN_BOUNDS,
     };
     for (let job = queue.shift(); job; job = queue.shift()) await processGemieStep(job, deps);
