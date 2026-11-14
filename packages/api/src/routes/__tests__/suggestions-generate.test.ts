@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { OxyInferenceError } from '@oxy.so/core/inference';
+import { KaanaError } from '@kaana.ai/sdk';
 
 /**
  * `POST /suggestions/generate`, and the failure it was answering 500 with.
@@ -374,9 +374,9 @@ describe('an answer that was cut off', () => {
   });
 });
 
-describe('when Oxy cannot route the request', () => {
-  it('preserves the refusal as a retryable service response', async () => {
-    H.kaanaThrows = new OxyInferenceError({
+describe('when Kaana refuses the request', () => {
+  it('preserves the refusal as a typed service response', async () => {
+    H.kaanaThrows = new KaanaError({
       code: 'no_route_available',
       message: 'No route is currently available.',
       retryable: false,
@@ -394,7 +394,21 @@ describe('when Oxy cannot route the request', () => {
     });
     expect(vi.mocked(log.general.warn)).toHaveBeenCalledWith(
       { code: 'no_route_available', requestId: 'request-1', retryable: false },
-      'Oxy inference refused suggestion generation',
+      'Inference refused suggestion generation',
     );
+  });
+
+  it('keeps a policy refusal typed instead of a generic 500', async () => {
+    H.kaanaThrows = new KaanaError({
+      code: 'policy_violation',
+      message: 'Refused by policy.',
+      retryable: false,
+      requestId: 'request-2',
+      status: 403,
+    });
+    const res = await generate();
+
+    expect(res.statusCode).toBe(503);
+    expect(res.body).toMatchObject({ code: 'policy_violation', requestId: 'request-2' });
   });
 });
