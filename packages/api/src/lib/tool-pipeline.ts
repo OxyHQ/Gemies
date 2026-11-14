@@ -84,8 +84,8 @@ import { buildMcpTools } from './tools/mcp.js';
 import { getDb } from '../db/index.js';
 import { listSpacePeerIds } from '../db/spaces/spaceRepository.js';
 import { SPACE_NOTES_TOOL, buildSpaceNotesTool } from './agent/space-notes-tool.js';
-import { buildAskAliaTool } from './tools/ask-alia.js';
-import { buildConsultAgentTool } from './tools/consult-agent.js';
+import { ALIA_GEMIE_ID } from '../domain/alia-gemie.js';
+import { buildSendMessageTool, type GemieChainDelivery } from './tools/send-message.js';
 import {
   buildOxyServiceTools,
   type OxyExecutionAuthorizationRef,
@@ -176,23 +176,38 @@ export interface ForUserOptions {
   requesterAccountId?: string | null;
   /**
    * The app the person is in, by the request's verified app assertion
-   * (`lib/app-surface.ts`, ADR 0021). `consultAgent` and `searchAgents` reach
+   * (`lib/app-surface.ts`, ADR 0021). `sendMessage` and `searchAgents` reach
    * an agent Oxy confines to an app only from that app. Absent: no surface,
    * which reaches no confined agent — the safe answer for every turn with no
    * person's app behind it (a channel, a trigger, an autonomous run).
    */
   surfaceApplicationId?: string | null;
   /**
-   * A consulted agent's turn inside another conversation (`consultAgent`,
-   * ADR 0020 §5). It never receives `consultAgent`, the catalogue search, agent
-   * creation, automations, deep research or the SSE tools: there is no second
-   * surface to draw them, and depth is one by construction.
+   * A gemie's turn that is not its live chat with the person: a member of a group room, or either
+   * side of a conversation between gemies (`lib/tools/agent-turn.ts`). It never receives
+   * `sendMessage`, the catalogue search, agent creation, automations, deep research or the SSE
+   * tools: there is no surface to draw them, and a gemie that was written to never writes on.
    */
   nested?: boolean;
   /**
-   * The attachments this turn carries (`turnFeatureUsesOf`), so a consulted
-   * agent's feature gates are applied to what it could be handed
-   * (`consultAgent`, ADR 0020 §6). Absent: none.
+   * The person's own chat with this gemie that this turn is in — narrower than `conversationId`,
+   * which a channel turn carries too. `sendMessage` exists only with it: a gemie that writes to
+   * another continues HERE when the answer comes, where the person watches it (ADR 0041). Only a
+   * caller that knows the chat is the person's own with this gemie hands it in — the person's own
+   * session (`routes/v1/chat-completions.ts`) and an external agent's tool lane after checking it
+   * (`lib/external-agents/tool-server.ts`). Absent (a channel, a voice call, an unattended run):
+   * the gemie cannot write to gemies on this turn.
+   */
+  gemieChat?: string;
+  /**
+   * A nested turn of the gemie that wrote first in a chain between gemies, reading the answer
+   * (`lib/chat/gemies/engine.ts`): it may write once more, to `peerId` only, through `deliver`.
+   * Absent once the chain has no room left.
+   */
+  gemieChain?: { readonly peerId: string; readonly deliver: GemieChainDelivery };
+  /**
+   * The attachments this turn carries (`turnFeatureUsesOf`), so the gates of a gemie this turn
+   * writes to are applied to what it could be handed (ADR 0020 §6). Absent: none.
    */
   attachments?: readonly GatedPart[];
   requestId?: string;
@@ -252,7 +267,7 @@ export interface ForUserOptions {
   /**
    * The UI effects the embedding app can perform on the person's screen
    * (`lib/host-tools.ts`). Built only for a person's own session with a stream
-   * to dispatch them on, and never inside a consultation.
+   * to dispatch them on, and never in a nested turn.
    */
   host?: HostRequest;
   /**
@@ -285,8 +300,8 @@ export interface ForUserOptions {
    * `lib/research/research-engine.ts`, which runs hosted catalogue models
    * several times; offered on an unreserved turn it is free hosted inference behind a
    * tool call. The matching request FLAGS are refused at the boundary
-   * (`lib/chat/request-context.ts`), and `consultAgent` is withheld here for
-   * the same reason — so this is the remaining door.
+   * (`lib/chat/request-context.ts`) — so this is the remaining door. (Writing
+   * to a gemie is not one: each turn of that chain reserves its own credits.)
    *
    * Everything else here stays: the web tools reach Clarity Search,
    * and the rest touch the person's own data.
@@ -431,6 +446,8 @@ export class ToolPipeline {
       requesterAccountId = opts.userId,
       surfaceApplicationId = null,
       nested = false,
+      gemieChat,
+      gemieChain,
       attachments = [],
       toolsEnabled,
       agent,
@@ -460,7 +477,8 @@ export class ToolPipeline {
 
     /**
      * The other agents in this agent's SPACE (ADR 0028), or null when it is in none. A member's reach is
-     * cut to them where the tools are built, not asked of the model: it consults only its peers, and the
+     * cut to them where the tools are built, not asked of the model: it writes only to its peers (and
+     * Alia), and the
      * tools that find or start agents outside the space (`searchAgents`, `createAgent`, delegation) are
      * not built at all.
      */
@@ -710,31 +728,14 @@ export class ToolPipeline {
         buildRuntimeTools(runtime, grants, spacePeers === null ? {} : { withoutDelegation: true }),
       );
     }
-    // A member keeps its space's shared notes. Membership is the permission, as it is for consulting.
+    // A member keeps its space's shared notes. Membership is the permission, as it is for writing to
+    // its peers.
     if (agent.spaceId && actsForPerson && !nested) {
       aliaTools[SPACE_NOTES_TOOL] = buildSpaceNotesTool({
         spaceId: agent.spaceId,
         agentId: agent._id,
       });
     }
-    // ...and may ask Alia, who stays outside every space. A consultation runs hosted inference, so not on
-    // an unreserved local turn, for the reason `consultAgent` is withheld there.
-    if (spacePeers !== null && actsForPerson && !nested && !isLocalRuntime) {
-      Object.assign(
-        aliaTools,
-        buildAskAliaTool({
-          person: {
-            oxyUserId: userId,
-            ...(accessToken ? { accessToken } : {}),
-            isDirectSession,
-            taskId: oxyTaskId,
-            surfaceApplicationId,
-          },
-          payerOxyUserId: userId,
-        }),
-      );
-    }
-
     /**
      * 4. The bulk sources — the FOUR INSTANCED FAMILIES. All of them, on every
      * surface.
@@ -834,22 +835,41 @@ export class ToolPipeline {
             taskId: oxyTaskId,
             onStepStatus: onOxyStepStatus,
           }).catch(bulkFailure('oxy-service')),
-      // A local turn reserved no credits, and a consultation runs hosted inference.
-      actsForPerson && !nested && !isLocalRuntime && wants('agent')
-        ? buildConsultAgentTool({
-            person: {
-              oxyUserId: userId,
-              ...(accessToken ? { accessToken } : {}),
-              isDirectSession,
-              taskId: oxyTaskId,
-              surfaceApplicationId,
-            },
-            payerOxyUserId: userId,
-            callerAgentId: agent._id,
-            attachments,
-            ...consultSelection(grants, spacePeers),
-            ...(sseEmitter ? { sseEmitter } : {}),
-          }).catch(bulkFailure('agent'))
+      // A gemie writes to another from the person's own chat (`gemieChat`, which only a
+      // caller that verified it hands in), where it continues when the answer comes and the person
+      // watches it live, or, nested, as the next message of the chain it is continuing. Writing
+      // spends nothing of this turn's: every turn of the chain reserves its own credits from the
+      // person (ADR 0041 §3), so a local turn and an external agent's lane may write too.
+      actsForPerson && wants('agent')
+        ? nested
+          ? gemieChain
+            ? buildSendMessageTool({
+                person: {
+                  oxyUserId: userId,
+                  isDirectSession,
+                  taskId: oxyTaskId,
+                  surfaceApplicationId,
+                },
+                from: agent,
+                delivery: { continues: gemieChain.deliver },
+                allowedAgentIds: [gemieChain.peerId],
+              }).catch(bulkFailure('agent'))
+            : {}
+          : gemieChat !== undefined
+            ? buildSendMessageTool({
+                person: {
+                  oxyUserId: userId,
+                  ...(accessToken ? { accessToken } : {}),
+                  isDirectSession,
+                  taskId: oxyTaskId,
+                  surfaceApplicationId,
+                },
+                from: agent,
+                delivery: { startsIn: gemieChat },
+                attachments,
+                ...messagingSelection(grants, spacePeers),
+              }).catch(bulkFailure('agent'))
+            : {}
         : {},
     ]);
     // The three sources come from rows in no promised order. Sorted by name, the
@@ -882,14 +902,14 @@ export class ToolPipeline {
     // The person's assistant offers the person's installed skills; a persona only those linked to it.
     if (skills && (personAssistant || skills.agentScoped)) Object.assign(aliaTools, skills.tools);
 
-    // 5. Merge server tools with the caller's editor and host tools (never inside a consultation).
+    // 5. Merge server tools with the caller's editor and host tools (never in a nested turn).
     const hostTools =
       host && sseEmitter && isDirectSession && !nested
         ? buildHostTools(host, sseEmitter, hostTurn)
         : {};
     const tools: ToolSet = { ...aliaTools, ...(nested ? {} : editorTools), ...hostTools };
 
-    // 6. The catalogue of agents `consultAgent` can reach, for finding a specialist.
+    // 6. The catalogue of gemies `sendMessage` can reach, for finding one to write to.
     if (actsForPerson && !nested && spacePeers === null && grants.allows('delegation')) {
       tools.searchAgents = createSearchAgentsTool(surfaceApplicationId);
     }
@@ -941,21 +961,21 @@ function byName(tools: ToolSet): ToolSet {
 }
 
 /**
- * Which agents this turn may consult, beyond what `canReachAgent` already
- * decides for the person present.
+ * Which gemies this turn may write to, beyond what `canReachAgent` already decides for the person
+ * present.
  *
- * The person's own assistant, and a gemie whose owner wrote the bare `agent`
- * grant, consult any agent the person could open themselves. An agent granted named ids
- * consults only those, and an agent without the grant consults none (`[]`, and
- * the tool is not built). A member of a space consults exactly its peers.
+ * The person's own assistant, and a gemie whose owner wrote the bare `agent` grant, write to any
+ * gemie the person could open themselves. A gemie granted named ids writes only to those, and one
+ * without the grant to none (`[]`, and the tool is not built). A member of a space writes exactly to
+ * its peers and to Alia, who stays outside every space (ADR 0028).
  */
-function consultSelection(
+function messagingSelection(
   grants: CapabilityGrantSet,
   spacePeers: readonly string[] | null,
 ): { allowedAgentIds?: readonly string[] } {
-  // In a space, being a member IS the permission to consult the other members, and nothing beyond them
-  // (ADR 0028): the agent's own `agent` grant neither widens it nor is needed.
-  if (spacePeers !== null) return { allowedAgentIds: spacePeers };
+  // In a space, being a member IS the permission to write to the other members and to Alia, and
+  // nothing beyond them: the gemie's own `agent` grant neither widens it nor is needed.
+  if (spacePeers !== null) return { allowedAgentIds: [...spacePeers, ALIA_GEMIE_ID] };
   const granted = grants.instances('agent');
   return granted === null ? {} : { allowedAgentIds: granted };
 }

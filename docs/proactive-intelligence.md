@@ -308,7 +308,7 @@ internal Alia `500`.
 ### Rendering requested replies
 
 An agent-authored delivery retains `agentInfo` in storage and on the socket. This is authorship,
-not evidence of delegation. The SDK passes the direct conversation's agent id (available before
-its profile loads), or the group roster, to the thread as `memberIds`. Those agents speak inline;
-only outside agents are shown as consultations. Shared conversations also pass their lead's id.
+not evidence of delegation: every gemie in a conversation speaks inline, under its own name. Nobody
+from outside joins a chat mid-turn (ADR 0041: a gemie that wants something from another writes to it
+in their own conversation).
 A scheduled greeting must remain visible both on arrival and after reloading the conversation.

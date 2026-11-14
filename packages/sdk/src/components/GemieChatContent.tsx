@@ -51,6 +51,7 @@ import { usePendingQuestions } from '../hooks/usePendingQuestions';
 import { useThreadView } from '../hooks/useThreadView';
 import { useTTS } from '../hooks/useTTS';
 import { BubblesProvider } from '../lib/bubbles';
+import { GemieConversationOpenerProvider } from '../lib/gemie-conversation-opener';
 import type { GemieAddMenu } from '../lib/add-menu';
 import { GemieFlightsProvider } from '../lib/flights';
 import {
@@ -69,7 +70,6 @@ import { type GemieHostTools, APP_SLUG } from '../runtime/host-tools';
 import { useCreateConversation } from '../runtime/conversations';
 import { gemieQueryKeys } from '../runtime/query-keys';
 import { type GemieThreadAddress, threadKey } from '../runtime/routes';
-import type { AgentExchange } from '../runtime/thread/agent-exchange';
 import type { Message } from '../runtime/types';
 import { useAgentActivity } from '../runtime/use-agent-activity';
 import { useConversationThread } from '../runtime/use-conversation-thread';
@@ -77,12 +77,11 @@ import { UsageLimitError } from '../runtime/usage-limit-error';
 import type { GemieSuggestion } from '../types';
 import type { GemieAvatarState } from './GemieAvatar';
 import { GemieComposer } from './GemieComposer';
-import { useParticipants } from './GemieParticipants';
 import { GemieGroupWelcome } from './GemieGroupWelcome';
 import { GemieWelcomeMessage } from './GemieWelcomeMessage';
 import { AmbientField } from './AmbientField';
 import { InertWhen } from './InertWhen';
-import { AgentExchangeView } from './thread/AgentExchangeView';
+import { GemieBetweenGemies } from './GemieBetweenGemies';
 import { GemieThread } from './thread/GemieThread';
 import { ThreadSearch } from './thread/ThreadSearch';
 import { VoiceModeIcon } from './VoiceModeIcon';
@@ -411,20 +410,13 @@ function GemieConversationView({
     failedTurn,
     retryFailedTurn,
   } = thread;
-  const consulted = useParticipants({ lead, messages, flights });
-  // The direct agent is a member too. Use the requested id before its profile loads: an
-  // attributed follow-up is still its own reply, never a consultation with itself.
-  const memberIds = useMemo(
-    () =>
-      new Set(group === undefined ? (agentId ? [agentId] : []) : group.map((member) => member.id)),
-    [agentId, group],
-  );
+  // Who is in it is known when it opens: its lead, or a group's members (ADR 0020 §7).
   const participants = useMemo(
     () => ({
-      ...(group === undefined ? consulted : groupParticipants(group)),
+      ...(group === undefined ? { lead, joined: [] } : groupParticipants(group)),
       ...(conversationId === undefined ? {} : { conversationId }),
     }),
-    [group, consulted, conversationId],
+    [group, lead, conversationId],
   );
   const asked = usePendingQuestions(messages, isLoading);
   const gemieId = gemieThread?.gemieId;
@@ -438,10 +430,10 @@ function GemieConversationView({
     [threadHandle, gemieId],
   );
   const view = useThreadView(threadAddress, conversationId);
-  // The internal conversation of a consulted agent, read-only, drawn over the chat (which stays
-  // mounted under it, so its scroll and the draft are exactly as they were on the way back).
-  const [exchange, setExchange] = useState<AgentExchange | null>(null);
-  const closeExchange = useCallback(() => setExchange(null), []);
+  // A conversation between gemies a card in the thread opened (ADR 0041), read-only, drawn over the
+  // chat (which stays mounted under it, so its scroll and the draft are as they were on the way back).
+  const [betweenGemies, setBetweenGemies] = useState<string | null>(null);
+  const closeBetweenGemies = useCallback(() => setBetweenGemies(null), []);
   const agentActivity = useAgentActivity(agentRun?.turnId ?? null, agentRun?.agentId);
 
   // The turn was refused for the usage limit: the composer is closed until the host's dialog is
@@ -775,7 +767,7 @@ function GemieConversationView({
   const showsPast = view.jumped;
   return (
     <GemieFlightsProvider value={flights}>
-      <InertWhen inert={exchange !== null}>
+      <InertWhen inert={betweenGemies !== null}>
         <AiChatContainer
           header={frame.header}
           title={frame.title}
@@ -792,30 +784,30 @@ function GemieConversationView({
           background={background}
         >
           <BubblesProvider value={bubbles || group !== undefined}>
-            <GemieThread
-              // Nothing live under a window: it is a view of the past, and the conversation being
-              // streamed into is not below it in the thread.
-              messages={showsPast ? NO_MESSAGES : messages}
-              conversationId={conversationId}
-              isLoading={isLoading}
-              conversationLoading={conversationLoading || loading}
-              memberIds={memberIds}
-              history={view.history}
-              focusCursor={view.focusCursor}
-              failedTurn={failedTurn}
-              onRetryTurn={retryFailedTurn}
-              onRegenerate={composer.regenerate}
-              onStartEdit={edit.start}
-              newConversationOffer={newConversationOffer}
-              agentActivity={agentRun === null ? null : agentActivity}
-              call={voice.isActive ? { agentState: voice.agentState } : undefined}
-              empty={welcome}
-              threadRef={threadRef}
-              onScroll={onScroll}
-              onReply={quoteIntoComposer}
-              onReactionChange={thread.applyReaction}
-              onOpenAgentChat={setExchange}
-            />
+            <GemieConversationOpenerProvider value={setBetweenGemies}>
+              <GemieThread
+                // Nothing live under a window: it is a view of the past, and the conversation being
+                // streamed into is not below it in the thread.
+                messages={showsPast ? NO_MESSAGES : messages}
+                conversationId={conversationId}
+                isLoading={isLoading}
+                conversationLoading={conversationLoading || loading}
+                history={view.history}
+                focusCursor={view.focusCursor}
+                failedTurn={failedTurn}
+                onRetryTurn={retryFailedTurn}
+                onRegenerate={composer.regenerate}
+                onStartEdit={edit.start}
+                newConversationOffer={newConversationOffer}
+                agentActivity={agentRun === null ? null : agentActivity}
+                call={voice.isActive ? { agentState: voice.agentState } : undefined}
+                empty={welcome}
+                threadRef={threadRef}
+                onScroll={onScroll}
+                onReply={quoteIntoComposer}
+                onReactionChange={thread.applyReaction}
+              />
+            </GemieConversationOpenerProvider>
           </BubblesProvider>
           {!showsPast ? null : (
             <View className="absolute inset-x-0 top-16 z-10 items-center" pointerEvents="box-none">
@@ -829,8 +821,10 @@ function GemieConversationView({
           )}
         </AiChatContainer>
       </InertWhen>
-      {exchange === null ? null : (
-        <AgentExchangeView exchange={exchange} lead={lead} onBack={closeExchange} />
+      {betweenGemies === null ? null : (
+        <View className="absolute inset-0 z-20">
+          <GemieBetweenGemies conversationId={betweenGemies} onBack={closeBetweenGemies} />
+        </View>
       )}
       {usageLimit === null ? null : renderUsageLimit?.({ error: usageLimit, dismiss: clearError })}
       {sharedFlights ? null : <AvatarFlightLayer flights={ownFlights} />}

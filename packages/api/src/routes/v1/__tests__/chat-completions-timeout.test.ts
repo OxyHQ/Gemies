@@ -96,6 +96,9 @@ vi.mock('../../../db/agents/skillRepository.js', () => ({
  * suite observes. Stubbed at the module boundary.
  */
 // No conversation here is a group: the members repository would need a real database.
+vi.mock('../../../db/chat/gemieConversationRepository.js', () => ({
+  isGemieConversation: vi.fn(async () => false),
+}));
 vi.mock('../../../db/chat/conversationMemberRepository.js', () => ({
   listGroupMembers: vi.fn(async () => []),
 }));

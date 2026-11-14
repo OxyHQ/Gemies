@@ -11,6 +11,7 @@ import { applyHostOutcomes, hostAwaitsResults, hostOutcomeResult } from '../../l
 import { turnStepBounds } from '../../lib/chat/model-config.js';
 import { recordToolResults } from '../../db/chat/messageRepository.js';
 import { listGroupMembers } from '../../db/chat/conversationMemberRepository.js';
+import { isGemieConversation } from '../../db/chat/gemieConversationRepository.js';
 import { serveGroupTurn } from '../../lib/chat/group-turn-http.js';
 import { conversationReactionContext } from '../../lib/chat/reaction-context.js';
 import { holdConversationActivity } from '../../lib/chat/activity.js';
@@ -25,7 +26,6 @@ import { AliaError, AliaErrorCode } from '../../lib/errors/error-codes.js';
 import { SSEWriter } from '../../lib/chat/sse-writer.js';
 import { buildChatRequestContext } from '../../lib/chat/request-context.js';
 import { ASK_USER_QUESTION_TOOL } from '../../lib/tools/ask-user-question.js';
-import type { AgentMessage } from '../../lib/chat/stream-runner.js';
 import { runProviderLoop, type ChatLoopState } from '../../lib/chat/provider-loop.js';
 import {
   chatTurnControl,
@@ -212,6 +212,16 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       typeof req.body?.conversationId === 'string' &&
       req.body.conversationId !== ''
     ) {
+      // A conversation between gemies is theirs: the person reads it and never writes in it (ADR 0041).
+      if (await isGemieConversation(getDb(), req.user.id, req.body.conversationId)) {
+        res.status(403).json({
+          error: {
+            code: 'conversation_between_gemies',
+            message: 'This conversation is between gemies; it can only be read.',
+          },
+        });
+        return;
+      }
       const members = await listGroupMembers(getDb(), req.user.id, req.body.conversationId);
       if (members.length > 0) {
         const outcome = await serveGroupTurn({
@@ -452,8 +462,8 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
 
     // Assemble all tools via the unified pipeline
     const sseEmitter = createResponseSSEEmitter(res, sse.ensureHeaders);
-    // The turn's attachments: a consulted agent's gates apply to them (`lib/tools/agent-turn.ts`).
-    const consultAttachments = ctx.featureUses.filter((use) => isAttachmentFeature(use.feature));
+    // The turn's attachments: the gates of a gemie it writes to apply to them (`sendMessage`).
+    const turnAttachments = ctx.featureUses.filter((use) => isAttachmentFeature(use.feature));
     let assembled: Awaited<ReturnType<typeof ToolPipeline.forUser>>;
     try {
       assembled = req.machineCredential
@@ -466,8 +476,11 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
             personPresent,
             // A session acts for the person holding it; an API key does not.
             actsForPerson: isDirectUserSession || Boolean(req.channelContext?.taskId),
-            // The app the person is in (ADR 0021), for `consultAgent` and `searchAgents`.
+            // The app the person is in (ADR 0021), for `sendMessage` and `searchAgents`.
             surfaceApplicationId: ctx.surfaceApplicationId,
+            // A gemie that writes to another continues in this chat when it answers (ADR 0041):
+            // only the person's own session's chat, never a channel's, which has no live surface.
+            ...(conversationId && isDirectUserSession ? { gemieChat: conversationId } : {}),
             requestId,
             // Where a task this turn creates delivers what it finds (`automation-create.ts`).
             ...(conversationId ? { conversationId } : {}),
@@ -481,7 +494,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
               ? { hostTurn: { turn: controlIdentity, results: hostResultWaiter() } }
               : {}),
             personalization,
-            attachments: consultAttachments,
+            attachments: turnAttachments,
             sseEmitter,
             webSearch,
             mcpServerId,
@@ -522,8 +535,6 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       appCatalogPrompt,
       activeToolNames,
     } = assembled;
-
-    const agentMessages: AgentMessage[] = [];
 
     // Log tool schemas for debugging
     if (Array.isArray(body.tools) && body.tools.length > 0) {
@@ -661,7 +672,6 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       truncatedTools,
       toolRouting,
       toolNameMapping,
-      agentMessages,
       systemPromptTokens,
       requestedModel,
       autonomyRuntime,

@@ -55,7 +55,7 @@ ADR 0017 is the owner's decision of 2026-10-15 that voice calls run on realtime 
 
 ADR 0018 is the owner's decision of 2026-10-15 that the bottom sheet and the app are one product: everything that is a conversation — the thread, its cards, the thought panel, the composer's levels, the voice call — is drawn by the SDK's `AliaChatContent`, and the app keeps only the sidebar, the right panel, the layout that mounts them, its routes and its callbacks.
 
-ADR 0020 is the owner's decision of 2026-10-16 that there is one agent model. The native-product-agent lane (pinned manifest, requester assertions, application-bound reach, product-paid inference) is retired; an app's agent such as Homiio's Sindi is an ordinary agent its owner publishes, reaching a person's own app data under the historical published ceiling (superseded for own apps by ADR 0022), consulted by Alia through one streaming `consultAgent`, fully autonomous within its configuration (no approval cards), and embedded by any app through the SDK with host tools, renderers and feature gates. It amends ADR 0015 §1–4 and ADR 0018.
+ADR 0020 is the owner's decision of 2026-10-16 that there is one agent model. The native-product-agent lane (pinned manifest, requester assertions, application-bound reach, product-paid inference) is retired; an app's agent such as Homiio's Sindi is an ordinary agent its owner publishes, reaching a person's own app data under the historical published ceiling (superseded for own apps by ADR 0022), consulted by Alia through one streaming `consultAgent` (superseded by ADR 0041: gemies write to each other in their own conversation), fully autonomous within its configuration (no approval cards), and embedded by any app through the SDK with host tools, renderers and feature gates. It amends ADR 0015 §1–4 and ADR 0018.
 
 ADR 0021 is the owner's decision of 2026-10-16 that an Oxy application's own agent may be confined to that application. It is Oxy's platform fact (Oxy ADR 0044), read live and enforced in `canReachAgent` against the application of the person's session; it is not an agent-editor setting and does not re-add `agents.application_id`.
 
@@ -96,5 +96,6 @@ ADR 0019 applies Oxy ADR 0043 to Alia: who owns each kind of stored bytes, how e
 - [0038 — An external agent connects with its own credential; the pairing code is the authorisation](./0038-external-agents-connect-with-their-own-credential.md).
 - [0039 — An external agent reaches its gemie's tools as an MCP server](./0039-external-agents-reach-their-tools-over-mcp.md).
 - [0040 — Realtime over one socket: an account log, typed frames, the turn on SSE](./0040-realtime-over-one-socket.md).
+- [0041 — Gemies talk to each other in conversations, not through a tool](./0041-gemies-talk-in-conversations.md). Supersedes ADR 0020 §5 (`consultAgent`) and ADR 0028 §6's `askAlia`.
 
 - [0033 — Durable autonomous work](./0033-durable-autonomous-work.md).

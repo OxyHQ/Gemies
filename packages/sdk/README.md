@@ -226,16 +226,19 @@ The sheet offers the person's latest conversations with its lead under the greet
 - **The lead.** `agent={{ id }}` (on `GemieChatSheet`, `GemieChatScreen` and `GemieChatContent`) makes
   that agent the conversation's lead: its greeting, name, character and starters
   (`GET /v1/agents/:id/profile`) and the header's first avatar. Omitted, Alia.
-- **The participants.** `GemieChatState.participants` is `{ lead, joined }`; draw it with
-  `GemieParticipants` (or `GemieParticipantsHeader` inside Bloom's AI chat shell) wherever the
-  chrome puts the conversation's title. When the lead consults an agent (`alia.agent_start`), the
-  agent's reply is drawn under its own identity and its avatar flies from there into the header —
-  Bloom's multi-agent join — which gains the agent when it lands.
+- **The participants.** `GemieChatState.participants` is `{ lead, joined }` — the lead, and a
+  group's other members; draw it with `GemieParticipants` (or `GemieParticipantsHeader` inside
+  Bloom's AI chat shell) wherever the chrome puts the conversation's title.
+- **Gemies talking to each other** (Gemies ADR 0041). A gemie that writes to another
+  (`sendMessage`) draws a card in the chat — "Pepe is talking to Lumen…", live over the
+  conversation's room events, then "Pepe talked to Lumen" — that opens their whole conversation
+  read-only over the chat (`GemieBetweenGemies`). An app can give that view a screen of its own and
+  list the conversations with `useConversations({ kind: 'gemies' })`.
 - **Host tools** are UI effects the app's own client performs. An `alia.host_action` is executed
   once, by `execute`, and its outcome is sent with the next request; an outcome whose request did
   not get through goes with the one after. They are never authority over data.
 - **Tool renderers** are keyed `<app>:<tool>`, parsed only from `oxy_<app>__<tool>` /
-  `self_<app>__<tool>`, and drawn before the generic tool card — for consulted agents too.
+  `self_<app>__<tool>`, and drawn before the generic tool card — for every gemie in the conversation.
 - **Feature gates.** The attach menu offers photos and files as the lead offers them
   (`GET /v1/agents/:id/features`); a locked row, and a turn refused with
   `feature_entitlement_required`, call `onFeatureLocked(key)`. Documents are uploaded to the

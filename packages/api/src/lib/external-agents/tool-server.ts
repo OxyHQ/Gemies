@@ -9,6 +9,9 @@
  *    person's own Oxy authority — their apps (`oxy_*`), automations, agent creation — is built;
  *  - it reserved no credits (`isLocalRuntime: true`: an external turn costs nothing, ADR 0030 §3),
  *    so nothing that runs hosted inference behind a tool call is built either;
+ *  - it writes to other gemies (`sendMessage`, ADR 0041) when the run names the person's chat with
+ *    it (`conversationId`, checked here): the message goes into their conversation and the answer
+ *    comes back to that chat, as for any gemie. Each turn of that chain reserves its own credits.
  *  - the gemie has no Oxy account (ADR 0036), so no memory of Gemies' (`forUser` builds none).
  *
  * Every call runs here, in Gemies, under the same governance a gemie's actions get
@@ -42,6 +45,45 @@ import { LOAD_TOOLS_TOOL } from '../tool-budget.js';
 export interface ExternalAgentToolScope {
   readonly agentId: string;
   readonly ownerOxyUserId: string;
+  /**
+   * The conversation the CLI's run belongs to, as the daemon names it
+   * ({@link EXTERNAL_AGENT_CONVERSATION_HEADER}: the relay's `threadKey`). Unchecked here; the
+   * tools are built with it only when it is the owner's own chat with this gemie.
+   */
+  readonly conversationId?: string;
+}
+
+/**
+ * The header the daemon sets on a run's MCP requests to name the conversation the run belongs to.
+ * With it, the agent can write to other gemies from that chat (ADR 0041).
+ */
+export const EXTERNAL_AGENT_CONVERSATION_HEADER = 'x-gemies-conversation';
+
+/**
+ * The conversation the run names, when it is the owner's own chat with this gemie: theirs, led by
+ * this gemie, and not a conversation between gemies (which the person only reads). Anything else is
+ * no conversation at all — the agent then simply cannot write to gemies on that run.
+ */
+async function ownChatOf(scope: ExternalAgentToolScope): Promise<string | undefined> {
+  const { conversationId } = scope;
+  if (conversationId === undefined || conversationId === '') return undefined;
+  const [{ findConversation }, { isGemieConversation }] = await Promise.all([
+    import('../../db/chat/conversationRepository.js'),
+    import('../../db/chat/gemieConversationRepository.js'),
+  ]);
+  const conversation = await findConversation(getDb(), scope.ownerOxyUserId, conversationId);
+  if (
+    conversation === undefined ||
+    conversation.agentId !== scope.agentId ||
+    (await isGemieConversation(getDb(), scope.ownerOxyUserId, conversationId))
+  ) {
+    log.agents.warn(
+      { agentId: scope.agentId },
+      "An external agent's run named a conversation that is not its owner's chat with it",
+    );
+    return undefined;
+  }
+  return conversationId;
 }
 
 /** The agent's tools for its owner, from the one assembler; empty when the agent is gone. */
@@ -52,6 +94,7 @@ export async function externalAgentTools(scope: ExternalAgentToolScope): Promise
     return {};
   }
   const agent = await attachAgentIdentity(record);
+  const conversationId = await ownChatOf(scope);
   // Imported when used, as `runAgentTurn` does: the pipeline imports half the API.
   const { ToolPipeline } = await import('../tool-pipeline.js');
   const { tools } = await ToolPipeline.forUser({
@@ -63,6 +106,7 @@ export async function externalAgentTools(scope: ExternalAgentToolScope): Promise
     webSearch: true,
     isLocalRuntime: true,
     agent,
+    ...(conversationId === undefined ? {} : { gemieChat: conversationId }),
     requestId: randomUUID(),
   });
   // The loader exists for a model limited to 128 tools per request; an MCP client lists them all.

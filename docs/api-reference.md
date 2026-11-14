@@ -142,6 +142,7 @@ The conversation routes an embedding app uses ([agent-embedding.md](./agent-embe
 | Route | Purpose |
 |---|---|
 | `GET /conversations?agentId=<id>&app=<slug>` | The person's conversations, narrowed to one agent, one app or both (`docs/agent-embedding.md` §6), newest first, with the usual `limit`/`cursor` |
+| `GET /conversations?kind=gemies` | The conversations the person's gemies have with each other (ADR 0041), one per pair, each with `kind: "gemies"` and both gemies in `members`. The default listing (`kind=person`) never includes them. `GET /conversations/:id` carries `kind` (and `members` for one between gemies); a turn, a save or a reaction in one answers `403 { error: { code: "conversation_between_gemies" } }` |
 | `POST /conversations/:id/share` | `{ "ttlHours": 1..168 }` → `201 { token, expiresAt }`. One link per conversation: sharing again replaces it. Only the SHA-256 of the token is stored (`conversation_shares`) |
 | `DELETE /conversations/:id/share` | Revokes the link; `404` when there is none. Deleting the conversation revokes it too |
 | `GET /conversations/collections` | The person's folders and projects with their conversations, and their pinned and favourite conversations: `{ collections, pinned, favorites }` ([Realtime](./realtime.mdx#collections-folders-projects-pins-and-favourites)) |

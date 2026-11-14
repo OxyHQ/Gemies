@@ -41,23 +41,20 @@ function formatOutboundMessage(message: Message): OutboundMessage {
 }
 
 /**
- * The id of the `index`-th consulted agent's answer (`alia.agent_start`, in the
- * order the consultations started) in the turn whose reply is `assistantMessageId`.
- *
- * Derived, not received: the frames name a consultation (`consultId`), not a
- * message. The server stores the same answer under the same derivation
- * (`conversation-saver.ts` `agentMessageId`).
+ * The id a group member's reply is drawn under in the turn whose request is
+ * `assistantMessageId` — the `index`-th `alia.agent_start` of that request — until
+ * its end frame names the stored reply (`messageId`), which then replaces it.
  */
-export function agentMessageId(assistantMessageId: string, index: number): string {
-  return `${agentMessagePrefix(assistantMessageId)}${index}`;
+export function memberDraftId(assistantMessageId: string, index: number): string {
+  return `${memberDraftPrefix(assistantMessageId)}${index}`;
 }
 
-/** Whether `id` is one of the agent answers {@link agentMessageId} names for this reply. */
-export function isAgentMessageOf(id: string, assistantMessageId: string): boolean {
-  return id.startsWith(agentMessagePrefix(assistantMessageId));
+/** Whether `id` is one of the drafts {@link memberDraftId} names for this request. */
+export function isMemberDraftOf(id: string, assistantMessageId: string): boolean {
+  return id.startsWith(memberDraftPrefix(assistantMessageId));
 }
 
-function agentMessagePrefix(assistantMessageId: string): string {
+function memberDraftPrefix(assistantMessageId: string): string {
   return `${assistantMessageId}-agent-`;
 }
 

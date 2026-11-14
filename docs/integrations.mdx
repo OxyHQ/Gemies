@@ -37,7 +37,7 @@ by a grant. The families and the tools each contributes:
 | `automation` | `createAutomation` |
 | `delegation` | `createAgent`, `searchAgents`, `delegate` |
 | `computer` | `computer_*`, `run_computer_command`, `*_computer_file(s)`, `browser_*` — the agents' computer ([agents](./agents.md#the-agents-computer-computer)) |
-| `mcp:<id>`, `agent[:<id>]`, … | instanced families: one connector or agent per grant (`consultAgent` for `agent`) |
+| `mcp:<id>`, `agent[:<id>]`, … | instanced families: one connector or agent per grant (`sendMessage` for `agent`) |
 | the person's account grant (`ACCOUNT_GRANTED_TOOLS`) | `listAccountChats`, `readAccountMessages`, `sendAccountMessage`, `sendTelegramMessage` (to the person, through a Telegram they granted the gemie) — not a family: the [connected accounts](#connected-accounts) the person granted the turn's gemie |
 | no grant (`UNGRANTED_TOOLS`) | `getCurrentDate`, `getDeviceInfo`, `planPreview`, `plan`, `suggestNewConversation` |
 

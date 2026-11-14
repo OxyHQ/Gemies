@@ -23,6 +23,7 @@ const state = vi.hoisted(() => ({
   collections: null as any,
   sidebarProps: null as null | Record<string, any>,
   conversations: [] as any[],
+  betweenGemies: [] as any[],
   isLoading: false,
   isFetchingNextPage: false,
   agents: [] as any[],
@@ -104,6 +105,7 @@ vi.mock('@gemies/sdk', () => ({
   GemieAvatar: () => null,
   ALIA_AVATAR: { preset: 'blue_beret' },
   readAgentCharacter: (value: unknown) => ({ preset: 'blue_beret', value }),
+  agentCharacterOf: (agent: { id: string }) => ({ preset: 'blue_beret', agent: agent.id }),
 }));
 vi.mock('@oxy.so/bloom/agent-avatar', () => ({ AgentAvatar: () => null }));
 vi.mock('@/features/onboarding/ui/invite-dialog', () => ({ InviteDialog: () => null }));
@@ -124,8 +126,16 @@ vi.mock('@/shared/i18n/use-translation', () => ({
 // hooks that talk to the API are stubbed.
 vi.mock('@gemies/sdk/runtime', async () => ({
   ...(await import('../../../../sdk/src/runtime/conversation-store')),
-  useConversations: () => ({
-    data: state.isLoading ? undefined : { pages: [{ conversations: state.conversations }] },
+  useConversations: (filter?: { kind?: string }) => ({
+    data: state.isLoading
+      ? undefined
+      : {
+          pages: [
+            {
+              conversations: filter?.kind === 'gemies' ? state.betweenGemies : state.conversations,
+            },
+          ],
+        },
     fetchNextPage: vi.fn(),
     hasNextPage: false,
     isFetchingNextPage: state.isFetchingNextPage,
@@ -426,6 +436,7 @@ beforeEach(async () => {
   state.storage.clear();
   state.sidebarProps = null;
   state.conversations = [chat('alpha'), chat('beta')];
+  state.betweenGemies = [];
   state.isLoading = false;
   state.isFetchingNextPage = false;
   state.agents = [];
@@ -768,6 +779,34 @@ describe('spaces in the sidebar', () => {
     state.spaces = [space({ memberAgentIds: ['a1'] })];
     await mount();
     expect(sections().map((s) => s.key)).toEqual(['agents', 'space:s1', 'chats', 'projects']);
+  });
+
+  it('lists what the gemies said to each other in its own section, before Alia’s chats', async () => {
+    state.agents = [agent('a1', 'Pepe', 's1')];
+    state.spaces = [space({ memberAgentIds: ['a1'] })];
+    state.betweenGemies = [
+      {
+        ...chat('pair'),
+        kind: 'gemies',
+        lastMessage: 'It fits two.',
+        members: [
+          { id: 'a1', name: 'Pepe', handle: 'pepe' },
+          { id: 'lumen', name: 'Lumen', handle: 'lumen' },
+        ],
+      },
+    ];
+    await mount();
+    expect(sections().map((s) => s.key)).toEqual([
+      'agents',
+      'space:s1',
+      'between-gemies',
+      'chats',
+      'projects',
+    ]);
+    const [row] = sections().find((s) => s.key === 'between-gemies').items;
+    expect(row).toMatchObject({ key: 'pair', label: 'Pepe · Lumen', description: 'It fits two.' });
+    await act(async () => state.sidebarProps!.onTreeItemPress({ key: 'pair' }));
+    expect(state.replace).toHaveBeenCalledWith('/(app)/c/pair');
   });
 
   it('keeps the section closed on this account once the person closes it', async () => {

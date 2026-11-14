@@ -32,10 +32,10 @@ vi.mock('../tools/oxy-services.js', () => ({
     return { oxy_inbox__listMessages: { description: 'inbox' } };
   }),
 }));
-vi.mock('../tools/consult-agent.js', () => ({
-  buildConsultAgentTool: vi.fn(async () => {
+vi.mock('../tools/send-message.js', () => ({
+  buildSendMessageTool: vi.fn(async () => {
     asked.agent += 1;
-    return { consultAgent: { description: 'consult' } };
+    return { sendMessage: { description: 'write to a gemie' } };
   }),
 }));
 vi.mock('../logger.js', () => {
@@ -107,12 +107,16 @@ const COMMON = {
   conversationId: 'telegram:8988966019:570038640',
 } satisfies Partial<Options>;
 
-/** The structural preconditions only the app meets: a bearer to mint under, a card to draw. */
+/**
+ * The structural preconditions only the app meets: a bearer to mint under, a card to draw, and the
+ * person's own chat where a gemie that writes to another continues live (`gemieChat`, ADR 0041).
+ */
 const APP_ONLY = [
   'askUserQuestion',
   'createAgent',
   'listMyAgents',
   'planPreview',
+  'sendMessage',
   'suggestNewConversation',
   'updateAgent',
 ];
@@ -130,6 +134,7 @@ describe('the person on their gemie’s Telegram bot', () => {
       ...COMMON,
       accessToken: 'bearer',
       isDirectSession: true,
+      gemieChat: 'app-chat',
       runtime: runtime(),
     });
     const appOxy = asked.oxy.at(-1);
@@ -157,7 +162,6 @@ describe('the person on their gemie’s Telegram bot', () => {
       'searchThread',
       'createAutomation',
       'scheduleFollowUp',
-      'consultAgent',
       'run_computer_command',
     ]) {
       expect(telegramTools).toContain(name);

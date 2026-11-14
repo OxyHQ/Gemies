@@ -4,6 +4,10 @@ Status: Accepted (2026-11-10, the owner's request: "carpetas" in the sidebar tha
 the agents inside talk to each other, share context and can do everything among themselves, and talk
 only to each other or to Alia; Alia always stays outside, as the generic chat of the app).
 Date: 2026-11-10.
+Amended: 2026-11-13 by [ADR 0041](./0041-gemies-talk-in-conversations.md) — a member reaches its peers and
+Alia with `sendMessage`, in a conversation between the two gemies, instead of `consultAgent` and
+`askAlia`; the cut (peers and Alia, membership is the permission) is unchanged, and Alia answering a
+member never reads her memory.
 
 ## Context
 

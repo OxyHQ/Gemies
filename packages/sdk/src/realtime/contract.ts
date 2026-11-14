@@ -67,6 +67,10 @@ export interface RealtimeConversationRow {
   readonly threadId: string | null;
   readonly memberAgentIds: string[];
   readonly spaceId: string | null;
+  /** `gemies` for a conversation between the person's gemies (ADR 0041), which they only read. */
+  readonly kind?: 'person' | 'gemies';
+  /** Its two gemies, when it is one between gemies. */
+  readonly members?: NonNullable<Message['agentInfo']>[];
   readonly app: string | null;
   readonly unreadCount: number;
   readonly createdAt: string;

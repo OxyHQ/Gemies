@@ -136,7 +136,7 @@ export function useConversationThread({
     host.closeConversation?.();
   }, [conversationQueryError, queryClient, host]);
 
-  // One per open conversation: which consultation each message draws (the request's and the room's).
+  // One per open conversation: which speaking turn each message draws (the request's and the room's).
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new conversation is a new ledger
   const room = useMemo(() => createRoomLedger(), [conversationId]);
 

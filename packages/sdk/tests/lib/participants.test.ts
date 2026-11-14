@@ -9,7 +9,8 @@ vi.mock('../../src/lib/agent-character', () => ({
 vi.mock('../../src/lib/alia-character', () => ({ ALIA_AVATAR: { preset: 'alia' } }));
 vi.mock('@oxy.so/services/ui/client', () => ({ useOxy: () => ({}) }));
 
-const { ALIA_LEAD, consultedAgents, leadOf } = await import('../../src/lib/participants');
+const { ALIA_LEAD, leadOf, participantOf } = await import('../../src/lib/participants');
+const { ALIA_GEMIE_ID } = await import('../../src/lib/alia-gemie');
 const { leadToProfile, ANCHORS } = await import('../../src/lib/flights');
 const { featureOffer, readAgentFeatures, readAgentProfile } = await import(
   '../../src/runtime/agents'
@@ -59,23 +60,21 @@ describe('the lead', () => {
   });
 });
 
-describe('the consulted agents', () => {
-  it('are the agents that wrote in the conversation, once each, in order, never the lead', () => {
-    const agent = (id: string, isStreaming?: boolean) => ({
-      id: `m-${id}-${Math.random()}`,
-      role: 'assistant' as const,
-      content: '',
-      agentInfo: { id, name: id.toUpperCase() },
-      ...(isStreaming ? { isStreaming } : {}),
+describe('a gemie as a message carries it', () => {
+  it('is drawn in its own look, painted in its colour', () => {
+    expect(
+      participantOf({ id: 'lumen', name: 'Lumen', character: { shape: 'star' }, color: 'teal' }),
+    ).toMatchObject({
+      id: 'lumen',
+      name: 'Lumen',
+      character: { drawn: { shape: 'star' }, in: 'teal' },
     });
-    const found = consultedAgents(
-      [agent('lumi'), agent('sindi', true), agent('lumi', true), agent('lead')],
-      'lead',
-    );
-    expect(found.map(({ participant, live }) => [participant.id, live])).toEqual([
-      ['lumi', false],
-      ['sindi', true],
-    ]);
+  });
+
+  it('is Alia drawn as herself, though her gemie carries no character', () => {
+    expect(participantOf({ id: ALIA_GEMIE_ID, name: 'Alia' }).character).toEqual({
+      preset: 'alia',
+    });
   });
 });
 

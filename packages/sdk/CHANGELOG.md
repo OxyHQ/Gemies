@@ -1,5 +1,33 @@
 # @gemies/sdk
 
+## 7.0.0
+
+Gemies talk to each other in real conversations (Gemies ADR 0041). A gemie that wants something from
+another writes to it (`sendMessage`) in the conversation the two of them have for the person; the
+other answers in its own turn, and the first reads the answer and continues or tells the person.
+
+- **New: the card of a conversation between gemies.** A `sendMessage` call in the chat draws
+  "Pepe is talking to Lumen…" while they talk — who is writing, the last thing said, live over the
+  conversation's room events — then "Pepe talked to Lumen". Pressed, it opens their whole
+  conversation over the chat, read-only.
+- **New: `GemieBetweenGemies`**, that read-only conversation: every turn under its gemie's name and
+  avatar (Alia drawn as herself), its tool steps and thought panel, streaming while they still talk,
+  no composer. An app may also give it a screen of its own.
+- **`useConversations({ kind: 'gemies' })`** lists the conversations the person's gemies have with
+  each other; `Conversation.kind` and `Conversation.members` say which one is and who talks in it.
+- **A gemie telling the person what another answered streams into the chat as its own reply**: a
+  room event with `lead: true` draws the conversation's lead, not a guest.
+- **Breaking — consultations are gone.** Nobody joins a chat mid-turn any more, so `useParticipants`
+  (and `UseParticipantsOptions`) is removed: the header is drawn from who is in the conversation
+  when it opens. The "Chatted with" line, the agent exchange it opened and `GemieThread`'s
+  `memberIds` and `onOpenAgentChat` are removed. A group turn's member frames are
+  `MemberTurnEvent`, `MemberTurnAgent` and `parseMemberTurnEvent` (were `ConsultEvent`,
+  `ConsultAgent`, `parseConsultEvent`), and only a group turn's request carries them.
+- **Copy:** `chat.betweenGemiesNotice`, `chat.gemiesTalking`, `chat.gemiesTalked`,
+  `chat.gemieWriting`, `chat.gemiesOpen`, `tasks.tool.*.sendMessage` are new; `chat.consultFailed`
+  is `chat.agentFailed`; `chat.chattedWith`, `chat.agentChatNotice` and `tasks.tool.*.consultAgent`
+  are gone.
+
 ## 6.3.0
 
 - **A turn's attachments are drawn as media** (`TurnAttachments`, used by every user turn in the

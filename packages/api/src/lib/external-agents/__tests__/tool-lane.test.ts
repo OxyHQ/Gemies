@@ -2,7 +2,8 @@
  * An external agent's tools come from the one assembler (ADR 0039), on a lane that acts for its
  * owner with no Oxy session and no credit reservation, for a gemie with no Oxy account (ADR 0036):
  * its granted connectors reach it; the person's Oxy apps, hosted inference behind a tool, and a
- * memory of Gemies' (whose journal needs an account) do not — and none of that throws.
+ * memory of Gemies' (whose journal needs an account) do not — and none of that throws. It writes to
+ * other gemies (ADR 0041) when its run names the person's chat with it.
  */
 import type { ToolSet } from 'ai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,8 +26,8 @@ vi.mock('../../tools/oxy-services.js', () => ({
   getOxyServicePromptFragment: vi.fn(() => ''),
   getOxyServiceContext: vi.fn(async () => ''),
 }));
-vi.mock('../../tools/consult-agent.js', () => ({
-  buildConsultAgentTool: vi.fn(async () => ({ consultAgent: tool })),
+vi.mock('../../tools/send-message.js', () => ({
+  buildSendMessageTool: vi.fn(async () => ({ sendMessage: tool })),
 }));
 vi.mock('../../agent/agent-memory-runtime.js', () => ({
   buildAgentMemoryTool: vi.fn(() => tool),
@@ -55,7 +56,25 @@ beforeEach(() => {
   seen.oxyCalls = 0;
 });
 
+const lane = (over: Partial<Parameters<typeof ToolPipeline.forUser>[0]> = {}) =>
+  ToolPipeline.forUser({
+    userId: 'person-1',
+    requesterAccountId: 'person-1',
+    isDirectSession: false,
+    actsForPerson: true,
+    toolsEnabled: true,
+    webSearch: true,
+    isLocalRuntime: true,
+    agent: externalGemie(),
+    ...over,
+  });
+
 describe('the external agent’s tool lane', () => {
+  it('writes to other gemies only from the person’s chat with it', async () => {
+    expect(Object.keys((await lane()).tools)).not.toContain('sendMessage');
+    expect(Object.keys((await lane({ gemieChat: 'chat-1' })).tools)).toContain('sendMessage');
+  });
+
   it('builds what it was granted and needs no account, and nothing else', async () => {
     const { tools } = await ToolPipeline.forUser({
       userId: 'person-1',
@@ -81,7 +100,8 @@ describe('the external agent’s tool lane', () => {
     expect(names).not.toContain('searchThread');
     // Unreserved: nothing that runs hosted inference behind a tool call.
     expect(names).not.toContain('deepResearch');
-    expect(names).not.toContain('consultAgent');
+    // And no conversation named, so no writing to other gemies either.
+    expect(names).not.toContain('sendMessage');
     // No session: nothing that needs the person's own bearer.
     expect(names).not.toContain('createAutomation');
     expect(names).not.toContain('createAgent');

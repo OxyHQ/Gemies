@@ -35,8 +35,6 @@ function SharedThread({ token }: { token: string }) {
   const { data, error, isLoading } = useSharedConversation(token);
   const threadRef = useRef<AiChatThreadHandle | null>(null);
   const messages = useMemo(() => (data ? sharedMessages(data) : []), [data]);
-  const agentId = data?.agent?.id;
-  const memberIds = useMemo(() => new Set(agentId ? [agentId] : []), [agentId]);
 
   if (isLoading) {
     return (
@@ -63,13 +61,7 @@ function SharedThread({ token }: { token: string }) {
           {data.title}
         </Text>
       ) : null}
-      <GemieThread
-        messages={messages}
-        memberIds={memberIds}
-        isLoading={false}
-        threadRef={threadRef}
-        readOnly
-      />
+      <GemieThread messages={messages} isLoading={false} threadRef={threadRef} readOnly />
     </View>
   );
 }

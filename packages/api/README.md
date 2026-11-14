@@ -80,7 +80,7 @@ Named SSE events written to the chat response stream:
 - `alia.plan_preview`
 - `alia.reasoning`
 - `alia.tool_result`
-- `alia.agent_start`, `alia.agent_delta`, `alia.agent_tool`, `alia.agent_end` (a consulted agent)
+- `alia.agent_start`, `alia.agent_delta`, `alia.agent_tool`, `alia.agent_end` (a group turn's members)
 - `alia.host_action` (a UI effect for the embedding app)
 - `alia.agent_turn`
 - `alia.context`

@@ -70,7 +70,7 @@ export type ServerFrame =
       task: string;
       /**
        * Names the conversation this turn belongs to (a conversation id), so the daemon can resume
-       * the CLI's own session for it. Absent for turns that are not part of one (a consultation).
+       * the CLI's own session for it. Absent for turns that are not part of one (a room, a conversation between gemies).
        */
       threadKey?: string;
       history: readonly ChatTurn[];

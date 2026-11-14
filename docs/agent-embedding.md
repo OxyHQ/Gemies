@@ -81,7 +81,7 @@ These are the rules for host tools:
 
 - **Outcomes.** The client executes the action and sends the result in the NEXT request's `host.outcomes`. An outcome is one of `applied | inline | rejected | stale | failed`. Alia stores the outcome as that tool call's result, so the model reads what actually happened.
 - **Awaited results.** A tool declared with `"awaitsResult": true` is answered within the SAME turn instead (below).
-- **Where they never appear.** Host tools never reach a nested `consultAgent` turn, a voice turn or a channel turn (Telegram, WhatsApp), and they are never authority over data.
+- **Where they never appear.** Host tools never reach a gemie's nested turn (a group room, a conversation between gemies), a voice turn or a channel turn (Telegram, WhatsApp), and they are never authority over data.
 - **Editor lane.** `body.tools`, the editor lane, is unchanged and separate.
 
 ### Host tools that answer within the turn (`awaitsResult`)
@@ -155,24 +155,42 @@ The API receiver ships first: migration `0109_chat_host_results` (pre-deploy, ad
 
 A surface registers renderers by `<app>:<tool>`, which is parsed from `oxy_<app>__<tool>` or `self_<app>__<tool>`. The key is never parsed from free text. `parseCatalogueTool` and `toolRendererKey` read it, from the pure `@gemies/sdk/tools` entry as well as the main one, so a host that draws a conversation itself can tell its catalogue's results apart without loading React Native.
 
-## 4. Consulting another agent
+## 4. Gemies talking to each other
 
-`consultAgent` streams. Its frames replace the retired single `alia.agent` frame:
+A gemie writes to another with `sendMessage` (Gemies ADR 0041). The call is an ordinary tool call in
+the turn (`alia.tool_call` / `alia.tool_result`), and its result names the conversation the two
+gemies have for this person:
 
-```text
-event: alia.agent_start   {"eventVersion":1,"consultId":"…","agent":{"id","name","handle","color","character"},"task":"…"}
-event: alia.agent_delta   {"eventVersion":1,"consultId":"…","content":"…"}
-event: alia.agent_tool    {"eventVersion":1,"consultId":"…","phase":"call"|"result","toolCallId":"…","name":"…","input"?:{…},"output"?:{…}}
-event: alia.agent_end     {"eventVersion":1,"consultId":"…","status":"completed"|"failed","content"?:"…","error"?:{"code":"…","feature"?:"…"}}
+```json
+{"status":"sent","conversationId":"…","chainId":"…","from":{"id","name","handle","color","character"},"to":{…}}
 ```
 
-When it shows these frames, the SDK does the following:
+The answer is not in this turn. It is written in that conversation, and the gemie that wrote then
+continues in this chat as a reply of its own. Both reach a client as `room` frames on the account's
+realtime socket (ADR 0040; the same events a group room uses, with `chainId`):
 
-- On `agent_start`, the consulted agent joins the participants header with Bloom's avatar flight, from its reply to the header.
-- Its reply is drawn under its own identity.
-- `agent_tool` results go through the same renderers as the lead's results.
+```text
+alia.agent_start   {"consultId":"…","agent":{"id","name","handle","color","character"},"lead"?:true}
+alia.agent_delta   {"consultId":"…","content":"…"}
+alia.agent_tool    {"consultId":"…","phase":"call"|"result","toolCallId":"…","name":"…","input"?:{…},"output"?:{…}}
+alia.agent_end     {"consultId":"…","status":"completed"|"failed"|"declined","content"?:"…","messageId"?:"…"}
+group.message      {"message":{"id","role":"assistant","content","agentInfo"?,"seq","createdAt"}}
+group.idle         {"reason":"done"|"error"|"superseded"|"rate_limited"}
+```
 
-The stored conversation keeps one assistant message per consulted agent, carrying `agentInfo`, with the id `<assistantMessageId>-agent-<n>`, where `n` (0-based) is the order of its `alia.agent_start` in the turn. A client names the message it drew live the same way.
+`consultId` is the wire's name for one speaking turn. `lead: true` marks the conversation's own lead
+speaking in its chat — the gemie that wrote, telling the person what it found — so it is drawn as its
+ordinary reply, not under a guest's identity; its stored message carries no `agentInfo`. `group.idle`
+on the conversation between gemies, with the chain's `chainId`, is the chain's end.
+
+The SDK draws the call as a card ("Pepe is talking to Lumen…", then "Pepe talked to Lumen") that
+follows the chain over those events and opens the whole conversation read-only (`GemieBetweenGemies`).
+`GET /v1/conversations?kind=gemies` lists the person's conversations between gemies, each with
+`kind: "gemies"` and both gemies in `members`; `GET /v1/conversations/:id` says the same of one. A turn,
+a save or a reaction in one answers `403 conversation_between_gemies`.
+
+The same frames, over the chat request's SSE with `eventVersion: 1`, are a GROUP turn's members
+speaking (ADR 0025): only a group turn's request carries them.
 
 ## 5. Feature gates
 
@@ -192,7 +210,7 @@ Two rules keep these gates from being walked around:
 - **An exact model.** On an agent that gates a power level, a request naming a hosted model exactly (`publisher/model`) is refused with `400 power_level_required` (`param: "model"`). Alia does not know an exact model's level, so allowing it would bypass the gate. A model on the person's own device (`local/…`) is not gated.
 - **The deep research tool.** An agent that gates `deep_research` never offers the model the `deepResearch` tool. The gate is checked and spent before credits are reserved, and a tool call happens after, so on such an agent deep research is the request flag alone.
 
-A power level the agent's OWNER pinned (its `modelId`, used when it is consulted) is the owner's configuration, not the person's choice, and is not gated.
+A power level the agent's OWNER pinned (its `modelId`, used in its turns outside a live chat — a room, a conversation with another gemie) is the owner's configuration, not the person's choice, and is not gated.
 
 `GET /v1/agents/:id/features` answers:
 
@@ -224,7 +242,7 @@ The same body is the JSON answer (HTTP 403) when the stream is not open. An app 
 
 The SDK calls the surface's `onFeatureLocked(key)`, and the surface shows its own upsell.
 
-**A consultation applies the CONSULTED agent's gates.** When Alia (or any agent) consults an agent with `consultAgent` (§4), the consulted agent's gates are checked, and spent, against every attachment the outer turn carries, on the person's lane, before the nested turn reserves anything. The nested turn receives no parts, but the lead can hand it any of them as text, and Alia cannot tell which it will. The spend key is the attachment's own, so an attachment already spent for the same app feature is not spent again. A refusal does not end the outer turn: the consultation ends with `alia.agent_end` `{ "status": "failed", "error": { "code": "feature_entitlement_required", "feature": "attachments.documents" } }`, the lead is told the person needs the upgrade, and the surface can show its upsell. Gated parts are not refused outright in a consultation, because that would lock out a person who IS entitled; the gate sells the feature, it does not forbid the path. The consulted agent's own deep research and power level are its owner's configuration, so they are not gated there.
+**A message to a gemie applies THAT gemie's gates.** When Alia (or any gemie) writes to a gemie with `sendMessage` (§4), the recipient's gates are checked, and spent, against every attachment the writing turn carries, on the person's lane, before anything is sent. The recipient receives no parts, but the writer can put any of them in its message, and Alia cannot tell which it will. The spend key is the attachment's own, so an attachment already spent for the same app feature is not spent again. A refusal does not end the writing turn: the call's result is an error telling the writer the person needs the upgrade, and nothing is sent. Gated parts are not refused outright, because that would lock out a person who IS entitled; the gate sells the feature, it does not forbid the path. The recipient's own deep research and power level are its owner's configuration, so they are not gated there.
 
 Documents are a content part:
 

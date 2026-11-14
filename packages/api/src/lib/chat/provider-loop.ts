@@ -55,7 +55,7 @@ import type { AutonomyRuntimeContext } from '../autonomy/runtime.js';
 import type { SSEWriter } from './sse-writer.js';
 import { buildBaseConfig, type TurnStepBounds } from './model-config.js';
 import { runNonStreaming } from './non-streaming.js';
-import { runStream, type AgentMessage, type StreamRunnerState } from './stream-runner.js';
+import { runStream, type StreamRunnerState } from './stream-runner.js';
 import { runTextToolFallback } from './text-tool-fallback.js';
 import type { ToolRouting } from '../tool-budget.js';
 import { recordChatInferenceAttempt } from '../credit-reconciliation.js';
@@ -123,8 +123,6 @@ export interface ProviderLoopParams {
    */
   toolRouting?: ToolRouting;
   toolNameMapping: Map<string, string>;
-  /** Accumulator for delegate-to-agent replies; mutated in place by the stream runner. */
-  agentMessages: AgentMessage[];
   systemPromptTokens: number;
   requestedModel: string;
   autonomyRuntime: AutonomyRuntimeContext | null;
@@ -186,7 +184,6 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
     truncatedTools,
     toolRouting,
     toolNameMapping,
-    agentMessages,
     systemPromptTokens,
     requestedModel,
     autonomyRuntime,
@@ -439,7 +436,6 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
           resolved,
           baseConfig,
           toolNameMapping,
-          agentMessages,
           toolCallCount,
           state: streamState,
           idle: watchdog,
@@ -508,12 +504,7 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
         const lifecycleCtx = lifecycleContext();
 
         // Save conversation
-        await saveConversationResult(
-          lifecycleCtx,
-          assistantResponse,
-          toolInvocations,
-          agentMessages,
-        );
+        await saveConversationResult(lifecycleCtx, assistantResponse, toolInvocations);
 
         // Send AI-generated title via SSE (generated in parallel with streaming)
         if (titlePromise && conversationId && req.user) {

@@ -88,7 +88,6 @@ describe('functional completion response lifecycle', () => {
       convertedMessages: [],
       truncatedTools: {},
       toolNameMapping: new Map(),
-      agentMessages: [],
       systemPromptTokens: 0,
       requestedModel: 'acme/chat-1',
       autonomyRuntime: null,
@@ -141,7 +140,6 @@ describe('functional completion response lifecycle', () => {
       convertedMessages: [],
       truncatedTools: {},
       toolNameMapping: new Map(),
-      agentMessages: [],
       systemPromptTokens: 0,
       requestedModel: 'route:auto',
       autonomyRuntime: null,
@@ -154,7 +152,6 @@ describe('functional completion response lifecycle', () => {
     expect(vi.mocked(saveConversationResult)).toHaveBeenCalledWith(
       expect.objectContaining({ conversationId: 'c-1', assistantMessageId: 'a-1' }),
       'complete',
-      [],
       [],
     );
     clearTimeout(params.globalTimer);
