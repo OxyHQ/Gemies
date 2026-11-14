@@ -5,7 +5,13 @@ vi.mock('../oxy.js', () => ({
     return { agency: authority };
   },
 }));
-import { createOxyTask, revokeOxyTask } from '../oxy-task-authority.js';
+import {
+  bindOxyTask,
+  createOxyTask,
+  isTaskAuthorityRefusal,
+  mintOxyTask,
+  revokeOxyTask,
+} from '../oxy-task-authority.js';
 beforeEach(() => {
   vi.resetAllMocks();
   authority.createTask.mockResolvedValue({
@@ -80,5 +86,65 @@ describe('original requester task authority', () => {
       }),
     ).rejects.toThrow('originating account');
     expect(authority.revokeTask).toHaveBeenCalledWith('wrong-task');
+  });
+});
+
+describe('a standing binding’s task', () => {
+  const input = {
+    accessToken: 'requester-session',
+    effectiveAccountId: 'requester',
+    actor: { type: 'alia' as const, ownerAccountId: 'requester' },
+    origin: { kind: 'automation' as const, id: 'channel:account-1' },
+  };
+
+  it('keeps the expiry Oxy answered, which may be earlier than the one asked for', async () => {
+    authority.createTask.mockResolvedValue({
+      id: 'task-1',
+      requesterAccountId: 'requester',
+      effectiveAccountId: 'requester',
+      expiresAt: '2027-03-01T00:00:00.000Z',
+    });
+    expect(await mintOxyTask(input)).toEqual({
+      id: 'task-1',
+      expiresAt: new Date('2027-03-01T00:00:00.000Z'),
+    });
+  });
+
+  it('releases the task it replaced only after the new one is written', async () => {
+    const order: string[] = [];
+    authority.revokeTask.mockImplementation(async (id: string) => {
+      order.push(`revoke ${id}`);
+    });
+    const task = await bindOxyTask(input, async (minted) => {
+      order.push(`write ${minted.id}`);
+      return { replaced: 'old-task' };
+    });
+    expect(task?.id).toBe('task-1');
+    expect(order).toEqual(['write task-1', 'revoke old-task']);
+  });
+
+  it('keeps the binding’s task when the binding changed, revoking only the new one', async () => {
+    expect(await bindOxyTask(input, async () => null)).toBeNull();
+    expect(authority.revokeTask.mock.calls).toEqual([['task-1']]);
+    await expect(
+      bindOxyTask(input, async () => {
+        throw new Error('database blinked');
+      }),
+    ).rejects.toThrow('database blinked');
+    expect(authority.revokeTask.mock.calls).toEqual([['task-1'], ['task-1']]);
+  });
+
+  it('tells Oxy refusing the task itself from refusing the operation asked of it', () => {
+    const refusal = Object.assign(new Error('Task authority is no longer active.'), {
+      status: 403,
+    });
+    expect(isTaskAuthorityRefusal(refusal)).toBe(true);
+    const otherRefusal = Object.assign(
+      new Error('The resource must belong to the authenticated requester account.'),
+      { status: 403 },
+    );
+    expect(isTaskAuthorityRefusal(otherRefusal)).toBe(false);
+    expect(isTaskAuthorityRefusal(Object.assign(new Error('down'), { status: 503 }))).toBe(false);
+    expect(isTaskAuthorityRefusal(null)).toBe(false);
   });
 });

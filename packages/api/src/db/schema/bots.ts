@@ -109,9 +109,15 @@ export const bots = pgTable(
      * The durable Oxy task `user_id` granted the gemie for their own turns on the bot: they are its
      * effective account and the gemie its actor, minted with their session when they link it
      * (the same authority a connected account and scheduled work hold). Revoked when the link or
-     * the bot goes.
+     * the bot goes. Its state, expiry and notice are those of every channel's task (`bot_users`,
+     * `connected_accounts`), renewed by the same helper (`lib/channel-task-authority.ts`).
      */
     oxyTaskId: text(),
+    oxyTaskState: text({ enum: ['active', 'reauth_required'] })
+      .notNull()
+      .default('reauth_required'),
+    oxyTaskExpiresAt: timestamptz(),
+    oxyTaskNotifiedAt: timestamptz(),
     /**
      * A gemie bot's profile (name, description, picture) follows its gemie by itself (ADR 0037):
      * `profile_dirty_at` is when the gemie last changed and the bot does not show it yet (null when
@@ -179,6 +185,10 @@ export const botUsers = pgTable(
     oxyTaskState: text({ enum: ['active', 'reauth_required'] })
       .notNull()
       .default('reauth_required'),
+    /** When Oxy said the task lapses; renewed before it does (`lib/channel-task-authority.ts`). */
+    oxyTaskExpiresAt: timestamptz(),
+    /** When the person was told it needs them; cleared with each new task, so they hear it once. */
+    oxyTaskNotifiedAt: timestamptz(),
     isLinked: boolean().notNull().default(false),
     linkedAt: timestamptz(),
     username: text(),

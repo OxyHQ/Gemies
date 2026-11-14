@@ -51,7 +51,7 @@ import {
   settleEmailOutreach,
 } from '../../db/proactive/emailOutreachRepository.js';
 import { generateTextViaKaana } from '../inference/kaana-text.js';
-import { getUserLanguage } from '../memory/user-memory-service.js';
+import { messageLanguageOf, type MessageLanguage } from '../memory/user-memory-service.js';
 import { log } from '../logger.js';
 import { aliaCheckInRefusal, postAliaCheckIn } from '../agent/alia-outreach.js';
 import { agentCheckInRefusal, postAgentMessage } from '../agent/agent-outreach.js';
@@ -284,7 +284,7 @@ async function classifyEmail(input: {
   }
 }
 
-type Language = 'es' | 'en';
+type Language = MessageLanguage;
 
 const REASON_LINES: Record<Language, Record<ImportantEmailCategory, string>> = {
   es: {
@@ -352,11 +352,6 @@ export function composeEmailOutreach(input: {
     conversationTitle: 'Alia',
     notificationBody,
   };
-}
-
-async function languageOf(oxyUserId: string): Promise<Language> {
-  const language = await getUserLanguage(oxyUserId).catch(() => 'en-US');
-  return language.toLowerCase().startsWith('es') ? 'es' : 'en';
 }
 
 /** Decide about one `new_email` event and, when it is important, tell the person. Never throws. */
@@ -433,7 +428,7 @@ export async function handleInboxEmailEvent(event: InboxEmailEvent): Promise<Ema
     const category = classification.category as ImportantEmailCategory;
 
     const message = composeEmailOutreach({
-      language: await languageOf(audience.oxyUserId),
+      language: await messageLanguageOf(audience.oxyUserId),
       forAgent: !audience.ownInbox,
       category,
       from,

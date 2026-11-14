@@ -182,6 +182,8 @@ function bot(over: Partial<GemieBotRow> = {}): GemieBotRow {
     linkedTelegramUserId: PERSON,
     linkedTelegramName: '@NateIsern',
     oxyTaskId: 'bot-task',
+    oxyTaskState: 'active',
+    oxyTaskExpiresAt: new Date(Date.now() + 30 * 86_400_000),
     totalMessages: 0,
     lastMessageAt: null,
     profileSyncError: null,

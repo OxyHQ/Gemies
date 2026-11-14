@@ -10,6 +10,7 @@
 import type { GemieAccountPlatform, GemieAccountStatus } from '@gemies/server/internal';
 import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { StoredAgentIdentity } from '../../domain/agent';
+import type { OxyTask } from '../../lib/oxy-task-authority';
 import type { ApiDatabase } from '../index';
 import { agents } from '../schema/agents';
 import {
@@ -35,6 +36,7 @@ export interface ConnectedAccountRow {
   sessionId: string | null;
   oxyTaskId: string | null;
   oxyTaskState: 'active' | 'reauth_required';
+  oxyTaskExpiresAt: Date | null;
   replies: ConnectedAccountReplies;
   replyChatIds: string[];
   groupReplies: ConnectedAccountGroupReplies;
@@ -55,6 +57,7 @@ const COLUMNS = {
   sessionId: connectedAccounts.sessionId,
   oxyTaskId: connectedAccounts.oxyTaskId,
   oxyTaskState: connectedAccounts.oxyTaskState,
+  oxyTaskExpiresAt: connectedAccounts.oxyTaskExpiresAt,
   replies: connectedAccounts.replies,
   replyChatIds: connectedAccounts.replyChatIds,
   groupReplies: connectedAccounts.groupReplies,
@@ -439,15 +442,25 @@ export async function findConnectedAccountBySession(
   return { ...withLegacyId(account), answeringAgentId };
 }
 
+/**
+ * Put `task` in the account's place (or none, `null`), only while it still holds `expectedTaskId`
+ * when one is given. A new task is `active` with Oxy's expiry and no notice sent; none is
+ * `reauth_required`.
+ */
 export async function setConnectedAccountTask(
   db: ApiDatabase,
   id: string,
-  taskId: string | null,
+  task: OxyTask | null,
   expectedTaskId?: string | null,
 ): Promise<boolean> {
   const rows = await db
     .update(connectedAccounts)
-    .set({ oxyTaskId: taskId, oxyTaskState: taskId ? 'active' : 'reauth_required' })
+    .set({
+      oxyTaskId: task?.id ?? null,
+      oxyTaskState: task ? 'active' : 'reauth_required',
+      oxyTaskExpiresAt: task?.expiresAt ?? null,
+      oxyTaskNotifiedAt: null,
+    })
     .where(
       and(
         eq(connectedAccounts.id, id),

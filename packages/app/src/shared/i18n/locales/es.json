@@ -1472,7 +1472,9 @@
         "loadFailed": "No se ha podido cargar. Inténtalo de nuevo.",
         "unavailable": "Ahora mismo no se puede conectar un bot de Telegram.",
         "syncFailed": "Telegram aún no muestra el último nombre, descripción o imagen de {{name}}. Lo sigue intentando solo.",
-        "retrySync": "Reintentar ahora"
+        "retrySync": "Reintentar ahora",
+        "personLapsed": "{{name}} ya no puede usar tus apps en tu chat privado con el bot: el permiso que le diste allí ha caducado. Vuelve a autorizarlo y conservas el enlace.",
+        "reauthorize": "Volver a autorizar"
       },
       "connectors": {
         "title": "Conectores",
@@ -1880,6 +1882,15 @@
       "moreActions": "Más acciones",
       "addRoutingRule": "Añadir regla de enrutamiento",
       "removeRoutingRule": "Quitar regla de enrutamiento"
+    },
+    "channelReauthorize": {
+      "title": "Vuelve a autorizar tus canales",
+      "doneTitle": "Tus canales vuelven a funcionar",
+      "doneDescription": "Tus gemies pueden volver a usar tus apps en tus cuentas conectadas y tus bots, como antes.",
+      "nothingDescription": "No hacía falta nada: todos tus canales ya pueden usar tus apps.",
+      "failedTitle": "Algunos canales aún te necesitan",
+      "failedDescription": "No se han podido autorizar ahora. Inténtalo de nuevo, o abre el canal en Ajustes o en el editor de su gemie.",
+      "backToChat": "Volver a tus chats"
     }
   },
   "panels": {

@@ -32,7 +32,7 @@ import {
 import { oxyActorFor, type OxyActorGemie } from './gemie-oxy-actor.js';
 import { integrationsFetch } from './integrations-client.js';
 import { log } from './logger.js';
-import { createOxyTask, revokeOxyTask } from './oxy-task-authority.js';
+import { bindOxyTask, revokeOxyTask } from './oxy-task-authority.js';
 
 /**
  * A gateway call that did not answer what the contract says: it could not be reached
@@ -227,8 +227,9 @@ export function shouldAnswer(
 }
 
 /**
- * Grant the account its durable Oxy task: its person's authority, acted on by the answering gemie.
- * Replaces the task the row held (`account.oxyTaskId`) only if nobody changed it meanwhile.
+ * Grant the account its durable Oxy task: its person's authority, acted on by the answering gemie,
+ * with the expiry Oxy gave it. Replaces the task the row held (`account.oxyTaskId`) only if nobody
+ * changed it meanwhile, and releases that one only after (`bindOxyTask`).
  */
 export async function bindAccountTask(input: {
   account: ConnectedAccountRow;
@@ -237,22 +238,23 @@ export async function bindAccountTask(input: {
   accessToken: string;
 }): Promise<void> {
   const { account } = input;
-  const taskId = await createOxyTask({
-    accessToken: input.accessToken,
-    effectiveAccountId: input.personAccountId,
-    actor: oxyActorFor(input.gemie, input.personAccountId),
-    origin: { kind: 'automation', id: `channel:${account.id}` },
-  });
-  try {
-    if (!(await setConnectedAccountTask(getDb(), account.id, taskId, account.oxyTaskId))) {
-      throw new Error('Channel authority changed during renewal');
-    }
-    account.oxyTaskId = taskId;
-    account.oxyTaskState = 'active';
-  } catch (error) {
-    await revokeOxyTask(taskId);
-    throw error;
-  }
+  const expected = account.oxyTaskId;
+  const task = await bindOxyTask(
+    {
+      accessToken: input.accessToken,
+      effectiveAccountId: input.personAccountId,
+      actor: oxyActorFor(input.gemie, input.personAccountId),
+      origin: { kind: 'automation', id: `channel:${account.id}` },
+    },
+    async (minted) =>
+      (await setConnectedAccountTask(getDb(), account.id, minted, expected))
+        ? { replaced: expected }
+        : null,
+  );
+  if (!task) throw new Error('Channel authority changed during renewal');
+  account.oxyTaskId = task.id;
+  account.oxyTaskState = 'active';
+  account.oxyTaskExpiresAt = task.expiresAt;
 }
 
 /** Revoke the account's task, if it holds one. */
@@ -263,6 +265,7 @@ export async function revokeAccountTask(account: ConnectedAccountRow): Promise<v
   }
   account.oxyTaskId = null;
   account.oxyTaskState = 'reauth_required';
+  account.oxyTaskExpiresAt = null;
 }
 
 /**
@@ -286,7 +289,7 @@ export async function endAccountSession(
  * Choose the gemie that answers the account, or none (`null`): stored, then the account's task is
  * revoked and, for a gemie, granted again with that gemie as its actor. The person is present (it
  * is their bearer that grants the task); a task that cannot be granted leaves the account typed
- * `reauth_required`, which the panel renews on its next visit.
+ * `reauth_required`, which their next visit renews (`lib/channel-task-authority.ts`).
  */
 export async function setAccountAnswering(input: {
   account: ConnectedAccountRow;

@@ -34,15 +34,29 @@ const state = vi.hoisted(() => ({
   linkCodes: [] as Array<Record<string, unknown>>,
 }));
 
-vi.mock('../../../lib/oxy-task-authority.js', () => ({
-  createOxyTask: vi.fn(async (input: Record<string, unknown>) => {
-    state.minted.push(input);
-    return `task-${state.minted.length}`;
-  }),
-  revokeReleasedTask: vi.fn(async (taskId: string | null) => {
+vi.mock('../../../lib/oxy-task-authority.js', () => {
+  const revokeReleasedTask = async (taskId: string | null) => {
     if (taskId) state.revoked.push(taskId);
-  }),
-}));
+  };
+  return {
+    revokeReleasedTask,
+    // `bindOxyTask`'s contract (its own suite proves it): mint, write, release after.
+    bindOxyTask: async (
+      input: Record<string, unknown>,
+      write: (task: { id: string; expiresAt: Date }) => Promise<{ replaced: string | null } | null>,
+    ) => {
+      state.minted.push(input);
+      const task = { id: `task-${state.minted.length}`, expiresAt: new Date('2027-11-14') };
+      const written = await write(task);
+      if (!written) {
+        await revokeReleasedTask(task.id);
+        return null;
+      }
+      await revokeReleasedTask(written.replaced);
+      return task;
+    },
+  };
+});
 
 vi.mock('../../../middleware/auth.js', () => ({
   authenticateToken: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
@@ -83,7 +97,13 @@ vi.mock('../../../db/integrations/gemieBotRepository.js', () => ({
   setGemieBotLinkCode: vi.fn(async (_db: unknown, input: Record<string, unknown>) => {
     state.linkCodes.push(input);
     const replaced = (state.bot?.oxyTaskId as string | null) ?? null;
-    state.bot = { ...state.bot, oxyTaskId: input.oxyTaskId };
+    const task = input.oxyTask as { id: string; expiresAt: Date };
+    state.bot = {
+      ...state.bot,
+      oxyTaskId: task.id,
+      oxyTaskState: 'active',
+      oxyTaskExpiresAt: task.expiresAt,
+    };
     return { bot: state.bot, replaced };
   }),
   unlinkGemieBotPerson: vi.fn(async () => {
@@ -319,7 +339,8 @@ describe('a gemie’s own Telegram bot', () => {
         agentId: 'gemie-1',
         userId: 'person-1',
         codeHash: createHash('sha256').update(code).digest('hex'),
-        oxyTaskId: 'task-1',
+        // With the expiry Oxy gave it, so it is renewed before it lapses.
+        oxyTask: { id: 'task-1', expiresAt: new Date('2027-11-14') },
       }),
     ]);
     expect(JSON.stringify(state.linkCodes)).not.toContain(code);
@@ -344,7 +365,15 @@ describe('a gemie’s own Telegram bot', () => {
     // The person opened the link in Telegram: the bot recognises them now.
     state.bot = { ...state.bot, linkedTelegramUserId: '570038640', linkedTelegramName: '@nate' };
     const linked = await call('GET', '/agents/gemie-1/telegram-bot');
-    expect(linked.body.bot).toMatchObject({ personLinked: true, linkedAs: '@nate' });
+    expect(linked.body.bot).toMatchObject({
+      personLinked: true,
+      linkedAs: '@nate',
+      personAuthorityLapsed: false,
+    });
+    // The authority they granted lapsed (Oxy refused it): the editor says it needs them.
+    state.bot = { ...state.bot, oxyTaskState: 'reauth_required' };
+    const lapsed = await call('GET', '/agents/gemie-1/telegram-bot');
+    expect(lapsed.body.bot).toMatchObject({ personLinked: true, personAuthorityLapsed: true });
 
     realtime.gemies.length = 0;
     const unlinked = await call('DELETE', '/agents/gemie-1/telegram-bot/link');

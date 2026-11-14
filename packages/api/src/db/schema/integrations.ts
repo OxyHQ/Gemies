@@ -142,6 +142,10 @@ export const connectedAccounts = pgTable(
     oxyTaskState: text({ enum: ['active', 'reauth_required'] })
       .notNull()
       .default('reauth_required'),
+    /** When Oxy said the task lapses; renewed before it does (`lib/channel-task-authority.ts`). */
+    oxyTaskExpiresAt: timestamptz(),
+    /** When the person was told it needs them; cleared with each new task, so they hear it once. */
+    oxyTaskNotifiedAt: timestamptz(),
     sessionId: text(),
     /** When a message last arrived on it. */
     lastActiveAt: timestamptz(),

@@ -58,7 +58,11 @@ vi.mock('@oxy.so/bloom/icons/RiRefreshLine', () => ({ RiRefreshLine: 'RiRefreshL
 vi.mock('@oxy.so/bloom/icons/RiTelegramFill', () => ({ RiTelegramFill: 'RiTelegramFill' }));
 vi.mock('@oxy.so/bloom/admonition', async () => hosts('Admonition'));
 vi.mock('@oxy.so/bloom/badge', async () => hosts('Badge'));
-vi.mock('@gemies/sdk/accounts', async () => hosts('GemieAccountGrants'));
+const reauthorize = vi.hoisted(() => ({ mutateAsync: vi.fn(async () => ({})), isPending: false }));
+vi.mock('@gemies/sdk/accounts', async () => ({
+  ...(await hosts('GemieAccountGrants')),
+  useReauthorizeChannels: () => reauthorize,
+}));
 const settings = vi.hoisted(() => ({ open: vi.fn() }));
 vi.mock('@/features/settings/ui/settings-context', () => ({ useAliaSettings: () => settings }));
 vi.mock('@gemies/sdk', async () => ({ readAgentCharacter: (character: unknown) => character }));
@@ -644,6 +648,7 @@ describe('its own Telegram bot (ADR 0037)', () => {
     lastMessageAt: null,
     profileSyncError: null as string | null,
     personLinked: false,
+    personAuthorityLapsed: false,
     linkedAs: null as string | null,
     live: {
       username: 'scout_bot',
@@ -751,5 +756,23 @@ describe('its own Telegram bot (ADR 0037)', () => {
     expect(button(tree, 'Unlink')).toBeDefined();
     const texts = all(tree, 'Text').map((node) => String(node.props.children));
     expect(texts.some((text) => /^Linked as @nate\. Scout recognises you/.test(text))).toBe(true);
+    expect(button(tree, 'Reauthorise')).toBeUndefined();
+  });
+
+  it('says when the permission given on the bot lapsed, and renews it in one tap', async () => {
+    telegramBot = {
+      bot: { ...bot, personLinked: true, linkedAs: '@nate', personAuthorityLapsed: true },
+      available: true,
+    };
+    const tree = await render();
+    expect(
+      all(tree, 'Admonition').some((node) =>
+        String(node.props.children).includes('the permission you gave it there lapsed'),
+      ),
+    ).toBe(true);
+    await act(async () => {
+      await button(tree, 'Reauthorise')?.props.onPress();
+    });
+    expect(reauthorize.mutateAsync).toHaveBeenCalledTimes(1);
   });
 });

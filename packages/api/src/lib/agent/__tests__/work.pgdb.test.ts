@@ -560,7 +560,7 @@ it('a one-minute reminder asked on the gemie’s Telegram bot arrives in that Te
     userId: owner,
     codeHash: 'h',
     expiresAt: new Date(Date.now() + 60_000),
-    oxyTaskId: botTask,
+    oxyTask: { id: botTask, expiresAt: new Date(Date.now() + 86_400_000) },
   });
   const chatId = '570038640';
   const conversationId = `telegram:${botId}:${chatId}`;

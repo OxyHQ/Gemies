@@ -6,8 +6,10 @@ import {
 import { EditorSelect } from '@/features/agents/ui/edit/sections/editor-select';
 import { errorMessage } from '@/shared/api/error-utils';
 import { useTranslation } from '@/shared/i18n/use-translation';
+import { queryKeys } from '@/shared/api/query-keys';
 import { SettingsSkeletonRows } from '@/shared/ui/skeletons';
 import { readAgentCharacter } from '@gemies/sdk';
+import { useReauthorizeChannels } from '@gemies/sdk/accounts';
 import { Admonition } from '@oxy.so/bloom/admonition';
 import { AgentAvatar, type AvatarCharacter } from '@oxy.so/bloom/agent-avatar';
 import { AgentCreatorField, AgentCreatorSection } from '@oxy.so/bloom/agent-creator';
@@ -22,6 +24,7 @@ import { Switch } from '@oxy.so/bloom/switch';
 import { TextFieldInput } from '@oxy.so/bloom/text-field';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
+import { useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
 import { Linking, View } from 'react-native';
 
@@ -283,7 +286,19 @@ function ConnectedBot({
 }) {
   const { t } = useTranslation();
   const { update, remove, link, unlink } = useGemieTelegramBotMutations(gemieId);
+  const reauthorize = useReauthorizeChannels();
+  const queryClient = useQueryClient();
   const username = bot.live?.username ?? bot.username;
+
+  // The authority they granted lapsed: renewed in place with their session, the link kept.
+  const handleReauthorize = async () => {
+    try {
+      await reauthorize.mutateAsync();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.agents.telegramBot(gemieId) });
+    } catch (error) {
+      toast.error(t(`${K}.linkFailed`, { reason: errorMessage(error, t(`${K}.tryAgain`)) }));
+    }
+  };
 
   const handleLink = async () => {
     try {
@@ -444,6 +459,24 @@ function ConnectedBot({
             </Button>
           )}
         </SettingRow>
+      ) : null}
+      {bot.callerPays && bot.personAuthorityLapsed ? (
+        <View className="gap-2 pe-3 pb-3">
+          <Admonition type="warning" size="sm">
+            {t(`${K}.personLapsed`, { name })}
+          </Admonition>
+          <View className="flex-row justify-end">
+            <Button
+              size="sm"
+              leadingIcon={RiRefreshLine}
+              loading={reauthorize.isPending}
+              disabled={reauthorize.isPending}
+              onPress={handleReauthorize}
+            >
+              {t(`${K}.reauthorize`)}
+            </Button>
+          </View>
+        </View>
       ) : null}
       {bot.callerPays ? (
         <SettingRow title={t(`${K}.paysTitle`)} hint={t(`${K}.paysHint`, { name })}>
