@@ -33,6 +33,22 @@ export function parseReaction(value: unknown): string | null {
   return first !== undefined && second === undefined ? emoji : null;
 }
 
+/** Emoji characters only, however many: what a reaction was before it had to be one emoji. */
+const HELD =
+  /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|[0-9#*\u200d\ufe0f\u20e3])+$/u;
+
+/**
+ * A reaction the person takes back: one emoji, or one stored before a reaction had to be (`👍🎉`).
+ * Refused as an addition, a stored one is still theirs to remove, or it would hold one of the six
+ * places a message has for good.
+ */
+export function parseHeldReaction(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const emoji = value.trim();
+  if (emoji === '' || emoji.length > MAX_REACTION_LENGTH || !HELD.test(emoji)) return null;
+  return emoji;
+}
+
 /**
  * The reactions after the person toggles `emoji`: removed when it was there, else added, unless
  * they already hold the most a message takes (then the toggle changes nothing).

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_REACTIONS_PER_MESSAGE,
+  parseHeldReaction,
   parseReaction,
   toggleReaction,
 } from '../../domain/message-reactions.js';
@@ -31,6 +32,17 @@ describe('parseReaction', () => {
 
   it('trims the surrounding space', () => {
     expect(parseReaction(' 🎉 ')).toBe('🎉');
+  });
+});
+
+describe('parseHeldReaction', () => {
+  it('takes back one stored before a reaction had to be one emoji, and any single one', () => {
+    expect(parseHeldReaction('👍🎉')).toBe('👍🎉');
+    expect(parseHeldReaction('👍')).toBe('👍');
+  });
+
+  it.each([['hello'], [''], ['👍 hi'], [42], ['👍'.repeat(20)]])('refuses %s', (value) => {
+    expect(parseHeldReaction(value)).toBeNull();
   });
 });
 
