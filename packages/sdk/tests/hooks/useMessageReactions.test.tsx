@@ -118,7 +118,7 @@ describe('saved message reactions', () => {
     const pills = () => reactionPills(visible(), current.messages[0]?.reactionEntries, 'u1');
     await mount();
     await act(async () =>
-      reactionsListener?.({
+      fakeRealtime.push('message.reaction', {
         conversationId: 'c1',
         messageId: 'm1',
         reactions: ['❤️'],
@@ -132,7 +132,7 @@ describe('saved message reactions', () => {
     expect(pills()[0]).toMatchObject({ selected: false });
     expect(pills()[0]?.authors).toEqual([salina.author, eusebio.author]);
     await act(async () =>
-      reactionsListener?.({
+      fakeRealtime.push('message.reaction', {
         conversationId: 'c1',
         messageId: 'm1',
         reactions: ['❤️'],
@@ -170,7 +170,7 @@ describe('saved message reactions', () => {
     await mount();
     await toggle();
     await act(async () =>
-      reactionsListener?.({
+      fakeRealtime.push('message.reaction', {
         conversationId: 'c1',
         messageId: 'm1',
         reactions: [],
@@ -195,7 +195,7 @@ describe('saved message reactions', () => {
     const entry = { emoji: '🎉', author: { kind: 'agent' as const, id: 'salina', name: 'Salina' } };
     await mount();
     await act(async () =>
-      reactionsListener?.({
+      fakeRealtime.push('message.reaction', {
         conversationId: 'c1',
         messageId: 'm1',
         reactions: [],
@@ -207,7 +207,7 @@ describe('saved message reactions', () => {
     await acknowledge(3);
     expect(current.messages[0]?.reactionEntries).toEqual([entry]);
     await act(async () =>
-      reactionsListener?.({
+      fakeRealtime.push('message.reaction', {
         conversationId: 'c1',
         messageId: 'm1',
         reactions: ['❤️'],
@@ -216,7 +216,7 @@ describe('saved message reactions', () => {
       }),
     );
     await act(async () =>
-      reactionsListener?.({
+      fakeRealtime.push('message.reaction', {
         conversationId: 'c1',
         messageId: 'm1',
         reactions: [],

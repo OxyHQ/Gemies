@@ -11,11 +11,11 @@ export async function admitAgentReactionMessages(input: {
   messages: ChatMessage[];
   originApp?: string;
 }) {
-  // Fresh server identities cannot inherit feedback from positional, unidentified client edits.
-  // Assign before admission: unseen durable replies can shift the saver's merged positions.
-  for (const message of input.messages) {
-    if (!message || !message.role || message.content === undefined) continue;
-    if (usableMessageId(message.id) === undefined) message.id = randomUUID();
-  }
+  // Name only the current person turn before admission. The canonical saver recovers historical
+  // IDs from stored messages; minting fresh IDs for that history would discard its feedback.
+  // The new turn needs its own identity even when it repeats an earlier message verbatim.
+  const trigger = [...input.messages].reverse().find((message) => message.role === 'user');
+  if (trigger && trigger.content !== undefined && usableMessageId(trigger.id) === undefined)
+    trigger.id = randomUUID();
   await saveConversation({ ...input, assistantResponse: '', omitLeadReply: true });
 }
