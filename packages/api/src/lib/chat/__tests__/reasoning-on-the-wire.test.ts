@@ -11,24 +11,26 @@ const mocks = vi.hoisted(() => ({
   serviceTokens: [] as string[],
 }));
 
-vi.mock('../../inference/oxy-inference.js', () => {
+vi.mock('../../kaana/transport.js', () => {
   const client = () => ({
-    respond: async (request: Record<string, unknown>, options: Record<string, unknown>) => {
-      mocks.requests.push(request);
-      mocks.options.push(options);
-      return {
-        requestId: 'req-wire',
-        model: 'openai/gpt-5-mini@2026-08-18',
-        output: [{ role: 'assistant', content: [{ type: 'text', text: 'ok' }] }],
-        finishReason: 'stop',
-        usage: [],
-      };
+    responses: {
+      create: async (request: Record<string, unknown>, options: Record<string, unknown>) => {
+        mocks.requests.push(request);
+        mocks.options.push(options);
+        return {
+          requestId: 'req-wire',
+          model: 'openai/gpt-5-mini@2026-08-18',
+          output: [{ role: 'assistant', content: [{ type: 'text', text: 'ok' }] }],
+          finishReason: 'stop',
+          usage: [],
+        };
+      },
     },
   });
   return {
-    getOxyInferenceClient: client,
-    buildOxyInferenceClientForServiceToken: (token: string) => {
-      mocks.serviceTokens.push(token);
+    disposeHostedKaanaClient: vi.fn(),
+    getHostedKaanaClient: (_account: unknown, token?: string) => {
+      if (token) mocks.serviceTokens.push(token);
       return client();
     },
   };
@@ -100,13 +102,13 @@ describe('reasoning crosses the Oxy inference boundary', () => {
 
   it('attributes the hosted turn to the authenticated Oxy user', async () => {
     await requestFor(null);
-    expect(mocks.options[0]).toMatchObject({ delegatedUserId: 'oxy-user-id' });
+    expect(mocks.options[0]).toMatchObject({ onBehalfOfUserId: 'oxy-user-id' });
   });
 
   it('uses the exact verified product bearer for a product-agent turn', async () => {
     await requestFor(null, 'verified-product-service-token');
     expect(mocks.serviceTokens).toEqual(['verified-product-service-token']);
-    expect(mocks.options[0]).toMatchObject({ delegatedUserId: 'oxy-user-id' });
+    expect(mocks.options[0]).toMatchObject({ onBehalfOfUserId: 'oxy-user-id' });
   });
 });
 

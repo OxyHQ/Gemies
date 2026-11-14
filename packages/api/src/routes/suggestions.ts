@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { zodSchema } from 'ai';
+import { KaanaError } from '@kaana.ai/sdk';
 import { OxyInferenceError } from '@oxy.so/core/inference';
 import { z } from 'zod';
 import { getDb } from '../db/index.js';
@@ -449,10 +450,12 @@ router.post('/generate', authenticateToken, async (req: Request, res: Response) 
         signal: deadline,
       });
     } catch (error: unknown) {
-      if (error instanceof OxyInferenceError) {
+      // KaanaError: Kaana's typed refusal. OxyInferenceError: the local
+      // controlled-input budget refusal (RequestInputBudgetExceededError).
+      if (error instanceof KaanaError || error instanceof OxyInferenceError) {
         log.general.warn(
           { code: error.code, requestId: error.requestId, retryable: error.retryable },
-          'Oxy inference refused suggestion generation',
+          'Inference refused suggestion generation',
         );
         return res.status(503).json({
           error: 'Suggestion generation is temporarily unavailable',
@@ -464,7 +467,7 @@ router.post('/generate', authenticateToken, async (req: Request, res: Response) 
     }
 
     if (kaanaText === null) {
-      log.general.error('Oxy inference returned no text for suggestion generation');
+      log.general.error('Kaana returned no text for suggestion generation');
       return res.status(502).json({ error: 'Suggestion generation returned no result' });
     }
 

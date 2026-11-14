@@ -28,6 +28,17 @@ together. To return to Node, revert the change that made the switch: it moved th
 Dockerfile and every one of those commands at once, and they must stay together. The
 GemiesOS's control API (`packages/gemies-os/Dockerfile`) runs on Bun the
 same way; its workspace image (actors' computers and the browser worker) stays on Node.
+## Reviewed image without a deployment
+
+After its smoke test, CI retains `api-image-arm64-<run-id>-<attempt>` for three
+days. It contains the OCI archive, its SHA-256 and `provenance.json`: the tested
+checkout, reviewed PR head, identical Git trees, platform manifest and configuration
+digests. The archive must contain the same configuration that passed the smoke.
+The job has no AWS credentials and neither pushes to ECR nor deploys. A reviewed
+operator can copy that immutable archive to a unique candidate tag; this does not
+replace the release gates, migrations, or an explicit rollout decision. If main
+has changed the PR merge tree, rebase and rerun CI before using the artifact.
+
 ## Preconditions
 
 - **PostgreSQL, reachable.** `DATABASE_URL` is required. `packages/api/src/index.ts:411`

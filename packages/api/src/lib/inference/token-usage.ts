@@ -1,6 +1,6 @@
 import type { LanguageModelV3Usage } from '@ai-sdk/provider';
 
-/** Oxy reports disjoint token partitions; AI SDK totals include cache/reasoning. */
+/** Kaana reports disjoint token partitions; AI SDK totals include cache/reasoning. */
 export function tokenUsageFromUnits(
   units: readonly { unit: string; quantity: number }[] | undefined,
 ): LanguageModelV3Usage {
@@ -8,15 +8,16 @@ export function tokenUsageFromUnits(
   const total = (base: number | undefined, extra: number | undefined) =>
     base === undefined && extra === undefined ? undefined : (base ?? 0) + (extra ?? 0);
   const input = of('input_tokens'),
-    cached = of('cached_input_tokens');
+    cached = of('cached_input_tokens'),
+    cacheWrite = of('cache_write_input_tokens');
   const output = of('output_tokens'),
     reasoning = of('reasoning_tokens');
   return {
     inputTokens: {
-      total: total(input, cached),
+      total: total(total(input, cached), cacheWrite),
       noCache: input,
       cacheRead: cached,
-      cacheWrite: undefined,
+      cacheWrite,
     },
     outputTokens: { total: total(output, reasoning), text: output, reasoning },
   };

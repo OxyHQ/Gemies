@@ -43,7 +43,7 @@
 
 import { connectPostgres } from '../db/index.js';
 import { assertDirectProviderModeOrExit } from './inference/direct-provider-guard.js';
-import { oxyInferenceBootConfigurationFailure } from './inference/oxy-inference-boot-check.js';
+import { kaanaBootConfigurationFailure } from './inference/kaana-boot-check.js';
 import { installProviderEgressBlock } from './inference/provider-egress-policy.js';
 
 /** The exit code every refusal here uses. */
@@ -116,9 +116,9 @@ export function runBootGuards(deps: BootGuardDeps): void {
   }
 
   // Kaana is mandatory: a partial configuration refuses before the listener.
-  const inferenceFailure = oxyInferenceBootConfigurationFailure(env);
+  const inferenceFailure = kaanaBootConfigurationFailure(env);
   if (inferenceFailure !== null) {
-    deps.reportFatal('Oxy inference client configuration is invalid — refusing to start', {
+    deps.reportFatal('Kaana workload identity configuration is invalid — refusing to start', {
       failure: inferenceFailure,
     });
     terminate();

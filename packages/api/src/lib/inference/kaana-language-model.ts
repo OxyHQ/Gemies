@@ -8,9 +8,9 @@
  * migrates all of them by substitution instead: the call sites do not change,
  * and what they are talking to does.
  *
- * Alia translates its AI SDK calls to the public Oxy inference request once.
- * `OxyInferenceClient` owns the HTTP protocol and calls Oxy; Alia has no direct
- * Kaana transport, signing dialect or provider adapter.
+ * Gemies translates AI SDK calls to Kaana's public request once. The published
+ * Kaana SDK sends content directly to Kaana; Oxy supplies workload identity.
+ * No provider adapter or custom signing dialect lives in Gemies.
  *
  * ## Tools are the whole point of this file existing
  *
@@ -38,8 +38,8 @@
 
 import { randomUUID } from 'node:crypto';
 
-import type { OxyInferenceResponse, OxyResponsesRequest } from '@oxy.so/core/inference';
-import { OxyInferenceError, OxyInferenceProtocolError } from '@oxy.so/core/inference';
+import type { Response as KaanaResponse, ResponsesRequest } from '@kaana.ai/contracts';
+import { KaanaError, KaanaProtocolError } from '@kaana.ai/sdk';
 import type {
   LanguageModelV3,
   LanguageModelV3CallOptions,
@@ -49,7 +49,7 @@ import type {
   LanguageModelV3Usage,
 } from '@ai-sdk/provider';
 
-import { buildOxyInferenceClientForServiceToken, getOxyInferenceClient } from './oxy-inference.js';
+import { getHostedKaanaClient, disposeHostedKaanaClient } from '../kaana/transport.js';
 import type { AliaInferenceSurface } from './product-seam.js';
 import { fitControlledInput, type ModelInputLimits } from './request-budget.js';
 import { tokenUsageFromUnits } from './token-usage.js';
@@ -107,7 +107,7 @@ export interface KaanaModelOptions {
   readonly onInferenceRequest?: (request: InferenceRequestCorrelation) => void | Promise<void>;
   /**
    * An exact `publisher/model` from Oxy's catalogue (ADR 0012), or a power
-   * level sent as `routingProfile` (ADR 0014).
+   * level sent as `model` (ADR 0014).
    */
   readonly target: OxyInferenceTarget;
   /** Alia's product-facing request identity. */
@@ -125,14 +125,13 @@ export interface KaanaModelOptions {
    */
   readonly inputLimits?: ModelInputLimits | null;
   readonly oxyUserId?: string | null;
-  /** Verified inbound product service token; absent keeps Alia's own credential lane. */
+  /** Legacy option name: admitMachineTurn's verified external oxy_sk key, never a JWT.
+   * Absent uses Gemies workload identity, with immutable account attribution. */
   readonly serviceToken?: string;
 }
 
 function inferenceClient(options: KaanaModelOptions) {
-  return options.serviceToken === undefined
-    ? getOxyInferenceClient()
-    : buildOxyInferenceClientForServiceToken(options.serviceToken);
+  return getHostedKaanaClient(options.oxyUserId, options.serviceToken);
 }
 
 /**
@@ -153,13 +152,13 @@ function inferenceClient(options: KaanaModelOptions) {
 function requestOptions(
   options: KaanaModelOptions,
   signal: AbortSignal,
-): { signal: AbortSignal; idempotencyKey: string; delegatedUserId?: string } {
+): { signal: AbortSignal; idempotencyKey: string; onBehalfOfUserId?: string } {
   return {
     signal,
     idempotencyKey: randomUUID(),
     ...(options.oxyUserId === undefined || options.oxyUserId === null
       ? {}
-      : { delegatedUserId: options.oxyUserId }),
+      : { onBehalfOfUserId: options.oxyUserId }),
   };
 }
 
@@ -281,13 +280,11 @@ export function requestFor(
   modelOptions: KaanaModelOptions,
   options: LanguageModelV3CallOptions,
   translation: Translation,
-): OxyResponsesRequest {
+): ResponsesRequest {
   const responseFormat = toResponseFormat(options.responseFormat);
   const target = modelOptions.target;
   return {
-    ...(target.kind === 'model'
-      ? { model: target.model }
-      : { routingProfile: target.routingProfile }),
+    model: target.kind === 'model' ? target.model : target.routingProfile,
     ...(modelOptions.reasoningEffort === undefined
       ? {}
       : { reasoning: { effort: modelOptions.reasoningEffort } }),
@@ -303,7 +300,7 @@ export function requestFor(
   };
 }
 
-function contentFrom(response: OxyInferenceResponse): {
+function contentFrom(response: KaanaResponse): {
   readonly content: LanguageModelV3Content[];
   readonly toolCalls: number;
 } {
@@ -348,28 +345,28 @@ export function kaanaLanguageModel(options: KaanaModelOptions): LanguageModelV3 
     supportedUrls: {},
 
     async doGenerate(call) {
-      const client = inferenceClient(options);
-      if (client === null) throw new Error('Oxy inference is not configured for this deployment');
-
       const translation = translateWithinLimit(options, call);
-      let completion: OxyInferenceResponse;
+      const client = inferenceClient(options);
+      let completion: KaanaResponse;
       const generateSignal = call.abortSignal ?? AbortSignal.timeout(120_000);
       try {
         // One key for every attempt: see transport-retry.ts.
         const generateOptions = requestOptions(options, generateSignal);
         await prepareAttempt(options, generateOptions);
         completion = await retryTransport(
-          () => client.respond(requestFor(options, call, translation), generateOptions),
+          () => client.responses.create(requestFor(options, call, translation), generateOptions),
           generateSignal,
         );
       } catch (error) {
         if (
-          error instanceof OxyInferenceError &&
+          (error instanceof KaanaError || error instanceof KaanaProtocolError) &&
           typeof error.requestId === 'string' &&
           error.requestId !== ''
         )
           await options.onInferenceRequest?.({ requestId: error.requestId, modelReference: null });
         throw error;
+      } finally {
+        disposeHostedKaanaClient(client);
       }
       const generated = contentFrom(completion);
       // Typed as required on the SDK's response, read defensively anyway: a
@@ -394,17 +391,24 @@ export function kaanaLanguageModel(options: KaanaModelOptions): LanguageModelV3 
     },
 
     async doStream(call) {
-      const client = inferenceClient(options);
-      if (client === null) throw new Error('Oxy inference is not configured for this deployment');
-
       const translation = translateWithinLimit(options, call);
-      const signal = call.abortSignal ?? AbortSignal.timeout(120_000);
+      const client = inferenceClient(options);
+      const streamAbort = new AbortController();
+      const signal = AbortSignal.any([
+        call.abortSignal ?? AbortSignal.timeout(120_000),
+        streamAbort.signal,
+      ]);
       // One Idempotency-Key for every attempt (a retry must never open a second
       // reservation), and no attempt once output left. See transport-retry.ts.
       const streamOptions = requestOptions(options, signal);
-      await prepareAttempt(options, streamOptions);
+      try {
+        await prepareAttempt(options, streamOptions);
+      } catch (error) {
+        disposeHostedKaanaClient(client);
+        throw error;
+      }
       const events = withTransportRetry(
-        () => client.stream(requestFor(options, call, translation), streamOptions),
+        () => client.responses.stream(requestFor(options, call, translation), streamOptions),
         (event) => event.type === 'delta' || event.type === 'tool_call',
         signal,
       );
@@ -449,205 +453,210 @@ export function kaanaLanguageModel(options: KaanaModelOptions): LanguageModelV3 
       >();
 
       const stream = new ReadableStream<LanguageModelV3StreamPart>({
-        async start(controller) {
-          controller.enqueue({ type: 'stream-start', warnings: translation.warnings });
-          let emittedToolCalls = 0;
+        start(controller) {
+          // Do not hold the ReadableStream start promise until upstream ends:
+          // reader.cancel must be able to abort an in-flight Kaana request.
+          void (async () => {
+            controller.enqueue({ type: 'stream-start', warnings: translation.warnings });
+            let emittedToolCalls = 0;
 
-          const closeReasoning = (): void => {
-            if (!reasoningOpen) return;
-            controller.enqueue({ type: 'reasoning-end', id: REASONING_BLOCK_ID });
-            reasoningOpen = false;
-          };
+            const closeReasoning = (): void => {
+              if (!reasoningOpen) return;
+              controller.enqueue({ type: 'reasoning-end', id: REASONING_BLOCK_ID });
+              reasoningOpen = false;
+            };
 
-          const closeCall = (
-            id: string,
-            call: { name: string | null; input: string; closed: boolean },
-          ): void => {
-            if (call.closed || call.name === null) return;
-            controller.enqueue({ type: 'tool-input-end', id });
-            controller.enqueue({
-              type: 'tool-call',
-              toolCallId: id,
-              toolName: call.name,
-              input: call.input,
-            });
-            call.closed = true;
-            emittedToolCalls += 1;
-          };
+            const closeCall = (
+              id: string,
+              call: { name: string | null; input: string; closed: boolean },
+            ): void => {
+              if (call.closed || call.name === null) return;
+              controller.enqueue({ type: 'tool-input-end', id });
+              controller.enqueue({
+                type: 'tool-call',
+                toolCallId: id,
+                toolName: call.name,
+                input: call.input,
+              });
+              call.closed = true;
+              emittedToolCalls += 1;
+            };
 
-          try {
-            for await (const event of events) {
-              switch (event.type) {
-                case 'start': {
-                  if (typeof event.requestId === 'string' && event.requestId !== '') {
-                    await recordRequest(
-                      event.requestId,
-                      typeof event.resolvedModelReference === 'string' &&
-                        event.resolvedModelReference !== ''
-                        ? event.resolvedModelReference
-                        : null,
-                    );
-                  }
-                  // The one event that names the served revision. `servingProvider`
-                  // rides beside it on the wire and is NOT read: an operator name
-                  // has no place on the product surface or in its analytics.
-                  if (
-                    typeof event.resolvedModelReference === 'string' &&
-                    event.resolvedModelReference !== ''
-                  ) {
-                    resolvedModelReference = event.resolvedModelReference;
-                    controller.enqueue({
-                      type: 'response-metadata',
-                      ...(typeof event.requestId === 'string' ? { id: event.requestId } : {}),
-                      modelId: event.resolvedModelReference,
-                    });
-                  }
-                  break;
-                }
-                case 'delta': {
-                  if (event.channel === 'reasoning') {
-                    if (!reasoningOpen) {
-                      controller.enqueue({ type: 'reasoning-start', id: REASONING_BLOCK_ID });
-                      reasoningOpen = true;
+            try {
+              for await (const event of events) {
+                switch (event.type) {
+                  case 'start': {
+                    if (typeof event.requestId === 'string' && event.requestId !== '') {
+                      await recordRequest(
+                        event.requestId,
+                        typeof event.model === 'string' && event.model !== '' ? event.model : null,
+                      );
                     }
-                    // Verbatim: a delta's leading space is part of the text.
+                    // Kaana's public event names the served revision, never its operator.
+                    if (typeof event.model === 'string' && event.model !== '') {
+                      resolvedModelReference = event.model;
+                      controller.enqueue({
+                        type: 'response-metadata',
+                        ...(typeof event.requestId === 'string' ? { id: event.requestId } : {}),
+                        modelId: event.model,
+                      });
+                    }
+                    break;
+                  }
+                  case 'delta': {
+                    if (event.channel === 'reasoning') {
+                      if (!reasoningOpen) {
+                        controller.enqueue({ type: 'reasoning-start', id: REASONING_BLOCK_ID });
+                        reasoningOpen = true;
+                      }
+                      // Verbatim: a delta's leading space is part of the text.
+                      controller.enqueue({
+                        type: 'reasoning-delta',
+                        id: REASONING_BLOCK_ID,
+                        delta: event.text,
+                      });
+                      break;
+                    }
+                    // The thought is over once the answer starts; leaving its block
+                    // open until the end of the stream interleaves the two.
+                    closeReasoning();
+                    if (!textOpen) {
+                      controller.enqueue({ type: 'text-start', id: TEXT_BLOCK_ID });
+                      textOpen = true;
+                    }
                     controller.enqueue({
-                      type: 'reasoning-delta',
-                      id: REASONING_BLOCK_ID,
+                      type: 'text-delta',
+                      id: TEXT_BLOCK_ID,
                       delta: event.text,
                     });
                     break;
                   }
-                  // The thought is over once the answer starts; leaving its block
-                  // open until the end of the stream interleaves the two.
-                  closeReasoning();
-                  if (!textOpen) {
-                    controller.enqueue({ type: 'text-start', id: TEXT_BLOCK_ID });
-                    textOpen = true;
-                  }
-                  controller.enqueue({ type: 'text-delta', id: TEXT_BLOCK_ID, delta: event.text });
-                  break;
-                }
-                case 'tool_call': {
-                  const id = event.toolCallId;
-                  const existing = calls.get(id) ?? {
-                    name: null,
-                    buffered: '',
-                    input: '',
-                    closed: false,
-                  };
-                  calls.set(id, existing);
+                  case 'tool_call': {
+                    const id = event.toolCallId;
+                    const existing = calls.get(id) ?? {
+                      name: null,
+                      buffered: '',
+                      input: '',
+                      closed: false,
+                    };
+                    calls.set(id, existing);
 
-                  const named = existing.name === null && event.name !== undefined;
-                  if (named) {
-                    existing.name = event.name ?? null;
-                    controller.enqueue({
-                      type: 'tool-input-start',
-                      id,
-                      toolName: event.name ?? '',
-                    });
-                    if (existing.buffered !== '') {
+                    const named = existing.name === null && event.name !== undefined;
+                    if (named) {
+                      existing.name = event.name ?? null;
                       controller.enqueue({
-                        type: 'tool-input-delta',
+                        type: 'tool-input-start',
                         id,
-                        delta: existing.buffered,
+                        toolName: event.name ?? '',
                       });
-                      existing.buffered = '';
+                      if (existing.buffered !== '') {
+                        controller.enqueue({
+                          type: 'tool-input-delta',
+                          id,
+                          delta: existing.buffered,
+                        });
+                        existing.buffered = '';
+                      }
                     }
-                  }
 
-                  if (event.argumentsDelta !== undefined && event.argumentsDelta !== '') {
-                    existing.input += event.argumentsDelta;
-                    if (existing.name === null) {
-                      existing.buffered += event.argumentsDelta;
-                    } else {
-                      controller.enqueue({
-                        type: 'tool-input-delta',
-                        id,
-                        delta: event.argumentsDelta,
-                      });
+                    if (event.argumentsDelta !== undefined && event.argumentsDelta !== '') {
+                      existing.input += event.argumentsDelta;
+                      if (existing.name === null) {
+                        existing.buffered += event.argumentsDelta;
+                      } else {
+                        controller.enqueue({
+                          type: 'tool-input-delta',
+                          id,
+                          delta: event.argumentsDelta,
+                        });
+                      }
                     }
-                  }
 
-                  if (event.complete) closeCall(id, existing);
-                  break;
-                }
-                case 'usage':
-                  usage = tokenUsageFromUnits(event.units);
-                  break;
-                case 'done':
-                  finishReason = toFinishReason(event.finishReason);
-                  break;
-                case 'error':
-                  if (typeof event.requestId === 'string' && event.requestId !== '')
-                    await recordRequest(event.requestId, null);
-                  controller.enqueue({
-                    type: 'error',
-                    error: new OxyInferenceError({
+                    if (event.complete) closeCall(id, existing);
+                    break;
+                  }
+                  case 'usage':
+                    usage = tokenUsageFromUnits(event.units);
+                    break;
+                  case 'done':
+                    finishReason = toFinishReason(event.finishReason);
+                    break;
+                  case 'error':
+                    if (event.requestId) await recordRequest(event.requestId, null);
+                    throw new KaanaError({
                       ...event.error,
                       requestId: event.requestId,
-                      // SSE is already open; its HTTP 200 is not the status of
-                      // this failed inference. Preserve the typed refusal.
-                      status: 502,
-                    }),
-                  });
-                  finishReason = { unified: 'error', raw: event.error.code };
-                  break;
-                default:
-                  break;
+                      status: null,
+                    });
+                  default:
+                    break;
+                }
               }
+            } catch (cause) {
+              if (streamAbort.signal.aborted) return;
+              // The SDK can refuse HTTP or framing before the first SSE event.
+              // Only its typed errors carry transport-authenticated correlation;
+              // arbitrary thrown objects cannot supply an inference request id.
+              if (
+                (cause instanceof KaanaError || cause instanceof KaanaProtocolError) &&
+                typeof cause.requestId === 'string' &&
+                cause.requestId !== ''
+              ) {
+                await recordRequest(cause.requestId, null);
+              }
+              controller.enqueue({ type: 'error', error: cause });
+              finishReason = {
+                unified: 'error',
+                raw: cause instanceof KaanaError ? cause.code : undefined,
+              };
+            } finally {
+              disposeHostedKaanaClient(client);
             }
-          } catch (cause) {
-            // The SDK can refuse HTTP or framing before the first SSE event.
-            // Only its typed errors carry transport-authenticated correlation;
-            // arbitrary thrown objects cannot supply an inference request id.
-            if (
-              (cause instanceof OxyInferenceError || cause instanceof OxyInferenceProtocolError) &&
-              typeof cause.requestId === 'string' &&
-              cause.requestId !== ''
-            ) {
-              await recordRequest(cause.requestId, null);
+
+            if (streamAbort.signal.aborted) return;
+            closeReasoning();
+            if (textOpen) controller.enqueue({ type: 'text-end', id: TEXT_BLOCK_ID });
+
+            /**
+             * A call the stream never completed is still emitted — unless the
+             * stream failed (below).
+             *
+             * Its arguments are whatever arrived, which for a truncated stream is
+             * invalid JSON — and the AI SDK reporting an unparseable tool input is
+             * an accurate description of what happened. Leaving the block open
+             * instead would hand a consumer a `tool-input-start` with no end,
+             * which is a hang rather than an error.
+             */
+            if (finishReason.unified === 'error') {
+              // A stream that FAILED is not a truncated one: the half-received
+              // arguments are not something the model decided to call, and running
+              // the tool on them would act on a turn that already ended in error.
+              // The input block is closed (a start with no end is a hang); the
+              // call itself is never emitted.
+              for (const [id, pending] of calls) {
+                if (pending.closed || pending.name === null) continue;
+                controller.enqueue({ type: 'tool-input-end', id });
+                pending.closed = true;
+              }
+            } else {
+              for (const [id, pending] of calls) closeCall(id, pending);
             }
-            controller.enqueue({ type: 'error', error: cause });
-            finishReason = { unified: 'error', raw: undefined };
-          }
 
-          closeReasoning();
-          if (textOpen) controller.enqueue({ type: 'text-end', id: TEXT_BLOCK_ID });
-
-          /**
-           * A call the stream never completed is still emitted — unless the
-           * stream failed (below).
-           *
-           * Its arguments are whatever arrived, which for a truncated stream is
-           * invalid JSON — and the AI SDK reporting an unparseable tool input is
-           * an accurate description of what happened. Leaving the block open
-           * instead would hand a consumer a `tool-input-start` with no end,
-           * which is a hang rather than an error.
-           */
-          if (finishReason.unified === 'error') {
-            // A stream that FAILED is not a truncated one: the half-received
-            // arguments are not something the model decided to call, and running
-            // the tool on them would act on a turn that already ended in error.
-            // The input block is closed (a start with no end is a hang); the
-            // call itself is never emitted.
-            for (const [id, pending] of calls) {
-              if (pending.closed || pending.name === null) continue;
-              controller.enqueue({ type: 'tool-input-end', id });
-              pending.closed = true;
-            }
-          } else {
-            for (const [id, pending] of calls) closeCall(id, pending);
-          }
-
-          const providerMetadata = resolvedModelMetadata(resolvedModelReference);
-          controller.enqueue({
-            type: 'finish',
-            finishReason: withToolCalls(finishReason, emittedToolCalls),
-            usage,
-            ...(providerMetadata === undefined ? {} : { providerMetadata }),
+            const providerMetadata = resolvedModelMetadata(resolvedModelReference);
+            controller.enqueue({
+              type: 'finish',
+              finishReason: withToolCalls(finishReason, emittedToolCalls),
+              usage,
+              ...(providerMetadata === undefined ? {} : { providerMetadata }),
+            });
+            controller.close();
+          })().catch((error: unknown) => {
+            if (!streamAbort.signal.aborted) controller.error(error);
           });
-          controller.close();
+        },
+        cancel(reason) {
+          streamAbort.abort(reason);
+          disposeHostedKaanaClient(client);
         },
       });
 

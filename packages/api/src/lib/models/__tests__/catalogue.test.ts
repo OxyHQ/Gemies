@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const listModels = vi.fn();
-vi.mock('../../inference/oxy-inference.js', () => ({
-  getOxyInferenceClient: () => ({ listModels }),
+vi.mock('../../kaana/transport.js', () => ({
+  getHostedKaanaClient: () => ({ models: { list: listModels } }),
+  disposeHostedKaanaClient: vi.fn(),
 }));
 
 const {

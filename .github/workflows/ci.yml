@@ -625,6 +625,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2 # Include both parents of the tested PR merge commit.
 
       # Warm from the layers deploy-aws.yml (and refresh-build-cache.yml) write
       # to the `alia` scope on main: same Dockerfile, same linux/arm64. READ
@@ -637,11 +639,19 @@ jobs:
       - name: Expose the Actions cache to buildx
         uses: crazy-max/ghaction-github-runtime@v4
 
+      - name: Test image artifact verification
+        run: python3 -m unittest discover -s .github/scripts -p 'test_api_image_artifact.py'
+
       - name: Build the API image
         run: |
+          mkdir -p "$RUNNER_TEMP/api-image"
           docker buildx build \
             --cache-from type=gha,scope=alia \
-            --load \
+            --platform linux/arm64 \
+            --output type=docker \
+            --output "type=oci,dest=$RUNNER_TEMP/api-image/image.oci.tar" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
             -f packages/api/Dockerfile -t alia-api:ci .
 
       - name: Smoke the API image under its Bun runtime
@@ -650,6 +660,26 @@ jobs:
           DATABASE_URL: postgres://alia:alia@127.0.0.1:5441/alia
           REDIS_URL: redis://127.0.0.1:6382
         run: bash .github/scripts/smoke-api-image.sh
+
+      # Retain exactly the tested image; no registry credential, push or deploy.
+      # PR checkout is the tested merge commit, recorded separately from its head.
+      - name: Record the tested API image
+        env:
+          REVIEWED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          docker image inspect alia-api:ci > "$RUNNER_TEMP/api-image/inspect.json"
+          python3 .github/scripts/api-image-artifact.py \
+            "$RUNNER_TEMP/api-image" "$(git rev-parse HEAD)" "$REVIEWED_HEAD"
+          rm "$RUNNER_TEMP/api-image/inspect.json"
+
+      - name: Retain the tested API candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-image-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/api-image/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
 
   # Both GemiesOS images, on arm64 like the host. The control API (`host`)
   # under the hardening its systemd unit applies (read-only root, no

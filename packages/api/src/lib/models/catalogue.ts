@@ -1,8 +1,8 @@
 /**
- * The model catalogue Alia offers: whatever Oxy lists, nothing curated here.
+ * The model catalogue Alia offers: whatever Kaana lists, nothing curated here.
  *
  * Alia has no models of its own (ADR 0012). Every model a person can pick is a
- * `publisher/model` entry of Oxy's catalogue — `OxyInferenceClient.listModels()`,
+ * `publisher/model` entry of Kaana's public catalogue — `Kaana.models.list()`,
  * which Kaana keeps in sync with what its providers actually serve — so a model
  * a provider retires disappears here without a deploy. This module only
  * NORMALIZES those entries into the shape the product needs and caches them.
@@ -14,7 +14,7 @@
  * the product shows the model and its publisher, not who hosts it.
  */
 
-import { getOxyInferenceClient } from '../inference/oxy-inference.js';
+import { getHostedKaanaClient, disposeHostedKaanaClient } from '../kaana/transport.js';
 import { log } from '../logger.js';
 
 /** The effort levels a request may ask a reasoning model for. */
@@ -274,10 +274,12 @@ let cached: { readonly models: CatalogueModel[]; readonly fetchedAt: number } | 
 let inflight: Promise<CatalogueModel[]> | null = null;
 
 async function fetchCatalogue(): Promise<CatalogueModel[]> {
-  const client = getOxyInferenceClient();
+  const client = getHostedKaanaClient();
   if (client === null)
     throw new CatalogueUnavailableError('Oxy inference is not configured for this deployment');
-  const entries = await client.listModels({ signal: AbortSignal.timeout(15_000) });
+  const entries = await client.models
+    .list({ signal: AbortSignal.timeout(15_000) })
+    .finally(() => disposeHostedKaanaClient(client));
   return normalizeCatalogue(entries as unknown[]);
 }
 

@@ -1,11 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { createServer } from 'node:http';
-import {
-  OxyInferenceClient,
-  OxyInferenceError,
-  OxyInferenceProtocolError,
-} from '@oxy.so/core/inference';
+import { Kaana, KaanaError, KaanaProtocolError } from '@kaana.ai/sdk';
 import { closePostgres, connectPostgres, getDb } from '../../db/index.js';
 import { userCredits } from '../../db/schema/billing.js';
 import {
@@ -31,33 +27,33 @@ const inference = vi.hoisted(() => ({
   events: [] as Record<string, unknown>[],
   calls: 0,
   pauseAfterStart: null as Promise<void> | null,
-  client: null as {
-    stream: OxyInferenceClient['stream'];
-    respond: OxyInferenceClient['respond'];
-  } | null,
+  client: null as Kaana | null,
 }));
-vi.mock('../inference/oxy-inference.js', () => ({
-  getOxyInferenceClient: () =>
+vi.mock('../kaana/transport.js', () => ({
+  getHostedKaanaClient: () =>
     inference.client ?? {
-      respond: async () => ({
-        requestId: `cpb-generated-${++inference.calls}`,
-        model: 'acme/m@revision',
-        output: [{ role: 'assistant', content: [{ type: 'text', text: 'answer' }] }],
-        finishReason: 'stop',
-        usage: [],
-      }),
-      stream: (_request: unknown, options: { signal: AbortSignal }) =>
-        (async function* () {
-          for (const event of inference.events) {
-            yield event;
-            if (event.type === 'start' && inference.pauseAfterStart !== null) {
-              await inference.pauseAfterStart;
-              if (options.signal.aborted)
-                throw new DOMException('fixture cancellation', 'AbortError');
+      responses: {
+        create: async () => ({
+          requestId: `cpb-generated-${++inference.calls}`,
+          model: 'acme/m@revision',
+          output: [{ role: 'assistant', content: [{ type: 'text', text: 'answer' }] }],
+          finishReason: 'stop',
+          usage: [],
+        }),
+        stream: (_request: unknown, options: { signal: AbortSignal }) =>
+          (async function* () {
+            for (const event of inference.events) {
+              yield event;
+              if (event.type === 'start' && inference.pauseAfterStart !== null) {
+                await inference.pauseAfterStart;
+                if (options.signal.aborted)
+                  throw new DOMException('fixture cancellation', 'AbortError');
+              }
             }
-          }
-        })(),
+          })(),
+      },
     },
+  disposeHostedKaanaClient: vi.fn(),
 }));
 const catalogue = vi.hoisted(() => ({ input: '3', output: '15', reads: 0 }));
 vi.mock('../models/catalogue.js', () => ({
@@ -123,11 +119,12 @@ describe('durable admission pricing and atomic turn settlement', () => {
         httpCalls++;
         expect(request.url).toBe('/v1/responses');
         expect(request.method).toBe('POST');
-        if (requestId !== null) response.setHeader('X-Oxy-Request-Id', requestId);
+        if (requestId !== null) response.setHeader('Kaana-Request-Id', requestId);
         if (scenario === 'http-pre-start' || scenario === 'no-id') {
           response.writeHead(503, { 'Content-Type': 'application/json' });
           response.end(
             JSON.stringify({
+              ...(requestId === null ? {} : { schemaVersion: 1, requestId }),
               code: 'provider_timeout',
               message: 'fixture timeout',
               retryable: true,
@@ -137,14 +134,17 @@ describe('durable admission pricing and atomic turn settlement', () => {
           response.writeHead(200, { 'Content-Type': 'application/json' });
           response.end('{}');
         } else {
-          response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+          response.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Kaana-Routing-Policy-Id': 'fixture',
+            'Kaana-Routing-Policy-Version': '1',
+          });
           const start = {
             schemaVersion: 1,
             type: 'start',
             requestId,
             sequence: 0,
-            resolvedModelReference: 'acme/m@revision',
-            servingProvider: 'fixture',
+            model: 'acme/m@revision',
             startedAt: '2026-10-02T00:00:00.000Z',
           };
           response.end(
@@ -155,9 +155,10 @@ describe('durable admission pricing and atomic turn settlement', () => {
       await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
       const address = server.address();
       if (address === null || typeof address === 'string') throw new Error('Missing fixture port');
-      inference.client = new OxyInferenceClient({
-        baseURL: `http://127.0.0.1:${address.port}`,
+      inference.client = new Kaana({
+        baseURL: `http://127.0.0.1:${address.port}/v1`,
         credential: 'fixture-only',
+        maxRetries: 0,
       });
       const recorded: string[] = [];
       try {
@@ -170,7 +171,11 @@ describe('durable admission pricing and atomic turn settlement', () => {
             recorded.push(request.requestId);
           },
         });
-        const reader = (await model.doStream({ prompt: [] } as never)).stream.getReader();
+        const reader = (
+          await model.doStream({
+            prompt: [{ role: 'user', content: [{ type: 'text', text: 'fixture' }] }],
+          } as never)
+        ).stream.getReader();
         let errors = 0;
         for (;;) {
           const part = await reader.read();
@@ -178,7 +183,7 @@ describe('durable admission pricing and atomic turn settlement', () => {
           if (part.value.type === 'error') {
             errors++;
             expect(part.value.error).toBeInstanceOf(
-              scenario.startsWith('protocol') ? OxyInferenceProtocolError : OxyInferenceError,
+              scenario.startsWith('protocol') ? KaanaProtocolError : KaanaError,
             );
             // Read the real DB at the instant the failure becomes observable.
             const links = await getDb()
@@ -283,7 +288,7 @@ describe('durable admission pricing and atomic turn settlement', () => {
       {
         type: 'start',
         requestId: 'cpb-real-stream-start',
-        resolvedModelReference: 'acme/m@revision',
+        model: 'acme/m@revision',
       },
       { type: 'delta', channel: 'text', text: 'partial' },
       {
@@ -298,7 +303,9 @@ describe('durable admission pricing and atomic turn settlement', () => {
       surface: 'chat',
       onInferenceRequest: (request) => recordCreditInferenceRequest(reservation, request),
     });
-    const { stream } = await model.doStream({ prompt: [] } as never);
+    const { stream } = await model.doStream({
+      prompt: [{ role: 'user', content: [{ type: 'text', text: 'fixture' }] }],
+    } as never);
     const reader = stream.getReader();
     let errors = 0;
     for (;;) {
@@ -350,7 +357,7 @@ describe('durable admission pricing and atomic turn settlement', () => {
       release = resolve;
     });
     inference.events = [
-      { type: 'start', requestId: 'cpb-aborted-start', resolvedModelReference: 'acme/m@revision' },
+      { type: 'start', requestId: 'cpb-aborted-start', model: 'acme/m@revision' },
     ];
     const abort = new AbortController();
     const model = kaanaLanguageModel({
