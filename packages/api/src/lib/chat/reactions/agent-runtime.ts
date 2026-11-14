@@ -10,7 +10,8 @@ import {
 import { agentOpensOn } from '../../agent-availability.js';
 import { agentPromptName, type HydratedAgent } from '../../agent-identity.js';
 import { publishConversationReaction } from './bus.js';
-import { createAgentReactionTurn } from './agent-tool.js';
+import { createAgentReactionTurn, type AgentReactionTurn } from './agent-tool.js';
+import { authoredReactionsEnabled } from '../release.js';
 
 export async function prepareAgentReactionTurn(input: {
   userId: string;
@@ -22,7 +23,10 @@ export async function prepareAgentReactionTurn(input: {
   /** The reachable roster authorized at admission; a direct turn contains only its own actor. */
   allowedActorIds: readonly string[];
   signal?: AbortSignal;
-}) {
+}): Promise<AgentReactionTurn | undefined> {
+  // Keep replay readers active on release A/rollback; gate only creation of the capability.
+  // Direct streaming/non-streaming, room and peer turns all enter through this factory.
+  if (!authoredReactionsEnabled()) return undefined;
   // Local identities run in their external daemon, never in this hosted tool pipeline (ADR 0036).
   if (input.agent.identity.source === 'local') return undefined;
   const db = getDb();

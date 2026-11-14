@@ -600,29 +600,44 @@ describe('v2 room participation: selection before execution', () => {
     expect(h.events.at(-1)?.data.reason).toBe('done');
   });
 
-  it('replays durable reaction completion without another model/tool turn, then selects remaining work', async () => {
-    const h = harness({ script: () => 'must not run', select: async () => idle, agentsGone: true });
-    const replay = vi.fn(async () => undefined);
-    Object.assign(h.deps, {
-      reactionCompletion: vi.fn(async () => ({ tokensUsed: 10 })),
-      replayReactions: replay,
-    });
-    await h.drain(
-      h.first({
-        ...v2,
-        phase: 'speak',
-        speakerId: 'a',
-        decision: { action: 'speak', agentId: 'a', reason: 'directed' },
-      }),
-    );
-    expect(h.deps.runTurn).not.toHaveBeenCalled();
-    expect(replay).toHaveBeenCalledOnce();
-    expect(h.events.find((event) => event.event === 'alia.agent_end')?.data).toMatchObject({
-      status: 'completed',
-      reactionOnly: true,
-    });
-    expect(h.rows).toHaveLength(1);
-  });
+  it.each([2, 3] as const)(
+    'release A replays a committed v%s quiet turn with authoring unavailable and preserves its queue',
+    async (version) => {
+      const h = harness({
+        script: () => 'must not run',
+        select: async () => idle,
+        agentsGone: true,
+      });
+      const replay = vi.fn(async () => undefined);
+      const prepare = vi.fn<NonNullable<RoomEngineDeps['prepareReaction']>>(async () => undefined);
+      Object.assign(h.deps, {
+        prepareReaction: prepare,
+        reactionCompletion: vi.fn(async () => ({ tokensUsed: 10 })),
+        replayReactions: replay,
+      });
+      await processRoomStep(
+        h.first({
+          ...v2,
+          version,
+          requestDigest: roomRequestDigest('hello all'),
+          phase: 'speak',
+          speakerId: 'a',
+          decision: { action: 'speak', agentId: 'a', reason: 'directed' },
+        }),
+        h.deps,
+      );
+      expect(h.deps.runTurn).not.toHaveBeenCalled();
+      expect(prepare).not.toHaveBeenCalled();
+      expect(h.queued).toHaveLength(1);
+      expect(h.queued[0]).toMatchObject({ version, phase: 'select' });
+      expect(replay).toHaveBeenCalledOnce();
+      expect(h.events.find((event) => event.event === 'alia.agent_end')?.data).toMatchObject({
+        status: 'completed',
+        reactionOnly: true,
+      });
+      expect(h.rows).toHaveLength(1);
+    },
+  );
 
   it('does not hide a real failure behind an earlier reaction side effect', async () => {
     const h = harness({ script: () => 'unused', select: async () => selection('a') });

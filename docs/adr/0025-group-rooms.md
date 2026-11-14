@@ -207,7 +207,14 @@ reinterpret a queued v2 job as a newly extracted plan. Retire each old worker on
 waiting, active, delayed and retryable jobs have drained.
 
 **Two releases make the rollback consumer concrete.** Release A installs all three workers but
-`prepareRoom` still creates version 2 jobs. Release B changes that producer to version 3 only after
+`prepareRoom` still creates version 2 jobs and the shared hosted reaction factory offers no
+`react_to_message` capability. This includes direct streaming/non-streaming, room and peer turns:
+A cannot create a new authored mutation or clean quiet completion whose lost ACK an old worker
+would mistake for an unfinished turn. A retains all receipt readers/replay paths independently
+of capability creation, so it can finish B's committed work after rollback without re-inference.
+`CONVERSATION_WRITE_VERSION` is the single source release decision for both room job production
+and authored-reaction availability; it is not a request-controlled or environment toggle.
+Release B changes that decision to version 3 only after
 A is the sole completed deployment and its v3 Redis worker is verified. The existing ECS circuit
 breaker and `deploy-ecs-image.sh` rollback restore the entire previous service revision; therefore
 B must have A (not a v2-only image) as its actual rollback baseline. A continues consuming v3 even
@@ -215,7 +222,10 @@ when serving after B rolls back. It creates no new v3 human admissions; existing
 still use v3. This uses the normal maintained API service, not an auxiliary API process starting
 unrelated schedulers, and needs no new runtime flag, role or service.
 
-Before A, prove that no v3 producer or outstanding v3 jobs already exist. Before B, verify A's exact
+Before A, prove that no v3 producer or outstanding v3 jobs already exist and no producer has
+written authored quiet completions into the old room or peer queues. A's reader-first boundary
+is required for those queues too: merely retaining a v3 worker would not protect an old worker
+redelivering a quiet completion written by a new process. Before B, verify A's exact
 image/source, positive steady fleet, queue-specific v3 worker presence and unpaused Redis state;
 HTTP readiness alone does not establish worker readiness. Preserve that source/image as the oldest
 permitted rollback revision while v3 producers or work remain. A forced process exit or a graceful
@@ -231,8 +241,9 @@ The installed BullMQ count helper can remove deprecated wait-list markers, so it
 a read-only probe. Retirement is a separate reviewed operation; automatic rollback B→A does not
 retire the worker.
 
-Real selector evaluation exercises the final v3 plan contract during A; its source pin does not
-claim A already admits v3. Activation evidence additionally checks B's actual producer version.
+Real selector and native-tool evaluation exercises the final v3 plan/tool contract during A; its source pin does not
+claim A already admits v3 or offers authored reactions. Native-tool fixtures exercise the
+capability factory directly; production capability admission remains disabled in A. Activation evidence additionally checks B's actual producer version.
 No model call is used as a production queue health check.
 
 ### Bounds
