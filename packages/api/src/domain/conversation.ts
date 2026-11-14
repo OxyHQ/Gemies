@@ -134,6 +134,34 @@ export interface MessageContentPart {
 }
 
 /**
+ * Why a gemie's own message carries no words: a run the person asked for (a scheduled reply, a
+ * task) that ended without an answer. Stored as one `failure` part, `{ type: 'failure', code }`,
+ * which the app draws in the reader's language like a failed turn (`@gemies/sdk` `ThreadRow`),
+ * and never as the run's own status line ("Token budget exhausted…", delivered to a person on
+ * 2026-11-14).
+ */
+export const MESSAGE_FAILURE_CODES = ['task_unfinished'] as const;
+export type MessageFailureCode = (typeof MESSAGE_FAILURE_CODES)[number];
+
+export interface MessageFailurePart {
+  type: 'failure';
+  code: MessageFailureCode;
+}
+
+/** The failure a message is, when it is one. */
+export function messageFailureOf(content: unknown): MessageFailurePart | null {
+  if (!Array.isArray(content)) return null;
+  const part = content.find(
+    (entry): entry is MessageFailurePart =>
+      entry !== null &&
+      typeof entry === 'object' &&
+      (entry as { type?: unknown }).type === 'failure' &&
+      (MESSAGE_FAILURE_CODES as readonly unknown[]).includes((entry as { code?: unknown }).code),
+  );
+  return part ?? null;
+}
+
+/**
  * A message body: plain text, or the ordered parts array the AI SDK sends.
  *
  * Genuinely polymorphic, which is the `jsonb` test — the format belongs to

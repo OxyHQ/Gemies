@@ -94,7 +94,7 @@ async function processAgentSession(data: AgentJobData): Promise<AgentJobResult> 
       !session.workItemId &&
       !(await isAgentSelfStarted(inputs))
     ) {
-      const { postAgentMessage } = await import('./agent/agent-outreach.js');
+      const { postAgentMessage, runResultMessage } = await import('./agent/agent-outreach.js');
       const { deliveryConversationOf } = await import('./automation-delivery.js');
       const post = (conversationId?: string) =>
         postAgentMessage({
@@ -102,7 +102,7 @@ async function processAgentSession(data: AgentJobData): Promise<AgentJobResult> 
           agentId: session.agentId,
           kind: 'result',
           idempotencyKey: `session-result:${sessionId}`,
-          content: status === 'completed' ? result : `I couldn't finish this task. ${result}`,
+          ...runResultMessage({ status, result, task: session.task }),
           ...(conversationId ? { conversationId } : {}),
         });
       // Where the task was asked for (a Telegram chat of the gemie's bot, an app conversation);

@@ -37,7 +37,11 @@ import {
   findMessageReceipt,
   insertMessages,
 } from '../../db/chat/messageRepository.js';
-import { AGENT_OUTREACH_MESSAGE_ID_PREFIX } from '../../domain/conversation.js';
+import {
+  AGENT_OUTREACH_MESSAGE_ID_PREFIX,
+  type MessageContent,
+  type MessageFailureCode,
+} from '../../domain/conversation.js';
 import { agentPromptName, attachAgentIdentity } from '../agent-identity.js';
 import { log } from '../logger.js';
 import { checkInRefusal, lockOutreachBudget, type CheckInRefusal } from './outreach-budget.js';
@@ -67,7 +71,16 @@ export type AgentOutreachOutcome =
 export interface AgentOutreachInput {
   readonly oxyUserId: string;
   readonly agentId: string;
+  /**
+   * What the agent says. With {@link failure} it is not said: it is the notification's body (what
+   * the person had asked for), and the message is the typed failure.
+   */
   readonly content: string;
+  /**
+   * A requested run that ended with no answer: the message is this typed failure, which the app
+   * draws in the reader's language. Nothing is relayed to a channel, which has no words for it.
+   */
+  readonly failure?: MessageFailureCode;
   readonly kind: AgentOutreachKind;
   readonly idempotencyKey?: string;
   /** Requested continuations return to their originating conversation. */
@@ -82,6 +95,21 @@ export interface AgentOutreachInput {
 }
 
 const SEQ_INDEX = 'messages_oxy_user_conversation_seq_key';
+
+/**
+ * What a requested run delivers: its answer, or, when it ended with none, the typed failure with
+ * what had been asked as the notification's body. Never the run's status line.
+ */
+export function runResultMessage(run: {
+  readonly status: 'completed' | 'failed';
+  readonly result: string | null | undefined;
+  readonly task: string;
+}): Pick<AgentOutreachInput, 'content' | 'failure'> {
+  const answer = run.result?.trim();
+  return run.status === 'completed' && answer
+    ? { content: answer }
+    : { content: run.task, failure: 'task_unfinished' };
+}
 
 /** Whether this agent may check in with this person now — {@link checkInRefusal}, before anything is spent. */
 export async function agentCheckInRefusal(
@@ -99,6 +127,8 @@ export async function agentCheckInRefusal(
 export async function postAgentMessage(input: AgentOutreachInput): Promise<AgentOutreachOutcome> {
   const content = input.content.trim().slice(0, MAX_OUTREACH_CHARS);
   if (!content) return { posted: false, reason: 'empty' };
+  const stored: MessageContent =
+    input.failure === undefined ? content : [{ type: 'failure', code: input.failure }];
 
   const found = await findAgentById(getDb(), input.agentId);
   if (!found) return { posted: false, reason: 'agent_not_found' };
@@ -160,7 +190,7 @@ export async function postAgentMessage(input: AgentOutreachInput): Promise<Agent
               oxyUserId: input.oxyUserId,
               clientMessageId: messageId,
               role: 'assistant',
-              content,
+              content: stored,
               agentInfo,
               seq,
               createdAt: new Date(),
@@ -175,7 +205,8 @@ export async function postAgentMessage(input: AgentOutreachInput): Promise<Agent
     await upsertConversation(tx, {
       oxyUserId: input.oxyUserId,
       conversationId: conversation.conversationId,
-      lastMessage: content.slice(0, 100),
+      // A failure has no words to preview: the row keeps its last ones.
+      ...(input.failure === undefined ? { lastMessage: content.slice(0, 100) } : {}),
       titleOnInsert: name,
       agentId: input.agentId,
       // The gemie wrote on its own: nobody watched it arrive.
@@ -197,14 +228,16 @@ export async function postAgentMessage(input: AgentOutreachInput): Promise<Agent
   void publishConversation(input.oxyUserId, conversation.conversationId, {
     appendedFromSeq: written.seq,
   });
-  // A conversation that is a Telegram chat of the gemie's own bot gets it there too.
-  await relayToGemieBotChat({
-    agentId: agent._id,
-    conversationId: conversation.conversationId,
-    text: content,
-  }).catch((err: unknown) =>
-    log.agents.warn({ err, agentId: agent._id }, 'Could not relay an agent message to Telegram'),
-  );
+  // A conversation that is a Telegram chat of the gemie's own bot gets its words there too.
+  if (input.failure === undefined) {
+    await relayToGemieBotChat({
+      agentId: agent._id,
+      conversationId: conversation.conversationId,
+      text: content,
+    }).catch((err: unknown) =>
+      log.agents.warn({ err, agentId: agent._id }, 'Could not relay an agent message to Telegram'),
+    );
+  }
 
   await sendNotification({
     userId: input.oxyUserId,
