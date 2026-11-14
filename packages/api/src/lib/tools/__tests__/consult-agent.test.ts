@@ -4,6 +4,7 @@
  * person's turn with the callee as the agent, paid by the outer payer.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentMessage } from '../../../domain/conversation.js';
 
 const H = vi.hoisted(() => ({
   agents: new Map<string, Record<string, unknown>>(),
@@ -36,6 +37,8 @@ vi.mock('../../logger.js', () => {
 });
 
 const { buildConsultAgentTool } = await import('../consult-agent.js');
+const { getToolResultBudget, wrapToolsWithTruncation } = await import('../result-truncation.js');
+const { sharedMessagesOf } = await import('../../shared-conversation.js');
 
 interface Executable {
   execute: (input: { agentId: string; task: string }) => Promise<Record<string, unknown>>;
@@ -175,5 +178,92 @@ describe('consultAgent', () => {
       errorCode: 'feature_entitlement_required',
       feature: 'attachments.documents',
     });
+  });
+
+  it('hands the turn the agent’s message, and nothing when it did not answer', async () => {
+    const answers: AgentMessage[] = [];
+    await consult({ answers });
+    expect(answers).toEqual([
+      {
+        role: 'assistant',
+        content: 'Hay tres pisos.',
+        agentInfo: {
+          id: 'sindi',
+          name: 'Sindi',
+          color: 'teal',
+          character: null,
+          handle: 'sindibot',
+        },
+      },
+    ]);
+
+    H.turn.mockImplementation(async () => ({
+      response: '',
+      tokensUsed: 0,
+      creditsCharged: 0,
+      error: 'no credits',
+    }));
+    await consult({ answers });
+    expect(answers).toHaveLength(1);
+  });
+
+  it('stores and shares a drawing past the tool budget whole, while the lead reads a bounded result', async () => {
+    const BUDGET = getToolResultBudget(128_000);
+    const report = `# Pisos en Gràcia\n\n${'Un piso luminoso cerca de la plaza. '.repeat(1_000)}`;
+    expect(report.length).toBeGreaterThan(BUDGET);
+    const drawn = {
+      toolCallId: 'c1',
+      toolName: 'canvas',
+      state: 'result',
+      args: { type: 'markdown', title: 'Gràcia', data: { content: report } },
+      result: { id: 'u', type: 'markdown', title: 'Gràcia', data: { content: report } },
+    };
+    const response = 'Hay tres pisos. '.repeat(2_000);
+    H.turn.mockImplementation(async () => ({
+      response,
+      tokensUsed: 42,
+      creditsCharged: 1,
+      canvas: [drawn],
+    }));
+    const answers: AgentMessage[] = [];
+    const tools = await buildConsultAgentTool({
+      person,
+      payerOxyUserId: 'person-1',
+      callerAgentId: null,
+      answers,
+    });
+    // Through the budget every turn's tools get (`tool-pipeline.ts` → `withBudget`).
+    const bounded = wrapToolsWithTruncation(tools, BUDGET).consultAgent as unknown as Executable;
+    const result = await bounded.execute({ agentId: 'sindi', task: 'Pisos en Gràcia' });
+
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(BUDGET + 64);
+    expect(JSON.stringify(result)).not.toContain('Pisos en Gràcia');
+
+    expect(answers[0]?.content).toBe(response);
+    expect(answers[0]?.toolInvocations).toEqual([drawn]);
+    const [shared] = sharedMessagesOf([
+      {
+        id: 'r',
+        conversationId: 'c',
+        oxyUserId: 'person-1',
+        clientMessageId: 'a-1-agent-0',
+        role: 'assistant',
+        content: answers[0]?.content ?? '',
+        vote: null,
+        reactions: null,
+        toolInvocations: answers[0]?.toolInvocations ?? null,
+        agentInfoId: 'sindi',
+        agentInfoName: 'Sindi',
+        agentInfoColor: 'teal',
+        agentInfoCharacter: null,
+        agentInfoHandle: 'sindibot',
+        seq: 1,
+        interruptedAfterMs: null,
+        createdAt: new Date(0),
+      },
+    ]);
+    expect(shared?.artifacts).toEqual([
+      { id: 'c1', type: 'markdown', title: 'Gràcia', data: { content: report } },
+    ]);
   });
 });

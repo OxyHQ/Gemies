@@ -55,7 +55,8 @@ import type { AutonomyRuntimeContext } from '../autonomy/runtime.js';
 import type { SSEWriter } from './sse-writer.js';
 import { buildBaseConfig, type TurnStepBounds } from './model-config.js';
 import { runNonStreaming } from './non-streaming.js';
-import { runStream, type AgentMessage, type StreamRunnerState } from './stream-runner.js';
+import type { AgentMessage } from '../../domain/conversation.js';
+import { runStream, type StreamRunnerState } from './stream-runner.js';
 import { runTextToolFallback } from './text-tool-fallback.js';
 import type { ToolRouting } from '../tool-budget.js';
 import { recordChatInferenceAttempt } from '../credit-reconciliation.js';
@@ -123,7 +124,7 @@ export interface ProviderLoopParams {
    */
   toolRouting?: ToolRouting;
   toolNameMapping: Map<string, string>;
-  /** Accumulator for delegate-to-agent replies; mutated in place by the stream runner. */
+  /** The consulted agents' answers, appended by `consultAgent` (`answers`); saved with the turn. */
   agentMessages: AgentMessage[];
   systemPromptTokens: number;
   requestedModel: string;

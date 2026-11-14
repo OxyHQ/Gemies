@@ -2,10 +2,10 @@
  * A consulted agent's answer is recorded as THAT AGENT's message, not as a
  * tool result the lead paraphrases (ADR 0020 §5).
  *
- * The answer already reached the client live — `consultAgent` emits
- * `alia.agent_start|delta|tool|end` itself (`lib/tools/consult-agent.ts`) — so
- * the stream loop writes no frame for it any more; what it still owns is the
- * conversation record, so the thread shows two speakers when it is read back.
+ * `consultAgent` emits the answer live itself (`alia.agent_start|delta|tool|end`) and hands the
+ * turn that agent's message, whole, with what it drew (`lib/tools/consult-agent.ts`). The stream
+ * loop writes no frame for it and rebuilds no message from the tool's result, which the tool budget
+ * has bounded for the model; it keeps the result as the lead's record of the call.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -37,45 +37,37 @@ const ANSWER = {
   response: 'Hay tres pisos en Gràcia.',
 };
 
+const FINISH = { type: 'finish', finishReason: 'stop', totalUsage: {} };
+
 async function run(toolName: string, output: unknown) {
-  const { written, agentMessages } = await runChunks([
+  const { written, agentMessages, toolInvocations } = await runChunks([
     { type: 'tool-call', toolCallId: 'call-1', toolName, input: {} },
     { type: 'tool-result', toolCallId: 'call-1', toolName, input: {}, output },
   ]);
-  return { written, agentMessages };
+  return { written, agentMessages, toolInvocations };
 }
 
 describe('a consulted agent is recorded as that agent', () => {
-  it("stores consultAgent's answer as the agent's own message, with no frame from the loop", async () => {
-    const { written, agentMessages } = await run('consultAgent', ANSWER);
+  it("keeps consultAgent's result as the lead's record, with no frame and no message of its own", async () => {
+    const { written, agentMessages, toolInvocations } = await run('consultAgent', ANSWER);
 
-    expect(agentMessages).toEqual([
-      {
-        role: 'assistant',
-        content: 'Hay tres pisos en Gràcia.',
-        agentInfo: {
-          id: 'ag-1',
-          name: 'Sindi',
-          color: 'teal',
-          character: null,
-          handle: 'sindibot',
-        },
-      },
+    expect(agentMessages).toEqual([]);
+    expect(toolInvocations).toEqual([
+      expect.objectContaining({ toolName: 'consultAgent', state: 'result', result: ANSWER }),
     ]);
     expect(written.some((frame) => frame.startsWith('event: alia.agent\n'))).toBe(false);
   });
 
-  it('records nothing for a tool that is not another agent speaking', async () => {
-    const { agentMessages } = await run('webSearch', { results: [] });
-    expect(agentMessages).toEqual([]);
-  });
-
-  it('records nothing when the agent could not answer', async () => {
-    const { agentMessages } = await run('consultAgent', {
-      ...ANSWER,
-      response: '',
-      error: 'no credits',
-    });
-    expect(agentMessages).toEqual([]);
+  it('counts an answer the tool handed the turn as the turn having answered', async () => {
+    const answer = {
+      role: 'assistant' as const,
+      content: ANSWER.response,
+      agentInfo: { id: 'ag-1', name: 'Sindi', color: 'teal', character: null, handle: 'sindibot' },
+    };
+    // Nothing of the lead's own, and no tool call: without the agent's answer this turn is empty.
+    await expect(
+      runChunks([FINISH], undefined, undefined, { agentMessages: [answer] }),
+    ).resolves.toBeDefined();
+    await expect(runChunks([FINISH])).rejects.toThrow();
   });
 });

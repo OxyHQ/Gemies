@@ -30,6 +30,7 @@ import {
   isMessageRole,
   usableMessageId,
   type AgentInfo,
+  type AgentMessage,
   type ConversationSource,
   type MessageContent,
   type MessageRole,
@@ -97,7 +98,8 @@ export interface SaveConversationParams {
   agentId: string;
   /** The embedding app (`host.app`); it labels the conversation only if this turn creates it. */
   originApp?: string;
-  agentMessages?: Array<{ role: 'assistant'; content: string; agentInfo: AgentInfo }>;
+  /** The consulted agents' answers, each stored as its own message before the reply. */
+  agentMessages?: AgentMessage[];
   /**
    * A group turn has no lead: every reply is a member's, in `agentMessages`. Set, the turn stores
    * no reply of its own (`assistantResponse` is ignored) and the conversation's last message is the
@@ -230,6 +232,9 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
       role: am.role,
       content: am.content,
       agentInfo: am.agentInfo,
+      ...(am.toolInvocations && am.toolInvocations.length > 0
+        ? { toolInvocations: am.toolInvocations }
+        : {}),
       ...(assistantMessageId === undefined
         ? {}
         : { id: agentMessageId(assistantMessageId, index) }),

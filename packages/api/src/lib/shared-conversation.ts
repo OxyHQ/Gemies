@@ -1,7 +1,9 @@
 /**
  * What a share link shows: the conversation's words, its images, who said
- * them, and the canvas artifacts Alia drew in it — and nothing else
- * (`GET /v1/shared/:token`, `docs/agent-embedding.md` §6).
+ * them, and the canvas artifacts drawn in it — and nothing else
+ * (`GET /v1/shared/:token`, `docs/agent-embedding.md` §6). An agent consulted in
+ * the conversation keeps the ones it drew on its own message
+ * (`consultedAgentMessage`), and they are shared by the same rule as the lead's.
  *
  * Built as an ALLOW-list over what is stored. A tool's input or output is the
  * person's own data fetched from their apps (their inbox, their listings), so
@@ -20,7 +22,7 @@
 
 import type { AvatarCharacter } from '@oxy.so/contracts';
 import type { MessageRow } from '../db/chat/messageRepository.js';
-import { CANVAS_TYPES } from './tools/canvas.js';
+import { CANVAS_TOOL, CANVAS_TYPES } from './tools/canvas.js';
 
 type SharedContentPart =
   | { readonly type: 'text'; readonly text: string }
@@ -76,7 +78,7 @@ export function sharedArtifactsOf(toolInvocations: unknown): SharedArtifact[] {
   return toolInvocations.flatMap((invocation, index): SharedArtifact[] => {
     if (invocation === null || typeof invocation !== 'object') return [];
     const call = invocation as Record<string, unknown>;
-    if (call.toolName !== 'canvas' || call.state !== 'result') return [];
+    if (call.toolName !== CANVAS_TOOL || call.state !== 'result') return [];
     const result = call.result;
     if (result === null || typeof result !== 'object' || Array.isArray(result)) return [];
     const { type, title, data } = result as Record<string, unknown>;

@@ -210,4 +210,29 @@ describe('the canvas artifacts a share link shows', () => {
       sharedMessagesOf([row({ role: 'user', content: 'hi', toolInvocations: [report] })]),
     ).toEqual([{ role: 'user', content: 'hi' }]);
   });
+
+  it("shows a consulted agent's canvas under that agent, by the same rule as the lead's", () => {
+    const [message] = sharedMessagesOf([
+      row({
+        role: 'assistant',
+        content: 'Here are the flats.',
+        agentInfoId: 'a',
+        agentInfoName: 'Sindi',
+        agentInfoHandle: 'sindibot',
+        toolInvocations: [
+          {
+            toolCallId: 'l',
+            toolName: 'oxy_homiio__searchListings',
+            state: 'result',
+            result: { listings: ['private'] },
+          },
+          report,
+          { ...report, toolCallId: 'refused', result: { error: 'not drawn' } },
+        ],
+      }),
+    ]);
+    expect(message?.agent?.id).toBe('a');
+    expect(message?.artifacts?.map((artifact) => artifact.id)).toEqual(['call-report']);
+    expect(JSON.stringify(message)).not.toContain('private');
+  });
 });

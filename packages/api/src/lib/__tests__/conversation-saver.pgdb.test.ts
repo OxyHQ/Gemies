@@ -59,7 +59,10 @@ vi.mock('../chat-core.js', () => ({
   getAIModel: vi.fn(),
 }));
 
-vi.mock('ai', () => ({ generateText: vi.fn() }));
+vi.mock('ai', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('ai')>()),
+  generateText: vi.fn(),
+}));
 
 vi.mock('../logger.js', () => ({
   log: {
@@ -71,6 +74,7 @@ vi.mock('../logger.js', () => ({
 import { closePostgres, connectPostgres, type ApiDatabase } from '../../db/index.js';
 import { conversations, messages } from '../../db/schema/chat.js';
 import { saveConversation } from '../conversation-saver.js';
+import { sharedMessagesOf } from '../shared-conversation.js';
 import { clientMessageExists, voteMessage } from '../../db/chat/messageRepository.js';
 
 let db: ApiDatabase;
@@ -333,6 +337,49 @@ describe('saveConversation (append-only)', () => {
       ['the specialist speaking', 'scout'],
       ['the final answer', null],
     ]);
+  });
+
+  it('keeps the canvas a consulted agent drew on its message, which its share then shows', async () => {
+    const drawn = {
+      toolCallId: 'c1',
+      toolName: 'canvas',
+      state: 'result',
+      args: { type: 'markdown', title: 'Gràcia' },
+      result: { type: 'markdown', title: 'Gràcia', data: { content: '# Pisos' } },
+    };
+    const listings = {
+      toolCallId: 'l1',
+      toolName: 'oxy_homiio__searchListings',
+      state: 'result',
+      result: { listings: ['private'] },
+    };
+    await saveConversation({
+      agentId: ALIA_GEMIE_ID,
+      userId: USER,
+      conversationId: CONV,
+      messages: [{ role: 'user', content: 'U1' }],
+      assistantResponse: 'the final answer',
+      agentMessages: [
+        {
+          role: 'assistant',
+          content: 'the specialist speaking',
+          agentInfo: { id: 'a1', name: 'Scout', color: 'teal', character: null, handle: 'scout' },
+          toolInvocations: [drawn, listings],
+        },
+      ],
+    });
+
+    const rows = await stored();
+    expect(rows[1]?.toolInvocations).toEqual([drawn, listings]);
+    // Shared by the lead's rule: the agent's canvas, under its name; never its other tools.
+    const shared = sharedMessagesOf(rows);
+    expect(shared[1]).toEqual({
+      role: 'assistant',
+      content: 'the specialist speaking',
+      agent: { id: 'a1', name: 'Scout', handle: 'scout', color: 'teal', character: null },
+      artifacts: [{ id: 'c1', type: 'markdown', title: 'Gràcia', data: { content: '# Pisos' } }],
+    });
+    expect(JSON.stringify(shared)).not.toContain('private');
   });
 
   it('names a message the client did not name with a new id, never its position', async () => {

@@ -16,17 +16,16 @@
  *     catch's rethrow-vs-retry decision. Mutated in place.
  *   - `onFirstChunk()` — clears the route's first-byte timer the moment the
  *     provider responds, so a slow-but-alive stream isn't aborted at 20s.
- * `agentMessages` is likewise mutated in place (the route reads the same array
- * when saving the conversation).
+ * `agentMessages` is read, not written: `consultAgent` appends each consulted
+ * agent's answer to it (the route hands the tool pipeline the same array), and an
+ * answer there is one the turn already has.
  *
  * Import seams (`ai`, `../chat-core.js`, `../logger.js`, `../errors/index.js`,
  * `../streaming-helpers.js`, `../observability/index.js`) match the paths the
  * route used inline so the timeout suite's module mocks keep intercepting them.
  */
-import { CONSULT_AGENT_TOOL } from '../tools/consult-agent.js';
 import { clientToolResult } from '../tools/result-truncation.js';
-import type { AgentInfo } from '../../domain/conversation.js';
-import type { AvatarCharacter } from '@oxy.so/contracts';
+import type { AgentMessage } from '../../domain/conversation.js';
 import type { Response } from 'express';
 import type { TextStreamPart, ToolSet } from 'ai';
 import type { ResolvedModel } from '../chat-core.js';
@@ -50,23 +49,6 @@ import { sizeForLog } from './log-size.js';
 import { createReasoningRelay } from './reasoning-relay.js';
 import { streamToolSynthesis } from './tool-synthesis.js';
 import type { ActorActivity } from '../realtime/activity.js';
-
-/**
- * The consultation's result: another agent's whole answer, with its identity.
- *
- * The answer already reached the client live, as `alia.agent_*` frames emitted
- * by the tool itself (`lib/tools/consult-agent.ts`); here it is only recorded,
- * as that agent's own message in the conversation.
- */
-interface ConsultAgentToolOutput {
-  error?: unknown;
-  agentId: string;
-  agentName: string;
-  agentHandle: string;
-  agentColor: string | null;
-  agentCharacter: AvatarCharacter | null;
-  response: string;
-}
 
 /** Whether a chunk carries something the model produced, as opposed to stream bookkeeping. */
 function isContentChunk(chunk: { type: string; text?: string }): boolean {
@@ -98,12 +80,6 @@ function outputReportsFailure(output: unknown): boolean {
 }
 export type { ToolInvocation };
 
-export interface AgentMessage {
-  role: 'assistant';
-  content: string;
-  agentInfo: AgentInfo;
-}
-
 /**
  * Mutable flag shared with the route's first-byte timer and provider-retry
  * catch. It must reflect writes made inside runStream even when the stream
@@ -124,7 +100,7 @@ export interface RunStreamParams<TOOLS extends ToolSet> {
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK config is dynamically extended; strict SDK param types don't support this pattern
   baseConfig: any;
   toolNameMapping: Map<string, string>;
-  /** Accumulator for delegate-to-agent replies; mutated in place. */
+  /** The consulted agents' answers so far, appended by `consultAgent` (`answers`). */
   agentMessages: AgentMessage[];
   /** Running tool-call count carried across provider attempts. */
   toolCallCount: number;
@@ -440,26 +416,6 @@ export async function runStream<TOOLS extends ToolSet>(
           toolName: originalToolName,
           state: 'result',
           result: keptOutput,
-        });
-      }
-
-      // A consulted agent's answer becomes that agent's own message.
-      if (
-        originalToolName === CONSULT_AGENT_TOOL &&
-        chunk.output &&
-        !(chunk.output as ConsultAgentToolOutput).error
-      ) {
-        const ar = chunk.output as ConsultAgentToolOutput;
-        agentMessages.push({
-          role: 'assistant',
-          content: ar.response,
-          agentInfo: {
-            id: ar.agentId,
-            name: ar.agentName,
-            color: ar.agentColor,
-            character: ar.agentCharacter,
-            handle: ar.agentHandle,
-          },
         });
       }
     } else if (chunk.type === 'tool-error') {

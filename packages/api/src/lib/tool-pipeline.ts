@@ -56,6 +56,7 @@
  */
 
 import type { GatedPart } from './agent-features.js';
+import type { AgentMessage } from '../domain/conversation.js';
 import { getToolResultBudget, wrapToolsWithTruncation } from './tools/result-truncation.js';
 import type { ToolSet } from 'ai';
 import { isAliaMemoryTool } from './tools/oxy-tool-names.js';
@@ -109,7 +110,7 @@ import {
   type AgentRuntimeContext,
 } from './agent/actions.js';
 import type { SkillRuntime } from './skills/runtime.js';
-import { canvasTool } from './tools/canvas.js';
+import { CANVAS_TOOL, canvasTool } from './tools/canvas.js';
 import { buildAgentMemoryTool } from './agent/agent-memory-runtime.js';
 import { createGetDeviceInfoTool } from './tools/device-info.js';
 import { createAutomationTool } from './tools/automation-create.js';
@@ -195,6 +196,11 @@ export interface ForUserOptions {
    * (`consultAgent`, ADR 0020 §6). Absent: none.
    */
   attachments?: readonly GatedPart[];
+  /**
+   * Where `consultAgent` appends each consulted agent's answer, with the canvas it drew, for the
+   * turn to store (`ConsultAgentOptions.answers`). Absent: the answers are only read.
+   */
+  consultAnswers?: AgentMessage[];
   requestId?: string;
   /** Correlation id shared by every Oxy subaction in this run. */
   runId?: string;
@@ -432,6 +438,7 @@ export class ToolPipeline {
       surfaceApplicationId = null,
       nested = false,
       attachments = [],
+      consultAnswers,
       toolsEnabled,
       agent,
       deviceInfo,
@@ -560,7 +567,7 @@ export class ToolPipeline {
     const aliaTools: ToolSet = { getCurrentDate: getCurrentDateTool };
     if (grants.allows('artifacts')) {
       aliaTools.generateFile = generateFileTool;
-      aliaTools.canvas = canvasTool;
+      aliaTools[CANVAS_TOOL] = canvasTool;
     }
 
     /**
@@ -849,6 +856,7 @@ export class ToolPipeline {
             payerOxyUserId: userId,
             callerAgentId: agent._id,
             attachments,
+            ...(consultAnswers ? { answers: consultAnswers } : {}),
             ...consultSelection(grants, spacePeers),
             ...(sseEmitter ? { sseEmitter } : {}),
           }).catch(bulkFailure('agent'))
