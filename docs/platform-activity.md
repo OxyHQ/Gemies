@@ -13,18 +13,27 @@ PoPs, direction, scope, category and aggregate counts. It never sends payloads,
 paths, query strings, IPs, user IDs, credentials or socket IDs. A Cloudflare PoP
 is a network ingress location, not a visitor's physical location.
 
-`OXY_ECOSYSTEM_ACTIVITY_ENABLED=true` explicitly enables the deployed producer; it is disabled by default. Keep it false in local environments, even when using AWS storage.
+Both services (`alia` and `alia-integrations`) start it with `startEcosystemTraffic`
+from `@oxy.so/core/server`, with `deployedOnly`. `OXY_ECOSYSTEM_ACTIVITY_ENABLED`
+is `true` or `false` (anything else fails at boot) and wins; unset, a process
+publishes only on an ECS task, never in a developer shell. Keep it `false` in
+local environments, even when using AWS storage.
 
-`AWS_REGION` supplies the process location. Publication is authenticated by an
-Oxy service token, and a deployed task mints one by attesting its ECS task role
-rather than from a credential (oxy ADR 0026) — so neither
-`OXY_SERVICE_API_KEY` nor `OXY_SERVICE_API_SECRET` is set on `alia` or
-`alia-integrations`. Both remain the way a local process, which can attest
-nothing, publishes at all. Enabled producer configuration is validated before
-listening, and what is validated is whether this process can mint a token: the
-check used to read the two variables, which would have switched observability
-off on exactly the deployments that can authenticate. Each process registers a fresh instance, refreshes its lease,
-and removes it during graceful shutdown. Crashed instances disappear when their
+`AWS_REGION` (else `AWS_DEFAULT_REGION`) supplies the process location; once a
+process publishes, a missing region fails at boot. The ECS agent injects both
+on every task of `oxy-cluster` (EC2 capacity), so `alia-integrations`, whose task
+definition declares neither, has them too (checked on its running task on
+2026-11-14); `alia` also declares `AWS_REGION` in oxy-infra.
+
+Publication is authenticated by an Oxy service token, and a deployed task mints
+one by attesting its ECS task role rather than from a credential (oxy ADR 0026),
+so neither `OXY_SERVICE_API_KEY` nor `OXY_SERVICE_API_SECRET` is set on either
+service, and the publisher ignores them if present. A local process that sets
+the flag to `true` attests a temporary IAM role through
+`createAwsWorkloadCredentialProvider`.
+
+Each process registers a fresh instance, refreshes its lease, and removes it
+during graceful shutdown. Crashed instances disappear when their
 lease expires. Oxy broadcasts authoritative snapshots over Socket.IO.
 
 Counters describe observed application operations, not network bytes. Direct
