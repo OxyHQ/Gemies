@@ -1,3 +1,4 @@
+import { messageFailureOf } from '../../runtime/thread/message-failure';
 import { AgentProgress } from '@oxy.so/bloom/agent-progress';
 import { AgentReplyIdentity } from '@oxy.so/bloom/agent-reply';
 import {
@@ -555,6 +556,12 @@ function ReplyTurn({
               {agent && message.turnOutcome === 'failed' && text.length === 0 ? (
                 <Text className="text-sm text-muted-foreground">
                   {t('chat.consultFailed', { name: agent.name })}
+                </Text>
+              ) : null}
+              {/* A requested run that ended with no answer: the app's words, never the run's. */}
+              {agent && messageFailureOf(message.content) === 'task_unfinished' ? (
+                <Text className="text-sm text-muted-foreground">
+                  {t('chat.taskUnfinished', { name: agent.name })}
                 </Text>
               ) : null}
               {bubbled ? (

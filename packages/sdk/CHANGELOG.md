@@ -1,5 +1,12 @@
 # @gemies/sdk
 
+## 6.5.0
+
+- **A scheduled reply or task that ended without an answer reads as one.** The server stores it as
+  a typed failure (`{ type: 'failure', code: 'task_unfinished' }` in the message's content), and
+  the thread draws "%{name} couldn't finish this task." in the reader's language (`chat.taskUnfinished`),
+  never the run's own status line ("Token budget exhausted…").
+
 ## 6.4.0
 
 - **Stop no longer cancels an answer that had already finished.** The stop endpoint answers

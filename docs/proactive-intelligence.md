@@ -197,6 +197,23 @@ a run. A **heartbeat** wakes the agent once with the list, and only when somethi
   deduplicates concurrent delivery or a lost acknowledgement. Deleted conversations
   are not recreated or replaced with another thread. Autonomous initiative remains
   quiet unless the agent explicitly reports something useful.
+- **What a requested run delivers**: its answer, never its status. A run that
+  reaches its token budget, its steps, its time or repeated tool errors writes
+  its answer from what it found (one tools-disabled call, the chat's synthesis
+  request); the loop takes a step only while the budget holds two more calls
+  (that step and the answer), and the answer's output is capped to what the
+  budget has left after its estimated input; one that cannot fit is not made. A run with no words at all is `failed` and delivers a typed failure
+  (`{ type: 'failure', code: 'task_unfinished' }`), which the app draws in the
+  reader's language (`@gemies/sdk` 6.5.0) and which is relayed to no channel; the
+  notification names what was asked. `runResultMessage` in
+  `lib/agent/agent-outreach.ts` decides it for every result. The run starts with
+  the tools its conversation already used (`priorToolCalls`), and observes each
+  tool result whole, as the tool pipeline bounded it (JSON, its lists cut to
+  their head when too large), not its first 2,000 characters: a follow-up asked
+  to summarise email once spent its 100,000 tokens listing the inbox again
+  because the emails it observed were an escaped preview (2026-11-14). Migration
+  0175 turned the run status lines already delivered as messages into the typed
+  failure.
 - **Communication**: useful results and blockers go through `sendMessageToUser`;
   autonomous completions stay quiet otherwise. Check-in limits do not stop work.
   Subscribed agent emails use the same batch instead of a second classifier.

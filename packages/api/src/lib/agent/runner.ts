@@ -19,7 +19,7 @@ import { canReachAgent } from '../agent-account.js';
  *   - One action per iteration: maximum observability
  */
 
-import { generateText, stepCountIs } from 'ai';
+import { generateText, type ModelMessage, stepCountIs } from 'ai';
 import { getDb } from '../../db/index.js';
 import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -52,7 +52,7 @@ import { orchestrate, shouldOrchestrate } from './orchestrator.js';
 import { postAgentMessage } from './agent-outreach.js';
 import type { AgentRuntimeContext } from './actions.js';
 import { followUpReceipt, scheduleAgentFollowUp } from './follow-ups.js';
-import { requestedAgentWork } from './work-delivery.js';
+import { requestedAgentWork, requestedWorkPriorToolCalls } from './work-delivery.js';
 import { agentMemoryPromptSection } from './agent-memory-runtime.js';
 import { resolveComputerActor } from '../computer/computer-actor.js';
 import { compactContext } from './context-compaction.js';
@@ -64,10 +64,23 @@ import {
   markAutomationRunForSession,
 } from '../../db/automation/automationDefinitionRepository.js';
 import { buildContextMessages, buildSystemPrompt } from './run-context.js';
+import { owedAnswerRequest } from '../chat/tool-synthesis.js';
+import { estimateMessageTokens, estimateTokenCount } from '../token-counter.js';
 import { holdRunLease, type RunLease } from './run-lease.js';
 import { runtimeGemieAccountId } from '../gemie-oxy-actor.js';
 
 export { buildSystemPrompt } from './run-context.js';
+
+/** Why a run stopped before it had an answer: it then writes one from what it found. */
+type RunStop = 'steps' | 'tokens' | 'time' | 'errors';
+
+/** What a run that could not answer records as its result: for its task's status, never the person. */
+const UNANSWERED_RESULT: Record<RunStop, string> = {
+  steps: 'Stopped at the step limit without an answer',
+  tokens: 'Stopped at the token budget without an answer',
+  time: 'Stopped at the time limit without an answer',
+  errors: 'Stopped after repeated tool errors without an answer',
+};
 export { getRecentActivity } from './run-activity.js';
 
 // ── Main Runner ──
@@ -326,6 +339,9 @@ async function driveAgentSession(
     routing: toolRouting,
     appCatalogPrompt,
   } = await ToolPipeline.forUser({
+    // A requested reply continues its conversation: the tools that conversation used are loaded
+    // from the first step, as on its next chat turn, instead of a step spent loading them.
+    priorToolCalls: await requestedWorkPriorToolCalls(session.workItemId),
     userId: session.oxyUserId,
     // The model the agent runs on bounds how many tool definitions a request carries.
     inputLimits: (await resolveStoredModel(agent.modelId).catch(() => null))?.catalogue ?? null,
@@ -417,6 +433,14 @@ async function driveAgentSession(
   let lastStepHadToolCalls: boolean;
   let iteration = 0;
   let textOnlyCount = 0;
+  /** Set when the run stopped short of an answer. */
+  let stopped: RunStop | null = null;
+  /**
+   * The most one step has cost. The loop takes another step only while the budget still holds two
+   * more calls, that step and the answer after it, so a run that runs out of room writes its
+   * answer within its budget instead of past it.
+   */
+  let largestStepTokens = 0;
 
   // ── Error loop detection (Phase 2: Self-Correction) ──
   const toolErrorTracker = new Map<string, { count: number; errors: string[] }>();
@@ -470,7 +494,7 @@ async function driveAgentSession(
       orchestrated === null &&
       !stateMachine.isTerminal() &&
       totalSteps < session.config.maxSteps &&
-      totalTokens < session.config.maxTokens
+      totalTokens + 2 * largestStepTokens < session.config.maxTokens
     ) {
       if (lease.lost) {
         abandoned = true;
@@ -491,12 +515,8 @@ async function driveAgentSession(
 
       // Global time limit — prevent runaway sessions
       if (Date.now() - sessionStartMs > maxDurationMs) {
-        eventStream.append(
-          'system_message',
-          'Session time limit reached (10 minutes). Returning partial results.',
-        );
-        taskCompleted = true;
-        taskResult = 'Time limit reached. Partial progress:\n' + todoManager.serialize();
+        eventStream.append('system_message', 'Session time limit reached (10 minutes).');
+        stopped = 'time';
         break;
       }
 
@@ -598,6 +618,11 @@ async function driveAgentSession(
             // Record tool results — with error loop detection
             if (step.toolResults.length > 0) {
               for (const tr of step.toolResults) {
+                // The result as the tool pipeline bounded it (`wrapToolsWithTruncation`), whole. It
+                // was cut to its first 2,000 characters wherever they ended: twenty unread emails
+                // became `{"truncated":true,"preview":"{\"data\":[{\"_id\"…`, the run saw no email
+                // to summarise, listed them again and again, and spent its token budget
+                // (production 2026-11-14).
                 const resultStr =
                   typeof tr.output === 'string'
                     ? tr.output
@@ -614,7 +639,7 @@ async function driveAgentSession(
                   );
                 }
 
-                eventStream.append('observation', safeContent.slice(0, 2000), {
+                eventStream.append('observation', safeContent, {
                   toolName: tr.toolName,
                   durationMs: Date.now() - startMs,
                 });
@@ -645,12 +670,9 @@ async function driveAgentSession(
                   if (consecutiveErrors >= 5) {
                     eventStream.append(
                       'system_message',
-                      'Too many consecutive errors. Stopping execution and returning partial results.',
+                      'Too many consecutive errors. Stopping execution.',
                     );
-                    taskCompleted = true;
-                    taskResult =
-                      'Task stopped after 5 consecutive errors. Partial progress:\n' +
-                      todoManager.serialize();
+                    stopped = 'errors';
                     break;
                   }
                 } else {
@@ -675,6 +697,7 @@ async function driveAgentSession(
         // Track tokens
         const usageTokens = result.usage?.totalTokens || 0;
         totalTokens += usageTokens;
+        largestStepTokens = Math.max(largestStepTokens, usageTokens);
 
         // Record text response (with secret redaction)
         if (result.text) {
@@ -733,7 +756,7 @@ async function driveAgentSession(
         await compactContext(eventStream);
 
         iteration++;
-        if (taskCompleted) break;
+        if (taskCompleted || stopped !== null) break;
       } catch (err: unknown) {
         const errMsg = getErrorMessage(err);
 
@@ -755,6 +778,32 @@ async function driveAgentSession(
         'Lost the run lease; leaving the run to the worker that holds it',
       );
       return;
+    }
+
+    // ── A run that stopped short writes its answer from what it found ──
+    // It used to end with "Token budget exhausted. Partial progress was made." as its result, which
+    // was delivered to the person as the gemie's message (2026-11-14).
+    if (orchestrated === null && !taskCompleted && stateMachine.current() !== 'CANCELLED') {
+      stopped ??=
+        totalSteps >= session.config.maxSteps
+          ? 'steps'
+          : totalTokens + 2 * largestStepTokens >= session.config.maxTokens
+            ? 'tokens'
+            : null;
+    }
+    if (stopped !== null && !taskCompleted) {
+      const answer = await writeOwedAnswer({
+        agentModelId: agent.modelId,
+        system: systemPrompt,
+        messages: buildContextMessages(eventStream, todoManager, stateMachine, iteration),
+        remainingTokens: session.config.maxTokens - totalTokens,
+      });
+      totalTokens += answer.tokens;
+      if (answer.text) {
+        taskCompleted = true;
+        taskResult = answer.text;
+        eventStream.append('response', redactSecrets(answer.text).redacted);
+      }
     }
 
     // ── Session Complete ──
@@ -779,14 +828,12 @@ async function driveAgentSession(
         finalStatus = 'completed';
         sessionResult = taskResult;
         eventStream.append('complete', 'Task completed.');
-      } else if (totalSteps >= session.config.maxSteps) {
-        finalStatus = 'completed';
-        sessionResult = 'Step limit reached. Partial progress was made.';
-        eventStream.append('system_message', 'Step limit reached - session ending');
-      } else if (totalTokens >= session.config.maxTokens) {
-        finalStatus = 'completed';
-        sessionResult = 'Token budget exhausted. Partial progress was made.';
-        eventStream.append('system_message', 'Token budget exhausted - session ending');
+      } else if (stopped !== null) {
+        // No words at all, even asked for them: a failed run, which reaches the person as a typed
+        // failure (`work-delivery.ts`), never as this line.
+        finalStatus = 'failed';
+        sessionResult = UNANSWERED_RESULT[stopped];
+        eventStream.append('system_message', `${UNANSWERED_RESULT[stopped]} - session ending`);
       }
     }
 
@@ -896,5 +943,55 @@ async function driveAgentSession(
     } catch (saveErr: unknown) {
       log.agents.error({ saveErr, sessionId }, 'Failed to save session in outer catch');
     }
+  }
+}
+
+/** The most an owed answer writes: a reply to the person, not a report. */
+const OWED_ANSWER_MAX_OUTPUT_TOKENS = 2_048;
+
+/**
+ * The answer a run owes when it stopped short: one tools-disabled call over everything it observed
+ * (`owedAnswerRequest`, the chat's own synthesis request), in the person's language. It spends
+ * only what the run's budget has left: its input is estimated first, and a call that would not fit
+ * is not made (the run then has no answer). Its tokens count against the run; an inference failure
+ * here is no answer, never a thrown run.
+ */
+async function writeOwedAnswer(input: {
+  agentModelId: string | null | undefined;
+  system: string;
+  messages: ModelMessage[];
+  remainingTokens: number;
+}): Promise<{ text: string; tokens: number }> {
+  const inputTokens =
+    estimateTokenCount(input.system) +
+    input.messages.reduce(
+      (sum, message) =>
+        sum +
+        estimateMessageTokens(
+          message.role,
+          typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+        ),
+      0,
+    );
+  const outputTokens = Math.min(OWED_ANSWER_MAX_OUTPUT_TOKENS, input.remainingTokens - inputTokens);
+  if (outputTokens < OWED_ANSWER_MAX_OUTPUT_TOKENS / 4) return { text: '', tokens: 0 };
+  const resolved = await resolveStoredModel(input.agentModelId).catch(() => null);
+  if (!resolved) return { text: '', tokens: 0 };
+  try {
+    const result = await generateText(
+      owedAnswerRequest(
+        {
+          model: getAIModel(resolved, 'agent_run'),
+          system: input.system,
+          maxRetries: 0,
+          maxOutputTokens: outputTokens,
+        },
+        input.messages,
+      ),
+    );
+    return { text: result.text.trim(), tokens: result.usage?.totalTokens || 0 };
+  } catch (err: unknown) {
+    log.agents.warn({ err }, 'A run that stopped short could not write its answer');
+    return { text: '', tokens: 0 };
   }
 }

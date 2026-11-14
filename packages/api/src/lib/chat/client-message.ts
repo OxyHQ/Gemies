@@ -15,7 +15,7 @@
  * - `role` is `user` or `assistant`; any other row (a `system` or `tool` row) is not a message of
  *   the conversation and is dropped.
  * - `content` is the words and the attachments the thread draws: a string, or only the `text`,
- *   `image_url` and `file` parts.
+ *   `image_url`, `file` and `failure` parts.
  * - `toolInvocations` is each call as the thread draws it (`clientToolInvocation`): its name,
  *   state, arguments and its result in the client's form (`lib/tools/result-truncation.ts`
  *   `clientToolResult`), the same form the live `alia.tool_result` frame carries.
@@ -30,8 +30,11 @@ import {
 } from '../../domain/conversation.js';
 import { clientToolResult } from '../tools/result-truncation.js';
 
-/** The content parts a thread draws: words, an image, an attachment (`file`). */
-const CLIENT_PART_TYPES: ReadonlySet<string> = new Set(['text', 'image_url', 'file']);
+/**
+ * The content parts a thread draws: words, an image, an attachment (`file`), and a run's typed
+ * failure (`failure`, `domain/conversation.ts`).
+ */
+const CLIENT_PART_TYPES: ReadonlySet<string> = new Set(['text', 'image_url', 'file', 'failure']);
 
 /** One tool call as the thread draws it. */
 export interface ClientToolInvocation {
