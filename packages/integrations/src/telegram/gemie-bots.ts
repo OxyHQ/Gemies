@@ -130,6 +130,9 @@ export async function handleGemieBotUpdate(bot: GemieBot, update: TelegramUpdate
   };
   await whileTyping(bot.api, { chatId }, async () => {
     const answer = await apiClient.answerTelegramBotMessage(bot.api.botId, question);
+    // Another attempt still holds the message's turn: thrown, so the inbox keeps the update and
+    // tries it again rather than settling it unanswered (`inbox.ts`).
+    if (answer.retryLater) throw new Error('The message’s turn is still running elsewhere');
     if (answer.personTurn) {
       // The bot's person, from the Telegram they linked: their own turn, as in the app (ADR 0037
       // amendment), run as the identity the API verifies again from the bot and the sender.

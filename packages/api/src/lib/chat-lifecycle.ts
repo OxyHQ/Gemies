@@ -1,4 +1,4 @@
-import type { AgentInfo } from '../domain/conversation.js';
+import type { AgentInfo, ConversationSource } from '../domain/conversation.js';
 import type { Request } from 'express';
 import {
   saveConversation,
@@ -51,6 +51,11 @@ export interface LifecycleContext {
   personalization?: false;
   /** The embedding app (`host.app`), which labels a conversation this turn creates. */
   originApp?: string;
+  /**
+   * The channel of a verified channel turn (`channelTurnSource`): its reply is appended after what
+   * the conversation holds, never reconciled from the history the channel sent.
+   */
+  channelSource?: ConversationSource;
 }
 
 /**
@@ -129,7 +134,15 @@ export async function saveConversationResult(
     agentInfo: AgentInfo;
   }>,
 ): Promise<void> {
-  const { userId, conversationId, assistantMessageId, messages, originApp, agentId } = ctx;
+  const {
+    userId,
+    conversationId,
+    assistantMessageId,
+    messages,
+    originApp,
+    agentId,
+    channelSource,
+  } = ctx;
   if (!conversationId || !userId || !turnProducedOutput(assistantResponse, toolInvocations)) return;
 
   try {
@@ -143,6 +156,7 @@ export async function saveConversationResult(
       agentId,
       agentMessages: agentMessages && agentMessages.length > 0 ? agentMessages : undefined,
       ...(originApp === undefined ? {} : { originApp }),
+      channelSource,
     });
     log.v1.info({ conversationId }, 'Conversation saved');
   } catch (error) {

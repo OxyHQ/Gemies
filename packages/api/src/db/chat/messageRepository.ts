@@ -622,6 +622,27 @@ export async function findLastMessage(
   return row;
 }
 
+/** The text-bearing content of one message of a thread, found by its client id. */
+export async function findClientMessageContent(
+  db: Executor,
+  oxyUserId: string,
+  conversationId: string,
+  clientMessageId: string,
+): Promise<{ content: unknown } | undefined> {
+  const [row] = await db
+    .select({ content: messages.content })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.oxyUserId, oxyUserId),
+        eq(messages.conversationId, conversationId),
+        eq(messages.clientMessageId, clientMessageId),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
 /** How many messages this user holds in a thread. */
 export async function countMessages(
   db: ApiDatabase,

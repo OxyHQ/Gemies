@@ -238,6 +238,10 @@ requester. Oxy does not take that task as a read proof, and a channel turn has n
   - Where: a gemie bot's person and a third party in the bot turn, a connected account in
     `POST /channel-accounts/messages`.
   - The app shows the message at once, through the conversation's realtime event.
-  - The turn then appends only its reply: the saver appends when the stored history already ends
-    with the client's last message.
+  - The turn then appends only its reply, after whatever the conversation holds by then. A channel
+    turn is never reconciled from the history the channel sent (that is the model's context): turns
+    overlap, and a reconciled reply deleted a message that arrived while it ran, while a history
+    the channel could not read cut the thread down to the new turn.
+  - The reply is stored as `reply:<message id>`. A retried delivery of the message is answered
+    already when that id is stored, not when the conversation happens to end with a reply.
 - **The gemie shows as typing in the app** while a channel turn runs.

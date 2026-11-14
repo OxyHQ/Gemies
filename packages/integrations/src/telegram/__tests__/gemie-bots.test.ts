@@ -11,6 +11,7 @@ const asked = vi.hoisted(() => ({
   messages: [] as unknown[],
   reply: 'Hello from the gemie',
   reaction: null as string | null,
+  retryLater: false,
   personTurn: null as null | { conversationId: string; messageId: string; content: unknown[] },
   chats: [] as Array<{ identity: unknown; messages: unknown[]; conversationId?: string }>,
 }));
@@ -18,6 +19,7 @@ vi.mock('../../shared/api-client', () => ({
   APIClient: class {
     async answerTelegramBotMessage(_botId: string, message: unknown) {
       asked.messages.push(message);
+      if (asked.retryLater) return { reply: null, retryLater: true };
       return asked.personTurn
         ? { reply: null, personTurn: asked.personTurn }
         : { reply: asked.reply, reaction: asked.reaction };
@@ -256,6 +258,21 @@ describe('a gemie bot’s update', () => {
     });
     expect(sends).toEqual([]);
     asked.reply = 'Hello from the gemie';
+  });
+
+  it('leaves an update to be tried again while another attempt still holds its turn', async () => {
+    asked.retryLater = true;
+    try {
+      await expect(
+        handleGemieBotUpdate(gemieBot, {
+          update_id: 5,
+          message: message({ chat: { id: 42, type: 'private' }, text: 'hi' }),
+        }),
+      ).rejects.toThrow('still running');
+      expect(sends).toEqual([]);
+    } finally {
+      asked.retryLater = false;
+    }
   });
 
   it('reads a sticker it was sent: its image, emoji and set', async () => {

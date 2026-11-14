@@ -163,6 +163,17 @@ export function isAgentWrittenMessageId(id: string | null | undefined): boolean 
 }
 
 /**
+ * The id a channel turn's reply is stored under: its message's, marked. A channel keeps the person's
+ * message the moment it arrives (`telegram:<chat>:<message>`), so whether that message was answered
+ * is whether this id is stored — never what the conversation happens to end with, since the next
+ * message may already have arrived after it. Too long to store, it is none, and the reply is named
+ * by position.
+ */
+export function channelReplyMessageId(messageId: string): string | undefined {
+  return usableMessageId(`reply:${messageId}`);
+}
+
+/**
  * The longest message id this service stores. The speech route caps the
  * `messageId` it looks up at the same length, so a longer one could be stored
  * and then never addressed.

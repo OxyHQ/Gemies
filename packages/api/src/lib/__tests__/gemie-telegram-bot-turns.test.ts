@@ -25,6 +25,8 @@ const state = vi.hoisted(() => ({
   model: [] as Array<{ system: string; tools: Record<string, unknown> }>,
   claim: vi.fn(),
   appended: [] as unknown[],
+  turnClaim: vi.fn(async (): Promise<unknown> => ({ kind: 'claimed' })),
+  storedReplies: new Map<string, unknown>(),
   storedMedia: vi.fn(async (_input: { oxyUserId: string; taskId: string }) => 'kept-file'),
 }));
 
@@ -122,6 +124,9 @@ vi.mock('../user-credits-helpers.js', () => ({ getOrCreateUserCredits: vi.fn(asy
 vi.mock('../../db/chat/messageRepository.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   listRecentTurns: vi.fn(async () => []),
+  findClientMessageContent: vi.fn(async (_db: unknown, _user: string, _conv: string, id: string) =>
+    state.storedReplies.has(id) ? { content: state.storedReplies.get(id) } : undefined,
+  ),
 }));
 vi.mock('../conversation-saver.js', () => ({
   appendConversationMessages: vi.fn(async (input: unknown) => {
@@ -137,8 +142,8 @@ vi.mock('../realtime/account.js', () => ({
 vi.mock('../../db/integrations/gemieBotRepository.js', () => ({
   claimGemieBotLinkCode: state.claim,
   recordGemieBotMessage: vi.fn(async () => undefined),
-  // Each message's turn is this attempt's: the run-once claim is `gemie-bot-turns.pgdb.test.ts`'s.
-  claimGemieBotTurn: vi.fn(async () => ({ kind: 'claimed' })),
+  // Each message's turn is this attempt's unless a test says it ran before (`a retried delivery`).
+  claimGemieBotTurn: state.turnClaim,
   readGemieBotTurn: vi.fn(async () => ({ kind: 'running' })),
   settleGemieBotTurn: vi.fn(async () => undefined),
 }));
@@ -226,6 +231,8 @@ beforeEach(() => {
   state.appended = [];
   state.claim.mockReset();
   state.storedMedia.mockClear();
+  state.turnClaim.mockImplementation(async () => ({ kind: 'claimed' }));
+  state.storedReplies.clear();
 });
 
 const PHOTO = {
@@ -411,5 +418,47 @@ describe('asked for its person’s apps in a turn that cannot reach them', () =>
     expect(
       await access({}, { chatKind: 'group', mentionsBot: true, chatId: '-1', chatTitle: 'Team' }),
     ).toContain('In a group');
+  });
+});
+
+describe('a retried delivery', () => {
+  const conversationId = `telegram:8988966019:${PERSON}`;
+  const earlier = (messageId: string) => {
+    state.turnClaim.mockImplementation(async () => ({
+      kind: 'answered',
+      answer: {
+        reply: null,
+        personTurn: { conversationId, messageId, content: [{ type: 'text', text: 'hola' }] },
+      },
+    }));
+  };
+
+  it('of the person’s message is not run again once its own reply is stored, though a newer message ends the chat: it delivers that reply', async () => {
+    earlier(`telegram:${PERSON}:101`);
+    // 101 was answered, maybe never delivered; 102 arrived after it and still waits for its reply.
+    state.storedReplies.set(`reply:telegram:${PERSON}:101`, 'Te lo recuerdo a las 9.');
+
+    expect(await answerGemieTelegramMessage(bot(), message({ messageId: '101' }))).toEqual({
+      reply: 'Te lo recuerdo a las 9.',
+    });
+  });
+
+  it('of the person’s message runs again when its turn never stored a reply', async () => {
+    earlier(`telegram:${PERSON}:101`);
+
+    const answer = await answerGemieTelegramMessage(bot(), message({ messageId: '101' }));
+    expect(answer.personTurn?.messageId).toBe(`telegram:${PERSON}:101`);
+  });
+
+  it('is tried again later, never settled unanswered, while another attempt still holds the turn', async () => {
+    vi.useFakeTimers();
+    try {
+      state.turnClaim.mockImplementation(async () => ({ kind: 'running' }));
+      const answer = answerGemieTelegramMessage(bot(), message({ from: stranger() }));
+      await vi.advanceTimersByTimeAsync(201_000);
+      expect(await answer).toEqual({ reply: null, retryLater: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
