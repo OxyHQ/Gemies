@@ -448,6 +448,48 @@ describe('room engine: one speaker at a time per room', () => {
   });
 });
 
+describe('room engine: what a member draws', () => {
+  it('keeps the member’s finished canvas calls on its stored reply, and no other tool', async () => {
+    const h = harness({ script: () => 'here is the plan' });
+    const drawn = {
+      toolCallId: 'c1',
+      toolName: 'canvas',
+      state: 'result' as const,
+      args: { type: 'markdown', title: 'Plan' },
+      result: { type: 'markdown', title: 'Plan', data: { content: '# Plan' } },
+    };
+    const real = h.deps.runTurn;
+    (h.deps as { runTurn: typeof real }).runTurn = async (input) => ({
+      ...(await real(input)),
+      canvas: [drawn],
+    });
+    const stored: unknown[] = [];
+    const store = h.deps.storeReply;
+    (h.deps as { storeReply: typeof store }).storeReply = async (input) => {
+      stored.push(input);
+      return store(input);
+    };
+
+    await h.drain(h.first({ pending: [] }));
+
+    expect(stored).toEqual([
+      expect.objectContaining({ content: 'here is the plan', toolInvocations: [drawn] }),
+    ]);
+  });
+
+  it('stores a reply that drew nothing without tool calls', async () => {
+    const h = harness({ script: () => 'just words' });
+    const stored: unknown[] = [];
+    const store = h.deps.storeReply;
+    (h.deps as { storeReply: typeof store }).storeReply = async (input) => {
+      stored.push(input);
+      return store(input);
+    };
+    await h.drain(h.first({ pending: [] }));
+    expect(stored[0]).not.toHaveProperty('toolInvocations');
+  });
+});
+
 describe('room engine: a reply that does not store', () => {
   /** Makes `storeReply` throw `failures` times, then store as usual. */
   function flaky(h: ReturnType<typeof harness>, failures: number) {

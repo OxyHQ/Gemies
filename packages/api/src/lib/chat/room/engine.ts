@@ -21,7 +21,7 @@ import type { RoomDecision, RoomSelectionInput, RoomSpeakerDecision } from './de
 import { validateRoomDecision } from './decision.js';
 import { randomUUID } from 'node:crypto';
 import type { HydratedAgent } from '../../agent-identity.js';
-import type { AgentInfo } from '../../../domain/conversation.js';
+import type { AgentInfo, ToolInvocation } from '../../../domain/conversation.js';
 import { getErrorMessage } from '../../errors/index.js';
 import { log } from '../../logger.js';
 import type { AgentTurnResult, runAgentTurn } from '../../tools/agent-turn.js';
@@ -119,6 +119,12 @@ export interface RoomEngineDeps {
     readonly clientMessageId: string;
     readonly content: string;
     readonly agentInfo: AgentInfo;
+    /**
+     * What the member drew while answering: its finished `canvas` calls (`AgentTurnResult.canvas`),
+     * kept on its own message as a consulted agent's are, so a reload and a share show them where
+     * they were seen live. Never its other tools: their results are the person's data.
+     */
+    readonly toolInvocations?: readonly ToolInvocation[];
   }) => Promise<StoredReply>;
   readonly revokeTasks: (taskIds: readonly string[]) => Promise<void>;
   readonly now: () => number;
@@ -504,6 +510,7 @@ async function speak(input: {
       clientMessageId: replyId,
       content,
       agentInfo: info,
+      ...(outcome.canvas ? { toolInvocations: outcome.canvas } : {}),
     });
     await emit('alia.agent_end', {
       consultId,

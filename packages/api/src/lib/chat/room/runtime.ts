@@ -161,6 +161,7 @@ export async function appendRoomReply(
         role: 'assistant',
         content: input.content,
         agentInfo: input.agentInfo,
+        ...(input.toolInvocations?.length ? { toolInvocations: [...input.toolInvocations] } : {}),
         seq,
         createdAt,
       },
