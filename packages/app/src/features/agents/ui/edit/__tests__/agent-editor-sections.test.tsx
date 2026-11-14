@@ -584,6 +584,8 @@ describe('its own Telegram bot (ADR 0037)', () => {
     totalMessages: 3,
     lastMessageAt: null,
     profileSyncError: null as string | null,
+    personLinked: false,
+    linkedAs: null as string | null,
     live: {
       username: 'scout_bot',
       name: 'Scout',
@@ -675,5 +677,20 @@ describe('its own Telegram bot (ADR 0037)', () => {
     expect(api.patch).toHaveBeenCalledWith('/agents/agent-1/telegram-bot', {
       retryProfileSync: true,
     });
+  });
+
+  it('offers to link the person’s Telegram only while nobody is linked, and says who is', async () => {
+    telegramBot = { bot, available: true };
+    let tree = await render();
+    expect(button(tree, 'Link my Telegram')).toBeDefined();
+    act(() => tree.unmount());
+
+    telegramBot = { bot: { ...bot, personLinked: true, linkedAs: '@nate' }, available: true };
+    tree = await render();
+    expect(button(tree, 'Link my Telegram')).toBeUndefined();
+    expect(button(tree, 'Link another account')).toBeDefined();
+    expect(button(tree, 'Unlink')).toBeDefined();
+    const texts = all(tree, 'Text').map((node) => String(node.props.children));
+    expect(texts.some((text) => /^Linked as @nate\. Scout recognises you/.test(text))).toBe(true);
   });
 });

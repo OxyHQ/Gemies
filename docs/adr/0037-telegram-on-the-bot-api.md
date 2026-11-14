@@ -199,3 +199,26 @@ and every retry ran the turn again and posted again.
   - While nobody has linked the bot: how its person links their Telegram.
   - On a linked bot: that only its person can, in their own private chat.
   - In a group: never there.
+
+## Amendment (2026-11-14): a channel turn is saved, the editor shows who is linked, and a gemie runs on Gemies
+
+After the person linked their Telegram, Eusebio still answered as though it were not linked, and the
+editor kept offering "Link my Telegram". The link was persisted, and the turn did run as the person,
+with Inbox and scheduling among its tools. But a channel turn was never saved:
+
+- `/alia/chat` saved a turn only for `req.user`, which a verified channel request never has.
+- So the thread never grew, the app never showed those turns, and every turn read the same stale
+  history: answers saying it had no access.
+- A turn's owner is now the signed-in person or the channel's own account (`turnOwnerId`).
+
+The editor showed the link call-to-action because it re-read the bot right after opening the link,
+before linking finished in Telegram. Now:
+
+- Linking, unlinking and a redeemed code each publish `gemies` (`updated`) to the person, and the app
+  reads that gemie's bot again.
+- The bot keeps how the account showed itself (`linked_telegram_name`, migration `0169`).
+- While linked, the editor says "Linked as @username", with "Link another account" and "Unlink",
+  never the call-to-action.
+
+The identity guard said "the Alia AI platform". A gemie runs on Gemies, and Alia is the official
+gemie (ADR 0034).

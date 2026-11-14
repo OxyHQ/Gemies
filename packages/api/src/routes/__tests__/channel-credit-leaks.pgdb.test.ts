@@ -211,6 +211,7 @@ async function gemieBot(
     groupReplies: 'mentions',
     ownerPaysAgentTurns: opts.ownerPaysAgentTurns ?? true,
     linkedTelegramUserId: null,
+    linkedTelegramName: null,
     oxyTaskId: null,
     totalMessages: 0,
     lastMessageAt: null,

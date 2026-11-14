@@ -50,6 +50,7 @@ import type { MessageContent } from '../domain/conversation.js';
 import { prepareChannelTurn } from './channel-messages.js';
 import { buildPersonalAccessTool, PERSONAL_ACCESS_TOOL } from './channels/personal-access-tool.js';
 import { buildReactionTool, REACT_TOOL } from './channels/reaction-tool.js';
+import { publishGemieChanged } from './realtime/account.js';
 import { publishConversation } from './realtime/conversations.js';
 import { appendConversationMessages } from './conversation-saver.js';
 import { getDb } from '../db/index.js';
@@ -276,9 +277,13 @@ async function runTurn(
       botId: bot.botId,
       codeHash: createHash('sha256').update(start.code).digest('hex'),
       telegramUserId: message.from.id,
+      telegramName: message.from.username ? `@${message.from.username}` : message.from.name,
     });
-    if (claimed)
+    if (claimed) {
       log.channels.info({ botId: bot.botId }, 'A gemie bot person linked their Telegram');
+      // The editor shows who is linked as soon as it happens, on every device.
+      void publishGemieChanged(bot.userId, bot.agentId, 'updated').catch(() => undefined);
+    }
     return { reply: claimed ? said.linked(name) : said.expired(steps) };
   }
   if (isPersonTurn(bot, message)) {

@@ -29,6 +29,8 @@ export interface GemieBotRow {
   ownerPaysAgentTurns: boolean;
   /** `userId`'s Telegram account, once they proved it with the editor's link; `null` before. */
   linkedTelegramUserId: string | null;
+  /** How that account showed itself when it linked: `@username`, else its name. */
+  linkedTelegramName: string | null;
   /** The Oxy task `userId` granted the gemie for their own turns here; `null` before they link. */
   oxyTaskId: string | null;
   totalMessages: number;
@@ -49,6 +51,7 @@ const COLUMNS = {
   groupReplies: bots.groupReplies,
   ownerPaysAgentTurns: bots.ownerPaysAgentTurns,
   linkedTelegramUserId: bots.linkedTelegramUserId,
+  linkedTelegramName: bots.linkedTelegramName,
   oxyTaskId: bots.oxyTaskId,
   totalMessages: bots.totalMessages,
   lastMessageAt: bots.lastMessageAt,
@@ -263,12 +266,19 @@ export async function setGemieBotLinkCode(
  */
 export async function claimGemieBotLinkCode(
   db: Executor,
-  input: { botId: string; codeHash: string; telegramUserId: string; now?: Date },
+  input: {
+    botId: string;
+    codeHash: string;
+    telegramUserId: string;
+    telegramName: string;
+    now?: Date;
+  },
 ): Promise<GemieBotRow | null> {
   const [row] = await db
     .update(bots)
     .set({
       linkedTelegramUserId: input.telegramUserId,
+      linkedTelegramName: input.telegramName,
       linkCodeHash: null,
       linkCodeExpiresAt: null,
     })
@@ -301,6 +311,7 @@ export async function unlinkGemieBotPerson(
     .update(bots)
     .set({
       linkedTelegramUserId: null,
+      linkedTelegramName: null,
       linkCodeHash: null,
       linkCodeExpiresAt: null,
       oxyTaskId: null,

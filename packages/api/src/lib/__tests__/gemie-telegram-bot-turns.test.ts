@@ -128,6 +128,12 @@ vi.mock('../conversation-saver.js', () => ({
     state.appended.push(input);
   }),
 }));
+const published = vi.hoisted(() => ({ gemies: [] as unknown[][] }));
+vi.mock('../realtime/account.js', () => ({
+  publishGemieChanged: vi.fn(async (...args: unknown[]) => {
+    published.gemies.push(args);
+  }),
+}));
 vi.mock('../../db/integrations/gemieBotRepository.js', () => ({
   claimGemieBotLinkCode: state.claim,
   recordGemieBotMessage: vi.fn(async () => undefined),
@@ -169,6 +175,7 @@ function bot(over: Partial<GemieBotRow> = {}): GemieBotRow {
     groupReplies: 'mentions',
     ownerPaysAgentTurns: true,
     linkedTelegramUserId: PERSON,
+    linkedTelegramName: '@NateIsern',
     oxyTaskId: 'bot-task',
     totalMessages: 0,
     lastMessageAt: null,
@@ -341,9 +348,13 @@ describe('linking a Telegram account', () => {
         // Only its hash is ever compared: the table never holds a usable code.
         codeHash: createHash('sha256').update(code).digest('hex'),
         telegramUserId: from.id,
+        // How the editor says who is linked.
+        telegramName: from.username ? `@${from.username}` : from.name,
       },
     );
     expect(answer.reply).toMatch(/^Vinculado\./);
+    // The editor of every device the person has open shows who is linked, with no reload.
+    expect(published.gemies).toContainEqual(['owner-1', 'gemie-1', 'updated']);
   });
 
   it('says so when a code is not good, and never links by it', async () => {

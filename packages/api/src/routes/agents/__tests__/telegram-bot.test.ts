@@ -88,7 +88,12 @@ vi.mock('../../../db/integrations/gemieBotRepository.js', () => ({
   }),
   unlinkGemieBotPerson: vi.fn(async () => {
     const released = (state.bot?.oxyTaskId as string | null) ?? null;
-    state.bot = { ...state.bot, oxyTaskId: null, linkedTelegramUserId: null };
+    state.bot = {
+      ...state.bot,
+      oxyTaskId: null,
+      linkedTelegramUserId: null,
+      linkedTelegramName: null,
+    };
     return { bot: state.bot, released };
   }),
   setGemieBotSettings: vi.fn(async (_db: unknown, _id: string, patch: object) => {
@@ -138,6 +143,12 @@ vi.mock('../../../lib/integrations-client.js', () => ({
   }),
 }));
 const sync = vi.hoisted(() => ({ now: vi.fn(async (_agentId: string) => {}) }));
+const realtime = vi.hoisted(() => ({ gemies: [] as unknown[][] }));
+vi.mock('../../../lib/realtime/account.js', () => ({
+  publishGemieChanged: vi.fn(async (...args: unknown[]) => {
+    realtime.gemies.push(args);
+  }),
+}));
 vi.mock('../../../lib/gemie-telegram-bot-profile.js', () => ({ syncGemieBotProfileNow: sync.now }));
 vi.mock('../../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -325,6 +336,20 @@ describe('a gemie’s own Telegram bot', () => {
     expect(refused.status).toBe(403);
     expect(refused.body.code).toBe('not_bot_person');
     expect(state.minted).toEqual([]);
+  });
+
+  it('says who is linked, and tells every open editor when that changes', async () => {
+    await call('PUT', '/agents/gemie-1/telegram-bot', { token: TOKEN, ownerPaysAgentTurns: true });
+    await call('POST', '/agents/gemie-1/telegram-bot/link');
+    // The person opened the link in Telegram: the bot recognises them now.
+    state.bot = { ...state.bot, linkedTelegramUserId: '570038640', linkedTelegramName: '@nate' };
+    const linked = await call('GET', '/agents/gemie-1/telegram-bot');
+    expect(linked.body.bot).toMatchObject({ personLinked: true, linkedAs: '@nate' });
+
+    realtime.gemies.length = 0;
+    const unlinked = await call('DELETE', '/agents/gemie-1/telegram-bot/link');
+    expect(unlinked.body.bot).toMatchObject({ personLinked: false, linkedAs: null });
+    expect(realtime.gemies).toEqual([['person-1', 'gemie-1', 'updated']]);
   });
 
   it('revokes the authority when its person unlinks, or the bot goes', async () => {

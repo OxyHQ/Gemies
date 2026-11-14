@@ -40,9 +40,14 @@ export function useAppRealtime(): void {
   });
 
   // The person's gemies: made, edited (name, look, colour), deleted — on any device.
-  useRealtimeEvent('gemies', () => {
+  useRealtimeEvent('gemies', (frame) => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.agents.mine, exact: true });
     void queryClient.invalidateQueries({ queryKey: queryKeys.agents.external, exact: true });
+    // Its own Telegram bot too: linking it finishes in Telegram, and the editor follows at once.
+    const { agentId } = frame.data as RealtimeData['gemies'];
+    if (agentId) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.telegramBot(agentId) });
+    }
   });
 
   // An external agent's computer came online or went away (ADR 0030).

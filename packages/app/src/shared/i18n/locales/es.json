@@ -1414,6 +1414,8 @@
         "personHintLinked": "{{name}} te reconoce en tu chat privado con el bot: allí usa tus apps, cuentas, memoria y tareas, igual que aquí. Cualquier otra persona, y cualquier grupo, solo tiene a {{name}}.",
         "linkMine": "Vincular mi Telegram",
         "unlinkMine": "Desvincular",
+        "linkedAs": "Vinculado como {{who}}.",
+        "relinkMine": "Vincular otra cuenta",
         "linkOpened": "Telegram abierto: pulsa Iniciar en el chat con el bot para terminar.",
         "unlinked": "{{name}} ya no reconoce tu Telegram.",
         "linkFailed": "No se pudo: {{reason}}",
