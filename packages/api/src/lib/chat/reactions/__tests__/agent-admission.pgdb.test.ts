@@ -122,4 +122,26 @@ describe('direct reaction admission and final persistence', () => {
     );
     expect(rows.some((row) => row.clientMessageId === 'agent-push-unseen')).toBe(true);
   });
+
+  it('keeps canonical feedback on unidentified history while a repeated new turn gets its own ID', async () => {
+    const f = await fixture();
+    const messages: ChatMessage[] = [
+      { role: 'user', content: f.snapshot.content },
+      { role: 'user', content: f.snapshot.content },
+    ];
+    await admitAgentReactionMessages({
+      userId: f.userId,
+      conversationId: f.conversationId,
+      agentId: f.actor.id,
+      messages,
+    });
+    const rows = await listMessages(db, f.userId, f.conversationId);
+    const previous = rows.find((row) => row.clientMessageId === f.snapshot.id)!;
+    expect(toStoredMessage(previous).reactionEntries).toHaveLength(1);
+    const current = rows.find((row) => row.clientMessageId === messages[1]?.id)!;
+    expect(current).toBeDefined();
+    expect(current.clientMessageId).not.toBe(f.snapshot.id);
+    expect(toStoredMessage(current).reactionEntries ?? []).toEqual([]);
+    expect(rows.filter((row) => row.role === 'user')).toHaveLength(2);
+  });
 });

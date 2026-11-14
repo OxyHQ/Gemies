@@ -11,7 +11,7 @@ export interface MessageReactionSnapshot {
   mutationId?: string | null;
 }
 
-/** Versioned state published by current servers over `conversation:reaction`. */
+/** Versioned state published by current servers over the durable `message.reaction` account event. */
 export interface MessageReactionUpdate extends MessageReactionSnapshot {
   revision: number;
 }
