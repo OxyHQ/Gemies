@@ -166,7 +166,7 @@ export const prepareRoom: PrepareRoom = async (input) => {
       try {
         await enqueueRoomJob({
           // Activate the producer separately, after the v3 consumer is the verified rollback baseline (ADR 0025).
-          version: 2,
+          version: 3,
           requestDigest: roomRequestDigest(canonicalTrigger.content),
           phase: 'select',
           userId,

@@ -88,7 +88,7 @@ describe('room preparation', () => {
     expect(h.enqueue).toHaveBeenCalledOnce();
     const job = h.enqueue.mock.calls[0]?.[0];
     expect(job).toMatchObject({
-      version: 2,
+      version: 3,
       phase: 'select',
       triggerId: 'row-p',
       speakerId: '',
