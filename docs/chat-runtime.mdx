@@ -222,6 +222,11 @@ runs in its external daemon and receives no hosted reaction capability; a sender
 local after admission cannot mutate or complete a hosted reaction turn. Its historical messages
 remain valid feedback targets without creating an Oxy account or waking that daemon.
 
+This capability applies to normal person-to-gemie and group turns. Conversations between gemies
+(ADR 0042) remain read-only for the person, including the reaction endpoint's `403` response.
+Their asynchronous `sendMessage` chain receives no reaction capability. A turn that also calls
+`sendMessage` cannot finish as reaction-only: its message and ordinary completion remain visible.
+
 `reactions` remains the person's own emoji selection. Additive `reactionEntries` contains
 `{ emoji, author: { kind: 'user', id } }` or
 `{ emoji, author: { kind: 'agent', id, name } }`, with one shared `reactionRevision` in history

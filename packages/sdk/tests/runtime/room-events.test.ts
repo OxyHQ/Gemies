@@ -83,7 +83,7 @@ describe('a member speaking in the room', () => {
 
   it('lets authoritative reaction-only completion settle a claimed SSE draft once', () => {
     const ledger = createRoomLedger();
-    claimConsult(ledger, 'k1', 'sse-draft');
+    claimMemberTurn(ledger, 'k1', 'sse-draft');
     const { messages } = run(
       [end({ status: 'completed', reactionOnly: true }), start()],
       [

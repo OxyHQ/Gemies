@@ -65,7 +65,7 @@ vi.mock('../../lib/s3.js', () => ({
 }));
 
 import { closePostgres, connectPostgres, type ApiDatabase } from '../../db/index.js';
-import { conversations, messages } from '../../db/schema/chat.js';
+import { conversations, gemieConversations, messages } from '../../db/schema/chat.js';
 import { speechClips } from '../../db/schema/speech.js';
 import conversationsRouter from '../conversations.js';
 import { mutateMessageReaction } from '../../db/chat/reactionRepository.js';
@@ -621,6 +621,25 @@ describe('every stage of the lifecycle is scoped to the owner (#139 ws6)', () =>
     expect(theirs.status).toBe(404);
     // The vote Alice cast is still hers.
     expect((await storedMessages(ALICE.id))[0].vote).toBe('up');
+  });
+
+  it('keeps reactions read-only for the person in a conversation between gemies', async () => {
+    const conversationId = await seed();
+    await db.insert(gemieConversations).values({
+      oxyUserId: ALICE.id,
+      conversationId,
+      firstAgentId: 'peer-a',
+      secondAgentId: 'peer-b',
+    });
+    const response = await call('post', '/:id/messages/:messageId/reactions', {
+      user: ALICE,
+      params: { id: conversationId, messageId: 'msg-1' },
+      body: { emoji: '❤️', active: true, mutationId: randomUUID() },
+    });
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({ error: { code: 'conversation_between_gemies' } });
+    expect((await storedMessages(ALICE.id))[0].reactions).toBeNull();
+    expect(reactionNotifications()).toEqual([]);
   });
 
   it('returns an idempotent reaction revision and scopes live feedback to the person who owns the message', async () => {

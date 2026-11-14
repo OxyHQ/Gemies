@@ -104,6 +104,12 @@ describe('native agent reactions', () => {
         { ...calls[0]!, result: { ...result, mutationId: 'not-committed' } },
       ]),
     ).toBe(false);
+    expect(
+      await f.turn.complete('', [
+        ...calls,
+        { toolName: 'sendMessage', state: 'result', result: { status: 'sent' } },
+      ]),
+    ).toBe(false);
     expect(f.complete).not.toHaveBeenCalled();
     expect(await f.turn.complete('', calls)).toBe(true);
     expect(f.complete).toHaveBeenCalledOnce();
