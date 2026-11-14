@@ -97,6 +97,12 @@ export interface VoiceCallEnvironment {
   startCall: typeof startCall;
   finishCall(callId: string, reason: VoiceCallEndReason): Promise<void>;
   loadHistory(oxyUserId: string, conversationId: string): Promise<HistoryMessage[]>;
+  /**
+   * The members of a group conversation (ADR 0025), none for any other. A call has one gemie, and
+   * a group's turns are its members': a call there would answer as the default gemie, Alia, and
+   * write her transcript into their conversation.
+   */
+  groupMembers(oxyUserId: string, conversationId: string): Promise<readonly string[]>;
   buildTurn(input: VoiceTurnInput): Promise<VoiceTurnContext>;
   persist(params: {
     userId: string;

@@ -67,6 +67,19 @@ export const MCP_REGISTRY: readonly McpRegistryEntry[] = [
     featured: true,
   },
   {
+    // Oxy's own: podcasts and music, and generated episodes, which belong to
+    // Syra (Gemies keeps none of them). Oxy is the authorization server, with
+    // Dynamic Client Registration; nothing of ours runs for it here.
+    id: 'syra',
+    name: 'Syra',
+    description: 'Search music and podcasts, and generate episodes of your own podcasts',
+    category: 'other',
+    url: 'https://api.syra.fm/mcp',
+    website: 'https://syra.fm',
+    docsUrl: 'https://github.com/OxyHQ/Syra/blob/main/docs/mcp.md',
+    featured: true,
+  },
+  {
     id: 'github',
     name: 'GitHub',
     description: 'Repositories, issues, pull requests and code',

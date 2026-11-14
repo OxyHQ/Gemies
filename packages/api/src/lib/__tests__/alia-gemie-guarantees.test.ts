@@ -169,6 +169,13 @@ describe('consulting stays one level deep', () => {
     expect(await toolsFor(aliaGemie())).toContain('consultAgent');
     expect(await toolsFor(persona())).toContain('consultAgent');
   });
+
+  it("hands the consultation the turn's answers, where the turn saves them from", async () => {
+    const { buildConsultAgentTool } = await import('../tools/consult-agent.js');
+    const consultAnswers: never[] = [];
+    await toolsFor(aliaGemie(), { consultAnswers });
+    expect(vi.mocked(buildConsultAgentTool).mock.lastCall?.[0].answers).toBe(consultAnswers);
+  });
 });
 
 describe('a chat with Alia runs as it did', () => {

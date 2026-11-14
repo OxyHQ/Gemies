@@ -121,6 +121,7 @@ export const COPY_EN: Readonly<Record<string, CopyEntry>> = {
   'chat.toolCard.scheduled': 'Scheduled',
   'chat.turnActions': 'Message actions',
   'chat.consultFailed': "%{name} couldn't answer.",
+  'chat.taskUnfinished': "%{name} couldn't finish this task.",
   'chat.shareFailed': "Couldn't create the share link.",
   'chat.sharedFailed': "Couldn't load this conversation.",
   'chat.sharedGone': 'This shared conversation is no longer available.',

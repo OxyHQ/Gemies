@@ -176,24 +176,40 @@ export function TurnAttachments({
   tone?: Tone;
   onColor?: string;
 }) {
-  const items = getAttachmentsFromContent(content);
-  if (items.length === 0) return null;
-  const inline = items.filter((item) => item.type === 'inline-image');
-  const files = items.filter((item) => item.type === 'file');
+  const runs = attachmentRuns(getAttachmentsFromContent(content));
+  if (runs.length === 0) return null;
   return (
     <View className="gap-2">
-      {inline.length > 0 ? (
-        <View className="flex-row flex-wrap gap-2">
-          {inline.map((item) => (
-            <Attachment key={item.url} item={item} tone={tone} onColor={onColor} />
-          ))}
-        </View>
-      ) : null}
-      {files.map((item) => (
-        <Attachment key={item.fileId} item={item} tone={tone} onColor={onColor} />
-      ))}
+      {runs.map((run) =>
+        Array.isArray(run) ? (
+          <View key={`images:${run[0]?.url}`} className="flex-row flex-wrap gap-2">
+            {run.map((item) => (
+              <Attachment key={item.url} item={item} tone={tone} onColor={onColor} />
+            ))}
+          </View>
+        ) : (
+          <Attachment key={run.fileId} item={run} tone={tone} onColor={onColor} />
+        ),
+      )}
     </View>
   );
+}
+
+type InlineImage = Extract<TurnAttachment, { type: 'inline-image' }>;
+
+/**
+ * The attachments in the order they were sent, the pictures next to each other drawn as one row.
+ * Drawing every picture first put a document sent between two photos after both of them.
+ */
+function attachmentRuns(items: readonly TurnAttachment[]): Array<InlineImage[] | FileAttachment> {
+  const runs: Array<InlineImage[] | FileAttachment> = [];
+  for (const item of items) {
+    const last = runs.at(-1);
+    if (item.type === 'file') runs.push(item);
+    else if (Array.isArray(last)) last.push(item);
+    else runs.push([item]);
+  }
+  return runs;
 }
 
 /** Whether a turn has anything to draw as an attachment. */

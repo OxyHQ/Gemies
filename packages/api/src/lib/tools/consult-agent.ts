@@ -18,7 +18,10 @@
  * `agent_tool` and `agent_end` (`docs/agent-embedding.md` §4), so the surface
  * draws the agent's reply under its own identity and flies its avatar into the
  * participants header. The tool's result — the agent's full answer — is what
- * the lead reads, and what `stream-runner.ts` persists as that agent's message.
+ * the lead reads. The agent's own message ({@link consultedAgentMessage}) is
+ * handed to the turn beside it (`answers`), with the canvas artifacts the agent
+ * drew: they never travel in the result, which the tool budget bounds for the
+ * model (`result-truncation.ts`), so what is stored and shared is what was drawn.
  */
 import { randomUUID } from 'node:crypto';
 import type { AvatarCharacter } from '@oxy.so/contracts';
@@ -32,11 +35,12 @@ import { log } from '../logger.js';
 import { getErrorMessage } from '../errors/index.js';
 import type { SSEEmitter } from '../sse-emitter.js';
 import type { GatedPart } from '../agent-features.js';
+import type { AgentMessage, ToolInvocation } from '../../domain/conversation.js';
 import { runAgentTurn, type AgentTurnPerson } from './agent-turn.js';
 
 export const CONSULT_AGENT_TOOL = 'consultAgent';
 
-interface ConsultAgentResult {
+export interface ConsultAgentResult {
   agentId: string;
   agentName: string;
   agentHandle: string;
@@ -52,6 +56,29 @@ interface ConsultAgentResult {
   feature?: string;
 }
 
+/**
+ * A consultation's answer as the consulted agent's own message in the conversation: its words,
+ * under its identity, with the canvas artifacts it drew (so a reload and a share show them as
+ * they show the lead's).
+ */
+export function consultedAgentMessage(
+  result: ConsultAgentResult,
+  canvas: readonly ToolInvocation[] = [],
+): AgentMessage {
+  return {
+    role: 'assistant',
+    content: result.response,
+    agentInfo: {
+      id: result.agentId,
+      name: result.agentName,
+      color: result.agentColor,
+      character: result.agentCharacter,
+      handle: result.agentHandle,
+    },
+    ...(canvas.length > 0 ? { toolInvocations: [...canvas] } : {}),
+  };
+}
+
 export interface ConsultAgentOptions {
   person: AgentTurnPerson;
   /** The account that funds the outer turn, and therefore this one. */
@@ -64,6 +91,12 @@ export interface ConsultAgentOptions {
   sseEmitter?: SSEEmitter;
   /** The outer turn's attachments; the CONSULTED agent's gates apply to them (`agent-turn.ts`). */
   attachments?: readonly GatedPart[];
+  /**
+   * The turn's consulted-agent messages, which each answer is appended to, whole, for the turn to
+   * store (`conversation-saver.ts`). Absent (a surface that stores no conversation), an answer is
+   * only read.
+   */
+  answers?: AgentMessage[];
 }
 
 function refusal(agentId: string, error: string): ConsultAgentResult {
@@ -188,7 +221,7 @@ export async function buildConsultAgentTool(options: ConsultAgentOptions): Promi
                     : { code: 'agent_unavailable' },
                 },
           );
-          return {
+          const result: ConsultAgentResult = {
             ...identity,
             response: outcome.response,
             tokensUsed: outcome.tokensUsed,
@@ -198,6 +231,12 @@ export async function buildConsultAgentTool(options: ConsultAgentOptions): Promi
               ? { errorCode: outcome.refusal.code, feature: outcome.refusal.feature }
               : {}),
           };
+          // The agent's message, with what it drew, goes to the turn here and not in the result:
+          // the result is bounded for the model, and a drawing cut there would be stored cut.
+          if (outcome.error === undefined) {
+            options.answers?.push(consultedAgentMessage(result, outcome.canvas));
+          }
+          return result;
         } catch (error: unknown) {
           log.general.error({ err: error, agentId }, 'consultAgent failed');
           return refusal(agentId, getErrorMessage(error));

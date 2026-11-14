@@ -1,6 +1,6 @@
 {
   "name": "@gemies/server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The Gemies server client: one typed event stream for a backend that calls the Gemies product API",
   "license": "Apache-2.0",
   "repository": {

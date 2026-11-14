@@ -1,7 +1,7 @@
 /**
  * A connected account's turn: the message prepared by the API (its media kept and transcribed),
- * after the stored history resent exactly as it is stored, parts included, so the API's saver
- * appends to it rather than rewriting it.
+ * after the stored history as it is stored, parts included: the model's context. The API appends
+ * the turn after what the conversation holds, whatever this history says (`conversation-saver.ts`).
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -51,8 +51,15 @@ describe('a connected account’s turn', () => {
       { kind: 'account', sessionId: 's1' },
       { chatId: 'c1', message, conversationId: expect.stringMatching(/^[0-9a-f]{64}$/) },
     );
-    const [, messages] = chatCompletion.mock.calls[0] as unknown as [unknown, unknown[]];
-    expect(messages.slice(1)).toEqual([...stored, { role: 'user', content: prepared }]);
+    const [, messages, options] = chatCompletion.mock.calls[0] as unknown as [
+      unknown,
+      unknown[],
+      { clientContext?: string },
+    ];
+    // Where the turn happens is the request’s context, never a message of the conversation.
+    expect(messages.some((m) => (m as { role: string }).role === 'system')).toBe(false);
+    expect(options.clientContext).toContain('The user is chatting via whatsapp');
+    expect(messages).toEqual([...stored, { role: 'user', content: prepared }]);
     expect(sent).toEqual(['Hola.']);
   });
 
@@ -101,7 +108,51 @@ describe('a connected account’s turn', () => {
       { kind: 'account', sessionId: 's1' },
       expect.objectContaining({ messageId: 'whatsapp:c1:m1' }),
     );
-    const [, messages] = chatCompletion.mock.calls[0] as unknown as [unknown, unknown[]];
-    expect(messages.slice(1)).toEqual(stored);
+    const [, messages, options] = chatCompletion.mock.calls[0] as unknown as [
+      unknown,
+      unknown[],
+      { clientContext?: string },
+    ];
+    // Where the turn happens is the request’s context, never a message of the conversation.
+    expect(messages.some((m) => (m as { role: string }).role === 'system')).toBe(false);
+    expect(options.clientContext).toContain('The user is chatting via whatsapp');
+    expect(messages).toEqual(stored);
+  });
+
+  it('answers a kept message with what came before it, not with a message that arrived after it', async () => {
+    const prepared = [{ type: 'text' as const, text: 'hola' }];
+    const stored = [
+      { id: 'whatsapp:c1:m1', role: 'user', content: prepared },
+      // The next message arrived before this turn read the conversation: it is its own turn's.
+      { id: 'whatsapp:c1:m2', role: 'user', content: 'y otra cosa' },
+    ];
+    const chatCompletion = vi.fn(async () => ({ content: 'Hola.', finishReason: 'stop' }));
+    const api = {
+      decideInbound: async () => ({ answer: true }),
+      prepareAccountMessage: vi.fn(async () => ({ content: prepared })),
+      getConversation: async () => ({ messages: stored }),
+      requestModel: async () => undefined,
+      chatCompletion,
+    } as unknown as APIClient;
+    await handleIncomingMessage(
+      {
+        platform: 'whatsapp',
+        sessionId: 's1',
+        messageId: 'm1',
+        inbound: { chatId: 'c1', chatKind: 'direct', mentionsAccount: false },
+        readMessage: async () => ({ text: 'hola' }),
+        sendResponse: async () => {},
+      },
+      api,
+    );
+    const [, messages, options] = chatCompletion.mock.calls[0] as unknown as [
+      unknown,
+      unknown[],
+      { clientContext?: string },
+    ];
+    // Where the turn happens is the request’s context, never a message of the conversation.
+    expect(messages.some((m) => (m as { role: string }).role === 'system')).toBe(false);
+    expect(options.clientContext).toContain('The user is chatting via whatsapp');
+    expect(messages).toEqual([stored[0]]);
   });
 });

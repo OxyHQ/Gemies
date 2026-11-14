@@ -12,7 +12,14 @@ const state = vi.hoisted(() => ({
   latestMarks: vi.fn(),
 }));
 
-const database = { kind: 'test-db' };
+const database: {
+  execute: ReturnType<typeof vi.fn>;
+  transaction: (work: (tx: unknown) => unknown) => Promise<unknown>;
+} = {
+  execute: vi.fn(),
+  // One handle for the root and its transaction: a check-in's every read and write is asserted on it.
+  transaction: async (work) => work(database),
+};
 
 vi.mock('../../../db/index.js', () => ({ getDb: () => database }));
 vi.mock('../../../db/automation/automationDefinitionRepository.js', () => ({
@@ -187,6 +194,27 @@ describe('Alia writing first, on her own initiative', () => {
       reason: 'daily_limit',
     });
     expect(state.insert).not.toHaveBeenCalled();
+  });
+
+  it('reads the budget and appends under one lock per person, so concurrent emails cannot both spend the last slot', async () => {
+    const order: string[] = [];
+    database.execute.mockImplementation(async () => {
+      order.push('lock');
+    });
+    state.countOutreach.mockImplementation(async (db: unknown) => {
+      order.push(db === database ? 'budget' : 'budget-outside');
+      return CHECK_IN_DAILY_LIMIT - 1;
+    });
+    state.insert.mockImplementation(async () => {
+      order.push('append');
+    });
+
+    await postAliaCheckIn(checkIn);
+
+    expect(order).toEqual(['lock', 'budget', 'append']);
+    expect(state.publish).toHaveBeenCalledWith('owner-1', aliaOutreachConversationId('owner-1'), {
+      appendedFromSeq: 0,
+    });
   });
 
   it('and none while her last two went unanswered', async () => {

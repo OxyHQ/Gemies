@@ -127,10 +127,10 @@ export async function answerThroughChat(
   }
 
   /**
-   * The whole stored conversation, as the app sends it, each message's content as it is stored. The
-   * API's saver appends the new turn when this history is exactly what it holds,
-   * and otherwise rewrites the thread FROM it: a trimmed or reworded history would cut or rewrite
-   * the thread. A channel turn reads only its new message's files; earlier ones are said in words.
+   * The stored conversation, each message's content as it is stored: the model's context. The API
+   * appends a channel turn after whatever the conversation holds and never rewrites the thread from
+   * this history, so one that could not be read costs the model context, never a message. A channel
+   * turn reads only its new message's files; earlier ones are said in words.
    */
   let messages: Array<{ id?: string; role: string; content: MessageContent }> = [];
   try {
@@ -148,28 +148,25 @@ export async function answerThroughChat(
     logger.error('Failed to load history:', error);
   }
 
-  // The API kept the message the moment it arrived: it is already the history's last one, and the
-  // turn appends only its reply. Otherwise it is the turn's new message.
-  const kept = params.messageId !== undefined && messages.at(-1)?.id === params.messageId;
-  if (!kept) {
+  // The API kept the message the moment it arrived, and the turn answers it with what came before
+  // it: a message that arrived after it is the next turn's. Not kept, it is the turn's new message.
+  // The API appends the turn after whatever the conversation holds, whatever this history says.
+  const kept =
+    params.messageId === undefined ? -1 : messages.findIndex((m) => m.id === params.messageId);
+  if (kept === -1) {
     messages.push({ ...(params.messageId ? { id: params.messageId } : {}), role: 'user', content });
+  } else {
+    messages = messages.slice(0, kept + 1);
   }
 
-  // Platform instructions as first system message —
-  // the API extracts this as clientContext and merges it into the full system prompt
-  const apiMessages = [
-    {
-      role: 'system',
-      content: `The user is chatting via ${platform}. Be concise and friendly.${platformContext ? ` ${platformContext}` : ''}`,
-    },
-    ...messages,
-  ];
-
-  const result = await apiClient.chatCompletion(identity, apiMessages, {
+  const result = await apiClient.chatCompletion(identity, messages, {
     // Unset, or no longer in the catalogue, means the request names no
     // model and the server's default applies. See `./catalogue.ts`.
     model: await apiClient.requestModel(undefined),
     conversationId,
+    // Where the turn happens, as the request's context: the API merges it into the system prompt.
+    // Never a message: a system message in the history was stored as the conversation's first.
+    clientContext: `The user is chatting via ${platform}. Be concise and friendly.${platformContext ? ` ${platformContext}` : ''}`,
   });
 
   if (result.content) {

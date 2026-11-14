@@ -9,6 +9,7 @@
  * for is never budgeted; only initiative is.
  */
 
+import { sql } from 'drizzle-orm';
 import { getDb, type Executor } from '../../db/index.js';
 import { listLatestMessageMarks } from '../../db/chat/messageRepository.js';
 import { isAgentOutreachMessageId } from '../../domain/conversation.js';
@@ -20,6 +21,25 @@ export const CHECK_IN_DAILY_LIMIT = 3;
 export const UNANSWERED_CHECK_IN_LIMIT = 2;
 
 export type CheckInRefusal = 'daily_limit' | 'unanswered';
+
+/**
+ * Serialize one actor's outreach to one person until `tx` ends.
+ *
+ * The budget is read and then spent by an append; without one lock around
+ * both, two check-ins arriving together (two important emails, two
+ * `sendMessageToUser` calls) each read the last free slot and both post. Every
+ * check-in takes it, then asks {@link checkInRefusal} WITH `tx`, then appends
+ * in the same transaction.
+ */
+export async function lockOutreachBudget(
+  tx: Executor,
+  oxyUserId: string,
+  actorId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtext(${`agent-outreach:${oxyUserId}:${actorId}`}))`,
+  );
+}
 
 /**
  * Why a check-in may not be sent now, or `null` when it may.

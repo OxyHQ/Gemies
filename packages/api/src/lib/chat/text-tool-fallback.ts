@@ -24,6 +24,7 @@ import type { ResolvedModel } from '../chat-core.js';
 import type { ToolInvocation } from './tool-calls.js';
 import { createReasoningRelay } from './reasoning-relay.js';
 import { streamToolSynthesis } from './tool-synthesis.js';
+import { clientToolResult } from '../tools/result-truncation.js';
 import { parseDsmlToolCalls, stripDsmlToolMarkup } from './tool-markup.js';
 
 export interface TextToolFallbackParams {
@@ -124,7 +125,10 @@ export async function runTextToolFallback(
     );
 
     try {
-      const toolOutput = await (toolFn.execute as (...args: unknown[]) => unknown)(args);
+      // The client's frame and the stored call carry the result in the client's form.
+      const toolOutput = clientToolResult(
+        await (toolFn.execute as (...args: unknown[]) => unknown)(args),
+      );
 
       res.write(
         `event: alia.tool_result\ndata: ${JSON.stringify({

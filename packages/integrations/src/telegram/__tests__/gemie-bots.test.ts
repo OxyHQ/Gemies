@@ -11,13 +11,20 @@ const asked = vi.hoisted(() => ({
   messages: [] as unknown[],
   reply: 'Hello from the gemie',
   reaction: null as string | null,
+  retryLater: false,
   personTurn: null as null | { conversationId: string; messageId: string; content: unknown[] },
-  chats: [] as Array<{ identity: unknown; messages: unknown[]; conversationId?: string }>,
+  chats: [] as Array<{
+    identity: unknown;
+    messages: unknown[];
+    conversationId?: string;
+    clientContext?: string;
+  }>,
 }));
 vi.mock('../../shared/api-client', () => ({
   APIClient: class {
     async answerTelegramBotMessage(_botId: string, message: unknown) {
       asked.messages.push(message);
+      if (asked.retryLater) return { reply: null, retryLater: true };
       return asked.personTurn
         ? { reply: null, personTurn: asked.personTurn }
         : { reply: asked.reply, reaction: asked.reaction };
@@ -36,9 +43,14 @@ vi.mock('../../shared/api-client', () => ({
     async chatCompletion(
       identity: unknown,
       messages: unknown[],
-      options: { conversationId?: string },
+      options: { conversationId?: string; clientContext?: string },
     ) {
-      asked.chats.push({ identity, messages, conversationId: options.conversationId });
+      asked.chats.push({
+        identity,
+        messages,
+        conversationId: options.conversationId,
+        clientContext: options.clientContext,
+      });
       return { content: 'Tienes 3 correos nuevos.', finishReason: 'stop' };
     }
   },
@@ -233,8 +245,9 @@ describe('a gemie bot’s update', () => {
           // The API verifies it again from the bot and the sender, never from anything else.
           identity: { kind: 'gemie_bot', botId: BOT_ID, platformUserId: '570038640' },
           conversationId: `telegram:${BOT_ID}:570038640`,
+          // Where the turn happens is the request's context, never a message it stores.
+          clientContext: expect.stringContaining('The user is chatting via telegram'),
           messages: [
-            expect.objectContaining({ role: 'system' }),
             { role: 'user', content: 'Hey' },
             { role: 'assistant', content: 'Hey Nate' },
             { id: 'telegram:570038640:10', role: 'user', content: prepared },
@@ -256,6 +269,21 @@ describe('a gemie bot’s update', () => {
     });
     expect(sends).toEqual([]);
     asked.reply = 'Hello from the gemie';
+  });
+
+  it('leaves an update to be tried again while another attempt still holds its turn', async () => {
+    asked.retryLater = true;
+    try {
+      await expect(
+        handleGemieBotUpdate(gemieBot, {
+          update_id: 5,
+          message: message({ chat: { id: 42, type: 'private' }, text: 'hi' }),
+        }),
+      ).rejects.toThrow('still running');
+      expect(sends).toEqual([]);
+    } finally {
+      asked.retryLater = false;
+    }
   });
 
   it('reads a sticker it was sent: its image, emoji and set', async () => {

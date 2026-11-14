@@ -475,15 +475,12 @@ describe('the append race the saver branches on', () => {
 });
 
 describe('voting picks exactly one row', () => {
-  it('matches the CLIENT id, and updates one message even when two share it', async () => {
+  it('matches the CLIENT id, which a conversation holds once', async () => {
     /**
-     * `findOneAndUpdate` picks one document; a bare `UPDATE … WHERE` writes to
-     * every match. Nothing makes `client_message_id` unique — the saver falls
-     * back to `msg-<seq>` and the client supplies whatever it likes — so a
-     * duplicate is reachable, and voting on it would silently vote on both.
-     *
-     * Mutation check: replacing the `inArray(id, subquery)` with the same
-     * predicate applied directly makes the second assertion `['up', 'up']`.
+     * `client_message_id` is unique per conversation
+     * (`messages_oxy_user_conversation_client_message_key`), so a vote finds one
+     * message by it, and a second message under the same id is refused rather
+     * than voted on alongside the first.
      */
     await insertMessages(db, [
       {
@@ -494,22 +491,26 @@ describe('voting picks exactly one row', () => {
         seq: 0,
         clientMessageId: 'msg-dup',
       },
-      {
-        conversationId: 'vote-conv',
-        oxyUserId: 'vote-user',
-        role: 'assistant',
-        content: 'b',
-        seq: 1,
-        clientMessageId: 'msg-dup',
-      },
     ]);
+    await expect(
+      insertMessages(db, [
+        {
+          conversationId: 'vote-conv',
+          oxyUserId: 'vote-user',
+          role: 'assistant',
+          content: 'b',
+          seq: 1,
+          clientMessageId: 'msg-dup',
+        },
+      ]),
+    ).rejects.toThrow();
 
     expect(await voteMessage(db, 'vote-user', 'vote-conv', 'msg-dup', 'up')).toEqual({
       vote: 'up',
     });
 
     const rows = await listMessages(db, 'vote-user', 'vote-conv');
-    expect(rows.map((row) => row.vote)).toEqual(['up', null]);
+    expect(rows.map((row) => [row.content, row.vote])).toEqual([['a', 'up']]);
   });
 
   it('matches the PRIMARY KEY too, which is the $or the source carried', async () => {

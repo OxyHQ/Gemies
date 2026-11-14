@@ -5,18 +5,22 @@ import { agentDisplayName } from './identity';
 import { agentHandle } from '@/shared/routing/agent-address';
 
 /**
- * The members of a group conversation as the chat draws them, in the order they answer.
+ * The members of a group conversation as the chat draws them, in the order they answer; `undefined`
+ * for a conversation that is not a group, or while the agents load.
  *
- * Read from the person's own agents; an id that is not among them (an agent the group was made
- * with that this list does not hold) is left out rather than drawn as somebody else. Fewer than
- * two left is not a group the chat can draw, and answers `undefined`.
+ * Read from the person's own agents; an id that is not among them (a member deleted since, or one
+ * the person does not own) is left out rather than drawn as somebody else. The conversation is
+ * still the group's however few are left: drawn as an ordinary chat, it greeted as Alia while what
+ * the person sent went to the group's remaining members.
  */
 export function groupMembersOf(
   memberAgentIds: readonly string[] | undefined,
   agents: readonly Agent[] | undefined,
 ): readonly GemieParticipant[] | undefined {
-  if (memberAgentIds === undefined || agents === undefined) return undefined;
-  const members = memberAgentIds.flatMap((id): GemieParticipant[] => {
+  if (memberAgentIds === undefined || memberAgentIds.length === 0 || agents === undefined) {
+    return undefined;
+  }
+  return memberAgentIds.flatMap((id): GemieParticipant[] => {
     const agent = agents.find((candidate) => candidate._id === id);
     return agent
       ? [
@@ -30,5 +34,4 @@ export function groupMembersOf(
         ]
       : [];
   });
-  return members.length >= 2 ? members : undefined;
 }

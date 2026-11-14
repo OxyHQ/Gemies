@@ -268,6 +268,9 @@ export class VoiceCall {
     this.start = start;
     this.emit({ type: 'session.accepted', voiceSessionId: this.id, callId: this.callId });
     try {
+      // A group's turns are its members'; a call has one gemie and cannot speak for them.
+      if ((await this.env.groupMembers(this.oxyUserId, start.conversationId)).length > 0)
+        throw new VoiceFailure('agent-unavailable');
       const inputs = await this.env.prefetch({
         oxyUserId: this.oxyUserId,
         accessToken: this.accessToken,

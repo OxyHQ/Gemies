@@ -17,8 +17,9 @@ Alia keeps three kinds of memory, and none of them is shared between actors
    below).
 
 A turn can switch all of it off: `personalization: false` on the chat request reads no memory
-of either kind, recalls nothing, offers no memory tool and skips the learning hooks (writing
-style, proactive suggestions) for that turn — [Embedding an agent](./agent-embedding.md) §2.
+of either kind, recalls nothing (nor the rules learned about the person), offers no memory tool
+(nor to an agent it consults) and skips the learning hooks (writing style, proactive suggestions,
+run scoring) for that turn — [Embedding an agent](./agent-embedding.md) §2.
 
 Every memory block in a prompt goes through `memoryDataBlock`
 (`lib/memory/memory-prompt.ts`): it is data that informs the answer, never an

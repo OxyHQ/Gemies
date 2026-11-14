@@ -12,6 +12,7 @@ const H = vi.hoisted(() => ({
   notify: vi.fn(),
   publish: vi.fn(),
   receipt: vi.fn(),
+  relay: vi.fn(),
 }));
 
 vi.mock('../../../db/index.js', () => {
@@ -44,13 +45,14 @@ vi.mock('../../agent-identity.js', () => ({
   agentPromptName: (agent: { name: string }) => agent.name,
 }));
 vi.mock('../../notification-service.js', () => ({ sendNotification: H.notify }));
+vi.mock('../../gemie-telegram-bot-setup.js', () => ({ relayToGemieBotChat: H.relay }));
 vi.mock('../../realtime/conversations.js', () => ({ publishConversation: H.publish }));
 vi.mock('../../logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   return { log: { agents: child } };
 });
 
-import { CHECK_IN_DAILY_LIMIT, postAgentMessage } from '../agent-outreach.js';
+import { CHECK_IN_DAILY_LIMIT, postAgentMessage, runResultMessage } from '../agent-outreach.js';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -63,6 +65,7 @@ beforeEach(() => {
   H.insert.mockResolvedValue(undefined);
   H.notify.mockResolvedValue(undefined);
   H.upsertConversation.mockResolvedValue(undefined);
+  H.relay.mockResolvedValue(undefined);
 });
 
 describe('an agent writing to a person first', () => {
@@ -158,4 +161,48 @@ it('replays a stored delivery without another insert or notification', async () 
   ).toMatchObject({ posted: true });
   expect(H.insert).not.toHaveBeenCalled();
   expect(H.notify).not.toHaveBeenCalled();
+});
+
+/**
+ * A requested run that ended without an answer reaches the person as a typed failure, which the
+ * app draws in their language: never the run's status line ("Token budget exhausted. Partial
+ * progress was made.", delivered as Eusebio's message on 2026-11-14), on Telegram neither.
+ */
+describe('a requested run’s result', () => {
+  const asked = 'Saluda al usuario con un resumen de su email.';
+
+  it('is its answer when it has one', () => {
+    expect(runResultMessage({ status: 'completed', result: ' Hola ', task: asked })).toEqual({
+      content: 'Hola',
+    });
+  });
+
+  it('is the typed failure when it has none, whatever its status line says', () => {
+    for (const run of [
+      { status: 'failed' as const, result: 'Stopped at the token budget without an answer' },
+      { status: 'completed' as const, result: '' },
+    ]) {
+      expect(runResultMessage({ ...run, task: asked })).toEqual({
+        content: asked,
+        failure: 'task_unfinished',
+      });
+    }
+  });
+
+  it('stores the failure as its part, relays no words and names what was asked', async () => {
+    await postAgentMessage({
+      oxyUserId: 'u',
+      agentId: 'agent-1',
+      kind: 'result',
+      ...runResultMessage({ status: 'failed', result: 'Token budget exhausted.', task: asked }),
+    });
+
+    const [[, [row]]] = H.insert.mock.calls as [[unknown, Array<Record<string, unknown>>]];
+    expect(row?.content).toEqual([{ type: 'failure', code: 'task_unfinished' }]);
+    expect(H.relay).not.toHaveBeenCalled();
+    expect(H.notify).toHaveBeenCalledWith(expect.objectContaining({ body: asked }));
+    expect(JSON.stringify([H.insert.mock.calls, H.notify.mock.calls])).not.toContain(
+      'Token budget',
+    );
+  });
 });

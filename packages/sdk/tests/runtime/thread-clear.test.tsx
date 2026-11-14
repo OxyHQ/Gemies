@@ -16,8 +16,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * - a refusal leaves the screen as it was and surfaces the error — the state
  *   this hook must never produce is a cleared view whose history is about to
  *   return;
- * - a turn still streaming is stopped BEFORE the request, so the thread being
- *   emptied is one nothing is writing into.
+ * - a turn still streaming is stopped, and has ENDED, before the request, so
+ *   the thread being emptied is one nothing is writing into — a turn still
+ *   finishing on the server would store itself back into it — and a turn that
+ *   cannot be stopped is a refusal.
  *
  * `useClearConversation` is mocked: what it does to the query cache on success
  * is its own contract, pinned in `use-clear-conversation.test.tsx`.
@@ -30,6 +32,8 @@ const chat = vi.hoisted(() => ({
   sequence: [] as string[],
   /** What the mocked server clear does: resolve, or refuse. */
   clearOutcome: 'ok' as 'ok' | Error,
+  /** Whether the mocked Stop ends the turn (`true`) or the server refuses to stop it. */
+  stopOutcome: true,
 }));
 
 vi.mock('../../src/runtime/use-conversation-stream', () => ({
@@ -44,8 +48,13 @@ vi.mock('../../src/runtime/use-conversation-stream', () => ({
         typeof next === 'function' ? (next as (p: unknown) => unknown)(chat.messages) : next;
       chat.sequence.push(`setMessages:${JSON.stringify(resolved)}`);
     }),
-    stop: vi.fn(() => {
+    // Stop settles only once the turn has ended; a macrotask later, so a clear that did not wait
+    // for it would show up in the sequence before `stopped`.
+    stop: vi.fn(async () => {
       chat.sequence.push('stop');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      chat.sequence.push(chat.stopOutcome ? 'stopped' : 'stop refused');
+      return chat.stopOutcome;
     }),
     suggestedNewConversation: null,
     dismissSuggestedNewConversation: vi.fn(),
@@ -124,6 +133,7 @@ beforeEach(() => {
   chat.isLoading = false;
   chat.sequence = [];
   chat.clearOutcome = 'ok';
+  chat.stopOutcome = true;
   toast.error.mockClear();
 });
 
@@ -162,7 +172,7 @@ describe('clearConversation', () => {
     expect(toast.error).toHaveBeenCalledWith(DEFAULT_LABELS.conversationClearFailed);
   });
 
-  it('stops a turn still streaming BEFORE it clears', async () => {
+  it('stops a turn still streaming, and waits for it to END, BEFORE it clears', async () => {
     chat.isLoading = true;
     await mount();
 
@@ -170,9 +180,33 @@ describe('clearConversation', () => {
       await api.clearConversation();
     });
 
-    // The abort comes first, so the thread being emptied is one nothing is
-    // still writing into; then the same order as an idle clear.
-    expect(chat.sequence).toEqual(['stop', 'clear:c1', 'setMessages:[]', 'clearFailedTurn']);
+    // The turn is over first, so the thread being emptied is one nothing is
+    // still writing into — a turn the server was still finishing would have
+    // stored its question and answer back after the clear; then the same
+    // order as an idle clear.
+    expect(chat.sequence).toEqual([
+      'stop',
+      'stopped',
+      'clear:c1',
+      'setMessages:[]',
+      'clearFailedTurn',
+    ]);
+  });
+
+  it('keeps everything when the running turn could not be stopped', async () => {
+    chat.isLoading = true;
+    chat.stopOutcome = false;
+    await mount();
+
+    let outcome: boolean | undefined;
+    await act(async () => {
+      outcome = await api.clearConversation();
+    });
+
+    // A clear beside a turn that is still running would be undone by it.
+    expect(outcome).toBe(false);
+    expect(chat.sequence).toEqual(['stop', 'stop refused']);
+    expect(toast.error).toHaveBeenCalledWith(DEFAULT_LABELS.conversationClearFailed);
   });
 
   it('does not stop anything when nothing is streaming', async () => {

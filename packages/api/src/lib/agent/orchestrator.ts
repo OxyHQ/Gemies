@@ -16,7 +16,7 @@
 import { generateText } from 'ai';
 import { resolveUtilityModel, getAIModel } from '../chat-core.js';
 import { generatePlan, type ExecutionPlan } from './planner-agent.js';
-import { executeSubtasks, type ExecutorResult } from './executor-pool.js';
+import { executeSubtasks, type ExecutorPoolOptions, type ExecutorResult } from './executor-pool.js';
 import { verifyResults, type VerificationResult } from './verifier-agent.js';
 import { EventStream } from './event-stream.js';
 import { MAX_DELEGATION_DEPTH } from '../constants.js';
@@ -25,13 +25,7 @@ export interface OrchestrationOptions {
   /** The task to execute */
   task: string;
   /** Parent session info */
-  session: {
-    _id: any;
-    userId: any;
-    agentId: any;
-    depth: number;
-    config: { maxSteps: number; maxTokens: number; maxVMs: number };
-  };
+  session: ExecutorPoolOptions['parentSession'];
   /** Agent info for context */
   agent?: { name?: string; description?: string };
   /** Event stream for logging */

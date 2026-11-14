@@ -16,16 +16,16 @@
  *     catch's rethrow-vs-retry decision. Mutated in place.
  *   - `onFirstChunk()` — clears the route's first-byte timer the moment the
  *     provider responds, so a slow-but-alive stream isn't aborted at 20s.
- * `agentMessages` is likewise mutated in place (the route reads the same array
- * when saving the conversation).
+ * `agentMessages` is read, not written: `consultAgent` appends each consulted
+ * agent's answer to it (the route hands the tool pipeline the same array), and an
+ * answer there is one the turn already has.
  *
  * Import seams (`ai`, `../chat-core.js`, `../logger.js`, `../errors/index.js`,
  * `../streaming-helpers.js`, `../observability/index.js`) match the paths the
  * route used inline so the timeout suite's module mocks keep intercepting them.
  */
-import { CONSULT_AGENT_TOOL } from '../tools/consult-agent.js';
-import type { AgentInfo } from '../../domain/conversation.js';
-import type { AvatarCharacter } from '@oxy.so/contracts';
+import { clientToolResult } from '../tools/result-truncation.js';
+import type { AgentMessage } from '../../domain/conversation.js';
 import type { Response } from 'express';
 import type { TextStreamPart, ToolSet } from 'ai';
 import type { ResolvedModel } from '../chat-core.js';
@@ -44,29 +44,11 @@ import { isInvalidToolCall, type ToolInvocation } from './tool-calls.js';
 import { ASK_USER_QUESTION_TOOL } from '../tools/ask-user-question.js';
 import { emptyResponseError, toOpenAIFinishReason } from './finish-reason.js';
 import { CHAT_TURN_STEP_BOUNDS, type StreamWatchdog, type TurnStepBounds } from './model-config.js';
-import { withoutHostImageData } from './host-image-result.js';
 import { createToolMarkupGuard } from './tool-markup.js';
 import { sizeForLog } from './log-size.js';
 import { createReasoningRelay } from './reasoning-relay.js';
 import { streamToolSynthesis } from './tool-synthesis.js';
 import type { ActorActivity } from '../realtime/activity.js';
-
-/**
- * The consultation's result: another agent's whole answer, with its identity.
- *
- * The answer already reached the client live, as `alia.agent_*` frames emitted
- * by the tool itself (`lib/tools/consult-agent.ts`); here it is only recorded,
- * as that agent's own message in the conversation.
- */
-interface ConsultAgentToolOutput {
-  error?: unknown;
-  agentId: string;
-  agentName: string;
-  agentHandle: string;
-  agentColor: string | null;
-  agentCharacter: AvatarCharacter | null;
-  response: string;
-}
 
 /** Whether a chunk carries something the model produced, as opposed to stream bookkeeping. */
 function isContentChunk(chunk: { type: string; text?: string }): boolean {
@@ -98,12 +80,6 @@ function outputReportsFailure(output: unknown): boolean {
 }
 export type { ToolInvocation };
 
-export interface AgentMessage {
-  role: 'assistant';
-  content: string;
-  agentInfo: AgentInfo;
-}
-
 /**
  * Mutable flag shared with the route's first-byte timer and provider-retry
  * catch. It must reflect writes made inside runStream even when the stream
@@ -124,7 +100,7 @@ export interface RunStreamParams<TOOLS extends ToolSet> {
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK config is dynamically extended; strict SDK param types don't support this pattern
   baseConfig: any;
   toolNameMapping: Map<string, string>;
-  /** Accumulator for delegate-to-agent replies; mutated in place. */
+  /** The consulted agents' answers so far, appended by `consultAgent` (`answers`). */
   agentMessages: AgentMessage[];
   /** Running tool-call count carried across provider attempts. */
   toolCallCount: number;
@@ -219,6 +195,24 @@ export async function runStream<TOOLS extends ToolSet>(
     hasStreamedText = true;
     answerOwed = false;
   };
+  /**
+   * A step ended since the last words the person saw. The next step's words are a new paragraph of
+   * the same reply: a model that narrates before a tool ("Dame un segundo y lo reviso de verdad.")
+   * and answers after it ("Tienes 20 emails…") wrote two texts, and joined as they came they read
+   * "…de verdad.Tienes 20 emails…", live and in the stored reply alike.
+   */
+  let stepEnded = false;
+  /** Writes answer text to the person and to the reply that is stored, as one text. */
+  const writeAnswerText = (text: string): string | null => {
+    const breaks =
+      stepEnded && assistantResponse !== '' && !/\s$/.test(assistantResponse) && !/^\s/.test(text);
+    const written = writeTextChunk(res, requestId, modelId, breaks ? `\n\n${text}` : text);
+    if (written) {
+      stepEnded = false;
+      assistantResponse += written;
+    }
+    return written;
+  };
   // Text that is a tool call in the model's own syntax is never shown (see `tool-markup.ts`).
   const markup = createToolMarkupGuard();
   // What earlier steps of this turn wrote as markup; the guard starts clean at each step.
@@ -246,6 +240,8 @@ export async function runStream<TOOLS extends ToolSet>(
     if (endedAtQuestion()) return false;
     const completed = toolInvocations.filter((t) => t.state === 'result');
     if (completed.length === 0 || res.writableEnded) return false;
+    // The answer to the results is the reply's next paragraph, whatever came before it.
+    stepEnded = true;
 
     await streamToolSynthesis({
       res,
@@ -254,10 +250,8 @@ export async function runStream<TOOLS extends ToolSet>(
       baseConfig,
       completed,
       relay,
-      onText: (shown) => {
-        noteAnswerText();
-        assistantResponse += shown;
-      },
+      write: writeAnswerText,
+      onText: noteAnswerText,
     });
     return !answerOwed;
   };
@@ -295,10 +289,7 @@ export async function runStream<TOOLS extends ToolSet>(
 
       // Filter out thinking tags and stream as OpenAI-compatible chunk
       const shown = markup.push(chunk.text);
-      const filtered = shown ? writeTextChunk(res, requestId, modelId, shown) : null;
-      if (filtered) {
-        assistantResponse += filtered;
-      }
+      if (shown) writeAnswerText(shown);
     } else if (chunk.type === 'reasoning-delta') {
       sse.ensureHeaders();
       state.hasStreamedContent = true;
@@ -399,9 +390,10 @@ export async function runStream<TOOLS extends ToolSet>(
         toolTimers.delete(chunk.toolCallId);
       }
 
-      // What outlives the turn — the client's frame and the stored result — never carries an
-      // image's bytes; the model already saw the image (`host-image-result.ts`).
-      const keptOutput = withoutHostImageData(chunk.output);
+      // What outlives the turn — the client's frame and the stored result — is the result in the
+      // client's form: never an image's bytes (the model already saw the image), never a field
+      // that says nothing (`clientToolResult`). A conversation read serves the same form.
+      const keptOutput = clientToolResult(chunk.output);
 
       // Stream tool result as named SSE event (non-standard, Alia extension)
       res.write(
@@ -424,26 +416,6 @@ export async function runStream<TOOLS extends ToolSet>(
           toolName: originalToolName,
           state: 'result',
           result: keptOutput,
-        });
-      }
-
-      // A consulted agent's answer becomes that agent's own message.
-      if (
-        originalToolName === CONSULT_AGENT_TOOL &&
-        chunk.output &&
-        !(chunk.output as ConsultAgentToolOutput).error
-      ) {
-        const ar = chunk.output as ConsultAgentToolOutput;
-        agentMessages.push({
-          role: 'assistant',
-          content: ar.response,
-          agentInfo: {
-            id: ar.agentId,
-            name: ar.agentName,
-            color: ar.agentColor,
-            character: ar.agentCharacter,
-            handle: ar.agentHandle,
-          },
         });
       }
     } else if (chunk.type === 'tool-error') {
@@ -482,9 +454,9 @@ export async function runStream<TOOLS extends ToolSet>(
       log.v1.debug('Step finished');
       // A step that wrote markup does not silence the steps after it.
       const stepTail = markup.flush();
-      const stepTailShown = stepTail ? writeTextChunk(res, requestId, modelId, stepTail) : null;
-      if (stepTailShown) assistantResponse += stepTailShown;
+      if (stepTail) writeAnswerText(stepTail);
       withheldEarlier += markup.take();
+      stepEnded = true;
       const step = chunk.usage;
       if (step) {
         const input = step.inputTokens ?? 0;
@@ -539,8 +511,7 @@ export async function runStream<TOOLS extends ToolSet>(
     } else if (chunk.type === 'finish') {
       // A tail held back in case it began a marker did not: it is plain text.
       const tail = markup.flush();
-      const tailShown = tail ? writeTextChunk(res, requestId, modelId, tail) : null;
-      if (tailShown) assistantResponse += tailShown;
+      if (tail) writeAnswerText(tail);
       log.v1.debug('Finish chunk received');
       sse.ensureHeaders();
       if (chunk.finishReason === 'error') {

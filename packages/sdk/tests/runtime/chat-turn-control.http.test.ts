@@ -75,6 +75,50 @@ describe('explicit Stop with the shared transport', () => {
     }
   });
 
+  it.each(['finishing', 'completed', 'failed'])(
+    'leaves a turn the server answers as %s to end on its own stream, and says when it has',
+    async (state) => {
+      const server = createServer((req, res) => {
+        req.resume();
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ turnId: req.url?.split('/').at(-2), state }));
+      });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Missing fixture address');
+      const baseURL = `http://127.0.0.1:${address.port}`;
+      const oxy = new OxyServices({ baseURL });
+      oxy.session.setAccessToken(token('A'));
+      const controller = new AbortController();
+      const turn = createChatTurnControl(
+        oxy.createLinkedClient({ baseURL }),
+        Promise.resolve({}),
+        'owned-conversation',
+        controller,
+      );
+      let ended = false;
+      void turn.ended.then(() => {
+        ended = true;
+      });
+      try {
+        await turn.stop();
+        // Past its commit point the turn was not stopped: cutting its stream here would settle a
+        // stored answer as cancelled.
+        expect(controller.signal.aborted).toBe(false);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(ended).toBe(false);
+        await turn.finish();
+        await turn.ended;
+        expect(ended).toBe(true);
+      } finally {
+        await turn.finish();
+        oxy.dispose();
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+  );
+
   it('does not deliver an old turn Stop under a newly selected account while its surface proof is pending', async () => {
     let deliveries = 0;
     const server = createServer((_req, res) => {

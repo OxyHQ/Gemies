@@ -397,7 +397,7 @@ const host: GemieRuntimeHost = {
   closeConversation: () => router.replace('/'),
   // what only the host can show: credits, an artifact panel, a haptic tick
   onUsage: (frame) => updateCredits(frame.credits_remaining),
-  onArtifact: (artifact) => rightPanel.show(artifact),
+  onArtifact: (artifact) => rightPanel.show(artifact), // a generated file or a canvas: deck, dashboard, chart…
   turnRequest: () => ({ webSearch: composerMenu.webSearch, deepResearch: composerMenu.deepResearch }),
   // where the work of a turn is read; return false to decline an automatic opening
   showThought: (opening) => (opening === 'automatic' && panel.isOpen ? false : panel.show('thought')),

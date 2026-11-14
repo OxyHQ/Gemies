@@ -52,6 +52,11 @@ export interface GemieTelegramBotAnswer {
     readonly messageId: string;
     readonly content: readonly GemieTurnContentPart[];
   };
+  /**
+   * The message's turn is still running in another attempt, which may have died with it: nothing is
+   * said now, and the integrations process tries the delivery again later instead of settling it.
+   */
+  readonly retryLater?: true;
 }
 
 /** `POST /telegram/bots/send` of the integrations process: the gemie writes first, in a chat of its bot. */

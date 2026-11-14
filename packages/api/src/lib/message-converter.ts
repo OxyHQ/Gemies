@@ -10,6 +10,7 @@
  *   - Tool name mapping (sanitized names for Google Gemini compatibility)
  */
 
+import { messageFailureOf } from '../domain/conversation.js';
 import type { ModelMessage } from 'ai';
 import { turnContentText } from '@gemies/server/internal';
 import type { ResolvedFiles } from './files/person-files.js';
@@ -38,6 +39,8 @@ type ChatContentPart = {
   text?: string;
   image_url?: { url: string };
   file?: FilePartRef;
+  /** A gemie's typed failure (`domain/conversation.ts`). */
+  code?: string;
 };
 
 /** Minimal type for OpenAI-format chat messages from request body */
@@ -199,7 +202,7 @@ export function convertToAISDKMessages(
       } else {
         result.push({
           role: 'assistant',
-          content: msg.content || '',
+          content: assistantContent(msg.content),
         });
       }
     } else if (msg.role === 'tool') {
@@ -291,4 +294,18 @@ export function priorToolCallsOf(
     }
   }
   return calls;
+}
+
+/**
+ * An assistant message as the model reads it. A run's typed failure (`domain/conversation.ts`) is
+ * said as what it means: the model refuses a part type it does not know, and with it the next turn
+ * of the conversation. Every other part is the model's as it was.
+ */
+function assistantContent(content: ChatMessage['content']): ChatMessage['content'] {
+  if (!Array.isArray(content)) return content || '';
+  return content.map((part) =>
+    messageFailureOf([part])
+      ? { type: 'text', text: '(The task the person asked for could not be finished.)' }
+      : part,
+  );
 }

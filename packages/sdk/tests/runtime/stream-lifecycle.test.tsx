@@ -240,7 +240,7 @@ describe('the assistant message’s lifecycle stamp', () => {
     harness.deferCancel = true;
 
     act(() => {
-      api.stop();
+      void api.stop();
     });
     expect(api.composerPhase).toBe('stopping');
 

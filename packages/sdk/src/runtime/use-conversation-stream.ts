@@ -3,6 +3,7 @@ import { ASK_USER_QUESTION_TOOL } from '../tools';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { canvasResultOf } from '../lib/canvas-result';
 import { useLabels } from '../lib/labels';
 import { useGemieApi } from './api';
 import { useAppAssertionHeaders } from './app-assertion';
@@ -104,14 +105,31 @@ interface StreamErrorResponse {
 }
 
 /**
- * The artifact a tool result carries, if it carries one: a generated file, or
- * an `artifact` object a tool returned for its own panel.
+ * The artifact a tool result carries, if it carries one: a generated file, a
+ * canvas (a deck, a dashboard, a chart…), or an `artifact` object a tool
+ * returned for its own panel. A canvas is read by `canvasResultOf`, the reader
+ * the thread draws it with, so the host opens exactly what the thread shows.
  */
 function artifactOf(
   toolCallId: string,
   name: string | undefined,
   output: unknown,
 ): GemieArtifact | null {
+  const canvas = canvasResultOf({
+    toolCallId,
+    toolName: name ?? '',
+    state: 'result',
+    result: output,
+  });
+  if (canvas) {
+    return {
+      id: toolCallId,
+      type: canvas.type,
+      content: canvas.data,
+      title: canvas.title,
+      timestamp: Date.now(),
+    };
+  }
   if (output === null || typeof output !== 'object') return null;
   // Structural per-tool output, read the way the tools write it.
   const result = output as Record<string, any>;
@@ -1591,12 +1609,20 @@ export function useConversationStream({
     setComposerPhase('idle');
   }, [setComposerPhase]);
 
-  const stop = useCallback(() => {
+  /**
+   * Stop the running turn, and settle once it has really ended: `true` when its stream is over
+   * (cancelled, or — when the server answered that it had already finished — completed and
+   * stored), `false` when the server could not stop it, which is surfaced as the stream's error
+   * and leaves the turn running. With no turn running there is nothing to wait for.
+   */
+  const stop = useCallback(async (): Promise<boolean> => {
     const turn = turnControlRef.current;
     const turnGeneration = turnGenerationRef.current;
-    if (!turn) return;
+    if (!turn) return true;
     setComposerPhase('stopping');
-    void turn.stop().catch((error: unknown) => {
+    try {
+      await turn.stop();
+    } catch (error: unknown) {
       if (
         turnControlRef.current === turn &&
         turnGenerationRef.current === turnGeneration &&
@@ -1605,7 +1631,10 @@ export function useConversationStream({
         setError(error instanceof Error ? error : new Error('Generation could not be stopped.'));
         setComposerPhase('streaming');
       }
-    });
+      return false;
+    }
+    await turn.ended;
+    return true;
   }, [setComposerPhase]);
 
   const clearError = useCallback(() => {

@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ShellPageHeader } from '@/shared/ui/page-chrome';
 import { UsageLimitDialog } from '@/features/billing/ui/usage-limit-dialog';
 import { useStore } from '@/features/chat/runtime/global-store';
+import { useUIStore } from '@/features/chat/runtime/ui-store';
 import { useOpenAgentEditor } from '@/features/chat/runtime/use-open-agent-editor';
 import { useModelStore } from '@/features/chat/runtime/model-store';
 import { useAppVoiceOptions } from '@/features/chat/runtime/use-app-voice-options';
@@ -107,6 +108,8 @@ export const ConversationScreen = ({
     useStore
       .getState()
       .setChatId(conversationId === undefined ? null : { id: conversationId, from: 'url' });
+    // Its canvas is its own: what was written in another conversation is not in this one's panel.
+    useUIStore.getState().showConversation(conversationId ?? null);
   }, [conversationId]);
   // A fresh chat starts saved: ghost mode is a choice made for the conversation about to begin.
   useEffect(() => {
@@ -224,7 +227,19 @@ export const ConversationScreen = ({
         ),
       };
     },
-    [title, t, projectName, conversationId, agentName, agentId, thread, ephemeral, openAgent],
+    [
+      title,
+      t,
+      projectName,
+      conversationId,
+      loading,
+      agentName,
+      agentId,
+      group,
+      thread,
+      ephemeral,
+      openAgent,
+    ],
   );
 
   const agent = useMemo(() => (agentId === undefined ? undefined : { id: agentId }), [agentId]);

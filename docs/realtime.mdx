@@ -47,7 +47,7 @@ socket event by name.
 
 | `type` | `data` | Published by |
 | --- | --- | --- |
-| `conversation` | `{ conversation, thread, appended?, reload? }`: the sidebar row (`lib/chat/conversation-summary.ts`, the same projection `GET /conversations` answers), the unread total of its gemie's thread, the messages it gained (as `GET /conversations/:id` returns them) or `reload` when the thread was rewritten | every conversation writer, after its commit: `lib/realtime/conversations.ts` |
+| `conversation` | `{ conversation, thread, appended?, reload? }`: the sidebar row (`lib/chat/conversation-summary.ts`, the same projection `GET /conversations` answers), the unread total of its gemie's thread, the messages it gained (as `GET /conversations/:id` returns them, through `lib/chat/client-message.ts`) or `reload` when the thread was rewritten | every conversation writer, after its commit: `lib/realtime/conversations.ts` |
 | `conversation.deleted` | `{ conversationId, thread? }` | `DELETE /conversations/:id`, a space's deletion |
 | `message.reaction` | `{ conversationId, messageId, reactions, revision, mutationId }` | the reaction mutation |
 | `gemies` | `{ agentId, change }` | creating, editing (name, look, colour, status) or deleting a gemie |

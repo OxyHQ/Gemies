@@ -80,7 +80,10 @@ refused with `credential-not-supported` (third parties are a later decision).
 
 ### Opening, in order
 
-`lib/voice/call.ts` (`VoiceCall.open`):
+`lib/voice/call.ts` (`VoiceCall.open`). **Never in a group** (ADR 0025): a call has one
+gemie and a group's turns are its members', so a call there would answer as Alia and
+write her transcript into their conversation. It is refused first, as `agent-unavailable`,
+and `GemieChatContent` offers no call there. Then:
 
 1. The turn's inputs from the identity — memory, Oxy profile, entitlements and the
    agent — through `prefetchTurnInputs` (`lib/chat/turn-inputs.ts`), the same reads

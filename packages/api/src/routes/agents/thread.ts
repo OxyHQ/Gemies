@@ -52,10 +52,10 @@ import {
   listThreadPage,
   listThreadWindow,
   searchThread,
-  toStoredMessage,
   type ThreadMessageRow,
 } from '../../db/chat/messageRepository.js';
 import { loadThreadAgent, loadTurnAgent } from '../../lib/agent-account.js';
+import { toClientMessage } from '../../lib/chat/client-message.js';
 import { appSurfaceOf } from '../../lib/app-surface.js';
 import { findGemieThread, openGemieThread } from '../../lib/gemie-thread.js';
 import { authenticateToken } from '../../middleware/auth.js';
@@ -130,18 +130,23 @@ function clamp(raw: unknown, fallback: number, max: number): number {
 }
 
 /**
- * A message as a thread page carries it.
+ * A message as a thread page carries it: the client message (`lib/chat/client-message.ts`), none
+ * for a row that is not a message of the conversation.
  *
  * `conversationId` is what a client draws the seam from — where it changes, a
  * new stretch began — and `cursor` is the anchor for that exact message, which
  * is what makes a search hit jumpable.
  */
-function toThreadMessage(row: ThreadMessageRow) {
-  return {
-    ...toStoredMessage(row),
-    conversationId: row.threadConversationId,
-    cursor: encodeThreadCursor({ at: row.createdAt, id: row.id }),
-  };
+function toThreadMessages(row: ThreadMessageRow) {
+  const message = toClientMessage(row);
+  if (message === null) return [];
+  return [
+    {
+      ...message,
+      conversationId: row.threadConversationId,
+      cursor: encodeThreadCursor({ at: row.createdAt, id: row.id }),
+    },
+  ];
 }
 
 /**
@@ -251,7 +256,7 @@ const threadMessages = (load: ThreadGemieLoader) => async (req: Request, res: Re
 
     const oldest = page.messages[0];
     res.json({
-      messages: page.messages.map(toThreadMessage),
+      messages: page.messages.flatMap(toThreadMessages),
       nextCursor:
         page.hasMore && oldest !== undefined
           ? encodeThreadCursor({ at: oldest.createdAt, id: oldest.id })

@@ -74,6 +74,8 @@ import { log } from '../logger.js';
 import { getErrorMessage } from '../errors/index.js';
 import { servedModelId, servedReferenceOf } from '../models/power-levels.js';
 import { isExternalAgent, runExternalAgentTurn } from '../external-agents/turn.js';
+import type { ToolInvocation } from '../../domain/conversation.js';
+import { CANVAS_TOOL } from './canvas.js';
 
 /**
  * Bounded so a consultation fits inside the outer request's own limit
@@ -129,6 +131,12 @@ export interface AgentTurnResult {
   error?: string;
   /** Set when the callee's feature gate refused one of the outer turn's attachments. */
   refusal?: FeatureRefusal;
+  /**
+   * The canvas artifacts the turn drew, as its finished `canvas` invocations, in call order: the
+   * part of its work that outlives it beside its words, kept on the agent's own message
+   * (`consult-agent.ts`) so a reload and a share show them as they show a lead's.
+   */
+  canvas?: ToolInvocation[];
 }
 
 /** The person the nested turn is for, exactly as the outer turn holds them. */
@@ -140,6 +148,11 @@ export interface AgentTurnPerson {
   taskId?: string;
   /** The app the person is in, by its verified app assertion (ADR 0021), or `null`. */
   surfaceApplicationId: string | null;
+  /**
+   * The person turned personalization off for the outer turn: the nested one reads none of their
+   * memory either (the `memory` family is denied), as the outer turn reads none.
+   */
+  personalization?: false;
 }
 
 /** One earlier message of the conversation a turn answers. */
@@ -222,7 +235,7 @@ export async function runAgentTurn(input: {
         agentName: agentPromptName(agent),
       })}\n\n---\n\n${agentRemitPrompt(agent)}${await agentSpacePrompt(agent)}`;
   const observationMemory =
-    input.observation && agent.memoryStore === 'gemie'
+    input.observation && agent.memoryStore === 'gemie' && person.personalization !== false
       ? await (await import('../agent/agent-memory-runtime.js')).agentMemoryPromptSection(
           person.oxyUserId,
           agent._id,
@@ -260,6 +273,7 @@ export async function runAgentTurn(input: {
         actsForPerson: true,
         requesterAccountId: person.oxyUserId,
         surfaceApplicationId: person.surfaceApplicationId,
+        ...(person.personalization === false ? { personalization: false } : {}),
         nested: true,
         inputLimits: resolved.catalogue,
         toolsEnabled: true,
@@ -360,6 +374,8 @@ export async function runAgentTurn(input: {
     });
 
     let response = '';
+    const canvas: ToolInvocation[] = [];
+    const canvasArgs = new Map<string, unknown>();
     const say = (text: string) => {
       response += text;
       observe(() => observer?.onTextDelta?.(text));
@@ -368,6 +384,7 @@ export async function runAgentTurn(input: {
       if (part.type === 'text-delta' && part.text) {
         say(part.text);
       } else if (part.type === 'tool-call') {
+        if (nameOf(part.toolName) === CANVAS_TOOL) canvasArgs.set(part.toolCallId, part.input);
         observe(() =>
           observer?.onToolCall?.({
             toolCallId: part.toolCallId,
@@ -376,6 +393,15 @@ export async function runAgentTurn(input: {
           }),
         );
       } else if (part.type === 'tool-result') {
+        if (nameOf(part.toolName) === CANVAS_TOOL) {
+          canvas.push({
+            toolCallId: part.toolCallId,
+            toolName: CANVAS_TOOL,
+            state: 'result',
+            args: canvasArgs.get(part.toolCallId),
+            result: part.output,
+          });
+        }
         observe(() =>
           observer?.onToolResult?.({
             toolCallId: part.toolCallId,
@@ -441,7 +467,7 @@ export async function runAgentTurn(input: {
       );
     }
 
-    return { response, tokensUsed, creditsCharged };
+    return { response, tokensUsed, creditsCharged, ...(canvas.length > 0 ? { canvas } : {}) };
   } catch (error: unknown) {
     log.general.error(
       input.observation ? { agentId: agent._id } : { err: error, agentId: agent._id },

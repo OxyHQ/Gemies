@@ -25,7 +25,7 @@ import { AliaError, AliaErrorCode } from '../../lib/errors/error-codes.js';
 import { SSEWriter } from '../../lib/chat/sse-writer.js';
 import { buildChatRequestContext } from '../../lib/chat/request-context.js';
 import { ASK_USER_QUESTION_TOOL } from '../../lib/tools/ask-user-question.js';
-import type { AgentMessage } from '../../lib/chat/stream-runner.js';
+import type { AgentMessage } from '../../domain/conversation.js';
 import { runProviderLoop, type ChatLoopState } from '../../lib/chat/provider-loop.js';
 import {
   chatTurnControl,
@@ -454,6 +454,8 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
     const sseEmitter = createResponseSSEEmitter(res, sse.ensureHeaders);
     // The turn's attachments: a consulted agent's gates apply to them (`lib/tools/agent-turn.ts`).
     const consultAttachments = ctx.featureUses.filter((use) => isAttachmentFeature(use.feature));
+    // The consulted agents' answers, which `consultAgent` appends and the turn saves.
+    const agentMessages: AgentMessage[] = [];
     let assembled: Awaited<ReturnType<typeof ToolPipeline.forUser>>;
     try {
       assembled = req.machineCredential
@@ -482,6 +484,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
               : {}),
             personalization,
             attachments: consultAttachments,
+            consultAnswers: agentMessages,
             sseEmitter,
             webSearch,
             mcpServerId,
@@ -522,8 +525,6 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       appCatalogPrompt,
       activeToolNames,
     } = assembled;
-
-    const agentMessages: AgentMessage[] = [];
 
     // Log tool schemas for debugging
     if (Array.isArray(body.tools) && body.tools.length > 0) {

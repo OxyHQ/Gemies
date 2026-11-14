@@ -1,4 +1,4 @@
-import { parseReaction } from '../domain/message-reactions.js';
+import { parseHeldReaction, parseReaction } from '../domain/message-reactions.js';
 import { ReactionMutationConflict } from '../db/chat/reactionRepository.js';
 import { applyConversationReaction } from '../lib/chat/reactions/mutation.js';
 import { publishConversationReaction } from '../lib/chat/reactions/bus.js';
@@ -31,7 +31,6 @@ import {
   deleteMessages,
   listMessages,
   replaceMessages,
-  toStoredMessage,
   voteMessage,
   type MessageRow,
   type NewMessage,
@@ -41,6 +40,7 @@ import {
   shareConversation,
 } from '../db/chat/conversationShareRepository.js';
 import { keepAgentOutreach } from '../lib/conversation-saver.js';
+import { toClientMessages } from '../lib/chat/client-message.js';
 import {
   CONVERSATION_SOURCES,
   MESSAGE_ROLES,
@@ -486,7 +486,7 @@ router.get('/:id', authenticateTokenOrApiKey, async (req: Request, res: Response
 
     res.json({
       ...summary,
-      messages: rows.map(toStoredMessage),
+      messages: toClientMessages(rows),
       realtimeSeq,
     });
   } catch (error: unknown) {
@@ -582,17 +582,21 @@ router.post(
       if (!req.user?.id) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
-      const emoji = parseReaction(req.body?.emoji);
       if (req.serviceApp || req.machineCredential) {
         return res.status(403).json({ error: 'A person session is required to react' });
-      }
-      if (emoji === null) {
-        return res.status(400).json({ error: 'emoji must be a single emoji' });
       }
       const mutation = z
         .object({ active: z.boolean().optional(), mutationId: z.string().uuid().optional() })
         .safeParse(req.body);
       if (!mutation.success) return res.status(400).json({ error: 'Invalid reaction mutation' });
+      // Adding is one emoji; taking one back also takes what was stored before that rule.
+      const emoji =
+        mutation.data.active === false
+          ? parseHeldReaction(req.body?.emoji)
+          : parseReaction(req.body?.emoji);
+      if (emoji === null) {
+        return res.status(400).json({ error: 'emoji must be a single emoji' });
+      }
       const limit = await checkWindowLimit(`rl:reactions:${req.user.id}`, 60, {
         onUnavailable: 'local',
       });
@@ -683,8 +687,13 @@ router.patch(
  * outside the guard it could not reach somebody else's rows.
  *
  * A stream still writing into this thread is NOT this route's concern: the
- * client stops it before asking, and a turn that lands after the clear is a
- * new turn in an empty thread, which is what a person who kept typing wanted.
+ * client stops it and waits for it to END before asking (`clearConversation`
+ * in the SDK). Stop alone is not enough — a turn past its finalization CAS
+ * answers `finishing` and stores its question and answer as it ends — but a
+ * cancelled turn never stores anything and a finished one is stored by the
+ * time its stream closes, so the clear that follows removes all of it. A turn
+ * that starts after the clear is a new turn in an empty thread, which is what
+ * a person who kept typing wanted.
  *
  * ## The clips spoken from it go first
  *

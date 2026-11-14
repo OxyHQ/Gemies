@@ -5,6 +5,7 @@ import {
   ProductCreditAuthorityUnavailableError,
   productCreditSnapshotOrNone,
   readConfiguredProductCreditSnapshot,
+  readConfiguredProductCreditSnapshotForService,
 } from '../product-credit-access';
 /**
  * Pre-flight assembly for /v1/chat/completions: body validation, the parallel
@@ -440,7 +441,9 @@ export async function buildChatRequestContext(
   // Verified channel binding supplies local identity, never a direct session.
   const localAccountId = req.user?.id ?? req.channelContext?.accountId;
   let autonomyRuntime: AutonomyRuntimeContext | null = null;
-  if (localAccountId) {
+  // What was learned about the person ("Priority learnings") is about them: a turn with
+  // personalization off reads none of it, as it reads no memory.
+  if (localAccountId && personalization) {
     autonomyRuntime = await runAutonomyBeforeChat({
       userId: localAccountId,
       messages,
@@ -843,9 +846,13 @@ export async function buildChatRequestContext(
     reasoningEffort = body.reasoningEffort;
   }
 
-  // Extract client context from first system message if present (from editor/client)
+  // What the client says about where the turn happens: its `clientContext` (a channel's, an
+  // embedding app's), or the first system message of an OpenAI-shaped request. Context of the
+  // turn, never a message of the conversation: the saver stores neither.
   let clientContext: string | undefined;
-  if (messages.length > 0 && messages[0].role === 'system') {
+  if (typeof body.clientContext === 'string' && body.clientContext.trim() !== '') {
+    clientContext = body.clientContext;
+  } else if (messages.length > 0 && messages[0].role === 'system') {
     clientContext = messages[0].content as string;
   }
 
@@ -861,6 +868,15 @@ export async function buildChatRequestContext(
   const preStreamStart = Date.now();
 
   const creditAccountId = localAccountId;
+  /**
+   * Whether this turn is paid from a local account's credits: a person's own session, or a
+   * verified channel turn (a gemie bot's person, a connected account, a linked system bot), whose
+   * request the integrations workload carries. A channel turn used to be read as a service call,
+   * reserving nothing and refused nothing, so it ran hosted inference unmetered whatever the
+   * balance. A delegated service request is paid where its delegation is.
+   */
+  const paidHere =
+    creditAccountId !== undefined && (!req.serviceApp || req.channelContext !== undefined);
   /**
    * The person's memory, profile, entitlements and the turn's agent are the
    * turn's INPUTS, read from an identity by `lib/chat/turn-inputs.ts` — the
@@ -931,7 +947,7 @@ export async function buildChatRequestContext(
    * rejects itself (its own catch turns a fault into `error: true`).
    */
   const reserve = admission.then((admitted) =>
-    admitted.ok && creditAccountId !== undefined && !req.serviceApp && localRuntime === null
+    admitted.ok && creditAccountId !== undefined && paidHere && localRuntime === null
       ? (async () => {
           signal?.throwIfAborted();
           await getOrCreateUserCredits(creditAccountId);
@@ -941,12 +957,19 @@ export async function buildChatRequestContext(
           // the balance still bounds it.
           // An account Oxy says holds no grant keeps legacy funding; an Oxy that
           // cannot answer is NOT that, and refuses the turn below (503).
-          const productCreditSnapshot =
+          // The person's own session reads their grants with their bearer; a channel turn has
+          // none (the integrations workload carries it), so its account's grants are read as a
+          // service, as background work reads them. Without them it could spend only the legacy
+          // balance, and was refused with a subscription allowance left.
+          const readSnapshot =
             req.user?.id === creditAccountId && req.accessToken
-              ? await productCreditSnapshotOrNone(() =>
-                  readConfiguredProductCreditSnapshot(creditAccountId, req.accessToken),
-                )
-              : undefined;
+              ? () => readConfiguredProductCreditSnapshot(creditAccountId, req.accessToken)
+              : req.channelContext !== undefined
+                ? () => readConfiguredProductCreditSnapshotForService(creditAccountId)
+                : undefined;
+          const productCreditSnapshot = readSnapshot
+            ? await productCreditSnapshotOrNone(readSnapshot)
+            : undefined;
           const window = await usageWindowFor(
             creditAccountId,
             productCreditPlanId(productCreditSnapshot, creditAccountId),
@@ -967,9 +990,8 @@ export async function buildChatRequestContext(
             aliaRequestId,
             productCreditSnapshot,
           });
-          if (reservation?.productAllocationId)
-            reservation.refreshProductCreditSnapshot = () =>
-              readConfiguredProductCreditSnapshot(creditAccountId, req.accessToken);
+          if (reservation?.productAllocationId && readSnapshot)
+            reservation.refreshProductCreditSnapshot = readSnapshot;
           return { reservation, error: false as const, window: null, authorityUnavailable: false };
         })().catch((error) => {
           if (error instanceof ProductCreditAuthorityUnavailableError) {
@@ -1084,13 +1106,7 @@ export async function buildChatRequestContext(
       return null;
     }
 
-    if (
-      req.user &&
-      !req.serviceApp &&
-      !creditReservation &&
-      !creditResult.error &&
-      localRuntime === null
-    ) {
+    if (paidHere && !creditReservation && !creditResult.error && localRuntime === null) {
       clearTimeout(globalTimer);
       const creditError = {
         message: "You've run out of credits. Add more or upgrade your plan to continue.",

@@ -1,5 +1,36 @@
 # @gemies/sdk
 
+## 6.5.0
+
+- **A scheduled reply or task that ended without an answer reads as one.** The server stores it as
+  a typed failure (`{ type: 'failure', code: 'task_unfinished' }` in the message's content), and
+  the thread draws "%{name} couldn't finish this task." in the reader's language (`chat.taskUnfinished`),
+  never the run's own status line ("Token budget exhausted…").
+
+## 6.4.0
+
+- **Stop no longer cancels an answer that had already finished.** The stop endpoint answers
+  `finishing` or `completed` when the turn was past its commit point; Stop cut the stream on any
+  `2xx`, so a stored answer settled as `cancelled` and kept `unsaved`. Now only `cancelled` cuts it;
+  any other answer lets the stream reach its own end, completed.
+- **Clearing a conversation waits for its running turn to end.** `useConversationStream().stop()`
+  now returns `Promise<boolean>`: `true` once the turn's stream is over, `false` when the server
+  could not stop it (the error is surfaced, as before). `clearConversation` awaits it before the
+  server clear, and refuses (keeping everything) when the turn could not be stopped, so a turn that
+  was finishing can no longer save its question and answer back into the cleared thread.
+  `GemieChatTurnControl` gains `ended`, which settles when `finish()` has run.
+- **Decks, dashboards and every other canvas open in the host.** `host.onArtifact` now receives
+  each finished `canvas` result as a `GemieArtifact` (`type` the canvas type, `content` its data,
+  `id` the tool call), read by `canvasResultOf` like the thread. A refused canvas (`{ error }`)
+  opens nothing.
+
+## 6.3.1
+
+- **A turn's attachments keep the order they were sent in** (`TurnAttachments`): a document sent
+  between two photos is drawn between them. Pictures next to each other still share a row.
+- **No voice call in a group**: `GemieChatContent` offers none when `group` is set. A call has one
+  gemie and a group's turns are its members'; the API refuses one there too.
+
 ## 6.3.0
 
 - **A turn's attachments are drawn as media** (`TurnAttachments`, used by every user turn in the

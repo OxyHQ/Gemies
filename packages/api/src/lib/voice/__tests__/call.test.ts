@@ -192,6 +192,15 @@ describe('opening', () => {
     expect(missing.server.sessions).toHaveLength(0);
   });
 
+  it('refuses a group conversation: its turns are its members’, never Alia’s by default', async () => {
+    const h = harness();
+    await h.call.open({ ...START, conversationId: 'group-1' });
+    expect(h.sink.find('error')[0]?.code).toBe('agent-unavailable');
+    expect(h.reserve).not.toHaveBeenCalled();
+    expect(h.startCall).not.toHaveBeenCalled();
+    expect(h.server.sessions).toHaveLength(0);
+  });
+
   it('is realtime-unavailable without a Kaana client, or with no model that can hold the call', async () => {
     const none = harness({ noKaana: true });
     await none.call.open(START);

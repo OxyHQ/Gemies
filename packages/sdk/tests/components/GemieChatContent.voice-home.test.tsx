@@ -36,6 +36,8 @@ vi.mock('../../src/lib/agent-character', () => ({ readAgentCharacter: (value: un
 vi.mock('../../src/lib/alia-character', () => ({ ALIA_AVATAR: { preset: 'alia' } }));
 vi.mock('../../src/components/GemieParticipants', () => ({
   useParticipants: ({ lead }: { lead: unknown }) => ({ lead, joined: [] }),
+  groupParticipants: (group: unknown[]) => ({ lead: group[0], joined: group.slice(1) }),
+  groupFirstSend: () => [],
 }));
 vi.mock('../../src/runtime/agents', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -240,6 +242,14 @@ describe('the voice call of the conversation view', () => {
     await press();
 
     expect(world.created).toEqual([{ agentId: 'agent-1' }]);
+  });
+
+  it('is not offered in a group: a call has one gemie, and a group’s turns are its members’', async () => {
+    const member = (id: string) => ({ id, name: id, character: { preset: id } as never });
+    mount({ conversationId: 'g1', group: [member('ada'), member('ben')] });
+    await press();
+
+    expect(world.call).toBeNull();
   });
 
   it('does not open when the conversation could not be made', async () => {

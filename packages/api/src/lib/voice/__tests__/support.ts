@@ -162,6 +162,8 @@ export function harness(options: HarnessOptions = {}) {
     startCall: startCall as unknown as VoiceCallEnvironment['startCall'],
     finishCall,
     loadHistory: async () => history,
+    groupMembers: async (_oxyUserId, conversationId) =>
+      conversationId.startsWith('group-') ? ['gemie-a', 'gemie-b'] : [],
     buildTurn: async (input) => {
       turnInputs.push(input);
       return {

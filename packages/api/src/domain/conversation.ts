@@ -10,8 +10,20 @@
  * whitelist in `routes/conversations.ts` that admits them.
  */
 
-export const MESSAGE_ROLES = ['user', 'assistant', 'system'] as const;
+/**
+ * Who said a message of a conversation: its person, or its gemie. Nothing else is a message of a
+ * conversation, and `messages_role_check` holds the table to it. A system message is the prompt of
+ * a turn (a channel's, an embedding app's context): the saver stored it once, as the first message
+ * of a gemie bot's Telegram chat, and every client was served it (2026-11-14; migration 0172 removed
+ * those rows, 0173 narrowed the check).
+ */
+export const MESSAGE_ROLES = ['user', 'assistant'] as const;
 export type MessageRole = (typeof MESSAGE_ROLES)[number];
+
+/** Whether a role is one a conversation's message has. */
+export function isMessageRole(role: unknown): role is MessageRole {
+  return (MESSAGE_ROLES as readonly unknown[]).includes(role);
+}
 export const MESSAGE_VOTES = ['up', 'down'] as const;
 export type MessageVote = (typeof MESSAGE_VOTES)[number];
 /**
@@ -115,10 +127,50 @@ export interface AgentInfo {
   handle: string;
 }
 
+/**
+ * Another agent's answer within a turn (a consultation), stored as that agent's own message: its
+ * words, who spoke, and the tool calls of its work that outlive the turn (the canvas artifacts it
+ * drew, `lib/tools/agent-turn.ts`).
+ */
+export interface AgentMessage {
+  role: 'assistant';
+  content: string;
+  agentInfo: AgentInfo;
+  toolInvocations?: ToolInvocation[];
+}
+
 /** One element of a multi-part message body. The shape is the AI SDK's. */
 export interface MessageContentPart {
   type: string;
   [key: string]: unknown;
+}
+
+/**
+ * Why a gemie's own message carries no words: a run the person asked for (a scheduled reply, a
+ * task) that ended without an answer. Stored as one `failure` part, `{ type: 'failure', code }`,
+ * which the app draws in the reader's language like a failed turn (`@gemies/sdk` `ThreadRow`),
+ * and never as the run's own status line ("Token budget exhausted…", delivered to a person on
+ * 2026-11-14).
+ */
+export const MESSAGE_FAILURE_CODES = ['task_unfinished'] as const;
+export type MessageFailureCode = (typeof MESSAGE_FAILURE_CODES)[number];
+
+export interface MessageFailurePart {
+  type: 'failure';
+  code: MessageFailureCode;
+}
+
+/** The failure a message is, when it is one. */
+export function messageFailureOf(content: unknown): MessageFailurePart | null {
+  if (!Array.isArray(content)) return null;
+  const part = content.find(
+    (entry): entry is MessageFailurePart =>
+      entry !== null &&
+      typeof entry === 'object' &&
+      (entry as { type?: unknown }).type === 'failure' &&
+      (MESSAGE_FAILURE_CODES as readonly unknown[]).includes((entry as { code?: unknown }).code),
+  );
+  return part ?? null;
 }
 
 /**
@@ -160,6 +212,17 @@ export function isAgentWrittenMessageId(id: string | null | undefined): boolean 
     isAgentOutreachMessageId(id) ||
     (typeof id === 'string' && id.startsWith(GROUP_REPLY_MESSAGE_ID_PREFIX))
   );
+}
+
+/**
+ * The id a channel turn's reply is stored under: its message's, marked. A channel keeps the person's
+ * message the moment it arrives (`telegram:<chat>:<message>`), so whether that message was answered
+ * is whether this id is stored — never what the conversation happens to end with, since the next
+ * message may already have arrived after it. Too long to store, it is none, and the reply is named
+ * by position.
+ */
+export function channelReplyMessageId(messageId: string): string | undefined {
+  return usableMessageId(`reply:${messageId}`);
 }
 
 /**

@@ -34,7 +34,14 @@ An early Stop records a tombstone, preventing later admission of that turn.
 Duplicate Stops are idempotent; a different authority or initial conversation
 gets 404. A duplicate admission gets 409 and cannot start another provider call.
 After the finalization CAS, Stop returns `finishing` or the terminal state: it
-cannot undo an answer already committed. The SDK never sends an old turn's Stop
+cannot undo an answer already committed. Both SDKs read that answer and close the
+stream only on `cancelled`; on `finishing`, `completed` or `failed` the stream
+runs to its own end, so a stored answer settles as completed, not as cancelled.
+The UI runtime's `stop()` settles once the turn's stream is over, and clearing a
+conversation waits for it before deleting: a cancelled turn is never stored (it
+lost the CAS) and a finishing one has been stored by the time its stream ends, so
+nothing the clear removed is saved back afterwards. `GemieChatTurnControl.ended`
+gives hosts with their own Stop the same signal. The SDK never sends an old turn's Stop
 under a newly selected account, including while preparing its surface proof.
 
 ## Execution and recovery

@@ -99,6 +99,28 @@ it('a refused Stop remains retryable and never claims remote cancellation', asyn
   await turn.finish();
 });
 
+it.each(['finishing', 'completed', 'failed'])(
+  'leaves a generation the server answers as %s to end on its own stream',
+  async (state) => {
+    const baseUrl = await listen(
+      createServer((req, res) => {
+        req.resume();
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ turnId: req.url?.split('/').at(-2), state }));
+      }),
+    );
+    const controller = new AbortController();
+    const turn = createGemieTurnControl(new GemieServerClient({ baseUrl }), {
+      controller,
+      lifetimeSignal: new AbortController().signal,
+    });
+    await turn.stop();
+    // Past its commit point the answer is being stored: detaching would report it as cancelled.
+    expect(controller.signal.aborted).toBe(false);
+    await turn.finish();
+  },
+);
+
 it('detach/account change before dispatch never sends Stop under another identity', async () => {
   let calls = 0;
   const baseUrl = await listen(

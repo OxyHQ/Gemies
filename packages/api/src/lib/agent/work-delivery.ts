@@ -3,7 +3,9 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { getDb } from '../../db/index.js';
 import { agentWorkItems } from '../../db/schema/agent-work.js';
 import { findAgentSessionById } from '../../db/agents/agentSessionRepository.js';
-import { postAgentMessage } from './agent-outreach.js';
+import { listMessages } from '../../db/chat/messageRepository.js';
+import type { PriorToolCall } from '../tool-budget.js';
+import { postAgentMessage, runResultMessage } from './agent-outreach.js';
 import { log } from '../logger.js';
 
 export async function requestedAgentWork(workId: string | null | undefined): Promise<boolean> {
@@ -13,6 +15,34 @@ export async function requestedAgentWork(workId: string | null | undefined): Pro
     .from(agentWorkItems)
     .where(eq(agentWorkItems.id, workId));
   return work?.mode === 'requested';
+}
+
+/**
+ * The tool calls of the conversation a requested reply returns to, oldest first: what the tool
+ * budget keeps loaded (`priorToolCalls`, `lib/tool-budget.ts`), exactly as on that conversation's
+ * next chat turn. A follow-up asked for in a chat that read Inbox starts with Inbox's tools,
+ * instead of a step (a whole request: system prompt and tools) spent on `loadTools`.
+ */
+export async function requestedWorkPriorToolCalls(
+  workId: string | null | undefined,
+): Promise<PriorToolCall[]> {
+  if (!workId) return [];
+  const db = getDb();
+  const [work] = await db.select().from(agentWorkItems).where(eq(agentWorkItems.id, workId));
+  if (work?.deliveryMode !== 'requested' || !work.sourceSessionId) return [];
+  const source = await findAgentSessionById(db, work.sourceSessionId);
+  if (!source?.conversationId) return [];
+  const rows = await listMessages(db, work.ownerAccountId, source.conversationId);
+  return rows.flatMap((row) =>
+    Array.isArray(row.toolInvocations)
+      ? row.toolInvocations.flatMap((call: unknown) => {
+          const named = call as { toolName?: unknown; args?: unknown };
+          return typeof named?.toolName === 'string'
+            ? [{ toolName: named.toolName, args: named.args }]
+            : [];
+        })
+      : [],
+  );
 }
 
 export async function deliverAgentWorkResult(workId: string): Promise<void> {
@@ -26,18 +56,13 @@ export async function deliverAgentWorkResult(workId: string): Promise<void> {
   const source = work.sourceSessionId ? await findAgentSessionById(db, work.sourceSessionId) : null;
   const conversationId = session?.conversationId ?? source?.conversationId;
   if (!conversationId) throw new Error('Requested agent work has no originating conversation');
-  const result = session?.result?.trim();
-  const content =
-    status === 'completed' && result
-      ? result
-      : `I couldn't finish the scheduled task. ${result || 'Please check the task status and try again.'}`;
   const outcome = await postAgentMessage({
     oxyUserId: work.ownerAccountId,
     agentId: work.agentId,
     conversationId,
     kind: 'result',
     idempotencyKey: `work-result:${work.id}`,
-    content,
+    ...runResultMessage({ status, result: session?.result, task: work.objective }),
   });
   if (!outcome.posted) {
     if (outcome.reason === 'conversation_not_found' || outcome.reason === 'agent_not_found') {

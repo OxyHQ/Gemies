@@ -124,6 +124,12 @@ export interface ToolSynthesisParams {
   relay: ReturnType<typeof createReasoningRelay>;
   /** Called with each piece of answer text as it is written to the client. */
   onText(shown: string): void;
+  /**
+   * Writes a piece of answer text to the client and answers what it wrote; the plain text chunk
+   * when absent. The turn's own writer, so the answer joins the words before it as one reply
+   * (`stream-runner.ts`).
+   */
+  write?(text: string): string | null;
   /** Replaces the turn's own `onFinish`, for a caller that bills this pass itself. */
   // biome-ignore lint/suspicious/noExplicitAny: the AI SDK's finish payload, forwarded as is
   onFinish?: (result: any) => void;
@@ -135,6 +141,7 @@ export interface ToolSynthesisParams {
  */
 export async function streamToolSynthesis(params: ToolSynthesisParams): Promise<void> {
   const { res, requestId, modelId, baseConfig, completed, relay, onText, onFinish } = params;
+  const write = params.write ?? ((text: string) => writeTextChunk(res, requestId, modelId, text));
 
   const synthesis = streamText({
     ...owedAnswerRequest(baseConfig, [...baseConfig.messages, ...completed.flatMap(toolRoundTrip)]),
@@ -147,7 +154,7 @@ export async function streamToolSynthesis(params: ToolSynthesisParams): Promise<
     if (res.writableEnded) break;
     if (part.type === 'text-delta' && part.text) {
       const shown = markup.push(part.text);
-      const filtered = shown ? writeTextChunk(res, requestId, modelId, shown) : null;
+      const filtered = shown ? write(shown) : null;
       if (filtered) onText(filtered);
     } else if (part.type === 'reasoning-start') {
       relay.openReasoningBlock();

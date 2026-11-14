@@ -1,6 +1,7 @@
 /**
  * The Oxy app catalogues Alia can run tools from: the registry read, the
- * compile of each capability into a validated tool, and the 60 s cache. Pure
+ * compile of each capability into a validated tool, the 60 s cache and the
+ * last valid catalogue of each app (kept while its registration does not parse). Pure
  * discovery; nothing here authorizes or calls an app (`oxy-invocation.ts`).
  */
 import { createHash } from 'node:crypto';
@@ -84,6 +85,16 @@ export function appDisplayName(appId: string): string {
   return appId.length === 0 ? appId : `${appId.charAt(0).toUpperCase()}${appId.slice(1)}`;
 }
 
+/**
+ * The last catalogue of each app that compiled, by app id.
+ *
+ * A registration that stops parsing (a newer contract, a bad publish) is not
+ * the app leaving the registry: its last valid catalogue keeps serving until
+ * the registration parses again, so a transient break never drops the app's
+ * tools for a whole cache window. An app the registry no longer lists goes.
+ */
+const lastValidDefs = new Map<string, CatalogDef>();
+
 async function loadCatalogDefs(): Promise<CatalogDef[]> {
   // Every app uses canonical authority discovery; only the reviewed Mention
   // binding selects MCP for the subsequent product invocation.
@@ -93,17 +104,32 @@ async function loadCatalogDefs(): Promise<CatalogDef[]> {
       throw new OxyAuthorityUnavailableError('Oxy catalogue authority unavailable');
     });
   const defs: CatalogDef[] = [];
+  const listed = new Set<string>();
+  const unreadable = new Set<string>();
   for (const registration of registrations) {
+    const appId = registryAppId(registration);
+    if (appId) listed.add(appId);
     try {
-      defs.push(compileRegistration(registration));
+      const def = compileRegistration(registration);
+      lastValidDefs.set(def.catalog.appId, def);
+      defs.push(def);
     } catch (error: unknown) {
-      // One app's catalogue that this Alia cannot read (a newer contract, a
-      // bad registration) costs that app's tools, never every other app's.
+      // One app's catalogue that this Alia cannot read costs at most that
+      // app's tools, never every other app's — and not even those while its
+      // last valid catalogue is known.
+      if (appId) unreadable.add(appId);
       log.general.error(
-        { err: error, appId: registryAppId(registration) },
-        'Skipping an Oxy capability catalogue that does not parse',
+        { err: error, appId, keepingLastValid: appId ? lastValidDefs.has(appId) : false },
+        'An Oxy capability catalogue does not parse',
       );
     }
+  }
+  for (const appId of unreadable) {
+    const previous = lastValidDefs.get(appId);
+    if (previous && !defs.some((def) => def.catalog.appId === appId)) defs.push(previous);
+  }
+  for (const appId of lastValidDefs.keys()) {
+    if (!listed.has(appId)) lastValidDefs.delete(appId);
   }
   return defs;
 }

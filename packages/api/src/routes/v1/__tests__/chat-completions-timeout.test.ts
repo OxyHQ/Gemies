@@ -209,6 +209,7 @@ vi.mock('../../../lib/tools/oxy-services.js', () => ({
 vi.mock('../../../lib/tools/result-truncation.js', () => ({
   wrapToolsWithTruncation: vi.fn((tools: any) => tools),
   getToolResultBudget: vi.fn(() => 4000),
+  clientToolResult: vi.fn((result: unknown) => result),
 }));
 
 vi.mock('../../../lib/logger.js', () => {

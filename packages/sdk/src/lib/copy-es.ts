@@ -117,6 +117,7 @@ export const COPY_ES: Readonly<Record<string, CopyEntry>> = {
   'chat.toolCard.scheduled': 'Programada',
   'chat.turnActions': 'Acciones del mensaje',
   'chat.consultFailed': '%{name} no pudo responder.',
+  'chat.taskUnfinished': '%{name} no ha podido terminar esta tarea.',
   'chat.shareFailed': 'No se pudo crear el enlace para compartir.',
   'chat.sharedFailed': 'No se pudo cargar esta conversación.',
   'chat.sharedGone': 'Esta conversación compartida ya no está disponible.',

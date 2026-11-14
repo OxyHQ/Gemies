@@ -212,6 +212,53 @@ describe('what a frame reaches', () => {
     expect(outcome).toBe('sent');
   });
 
+  it.each([
+    ['deck', { slides: [{ title: 'Why' }] }],
+    ['dashboard', { widgets: [{ kind: 'stat', label: 'Revenue', value: '10M' }] }],
+    ['chart', { chartType: 'bar', labels: ['Jan'], datasets: [{ label: 'Sales', values: [1] }] }],
+  ])('opens a finished %s canvas as the artifact the thread draws', async (type, data) => {
+    harness.responses.push([
+      frame(
+        { tool_call_id: 'c1', name: 'canvas', output: { id: 'x', type, title: 'Q3', data } },
+        'alia.tool_result',
+      ),
+      done,
+    ]);
+    await mount();
+    let outcome: string | undefined;
+    await act(async () => {
+      outcome = await api.append({ role: 'user', content: 'draw it' });
+    });
+
+    expect(host.onArtifact).toHaveBeenCalledTimes(1);
+    expect(host.onArtifact).toHaveBeenCalledWith({
+      id: 'c1',
+      type,
+      title: 'Q3',
+      content: data,
+      timestamp: expect.any(Number),
+    });
+    expect(outcome).toBe('sent');
+  });
+
+  it('opens nothing for a canvas the tool refused', async () => {
+    harness.responses.push([
+      frame(
+        { tool_call_id: 'c1', name: 'canvas', output: { error: 'The deck was not drawn' } },
+        'alia.tool_result',
+      ),
+      content('Sorry.'),
+      done,
+    ]);
+    await mount();
+    await act(async () => {
+      await api.append({ role: 'user', content: 'draw it' });
+    });
+
+    expect(host.onToolResult).toHaveBeenCalledTimes(1);
+    expect(host.onArtifact).not.toHaveBeenCalled();
+  });
+
   it('hands over the context window and a delegated agent’s run', async () => {
     harness.responses.push([
       content('ok'),

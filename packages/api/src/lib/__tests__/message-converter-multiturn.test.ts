@@ -81,3 +81,20 @@ describe('tool history on a later chat turn', () => {
     });
   });
 });
+
+describe('a gemie’s typed failure in the history', () => {
+  it('reaches the model as what it means, never as a part type it would refuse', () => {
+    const [, failed] = convertToAISDKMessages(
+      [
+        { role: 'user', content: 'Salúdame en un minuto con un resumen de mi email' },
+        { role: 'assistant', content: [{ type: 'failure', code: 'task_unfinished' }] },
+        { role: 'user', content: '¿Y?' },
+      ],
+      new Map(),
+    );
+    expect(failed).toEqual({
+      role: 'assistant',
+      content: [{ type: 'text', text: '(The task the person asked for could not be finished.)' }],
+    });
+  });
+});

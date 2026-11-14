@@ -725,10 +725,18 @@ only when the requester may operate it. A public agent never exposes its
 owner's data to another person.
 
 Foreground calls use the shared requester-proof SDK. Goals store an Oxy task
-id created from the original requester, carry it into child runs, and retire it
-on cancellation or terminal completion. A worker never chooses the requester
+id created from the original requester, carry it into child runs — a delegated
+agent and every executor of an orchestrated session (`lib/agent/executor-pool.ts`)
+alike, so neither loses its `oxy_*` tools — and retire it on cancellation or
+terminal completion; only the session that owns it retires it, never a child. A worker never chooses the requester
 from the bot owner. Structured automations retain exact resources and limits.
 Old runs without provenance cannot acquire new own-data authority.
+
+The catalogues are read from Oxy's registry and cached 60 seconds
+(`lib/tools/oxy-catalog-defs.ts`). One app's registration that does not parse
+costs only that app, and not even that while its last valid catalogue is known:
+that one keeps serving, logged, until the registration parses again. An app
+the registry no longer lists goes.
 
 Nothing in the product has own-app access switches. Primary tools choose which catalogue
 tools appear immediately; feature gates still ask the product about entitlement.
@@ -792,7 +800,10 @@ a notification that opens `/@handle`.
   At most 3 per person and agent per rolling day, and none while its last 2
   messages are unanswered (`lib/agent/outreach-budget.ts`). Alia's own
   initiative (`postAliaCheckIn`, her outreach conversation) spends the same
-  budget, counted in that conversation.
+  budget, counted in that conversation. Both are serialized per person and
+  actor: one transaction takes `lockOutreachBudget`, re-reads the budget with
+  it and appends, so two check-ins arriving together never both spend the last
+  slot.
 - `scheduleFollowUp` persists a dated continuation of the current session, with
   the same requester task and cumulative step/token budget (at most 5 pending).
   Its result is not posted automatically; the agent speaks through
@@ -845,8 +856,11 @@ content inside a `<memory>` element its content cannot close.
 
 **The person sees, edits and forgets it.** The agent's editor shows what it
 remembers about the person: its files (`GET|PUT /agents/:id/memory`),
-editable with the hash they were read at, and forgettable one file or all at
-once (`DELETE /agents/:id/memory[?path=]`). The caller only ever reaches their
+editable with the hash the edit started from, and forgettable one file or all at
+once (`DELETE /agents/:id/memory[?path=]`). An unsaved edit is the person's: a
+refetch never replaces it, and when the file changed under it (a 409) the editor
+keeps it, shows the newest version and lets them save theirs over it or discard
+it (`agent-memory-section.tsx`). The caller only ever reaches their
 OWN rows; an agent is addressable when it already remembers them (a public
 agent included) or when they may act as its bot account. "Olvida esto" in chat
 uses `forgetUserMemory` (Alia: entry and its embedding) or the agent's
@@ -866,8 +880,10 @@ its MEMORY.md is in the prompt of every chat turn and background run
 (`agentMemoryPromptSection`), and the `memory` tool lists, reads, appends,
 replaces and forgets its files. Writes carry the hash the tool just read, so the
 agent and the person editing the same file never overwrite each other, and every
-write is journaled with origin `agent`. Reads are R0, writes R1 (journaled),
-`forget` R1 without rollback.
+write is journaled with origin `agent`. A turn never writes once the person has
+forgotten a file of it while it ran: the turn still holds the old text, and the
+hash check alone let it put that back as a new file. Reads are R0, writes R1
+(journaled), `forget` R1 without rollback.
 
 The saver keeps an agent-written message the client has not seen yet
 (`keepAgentOutreach`): storage converges on the client's copy for what the

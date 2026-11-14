@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const H = vi.hoisted(() => ({
   findAgentByOxyAccountId: vi.fn(),
@@ -317,5 +317,46 @@ describe('an email that arrives late', () => {
       occurredAt: new Date(Date.now() - 3 * 60 * 60_000),
     });
     expect(outcome).toEqual({ status: 'ignored', reason: 'stale' });
+  });
+
+  describe('or ages out while being decided', () => {
+    const justInside = () => ({
+      ...email(),
+      occurredAt: new Date(Date.now() - (2 * 60 * 60_000 - 1_000)),
+    });
+    const later = () => vi.setSystemTime(Date.now() + 5_000);
+
+    beforeEach(() => vi.useFakeTimers({ toFake: ['Date'] }));
+    afterEach(() => vi.useRealTimers());
+
+    it('is not classified once the window closed during the budget check', async () => {
+      H.aliaRefusal.mockImplementation(async () => {
+        later();
+        return null;
+      });
+
+      const outcome = await handleInboxEmailEvent(justInside());
+
+      expect(outcome).toEqual({ status: 'ignored', reason: 'stale' });
+      expect(H.generate).not.toHaveBeenCalled();
+      expect(H.postAlia).not.toHaveBeenCalled();
+      // Settled for good: a redelivery finds the claim and stops.
+      expect(H.settle).toHaveBeenCalledWith({}, 'claim-1', { verdict: 'skipped', reason: 'stale' });
+    });
+
+    it('is not posted once the window closed while the model classified it', async () => {
+      H.generate.mockImplementation(async () => {
+        later();
+        return '{"verdict":"important","category":"time_sensitive"}';
+      });
+
+      const outcome = await handleInboxEmailEvent(justInside());
+
+      expect(outcome).toEqual({ status: 'ignored', reason: 'stale' });
+      expect(H.generate).toHaveBeenCalledTimes(1);
+      expect(H.postAlia).not.toHaveBeenCalled();
+      expect(H.settle).toHaveBeenCalledTimes(1);
+      expect(H.settle).toHaveBeenCalledWith({}, 'claim-1', { verdict: 'skipped', reason: 'stale' });
+    });
   });
 });

@@ -1,4 +1,4 @@
-import type { AgentInfo } from '../domain/conversation.js';
+import type { AgentMessage, ConversationSource } from '../domain/conversation.js';
 import type { Request } from 'express';
 import {
   saveConversation,
@@ -51,6 +51,11 @@ export interface LifecycleContext {
   personalization?: false;
   /** The embedding app (`host.app`), which labels a conversation this turn creates. */
   originApp?: string;
+  /**
+   * The channel of a verified channel turn (`channelTurnSource`): its reply is appended after what
+   * the conversation holds, never reconciled from the history the channel sent.
+   */
+  channelSource?: ConversationSource;
 }
 
 /**
@@ -123,13 +128,17 @@ export async function saveConversationResult(
     args?: unknown;
     result?: unknown;
   }>,
-  agentMessages?: Array<{
-    role: 'assistant';
-    content: string;
-    agentInfo: AgentInfo;
-  }>,
+  agentMessages?: AgentMessage[],
 ): Promise<void> {
-  const { userId, conversationId, assistantMessageId, messages, originApp, agentId } = ctx;
+  const {
+    userId,
+    conversationId,
+    assistantMessageId,
+    messages,
+    originApp,
+    agentId,
+    channelSource,
+  } = ctx;
   if (!conversationId || !userId || !turnProducedOutput(assistantResponse, toolInvocations)) return;
 
   try {
@@ -143,6 +152,7 @@ export async function saveConversationResult(
       agentId,
       agentMessages: agentMessages && agentMessages.length > 0 ? agentMessages : undefined,
       ...(originApp === undefined ? {} : { originApp }),
+      channelSource,
     });
     log.v1.info({ conversationId }, 'Conversation saved');
   } catch (error) {
@@ -330,8 +340,8 @@ export function runPostChatHooks(
     ...(ctx.personalization === false ? { personalization: false as const } : {}),
   }).catch((err) => log.v1.error({ err }, 'Error in afterChat hooks'));
 
-  // Alia's run scoring is about Alia's turns.
-  if (gemieMemoryTurn) return;
+  // Alia's run scoring is about Alia's turns, and learns from none the person kept unpersonalized.
+  if (gemieMemoryTurn || ctx.personalization === false) return;
   runAutonomyAfterChat({
     userId,
     runtimeContext: autonomyRuntime,
