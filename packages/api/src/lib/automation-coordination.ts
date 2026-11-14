@@ -113,10 +113,6 @@ export function candidateCoversAction(
   );
 }
 
-export function authorizationPairKey(actionId: string, agentId: string): string {
-  return JSON.stringify([actionId, agentId]);
-}
-
 /**
  * Assign every action in declared order. Candidate order is the persisted
  * priority order; consecutive actions for the same account share one stage.
@@ -125,7 +121,6 @@ export function planAutomationStages(input: {
   candidates: readonly AutomationActorCandidate[];
   sourceResources: readonly ResourceRef[];
   actions: readonly AutomationActionPlanInput[];
-  activeAuthorizationPairs?: ReadonlySet<string>;
   requiredAutonomy?: AutomationAutonomy;
 }): AutomationStagePlan[] | null {
   const requiredAutonomy = input.requiredAutonomy ?? 'autonomous';
@@ -133,10 +128,7 @@ export function planAutomationStages(input: {
     input.candidates.find(
       (candidate) =>
         candidateCoversAction(candidate, action, requiredAutonomy) &&
-        (index > 0 ||
-          candidateCoversResources(candidate, input.sourceResources, requiredAutonomy)) &&
-        (input.activeAuthorizationPairs === undefined ||
-          input.activeAuthorizationPairs.has(authorizationPairKey(action.id, candidate.agentId))),
+        (index > 0 || candidateCoversResources(candidate, input.sourceResources, requiredAutonomy)),
     ),
   );
   if (selected.some((candidate) => candidate === undefined)) return null;

@@ -250,8 +250,8 @@ are verified live and their previous tasks have drained. Remove the correspondin
 SSM parameters only after the coordinated rollout and live readback prove that
 no task still uses them.
 
-Own tool access comes from the verified requester or durable task, plus live
-account/resource checks. Workload scopes do not enable own app tools.
+Own tool access comes from Gemies' declared first-party authority (Oxy ADR 0066:
+the person and the account, no session or task), plus live account/resource checks. Workload scopes do not enable own app tools.
 
 ## Startup behaviour
 

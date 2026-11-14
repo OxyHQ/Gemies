@@ -107,7 +107,6 @@ export interface AgentTurnPerson {
   /** The person's live bearer, for Oxy direct requests; absent on an unattended turn. */
   accessToken?: string;
   isDirectSession: boolean;
-  taskId?: string;
   /** The app the person is in, by its verified app assertion (ADR 0021), or `null`. */
   surfaceApplicationId: string | null;
   /**
@@ -233,7 +232,6 @@ export async function runAgentTurn(input: {
         userId: person.oxyUserId,
         ...(person.accessToken ? { accessToken: person.accessToken } : {}),
         isDirectSession: person.isDirectSession,
-        oxyTaskId: person.taskId,
         actsForPerson: true,
         requesterAccountId: person.oxyUserId,
         surfaceApplicationId: person.surfaceApplicationId,

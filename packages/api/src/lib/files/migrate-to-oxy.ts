@@ -25,11 +25,10 @@
  *   spends at most `MIGRATION_UPLOADS_PER_MINUTE` of them, leaving the rest to
  *   Alia's live writes, and an item Oxy answers 429 waits a minute and is tried
  *   again rather than reported failed — a run of any size finishes unattended.
- * - **Only what Alia owns.** A person's file is stored in Oxy only with that
- *   person's own requester proof (their session or a task they granted; Oxy's
- *   `requireUserMediaOwner`), and a backfill acts for nobody. A person's
- *   library upload or skill file is reported `skipped` and stays on legacy
- *   storage, never sent to Oxy under Alia's name.
+ * - **Each file as its owner's.** A person's library upload or skill file is
+ *   stored as THEIR private Oxy file, acting for them on Gemies' declared
+ *   `oxy:files` authority (oxy ADR 0066), never under Alia's name; Alia's own
+ *   files as Alia's.
  */
 
 import type { Readable } from 'node:stream';
@@ -143,10 +142,6 @@ export async function* migrateKind(
   }
 }
 
-/** Why a person's file is not copied: no proof that the work is theirs. */
-const PERSON_FILE_NEEDS_REQUESTER =
-  "a person's file is stored in Oxy only with their own requester proof, which a backfill does not hold";
-
 interface WorkItem {
   readonly cursor: string;
   readonly entityId: string;
@@ -213,9 +208,6 @@ async function migrateItem(
   pace: (calls: number) => Promise<void>,
 ): Promise<MigrationLine | typeof RATE_LIMITED> {
   const base = { kind, entityId: item.entityId };
-  if (item.owner.kind === 'person') {
-    return { ...base, outcome: 'skipped', reason: PERSON_FILE_NEEDS_REQUESTER };
-  }
   try {
     const read = await readLegacyBytes(deps, item.legacy, item.mime ?? 'application/octet-stream');
     if (read === null) return { ...base, outcome: 'failed', reason: 'legacy object missing' };

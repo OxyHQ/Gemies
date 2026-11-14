@@ -8,10 +8,15 @@ import type { ActorRef, AutonomyLevel, ResourceRef } from '@oxy.so/contracts';
 
 export type OxyToolAutonomy = AutonomyLevel;
 
-export interface OxyExecutionAuthorizationRef {
-  id: string;
+/**
+ * One (resource, tool) a structured automation run may call, as its declared
+ * actions (and, on Alia's lane, the read tools of the owner's apps) say. Not an
+ * Oxy authorization: each call is authorized when it is made
+ * (`createFirstPartyExecutionAuthorization`, oxy ADR 0066), with these terms.
+ */
+export interface OxyRunScopeEntry {
   /**
-   * Correlates Oxy's audit with the normalized action step in Alia. Absent for
+   * Correlates Oxy's audit with the normalized action step in Gemies. Absent for
    * Alia's standing reads, which belong to the task rather than to one step.
    */
   stepId?: string;
@@ -20,12 +25,12 @@ export interface OxyExecutionAuthorizationRef {
    * a declared effect stays once per stage.
    */
   repeatable?: boolean;
+  /** The declared limits of this tool, sent with each call's authorization. */
+  limits?: ReadonlyArray<{ readonly key: string; readonly value: number | boolean }>;
 }
 
-/** The exact resource and tool an authorization key names. */
-export function parseExecutionAuthorizationKey(
-  key: string,
-): { resource: ResourceRef; tool: string } | null {
+/** The exact resource and tool a run scope key names. */
+export function parseRunScopeKey(key: string): { resource: ResourceRef; tool: string } | null {
   try {
     const parsed: unknown = JSON.parse(key);
     if (
@@ -42,9 +47,9 @@ export function parseExecutionAuthorizationKey(
 }
 
 /** The explicit person-versus-bot identity selection, never an app permission level.
- * `forUser` binds the original requester; its label says whether they also own
- * the agent. `self` selects only the bot account and requires live Oxy standing.
- * Background runs carry the original task id in OxyToolExecutionContext.
+ * `forUser` binds the person the turn is for; its label says whether they also
+ * own the agent. `self` selects only the bot account, which Oxy admits while
+ * that person operates it.
  */
 export interface OxyAgentIdentity {
   forUser: 'owner' | 'requester' | false;
@@ -58,12 +63,12 @@ export interface OxyToolExecutionContext {
   /** Only read for `actor.type === 'agent'`; see {@link OxyAgentIdentity}. */
   agentIdentity?: OxyAgentIdentity;
   runId?: string;
-  taskId?: string;
   autonomy?: OxyToolAutonomy;
-  /** Live caller credential used only to create/revoke direct Oxy authority. */
-  userAccessToken?: string;
-  /** Pre-authorized exact steps for background runs, keyed by resource and tool. */
-  executionAuthorizations?: Readonly<Record<string, OxyExecutionAuthorizationRef>>;
+  /**
+   * A structured automation run's exact scope, keyed by resource and tool
+   * (`oxyRunScopeKey`): only these are built, each authorized per call.
+   */
+  runScope?: Readonly<Record<string, OxyRunScopeEntry>>;
   onStepStatus?: (
     stepId: string,
     status: 'running' | 'succeeded' | 'failed',
@@ -108,7 +113,7 @@ export class OxyOutcomeUnknownError extends Error {
   }
 }
 
-export function oxyExecutionAuthorizationKey(resource: ResourceRef, toolName: string): string {
+export function oxyRunScopeKey(resource: ResourceRef, toolName: string): string {
   return JSON.stringify([
     resource.appId,
     resource.effectiveAccountId,

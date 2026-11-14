@@ -111,8 +111,8 @@ export async function admitTurnFeatures(input: {
   exactHostedModel: boolean;
   person: {
     accountId: string | undefined;
-    accessToken: string | undefined;
-    taskId?: string;
+    /** The person's own session to Gemies made this request. */
+    ownSession: boolean;
     runId: string;
     /** A verified channel's turn: its files are read as `resolveFileParts` reads a channel's. */
     channel?: boolean;
@@ -141,8 +141,6 @@ export async function admitTurnFeatures(input: {
       ? null
       : {
           accountId: input.person.accountId,
-          accessToken: input.person.accessToken,
-          taskId: input.person.taskId,
           runId: input.person.runId,
         };
 
@@ -162,8 +160,7 @@ export async function admitTurnFeatures(input: {
   try {
     files = await resolveFileParts(input.fileRefs, {
       personAccountId: input.person.accountId,
-      accessToken: input.person.accessToken,
-      taskId: input.person.taskId,
+      ownSession: input.person.ownSession,
       modelAcceptsFiles: input.modelAcceptsFiles,
       channel: input.person.channel === true,
     });

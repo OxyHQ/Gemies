@@ -1,7 +1,7 @@
 /**
  * Retired vocabulary cannot return.
  *
- * Four retirements, each a clean cut with no compatibility code, so any trace of
+ * Five retirements, each a clean cut with no compatibility code, so any trace of
  * them in the tree is either dead code or a lane coming back:
  *
  *  1. The retired product routes (`<kaana|alia>-lite`, `<kaana|alia>-v1-*`).
@@ -17,6 +17,12 @@
  *  4. Consultation tools (ADR 0042): gemies talk to each other in conversations
  *     of their own (`sendMessage`), never through a tool that asks one and
  *     returns its answer.
+ *  5. Requester proofs for Oxy's own work (Oxy ADR 0066, 2026-11-14): Gemies
+ *     acts for a person with what Oxy's first-party registry declares for it
+ *     (`actsForPeople`: `assets.actingFor`, `createFirstPartyExecutionAuthorization`).
+ *     No Oxy task, requester token or context, foreground or task execution
+ *     authorization, channel task renewal or reauthorisation, in any package's
+ *     source. Applied migrations keep the columns they once added.
  *
  * Records of the past keep their words: ADRs, audits, migration inventories,
  * changelogs and applied migrations are history, not code. Every pattern is
@@ -95,6 +101,27 @@ const consultationHistory = [
 ];
 
 /** What an agent is, on the server and on the wire: no application binding. */
+/**
+ * Requester proofs for Oxy's own work (Oxy ADR 0066): only package source is
+ * code; applied migrations and their snapshots are history.
+ */
+const packageSource = /^packages\/[^/]+\/src\/|^packages\/app\/app\//;
+const retiredRequesterProofs = new RegExp(
+  [
+    `\\bcreate${'Task'}\\(`,
+    `\\bwith${'Requester'}\\(`,
+    `requester${'Token'}`,
+    `requester${'Context'}`,
+    `oxy${'TaskId'}`,
+    `oxy_${'task_'}`,
+    `channel-${'task'}`,
+    `\\breauthori${'[sz]e'}`,
+    `createTask${'ExecutionAuthorization'}`,
+    `createForeground${'ExecutionAuthorization'}`,
+  ].join('|'),
+  'gi',
+);
+
 const agentSchemas = [
   'packages/api/src/db/schema/agents.ts',
   'packages/api/src/db/agents/agentRepository.ts',
@@ -139,6 +166,14 @@ for (const file of tracked) {
   if (!consultationHistory.some((history) => history.test(file))) {
     report(file, source, retiredConsultation, 'retired consultation tool, ADR 0042');
   }
+  if (packageSource.test(file)) {
+    report(
+      file,
+      source,
+      retiredRequesterProofs,
+      'retired requester proof: Oxy services act for people on declared authority, Oxy ADR 0066',
+    );
+  }
   if (agentSchemas.includes(file)) {
     report(file, source, applicationBinding, 'an agent has no application binding, ADR 0021');
   }
@@ -151,7 +186,7 @@ for (const file of agentSchemas) {
 }
 
 if (failures.length > 0) {
-  console.error('Retired vocabulary found:\n' + failures.join('\n'));
+  console.error(`Retired vocabulary found:\n${failures.join('\n')}`);
   process.exit(1);
 }
 

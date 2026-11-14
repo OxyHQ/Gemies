@@ -127,16 +127,16 @@ export function buildRuntimeTools(
   ctx: AgentRuntimeContext,
   grants: CapabilityGrantSet,
   /**
-   * An automation stage runs unattended on authority its owner granted in
-   * advance, so it never hires: `delegate` would start another agent's session
+   * An automation stage runs unattended within its declared scope, so it never
+   * hires: `delegate` would start another agent's session
    * with no reservation of its own. Reading the web stays, because a scheduled
    * "research X every morning" is the point of an automation.
    */
   options: {
     withoutDelegation?: boolean;
     /**
-     * A preauthorized automation stage runs on authority granted in advance for
-     * EXACT steps; executing arbitrary code is not one of them.
+     * An automation stage runs only its EXACT declared steps; executing
+     * arbitrary code is not one of them.
      */
     withoutComputer?: boolean;
   } = {},

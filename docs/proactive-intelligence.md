@@ -19,7 +19,7 @@ control-plane endpoints are in [API reference](./api-reference.md).
 
 | `actorSelection` (`automation_definitions.actor_mode`) | Who is responsible | How it runs |
 |---|---|---|
-| omitted, or `{ mode: 'fixed', agentId: ALIA_GEMIE_ID }` | Alia's gemie (`task_authority = 'standing'`) | One unattended Alia turn on the `alia-tasks` queue (below), under her standing authority. The run records her gemie (`selected_agent_id`) on the standing lane (`selected_actor_type = 'alia'`, the lane's stored name). |
+| omitted, or `{ mode: 'fixed', agentId: ALIA_GEMIE_ID }` | Alia's gemie (`task_authority = 'standing'`) | One unattended Alia turn on the `alia-tasks` queue (below), on her standing lane. The run records her gemie (`selected_agent_id`) on the standing lane (`selected_actor_type = 'alia'`, the lane's stored name). |
 | `{ mode: 'fixed', agentId }` | that agent | The agent receives the prompt in a durable session; connected actions go through the coordinator. |
 | `{ mode: 'automatic', eligibleAgentIds }` | the first eligible agent per action | The coordinator assigns each ordered action to an agent whose live capability map covers it. A standing-authority gemie is never a candidate (`standing_gemie_requires_fixed_selection`). |
 
@@ -31,29 +31,24 @@ public, active marketplace agent — never by `author`, and never an agent Oxy c
 an app (ADR 0021): an unattended run has no app to be in.
 Schemas: `lib/structured-automation-creation.ts`.
 
-## Alia's standing authority
+## Alia's standing lane
 
 Alia acts for the owner in their Oxy apps the way an assistant reads its owner's
-mail: no permission prompt per run. When an Alia task is created or edited in
-execute mode while the owner's bearer is present, Alia asks Oxy for `automation`
-execution authorizations with actor `{ type: 'alia', ownerAccountId }`
-(`provisionAliaTaskAuthorizations`, `lib/automation-authority.ts`):
+mail: no permission prompt per run, nothing provisioned when the task is saved and
+nothing to renew. Gemies' declared first-party authority (Oxy ADR 0066,
+[requester authority](./requester-authority.md)) covers it. When a run starts its
+scope is built:
 
-- every READ tool of every Oxy app at the owner's account root, `read_only`,
-  best effort (a refused read only leaves that tool out) — so "summarise my
-  email every morning" works unattended;
-- each declared connected action exactly, at the task's autonomy,
-  all-or-nothing (one refusal revokes the rest and the task stays inert).
+- every READ tool of every Oxy app at the owner's account root, repeatable — so
+  "summarise my email every morning" works unattended;
+- each declared connected action exactly, with its run step and limits, once
+  per run.
 
-Only opaque Oxy ids are stored, in `alia_task_authorizations`; Oxy re-checks
-live authority, account policy and catalog on every ticket, and issues it for
-the run (`runId`, plus the action's `stepId`). The runner passes them to
-`ToolPipeline` as `oxyExecutionAuthorizations`: reads are `repeatable`, a
-declared action runs once per run. A task with none (older tasks, API-key
-callers) gets no Oxy app tools. Stopping or editing a task revokes them with
-the agent path's authorizations (`listActiveTaskAuthorityIds`). A watch gets no
-app reads. New apps registered after the task was saved are covered at its
-next edit; authorizations expire after a year like the agent path's.
+Each call in the run gets its own two-minute execution authorization for that
+exact resource and tool (`createFirstPartyExecutionAuthorization`, kind
+`direct_request` with the run id, the step and the declared limits); Oxy checks
+the accounts and the declaration live. A watch gets no app reads. New apps are
+covered from the next run. Stopping or deleting the task is the off switch.
 
 ## Watches
 
@@ -147,10 +142,8 @@ and finished from the store:
   the person through the Telegram they linked to the gemie (`sendTelegramMessage`), and from their
   Telegram Business account to a contact (`sendAccountMessage`, where Telegram allows it). The link
   never expires on Gemies' side (ADR 0037).
-- **A channel's authority never lapses unseen.** Each channel's Oxy task keeps the expiry Oxy gave
-  it; the app renews it with the person's session within 30 days of it, and the minute sweep marks
-  one that lapsed or that Oxy refused and tells the person once, with a one-tap reauthorisation
-  ([Integrations](./integrations.mdx#channel-tasks-are-renewed-before-they-lapse)).
+- **A channel's authority never lapses.** A channel holds no Oxy task: Gemies acts for its person
+  on its declared authority, today and next year; disconnecting or unlinking it is what stops it.
 - Redis is required in production: the API refuses to boot without `REDIS_URL`
   (`lib/boot-guards.ts`), because without it every queue runs jobs inline and a restart loses them.
 

@@ -143,7 +143,7 @@ describe('room decision boundary', () => {
     const serialized = roomSelectionData({
       ...input,
       rows: [...many, ...input.rows, ...many],
-      roster: input.roster.map((m) => ({ ...m, oxyTaskId: 'AUTHORITY_SECRET' })),
+      roster: input.roster.map((m) => ({ ...m, privateNote: 'AUTHORITY_SECRET' })),
       space: { name: 'Marketing', instructions: 'Prepare a campaign' },
     });
     const data = JSON.parse(serialized);

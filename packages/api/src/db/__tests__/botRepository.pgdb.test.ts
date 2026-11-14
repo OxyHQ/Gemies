@@ -277,22 +277,15 @@ describe('a link token is single-use, and unlinking really unlinks', () => {
     expect(await findBotUserByAuthToken(db, bot.id, 'br-once')).not.toBeNull();
     const linked = await linkBotUser(db, botUser.id, {
       oxyUserId: 'bru-linker',
-      oxyTask: { id: 'task-abc', expiresAt: new Date('2027-11-01T00:00:00Z') },
-      expectedTaskId: null,
       authToken: 'br-once',
     });
     expect(linked?.isLinked).toBe(true);
     expect(linked?.oxyUserId).toBe('bru-linker');
     expect(linked?.linkedAt).toBeInstanceOf(Date);
     expect(linked?.metadata).not.toHaveProperty('sessionToken');
-    expect(linked?.oxyTaskId).toBe('task-abc');
-    expect(linked?.oxyTaskState).toBe('active');
-    expect(linked?.oxyTaskExpiresAt?.toISOString()).toBe('2027-11-01T00:00:00.000Z');
     expect(
       await linkBotUser(db, botUser.id, {
         oxyUserId: 'attacker',
-        oxyTask: { id: 'attack-task', expiresAt: new Date() },
-        expectedTaskId: 'task-abc',
         authToken: 'br-once',
       }),
     ).toBeNull();
@@ -316,8 +309,6 @@ describe('a link token is single-use, and unlinking really unlinks', () => {
     });
     await linkBotUser(db, botUser.id, {
       oxyUserId: 'bru-unlinker',
-      oxyTask: { id: 'unlink-task', expiresAt: new Date(Date.now() + 86_400_000) },
-      expectedTaskId: null,
     });
     await setBotUserConversation(db, botUser.id, 'conv-1');
     expect((await findLinkedBotUser(db, bot.id, 'bru-unlinker'))?.conversationId).toBe('conv-1');
@@ -326,9 +317,6 @@ describe('a link token is single-use, and unlinking really unlinks', () => {
 
     const after = await findBotUser(db, bot.id, 'br-p1');
     expect(after?.isLinked).toBe(false);
-    expect(after?.oxyTaskId).toBeNull();
-    expect(after?.oxyTaskState).toBe('reauth_required');
-    expect(after?.oxyTaskExpiresAt).toBeNull();
     expect(after?.oxyUserId).toBeNull();
     expect(after?.conversationId).toBeNull();
     expect(after?.linkedAt).toBeNull();
@@ -346,16 +334,12 @@ describe('a link token is single-use, and unlinking really unlinks', () => {
     });
     await linkBotUser(db, botUser.id, {
       oxyUserId: 'bru-logout',
-      oxyTask: { id: 'logout-task', expiresAt: new Date(Date.now() + 86_400_000) },
-      expectedTaskId: null,
     });
 
     await logoutBotUser(db, botUser.id);
 
     const after = await findBotUser(db, bot.id, 'br-p1');
     expect(after?.isLinked).toBe(false);
-    expect(after?.oxyTaskId).toBeNull();
-    expect(after?.oxyTaskState).toBe('reauth_required');
     expect(after?.oxyUserId).toBeNull();
     expect(after?.linkedAt).toBeInstanceOf(Date);
   });

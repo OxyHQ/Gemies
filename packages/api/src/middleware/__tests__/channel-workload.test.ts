@@ -60,15 +60,11 @@ beforeEach(() => {
     id: 'link',
     oxyUserId: ACCOUNT,
     isLinked: true,
-    oxyTaskState: 'active',
-    oxyTaskId: 'task',
   });
   fixture.connection.mockResolvedValue({
     id: 'connection',
     oxyUserId: ACCOUNT,
     answeringAgentId: 'gemie-of-the-account',
-    oxyTaskState: 'active',
-    oxyTaskId: 'task',
   });
   fixture.gemieBot.mockResolvedValue({
     id: 'bot-row',
@@ -76,9 +72,6 @@ beforeEach(() => {
     agentId: 'eusebio',
     userId: ACCOUNT,
     linkedTelegramUserId: '570038640',
-    oxyTaskId: 'bot-task',
-    oxyTaskState: 'active',
-    oxyTaskExpiresAt: new Date(Date.now() + 86_400_000),
   });
 });
 describe('a gemie bot’s person (ADR 0037, amendment)', () => {
@@ -88,7 +81,7 @@ describe('a gemie bot’s person (ADR 0037, amendment)', () => {
     'x-alia-platform-user': platformUser,
     ...extra,
   });
-  it('is the account that connected the bot, with its gemie and the task they granted', async () => {
+  it('is the account that connected the bot, with its gemie, and holds no task', async () => {
     const { req, next } = await invoke(headers('570038640'));
     expect(next).toHaveBeenCalledOnce();
     expect(req.channelContext).toEqual({
@@ -97,8 +90,9 @@ describe('a gemie bot’s person (ADR 0037, amendment)', () => {
       gemieId: 'eusebio',
       platform: 'telegram',
       identityId: 'bot-row',
-      taskId: 'bot-task',
     });
+    // Gemies acts for them on its own first-party authority (oxy ADR 0066): nothing to carry.
+    expect(req.channelContext).not.toHaveProperty('taskId');
     expect(req.user).toBeUndefined();
     expect(req.accessToken).toBeUndefined();
     expect(fixture.gemieBot).toHaveBeenCalledWith({}, '8988966019');
@@ -108,29 +102,16 @@ describe('a gemie bot’s person (ADR 0037, amendment)', () => {
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
   });
-  it('is nobody before the link, or once its authority is gone', async () => {
-    for (const bot of [
-      { linkedTelegramUserId: null, oxyTaskId: 'bot-task', oxyTaskState: 'active' },
-      { linkedTelegramUserId: '570038640', oxyTaskId: null, oxyTaskState: 'reauth_required' },
-      // Refused by Oxy, or past the expiry Oxy gave it: the authority is gone all the same.
-      { linkedTelegramUserId: '570038640', oxyTaskId: 'bot-task', oxyTaskState: 'reauth_required' },
-      {
-        linkedTelegramUserId: '570038640',
-        oxyTaskId: 'bot-task',
-        oxyTaskState: 'active',
-        oxyTaskExpiresAt: new Date(Date.now() - 1000),
-      },
-    ]) {
-      fixture.gemieBot.mockResolvedValueOnce({
-        id: 'bot-row',
-        agentId: 'eusebio',
-        userId: ACCOUNT,
-        ...bot,
-      });
-      const { res, next } = await invoke(headers('570038640'));
-      expect(next).not.toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(401);
-    }
+  it('is nobody before the link, or once they unlink it', async () => {
+    fixture.gemieBot.mockResolvedValueOnce({
+      id: 'bot-row',
+      agentId: 'eusebio',
+      userId: ACCOUNT,
+      linkedTelegramUserId: null,
+    });
+    const { res, next } = await invoke(headers('570038640'));
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
   });
   it('refuses a bot named beside a connected-account session, or with no sender', async () => {
     const extras: Array<Record<string, string>> = [
@@ -146,7 +127,7 @@ describe('a gemie bot’s person (ADR 0037, amendment)', () => {
   });
 });
 describe('channel workload identity', () => {
-  it('resolves bot-linked account and task without creating an Oxy session', async () => {
+  it('resolves the bot-linked account without creating an Oxy session or holding a task', async () => {
     const { req, next } = await invoke({
       'x-alia-channel': 'discord',
       'x-alia-platform-user': '123',
@@ -154,7 +135,8 @@ describe('channel workload identity', () => {
     });
     expect(next).toHaveBeenCalledOnce();
     expect(req.userId).toBe(ACCOUNT);
-    expect(req.channelContext.taskId).toBe('task');
+    expect(req.channelContext).toMatchObject({ kind: 'bot', accountId: ACCOUNT });
+    expect(req.channelContext).not.toHaveProperty('taskId');
     expect(req.user).toBeUndefined();
     expect(req.accessToken).toBeUndefined();
     expect(fixture.link).toHaveBeenCalledWith({}, 'bot', '123');
@@ -173,6 +155,8 @@ describe('channel workload identity', () => {
       gemieId: 'gemie-of-the-account',
       identityId: 'connection',
     });
+    expect(req.channelContext).not.toHaveProperty('taskId');
+    expect(req.accessToken).toBeUndefined();
     expect(fixture.connection).toHaveBeenCalledWith({}, 'whatsapp', 'connected-session');
   });
   it('resolves no account for a platform a gemie can no longer be linked to', async () => {
@@ -233,61 +217,15 @@ describe('channel workload identity', () => {
       expect(next).not.toHaveBeenCalled();
     }
   });
-  it('does not grant private tools from a legacy connection without a task root', async () => {
-    fixture.connection.mockResolvedValue({
-      id: 'connection',
-      oxyUserId: ACCOUNT,
-      oxyTaskState: 'reauth_required',
-      oxyTaskId: null,
+  it('refuses a requester header beside a channel, as it refuses a user id', async () => {
+    const { res, next } = await invoke({
+      'x-alia-channel': 'discord',
+      'x-alia-platform-user': '123',
+      'x-oxy-requester-id': ACCOUNT,
     });
-    const { req } = await invoke({
-      'x-alia-channel': 'whatsapp',
-      'x-alia-channel-session': 'session',
-    });
-    expect(req.channelContext.taskId).toBeUndefined();
-    expect(req.accessToken).toBeUndefined();
-  });
-  it('never hands out a task it knows is dead: refused by Oxy, or past its expiry', async () => {
-    for (const lapsed of [
-      { oxyTaskState: 'reauth_required', oxyTaskExpiresAt: new Date(Date.now() + 86_400_000) },
-      { oxyTaskState: 'active', oxyTaskExpiresAt: new Date(Date.now() - 1000) },
-    ]) {
-      fixture.link.mockResolvedValueOnce({
-        id: 'link',
-        oxyUserId: ACCOUNT,
-        isLinked: true,
-        oxyTaskId: 'task',
-        ...lapsed,
-      });
-      const discord = await invoke({ 'x-alia-channel': 'discord', 'x-alia-platform-user': '123' });
-      expect(discord.req.channelContext).toMatchObject({ kind: 'bot', accountId: ACCOUNT });
-      expect(discord.req.channelContext.taskId).toBeUndefined();
-      fixture.connection.mockResolvedValueOnce({
-        id: 'connection',
-        oxyUserId: ACCOUNT,
-        answeringAgentId: 'gemie-of-the-account',
-        oxyTaskId: 'task',
-        ...lapsed,
-      });
-      const account = await invoke({
-        'x-alia-channel': 'whatsapp',
-        'x-alia-channel-session': 'session',
-      });
-      expect(account.req.channelContext).toMatchObject({ kind: 'account', accountId: ACCOUNT });
-      expect(account.req.channelContext.taskId).toBeUndefined();
-    }
-  });
-  it('hands out an undated task: Oxy still decides, and the next visit dates it', async () => {
-    fixture.link.mockResolvedValueOnce({
-      id: 'link',
-      oxyUserId: ACCOUNT,
-      isLinked: true,
-      oxyTaskState: 'active',
-      oxyTaskId: 'task',
-      oxyTaskExpiresAt: null,
-    });
-    const { req } = await invoke({ 'x-alia-channel': 'discord', 'x-alia-platform-user': '123' });
-    expect(req.channelContext.taskId).toBe('task');
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+    expect(fixture.link).not.toHaveBeenCalled();
   });
   it('pins administrative bot operations to their channel', async () => {
     const res = response();

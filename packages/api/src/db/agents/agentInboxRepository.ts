@@ -1,4 +1,3 @@
-import { agentWorkAuthorities } from '../schema/agent-work';
 /**
  * An agent's inbox and subscriptions (ADR 0026).
  *
@@ -309,8 +308,8 @@ export async function dueHeartbeats(db: Executor, now: Date): Promise<HeartbeatC
           sql`${agents.lastHeartbeatAt} <= ${now.toISOString()}::timestamptz - (${agents.scheduleInterval} * interval '1 minute')`,
         ),
         sql`exists (select 1 from ${agentInboxItems} where ${agentInboxItems.agentId} = ${agents.id} and ${agentInboxItems.status} = 'pending' and ${agentInboxItems.receivedAt} >= ${new Date(now.getTime() - INBOX_ITEM_MAX_AGE_MS).toISOString()}::timestamptz)`,
-        // Filter before LIMIT: agents waiting for owner authority must not starve ready agents.
-        sql`exists (select 1 from ${agentWorkAuthorities} where ${agentWorkAuthorities.agentId} = ${agents.id} and ${agentWorkAuthorities.ownerAccountId} = ${agents.ownerOxyAccountId} and ${agentWorkAuthorities.expiresAt} > ${now.toISOString()}::timestamptz)`,
+        // Only a gemie with an Oxy account has background work (ADR 0036).
+        eq(agents.identity, 'oxy'),
         sql`not exists (select 1 from agent_work_items w where w.agent_id = ${agents.id} and w.kind = 'heartbeat' and w.status in ('pending', 'running'))`,
       ),
     )
@@ -376,13 +375,11 @@ export async function emailIsBatched(
   db: Executor,
   agentId: string,
   eventId: string,
-  now = new Date(),
 ): Promise<boolean> {
   const [row] = await db
     .select({ id: agentInboxItems.id })
     .from(agentInboxItems)
     .innerJoin(agents, eq(agents.id, agentInboxItems.agentId))
-    .innerJoin(agentWorkAuthorities, eq(agentWorkAuthorities.agentId, agents.id))
     .where(
       and(
         eq(agentInboxItems.agentId, agentId),
@@ -391,8 +388,7 @@ export async function emailIsBatched(
         eq(agents.status, 'active'),
         eq(agents.isPublished, true),
         sql`${agents.scheduleInterval} > 0`,
-        sql`${agentWorkAuthorities.expiresAt} > ${now.toISOString()}::timestamptz`,
-        eq(agentWorkAuthorities.ownerAccountId, agents.ownerOxyAccountId),
+        eq(agents.identity, 'oxy'),
       ),
     )
     .limit(1);

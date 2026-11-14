@@ -45,7 +45,6 @@ vi.mock('../../lib/skills/github.js', () => ({
 vi.mock('../../middleware/auth.js', () => ({
   authenticateToken: vi.fn((_req: unknown, _res: unknown, next: () => void) => next()),
   optionalAuth: vi.fn((_req: unknown, _res: unknown, next: () => void) => next()),
-  ownSessionProof: vi.fn(() => ({ requesterToken: 'session-of-user' })),
 }));
 vi.mock('../../lib/oxy.js', () => ({ oxy: { users: { get: vi.fn() } } }));
 
@@ -161,12 +160,12 @@ describe('POST /skills', () => {
     const bundle = vi.mocked(storeSkillBundle).mock.calls[0][1];
     expect(bundle.document.frontmatter.name).toBe('my-skill');
     expect(bundle.document.body).toBe('# My Skill\n\nDo the thing.');
-    // Their files are stored as theirs with their own session (Oxy's requester check).
+    // Their files are stored as theirs, acting for them (no session forwarded, oxy ADR 0066).
     expect(vi.mocked(storeSkillBundle).mock.calls[0][2]).toMatchObject({
       source: 'authored',
       ownerOxyUserId: USER.id,
-      ownerRequester: { requesterToken: 'session-of-user' },
     });
+    expect(vi.mocked(storeSkillBundle).mock.calls[0][2]).not.toHaveProperty('ownerRequester');
     expect(vi.mocked(installSkill)).toHaveBeenCalledWith(expect.anything(), USER.id, 'sk1');
   });
 

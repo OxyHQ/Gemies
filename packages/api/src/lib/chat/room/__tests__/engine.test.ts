@@ -60,7 +60,6 @@ function harness(options: {
     person: unknown;
     room?: unknown;
   }> = [];
-  const revoked: string[] = [];
   let latest: string | null = 'p1';
   let recentReplies = 0;
   let seq = rows.length;
@@ -117,9 +116,6 @@ function harness(options: {
       rows.push(row);
       return { id: input.clientMessageId, seq: seq++, createdAt: new Date(0) };
     },
-    revokeTasks: async (ids) => {
-      revoked.push(...ids);
-    },
     now: () => 1_000_000,
   };
 
@@ -127,7 +123,7 @@ function harness(options: {
     userId: 'u1',
     conversationId: 'conv',
     triggerId: 'p1',
-    roster: roster.map((i) => ({ info: i, oxyTaskId: `task-${i.id}` })),
+    roster: roster.map((i) => ({ info: i })),
     speakerId: roster[0]!.id,
     handedByAgentId: null,
     pending: roster.slice(1).map((i) => i.id),
@@ -158,7 +154,6 @@ function harness(options: {
     bus,
     queued,
     runs,
-    revoked,
     first,
     drain,
     setLatest: (id: string | null) => {
@@ -190,7 +185,7 @@ describe('legacy room jobs drain their first round', () => {
     expect(h.runs[2]!.task).toContain('Bruno: reply from b');
   });
 
-  it('frames the turn as a group chat and runs it as a task turn for the person', async () => {
+  it('frames the turn as a group chat and runs it for the person, with no task', async () => {
     const h = harness({ script: () => 'ok' });
     await h.drain(h.first());
     const run = h.runs[0]!;
@@ -199,7 +194,6 @@ describe('legacy room jobs drain their first round', () => {
     expect(run.person).toEqual({
       oxyUserId: 'u1',
       isDirectSession: false,
-      taskId: 'task-a',
       surfaceApplicationId: null,
     });
   });
@@ -361,11 +355,10 @@ describe('room engine: failures', () => {
     expect(h.queued[0]).toMatchObject({ speakerId: 'b', turns: 1, replies: 1 });
   });
 
-  it('an abandoned chain tells the watchers and gives the authority back', async () => {
+  it('an abandoned chain tells the watchers it is over', async () => {
     const h = harness({ script: () => 'x' });
     await abandonRoomChain(h.first(), h.deps);
     expect(h.events.at(-1)).toMatchObject({ event: 'group.idle', data: { reason: 'error' } });
-    expect(h.revoked.sort()).toEqual(['task-a', 'task-b', 'task-c']);
   });
 });
 
@@ -381,7 +374,6 @@ describe('room engine: bounds', () => {
     expect(h.runs).toHaveLength(1);
     expect(h.queued).toHaveLength(0);
     expect(h.events.at(-1)).toMatchObject({ event: 'group.idle', data: { reason: 'superseded' } });
-    expect(h.revoked).toContain('task-b');
   });
 
   it('a room over its reply window ends the chain without spending', async () => {
@@ -398,7 +390,6 @@ describe('room engine: bounds', () => {
     const spoken = await h.drain(h.first({ replies: MAX_REPLIES_PER_MESSAGE - 1 }));
     expect(spoken).toEqual(['a']);
     expect(h.events.at(-1)).toMatchObject({ event: 'group.idle', data: { reason: 'reply_cap' } });
-    expect(h.revoked).toHaveLength(3);
   });
 });
 
@@ -602,13 +593,12 @@ describe('v2 room participation: selection before execution', () => {
     expect(h.runs.map((run) => run.agentId)).toEqual(['a']);
   });
 
-  it('silent completion runs no agents or tools and revokes authority', async () => {
+  it('silent completion runs no agents or tools', async () => {
     const h = harness({ script: () => 'must not run', select: async () => idle });
     await h.drain(h.first(v2));
     expect(h.runs).toEqual([]);
     expect(kinds(h.events)).toEqual(['group.idle:']);
     expect(h.events[0]?.data.reason).toBe('done');
-    expect(h.revoked).toHaveLength(3);
   });
 
   it('supports distinct contributions and a real handoff, with attributed observations', async () => {

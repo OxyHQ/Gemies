@@ -61,10 +61,6 @@ vi.mock('../../oxy-user-hydration.js', () => ({
   hydrateOxyUsers: async () => new Map(oxyIdentity.users.map((u) => [u._id, u])),
 }));
 
-vi.mock('../../oxy-task-authority.js', () => ({
-  createOxyTask: vi.fn(async () => 'task-original'),
-  revokeOxyTask: vi.fn(async () => {}),
-}));
 vi.mock('../../task-queue.js', () => ({
   enqueueAgentSession: vi.fn(async () => ({ queued: true, jobId: 'job-1' })),
 }));
@@ -81,7 +77,6 @@ import {
 } from '../../../db/agents/agentSessionRepository.js';
 import { getOrCreateUserCredits } from '../../../db/billing/userCreditsRepository.js';
 import { enqueueAgentSession } from '../../task-queue.js';
-import { createOxyTask } from '../../oxy-task-authority.js';
 import {
   type HirableAgent,
   reclaimOrphanedAgentSessions,
@@ -193,7 +188,6 @@ describe('the queue label', () => {
     ];
 
     const outcome = await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 't',
@@ -220,7 +214,6 @@ describe('the queue label', () => {
     oxyIdentity.users = [];
 
     const outcome = await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 't',
@@ -241,7 +234,6 @@ describe('startAgentSession', () => {
     const agent = await seedAgent(15);
 
     const outcome = await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'do the thing',
@@ -249,15 +241,12 @@ describe('startAgentSession', () => {
     });
 
     expect(outcome.ok).toBe(true);
-    expect(createOxyTask).toHaveBeenCalledWith(
-      expect.objectContaining({
-        accessToken: 'real-requester',
-        effectiveAccountId: userId,
-        actorAccountId: runtimeGemieAccountId(agent),
-      }),
-    );
+    // The run acts for `userId` on Gemies' own first-party authority (oxy ADR 0066): no task.
     if (outcome.ok)
-      expect((await findAgentSessionById(db, outcome.sessionId))?.oxyTaskId).toBe('task-original');
+      expect(await findAgentSessionById(db, outcome.sessionId)).toMatchObject({
+        oxyUserId: userId,
+        status: 'queued',
+      });
     // The reservation is DELIBERATELY still spent: the worker settles it. This
     // is the positive control for every refund case below — without it, a
     // `startAgentSession` that refunded unconditionally would pass all of them.
@@ -281,7 +270,6 @@ describe('startAgentSession', () => {
     const agent = await seedAgent(15);
 
     await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'chosen',
@@ -300,7 +288,6 @@ describe('startAgentSession', () => {
     const agent = await seedAgent(15);
 
     await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'routed',
@@ -319,7 +306,6 @@ describe('startAgentSession', () => {
     const agent = await seedAgent(15);
 
     const outcome = await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'too expensive',
@@ -337,7 +323,6 @@ describe('startAgentSession', () => {
     vi.mocked(enqueueAgentSession).mockRejectedValueOnce(new Error('redis is gone'));
 
     const outcome = await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'never queued',
@@ -363,7 +348,6 @@ describe('startAgentSession', () => {
     const agent = await seedAgent(15);
 
     const outcome = await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'unwritable',
@@ -392,7 +376,6 @@ describe('startAgentSession', () => {
     vi.mocked(enqueueAgentSession).mockRejectedValueOnce(new Error('redis is gone'));
 
     await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'never queued',
@@ -416,7 +399,6 @@ describe('startAgentSession', () => {
     vi.mocked(enqueueAgentSession).mockRejectedValueOnce(new Error('redis is gone'));
 
     await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'never queued',
@@ -439,7 +421,6 @@ describe('reclaimOrphanedAgentSessions', () => {
     const userId = await account(100, 0);
     const agent = await seedAgent(15);
     const outcome = await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'stranded',
@@ -471,7 +452,6 @@ describe('reclaimOrphanedAgentSessions', () => {
     const userId = await account(100, 0);
     const agent = await seedAgent(15);
     await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'stranded',
@@ -491,7 +471,6 @@ describe('reclaimOrphanedAgentSessions', () => {
     const userId = await account(100, 0);
     const agent = await seedAgent(15);
     await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'just queued',
@@ -546,7 +525,6 @@ describe('the reclaim sweep and a late worker cannot both settle', () => {
     const userId = await account(100, 0);
     const agent = await seedAgent(15);
     const outcome = await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'stranded',
@@ -566,7 +544,6 @@ describe('the reclaim sweep and a late worker cannot both settle', () => {
     const userId = await account(100, 0);
     const agent = await seedAgent(15);
     const outcome = await startAgentSession({
-      authority: { requesterToken: 'real-requester' },
       agent,
       userId,
       task: 'stranded',

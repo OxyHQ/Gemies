@@ -57,7 +57,6 @@ describe('agent turn settlement', () => {
   it('exposes scheduling in an authenticated chat without exposing unsolicited messaging', async () => {
     createAgentSession.mockResolvedValueOnce({ _id: 'session-1', id: 'session-1' });
     const turn = await AgentTurnCoordinator.begin({
-      authority: { requesterToken: 'live-token' },
       agent: {
         _id: 'agent-1',
         identity: { source: 'oxy', oxyAccountId: 'bot-1' },
@@ -73,12 +72,12 @@ describe('agent turn settlement', () => {
     expect(await turn.runtime.scheduleFollowUp?.(at, 'Saluda al usuario', now, 'call-1')).toBe(
       'Scheduled.',
     );
+    // No authority travels with it: the follow-up runs for the person on Gemies' own
+    // first-party authority (oxy ADR 0066), with no task.
     expect(scheduleChatFollowUp).toHaveBeenCalledWith({
       agentId: 'agent-1',
-      agentAccountId: 'bot-1',
       ownerAccountId: 'user-1',
       sourceSessionId: 'session-1',
-      authority: { requesterToken: 'live-token' },
       at,
       note: 'Saluda al usuario',
       now,
@@ -86,10 +85,9 @@ describe('agent turn settlement', () => {
     });
   });
 
-  it('schedules from a channel turn of the person under the standing task they granted (ADR 0037)', async () => {
+  it('schedules from a channel turn of the person with no task at all (ADR 0037)', async () => {
     createAgentSession.mockResolvedValueOnce({ _id: 'session-2', id: 'session-2' });
     const turn = await AgentTurnCoordinator.begin({
-      authority: { oxyTaskId: 'bot-task' },
       agent: {
         _id: 'agent-1',
         identity: { source: 'oxy', oxyAccountId: 'bot-1' },
@@ -99,25 +97,37 @@ describe('agent turn settlement', () => {
       conversationId: 'telegram:8988966019:570038640',
       task: 'Mándame un mensaje en 1 minuto con el tiempo de mañana en Barcelona',
     });
-    // The session runs under the task, as it is: no bearer, nothing minted.
-    expect(createAgentSession.mock.calls.at(-1)?.[1]).toMatchObject({ oxyTaskId: 'bot-task' });
     const now = new Date();
     const at = new Date(now.getTime() + 60_000);
     expect(await turn.runtime.scheduleFollowUp?.(at, 'El tiempo de mañana', now, 'call-2')).toBe(
       'Scheduled.',
     );
     expect(scheduleChatFollowUp).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        sourceSessionId: 'session-2',
-        authority: { oxyTaskId: 'bot-task' },
-      }),
+      expect.objectContaining({ sourceSessionId: 'session-2', ownerAccountId: 'user-1' }),
     );
+  });
+
+  it('offers no follow-ups to a gemie with no Oxy account (ADR 0036)', async () => {
+    const turn = await AgentTurnCoordinator.begin({
+      agent: {
+        _id: 'agent-1',
+        identity: { source: 'local', localName: 'Local' },
+        maxConcurrentThreads: 3,
+      } as never,
+      oxyUserId: 'user-1',
+      conversationId: 'conversation-1',
+      task: 'Recuérdamelo luego',
+    });
+    expect(turn.runtime.scheduleFollowUp).toBeUndefined();
   });
 
   it('releases admission as its last step, with nothing slow after the flush', async () => {
     const turn = await AgentTurnCoordinator.begin({
-      authority: { requesterToken: 'requester' },
-      agent: { _id: 'agent-1', maxConcurrentThreads: 1 } as never,
+      agent: {
+        _id: 'agent-1',
+        identity: { source: 'oxy', oxyAccountId: 'bot-1' },
+        maxConcurrentThreads: 1,
+      } as never,
       oxyUserId: 'user-1',
       conversationId: 'conversation-1',
       task: 'continue',
@@ -132,7 +142,6 @@ describe('agent turn settlement', () => {
 
   it('settles only once when two completion paths race', async () => {
     const turn = await AgentTurnCoordinator.begin({
-      authority: { requesterToken: 'requester' },
       agent: { _id: 'agent-1', maxConcurrentThreads: 1 } as never,
       oxyUserId: 'user-1',
       task: 'continue',
@@ -146,7 +155,6 @@ describe('agent turn settlement', () => {
 
   it('hands long work to a durable background run of the same agent, admitted per person', async () => {
     const turn = await AgentTurnCoordinator.begin({
-      authority: { requesterToken: 'requester' },
       agent: { _id: 'agent-1', maxConcurrentThreads: 3 } as never,
       oxyUserId: 'user-1',
       task: 'continue',
@@ -173,7 +181,6 @@ describe('agent turn settlement', () => {
       creditsNeeded: 15,
     } as never);
     const turn = await AgentTurnCoordinator.begin({
-      authority: { requesterToken: 'requester' },
       agent: { _id: 'agent-1', maxConcurrentThreads: 3 } as never,
       oxyUserId: 'user-1',
       task: 'continue',

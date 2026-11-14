@@ -279,8 +279,8 @@ describe('an agent reaches exactly what it was granted', () => {
   it('limits a preauthorized Oxy automation stage to protocol, web reading and Oxy sources', async () => {
     const names = await namesFor([...EVERY_GRANT], {
       isDirectSession: false,
-      toolScope: 'preauthorized_oxy_automation',
-      oxyExecutionAuthorizations: {},
+      toolScope: 'automation_run_scope',
+      oxyRunScope: {},
     });
 
     // `browser` is read-only research, which is what a scheduled stage is for;
@@ -301,8 +301,8 @@ describe('an agent reaches exactly what it was granted', () => {
   it('lets a member of a space that was woken on its own keep the space’s notes, and nobody else', async () => {
     const unattended = {
       isDirectSession: false,
-      toolScope: 'preauthorized_oxy_automation' as const,
-      oxyExecutionAuthorizations: {},
+      toolScope: 'automation_run_scope' as const,
+      oxyRunScope: {},
     };
     space.peers = ['peer-1'];
 
@@ -336,8 +336,8 @@ describe('an agent reaches exactly what it was granted', () => {
   });
 
   it("reaches its owner's Oxy apps only when the owner is the one present", async () => {
-    // A stranger on the agent's bot, where the turn runs as the owner and the
-    // stranger holds no session of their own.
+    // A verified stranger on the agent's bot, where the turn runs as the owner: they reach their
+    // OWN apps (Gemies acts for whoever the turn verified, oxy ADR 0066), never the owner's.
     await namesFor([...EVERY_GRANT], {
       userId: 'owner-1',
       requesterAccountId: 'stranger',
@@ -345,6 +345,15 @@ describe('an agent reaches exactly what it was granted', () => {
       accessToken: undefined,
       agent: agentWith([...EVERY_GRANT], 'owner-1'),
     });
+    expect(asked.oxy_context).toEqual([
+      expect.objectContaining({
+        requesterAccountId: 'stranger',
+        ownerAccountId: 'stranger',
+        agentIdentity: { forUser: 'requester', self: false },
+      }),
+    ]);
+    // Nobody verified (a third party on the bot): nobody's apps.
+    asked.oxy_context.length = 0;
     await namesFor([...EVERY_GRANT], {
       userId: 'owner-1',
       requesterAccountId: null,

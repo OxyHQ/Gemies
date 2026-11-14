@@ -27,7 +27,7 @@ import {
   getOxyServicePromptFragment,
   idempotencyKey,
   listOxyAccountReadTools,
-  oxyExecutionAuthorizationKey,
+  oxyRunScopeKey,
   type OxyToolExecutionContext,
 } from '../tools/oxy-services.js';
 
@@ -74,14 +74,23 @@ function context(userId: string): OxyToolExecutionContext {
     actor: { type: 'alia', ownerAccountId: userId },
     runId: `run-${userId}`,
     autonomy: 'execute_on_request',
-    userAccessToken: 'USER-TOKEN',
   };
 }
 
+/** What Gemies asked Oxy to authorize, call by call (`/capabilities/first-party-execution-authorizations`). */
+type AuthorizationRequest = Record<string, unknown> & {
+  requesterAccountId?: string;
+  resource?: Record<string, unknown>;
+};
+
 describe('Oxy capability tools', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
+  let authorizations: AuthorizationRequest[];
+  let tickets: Record<string, unknown>[];
 
   beforeEach(() => {
+    authorizations = [];
+    tickets = [];
     fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/auth/service-token'))
@@ -105,42 +114,27 @@ describe('Oxy capability tools', () => {
         );
       }
       if (
-        url.endsWith('/capabilities/foreground-execution-authorizations') &&
+        url.endsWith('/capabilities/first-party-execution-authorizations') &&
         init?.method === 'POST'
       ) {
+        // Gemies' own workload, on its declared authority: no person's bearer anywhere.
         expect(new Headers(init.headers).get('authorization')).toBe('Bearer ALIA-SERVICE-TOKEN');
-        expect(JSON.parse(String(init.body))).toMatchObject({
-          kind: 'direct_request',
-          authority: 'first_party',
-          subjectToken: 'USER-TOKEN',
-          tool: 'searchEmails',
-          runId: 'run-user-1',
-        });
-        return new Response(JSON.stringify({ authorization: { id: 'AUTHORIZATION-1' } }), {
-          status: 201,
-          headers: { 'content-type': 'application/json' },
-        });
+        const body = JSON.parse(String(init.body)) as AuthorizationRequest;
+        expect(JSON.stringify(body)).not.toMatch(/subjectToken|taskId/);
+        authorizations.push(body);
+        return new Response(
+          JSON.stringify({ authorization: { id: `AUTHORIZATION-${authorizations.length}` } }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        );
       }
       if (url.endsWith('/capabilities/tickets')) {
         expect(new Headers(init?.headers).get('authorization')).toBe('Bearer ALIA-SERVICE-TOKEN');
         const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        expect(['AUTHORIZATION-1', 'PREAUTHORIZED-1', 'STANDING-1', 'STANDING-2']).toContain(
-          request.executionAuthorizationId,
-        );
-        if (String(request.executionAuthorizationId).startsWith('STANDING-')) {
-          // Automation kind: Oxy requires the run, and a standing read has no step.
-          expect(request).toEqual({
-            executionAuthorizationId: request.executionAuthorizationId,
-            runId: 'run-user-5',
-          });
-        }
-        if (request.executionAuthorizationId === 'PREAUTHORIZED-1') {
-          expect(request).toEqual({
-            executionAuthorizationId: 'PREAUTHORIZED-1',
-            runId: 'run-user-3',
-            stepId: 'step-user-3',
-          });
-        }
+        tickets.push(request);
+        // The authorization bound its own run and step: the ticket request names neither.
+        expect(request).toEqual({
+          executionAuthorizationId: `AUTHORIZATION-${authorizations.length}`,
+        });
         return new Response(
           JSON.stringify({
             decision: { allowed: true, reason: 'allowed' },
@@ -165,13 +159,6 @@ describe('Oxy capability tools', () => {
           },
         });
       }
-      if (
-        url.endsWith('/capabilities/execution-authorizations/AUTHORIZATION-1') &&
-        init?.method === 'DELETE'
-      ) {
-        expect(new Headers(init.headers).get('authorization')).toBe('Bearer USER-TOKEN');
-        return new Response(null, { status: 204 });
-      }
       return new Response('not found', { status: 404 });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -179,11 +166,23 @@ describe('Oxy capability tools', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it('uses user authority only on Oxy control-plane calls and sends only a ticket to the app', async () => {
+  it('authorizes each call on Gemies’ own authority for the person, with no session, and sends only a ticket to the app', async () => {
     const tools = await buildOxyServiceTools('user-1', context('user-1'));
     const search = tools.oxy_inbox__searchEmails as unknown as ExecutableTool;
     expect(search).toBeDefined();
     await search.execute({ q: 'hello' });
+
+    expect(authorizations).toEqual([
+      expect.objectContaining({
+        authority: 'first_party',
+        kind: 'direct_request',
+        tool: 'searchEmails',
+        runId: 'run-user-1',
+        requesterAccountId: 'user-1',
+        resource: expect.objectContaining({ appId: 'inbox', effectiveAccountId: 'user-1' }),
+      }),
+    ]);
+    expect(authorizations[0]).not.toHaveProperty('stepId');
 
     const appCall = fetchMock.mock.calls.find(([input]) =>
       String(input).startsWith('https://inbox.example.test/'),
@@ -192,13 +191,12 @@ describe('Oxy capability tools', () => {
     expect(((appCall?.[1] as RequestInit).headers as Record<string, string>).authorization).toBe(
       'Capability SHORT-TICKET',
     );
+    // Nothing to retire: no approval, task or session is held after the call.
     expect(
       fetchMock.mock.calls.some(
-        ([input, init]) =>
-          String(input).endsWith('/capabilities/execution-authorizations/AUTHORIZATION-1') &&
-          (init as RequestInit).method === 'DELETE',
+        ([, init]) => (init as RequestInit | undefined)?.method === 'DELETE',
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('renders its prompt from the same registry snapshot', async () => {
@@ -208,7 +206,7 @@ describe('Oxy capability tools', () => {
     expect(fragment).toContain('oxy_inbox__searchEmails');
   });
 
-  it('uses an exact pre-authorization for a background step without a user bearer', async () => {
+  it('authorizes a run-scoped step per call with its step and declared limits, once per stage', async () => {
     const resource = {
       appId: 'inbox',
       effectiveAccountId: 'user-3',
@@ -222,10 +220,10 @@ describe('Oxy capability tools', () => {
       actor: { type: 'alia', ownerAccountId: 'user-3' },
       runId: 'run-user-3',
       autonomy: 'autonomous',
-      executionAuthorizations: {
-        [oxyExecutionAuthorizationKey(resource, 'searchEmails')]: {
-          id: 'PREAUTHORIZED-1',
+      runScope: {
+        [oxyRunScopeKey(resource, 'searchEmails')]: {
           stepId: 'step-user-3',
+          limits: [{ key: 'q', value: 5 }],
         },
       },
       onStepStatus,
@@ -236,15 +234,17 @@ describe('Oxy capability tools', () => {
       error: 'searchEmails is authorized once for this automation stage',
     });
 
-    const controlPlaneCalls = fetchMock.mock.calls.filter(([input]) =>
-      String(input).endsWith('/capabilities/execution-authorizations'),
-    );
-    expect(controlPlaneCalls).toHaveLength(0);
-    expect(
-      fetchMock.mock.calls.some(([input]) =>
-        String(input).endsWith('/capabilities/execution-authorizations/PREAUTHORIZED-1'),
-      ),
-    ).toBe(false);
+    expect(authorizations).toEqual([
+      expect.objectContaining({
+        kind: 'direct_request',
+        runId: 'run-user-3',
+        stepId: 'step-user-3',
+        limits: [{ tool: 'searchEmails', key: 'q', value: 5 }],
+        requesterAccountId: 'user-3',
+        resource,
+      }),
+    ]);
+    expect(tickets).toEqual([{ executionAuthorizationId: 'AUTHORIZATION-1' }]);
     expect(onStepStatus.mock.calls).toEqual([
       ['step-user-3', 'running'],
       ['step-user-3', 'succeeded', 'audit-event-1'],
@@ -272,7 +272,7 @@ describe('Oxy capability tools', () => {
     it('hides raw authority errors while preserving consent and refusing bypass', async () => {
       refuse(
         (url, init) =>
-          url.endsWith('/capabilities/foreground-execution-authorizations') &&
+          url.endsWith('/capabilities/first-party-execution-authorizations') &&
           init?.method === 'POST',
         () =>
           new Response(JSON.stringify({ error: 'coordinator_not_active_or_authorized' }), {
@@ -288,18 +288,6 @@ describe('Oxy capability tools', () => {
       expect(text).not.toContain('coordinator_not_active_or_authorized');
       expect(text).not.toContain('consent');
       expect(text).toContain('Do not claim it succeeded or use another route to bypass the check');
-    });
-
-    it('treats a missing user authority the same way', async () => {
-      const tools = await buildOxyServiceTools('user-1', {
-        ...context('user-1'),
-        userAccessToken: undefined,
-      });
-      const result = await (tools.oxy_inbox__searchEmails as unknown as ExecutableTool).execute({
-        q: 'hello',
-      });
-      expect(result).toMatchObject({ error: 'oxy_app_unavailable' });
-      expect(JSON.stringify(result)).not.toContain('No direct or automation authority');
     });
 
     it('treats the app refusing its ticket as an authority failure', async () => {
@@ -327,7 +315,7 @@ describe('Oxy capability tools', () => {
     });
   });
 
-  it("lets Alia read the owner's apps any number of times under her standing authority", async () => {
+  it("lets Alia read the owner's apps any number of times in her run scope", async () => {
     const root = {
       appId: 'inbox',
       effectiveAccountId: 'user-5',
@@ -340,11 +328,8 @@ describe('Oxy capability tools', () => {
       actor: { type: 'alia', ownerAccountId: 'user-5' },
       runId: 'run-user-5',
       autonomy: 'autonomous',
-      executionAuthorizations: {
-        [oxyExecutionAuthorizationKey(root, 'searchEmails')]: {
-          id: 'STANDING-1',
-          repeatable: true,
-        },
+      runScope: {
+        [oxyRunScopeKey(root, 'searchEmails')]: { repeatable: true },
       },
     });
     const search = tools.oxy_inbox__searchEmails as unknown as ExecutableTool;
@@ -353,15 +338,16 @@ describe('Oxy capability tools', () => {
     expect(
       fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/capabilities/tickets')),
     ).toHaveLength(2);
-    // No user bearer, so nothing is created or revoked at Oxy during the run.
-    expect(
-      fetchMock.mock.calls.some(([input]) =>
-        String(input).includes('/capabilities/execution-authorizations'),
-      ),
-    ).toBe(false);
+    // Each read is its own authorization, for the run, with no step: a standing read belongs to
+    // the task, not to one step.
+    expect(authorizations).toHaveLength(2);
+    for (const authorization of authorizations) {
+      expect(authorization).toMatchObject({ kind: 'direct_request', runId: 'run-user-5' });
+      expect(authorization).not.toHaveProperty('stepId');
+    }
   });
 
-  it('binds Alia to exactly the resources her authority names, account root or not', async () => {
+  it('binds Alia to exactly the resources her run scope names, account root or not', async () => {
     const root = {
       appId: 'inbox',
       effectiveAccountId: 'user-5',
@@ -374,19 +360,10 @@ describe('Oxy capability tools', () => {
       ownerAccountId: 'user-5',
       actor: { type: 'alia', ownerAccountId: 'user-5' },
       runId: 'run-user-5',
-      executionAuthorizations: {
-        [oxyExecutionAuthorizationKey(root, 'searchEmails')]: {
-          id: 'STANDING-1',
-          repeatable: true,
-        },
-        [oxyExecutionAuthorizationKey(other, 'searchEmails')]: {
-          id: 'STANDING-2',
-          repeatable: true,
-        },
-        [oxyExecutionAuthorizationKey(root, 'notInTheCatalog')]: {
-          id: 'STANDING-3',
-          repeatable: true,
-        },
+      runScope: {
+        [oxyRunScopeKey(root, 'searchEmails')]: { repeatable: true },
+        [oxyRunScopeKey(other, 'searchEmails')]: { repeatable: true },
+        [oxyRunScopeKey(root, 'notInTheCatalog')]: { repeatable: true },
       },
     });
     const names = Object.keys(tools).sort();
@@ -394,7 +371,7 @@ describe('Oxy capability tools', () => {
     expect(names.every((name) => name.startsWith('oxy_inbox__searchEmails__'))).toBe(true);
   });
 
-  it("lists every read tool at the owner's account roots for standing authority", async () => {
+  it("lists every read tool at the owner's account roots for an Alia run scope", async () => {
     await expect(listOxyAccountReadTools('user-6')).resolves.toEqual([
       {
         resource: {
@@ -408,14 +385,14 @@ describe('Oxy capability tools', () => {
     ]);
   });
 
-  it('does not expose undeclared Oxy tools to a pre-authorized background stage', async () => {
+  it('does not expose undeclared Oxy tools to a run-scoped background stage', async () => {
     const tools = await buildOxyServiceTools('user-4', {
       requesterAccountId: 'user-4',
       ownerAccountId: 'user-4',
       actor: { type: 'alia', ownerAccountId: 'user-4' },
       runId: 'run-user-4',
       autonomy: 'autonomous',
-      executionAuthorizations: {},
+      runScope: {},
     });
     expect(tools).toEqual({});
   });

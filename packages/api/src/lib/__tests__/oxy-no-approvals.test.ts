@@ -130,7 +130,7 @@ beforeEach(() => {
       });
     }
     if (
-      url.endsWith('/capabilities/foreground-execution-authorizations') &&
+      url.endsWith('/capabilities/first-party-execution-authorizations') &&
       init?.method === 'POST'
     )
       return json({ authorization: { id: 'DIRECT-1' } }, 201);
@@ -160,7 +160,6 @@ function aliaContext(): OxyToolExecutionContext {
     ownerAccountId: PERSON,
     actor: { type: 'alia', ownerAccountId: PERSON },
     runId: 'run-1',
-    userAccessToken: 'PERSON-TOKEN',
   };
 }
 
@@ -231,7 +230,6 @@ describe('an agent', () => {
       actor: { type: 'agent', accountId: AGENT },
       agentIdentity: { forUser: false, self: true },
       runId: 'run-1',
-      userAccessToken: 'PERSON-TOKEN',
     });
     expect(await exec(tools, 'self_social__deletePost').execute({ id: 'p1' })).toEqual({
       ok: true,
@@ -247,7 +245,6 @@ describe('an agent', () => {
       actor: { type: 'agent', accountId: AGENT },
       agentIdentity: { forUser: 'owner', self: false },
       runId: 'run-1',
-      userAccessToken: 'PERSON-TOKEN',
     });
     expect(await exec(tools, 'oxy_social__deletePost').execute({ id: 'p1' })).toEqual({
       ok: true,

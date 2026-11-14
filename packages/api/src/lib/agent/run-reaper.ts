@@ -1,5 +1,4 @@
 import { dispatchAgentWork } from './work.js';
-import { retireFinishedOxyTasks } from '../oxy-task-authority.js';
 /**
  * The sweep that keeps background agent runs from being lost.
  *
@@ -37,7 +36,6 @@ import { reapStalledAutomationEvents } from '../automation-event-dispatch.js';
 import { reapStalledChannelInbound } from '../channels/inbound-sweep.js';
 import { syncDueGemieBotProfiles } from '../gemie-telegram-bot-profile.js';
 import { pruneGemieBotTurns } from '../../db/integrations/gemieBotRepository.js';
-import { sweepChannelTasks } from '../channel-task-authority.js';
 import { runAgentHeartbeats } from './heartbeat.js';
 
 const REAP_EVERY_MS = 60_000;
@@ -105,9 +103,6 @@ async function sweep(): Promise<void> {
     // Sessions queued and never picked up: the same "nothing will ever settle
     // this" event, so the same sweep. A single conditional UPDATE, safe on every
     // task.
-    await retireFinishedOxyTasks().catch((err: unknown) =>
-      log.agents.warn({ err }, 'Oxy task retirement sweep failed'),
-    );
     await reclaimOrphanedAgentSessions().catch((err: unknown) =>
       log.agents.error({ err }, '[AgentSession] Orphan reclaim error'),
     );
@@ -130,11 +125,6 @@ async function sweep(): Promise<void> {
     // instance died before syncing it (`gemie-telegram-bot-profile.ts`).
     await syncDueGemieBotProfiles().catch((err: unknown) =>
       log.channels.error({ err }, '[GemieBotProfile] Sync error'),
-    );
-    // Channels' Oxy tasks past their expiry lapse, and each person whose channel needs them is
-    // told once, with a one-tap reauthorisation (`channel-task-authority.ts`).
-    await sweepChannelTasks().catch((err: unknown) =>
-      log.channels.error({ err }, '[ChannelTask] Sweep error'),
     );
     // A gemie bot's per-message turns, once no retry can reach them (`gemie-telegram-bot.ts`).
     await pruneGemieBotTurns(getDb(), TWO_DAYS_MS).catch((err: unknown) =>

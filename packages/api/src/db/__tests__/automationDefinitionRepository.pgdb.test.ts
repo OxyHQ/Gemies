@@ -2,7 +2,6 @@ import { uuidv7 } from '@oxy.so/db';
 import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  automationHasActiveAuthorizationCoverage,
   countEnabledAutomationDefinitions,
   automationRunProgressForSession,
   claimAutomationConversation,
@@ -13,7 +12,7 @@ import {
   findAutomationDefinitionById,
   findAutomationRunById,
   listAutomationDefinitions,
-  listAutomationExecutionAuthorizationsForRun,
+  listAutomationRunActionSteps,
   listAutomationRuns,
   listAutomationRunSteps,
   listSchedulableAutomationDefinitions,
@@ -21,7 +20,6 @@ import {
   markAutomationActionStep,
   markAutomationRunForSession,
   updateAutomationDefinition,
-  upsertAutomationActionAuthorizations,
 } from '../automation/automationDefinitionRepository';
 import { createAutomationStageSession } from '../agents/agentSessionRepository';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
@@ -48,7 +46,6 @@ describe('normalized automation definitions', () => {
     const automationId = uuidv7();
     const actionId = uuidv7();
     const runId = uuidv7();
-    const authorizationId = `oxy-auth-${uuidv7()}`;
     const automation = await createAutomationDefinition(db, {
       id: automationId,
       ownerAccountId: 'aut-owner-1',
@@ -76,16 +73,6 @@ describe('normalized automation definitions', () => {
       limits: [],
       enabled: true,
     });
-    await upsertAutomationActionAuthorizations(db, [
-      {
-        automationActionId: actionId,
-        agentId: 'aut-agent-1',
-        actorAccountId: 'aut-bot-1',
-        oxyAuthorizationId: authorizationId,
-        expiresAt: new Date(Date.now() + 60_000),
-      },
-    ]);
-
     expect(automation.executionMode).toBe('execute');
     expect(automation.actions).toEqual([
       expect.objectContaining({
@@ -95,9 +82,6 @@ describe('normalized automation definitions', () => {
         limits: [{ key: 'daily', value: 10 }],
       }),
     ]);
-    expect(
-      await automationHasActiveAuthorizationCoverage(db, automationId, 'aut-agent-1', [actionId]),
-    ).toBe(true);
 
     await expect(
       claimAutomationRunPlan({
@@ -119,18 +103,16 @@ describe('normalized automation definitions', () => {
       }),
     ).resolves.toBe(true);
 
-    const references = await listAutomationExecutionAuthorizationsForRun(
-      db,
-      runId,
-      'aut-agent-1',
-      0,
-    );
+    // The run's scope: the declared action's exact resource, tool, step and limits; no Oxy id.
+    const references = await listAutomationRunActionSteps(db, runId, 'aut-agent-1', 0);
     expect(references).toEqual([
-      expect.objectContaining({
+      {
+        stepId: expect.any(String),
         automationActionId: actionId,
-        oxyAuthorizationId: authorizationId,
+        resource,
         tool: 'replyToEmail',
-      }),
+        limits: [{ key: 'daily', value: 10 }],
+      },
     ]);
     const stepId = references[0]?.stepId;
     if (!stepId) throw new Error('Expected an action step');
@@ -191,7 +173,6 @@ describe('normalized automation definitions', () => {
       maximumAutonomy: 'autonomous',
       limits: [{ key: 'weekly', value: 1 }],
       enabled: true,
-      authorizations: [],
     });
 
     expect(updated).toEqual(
@@ -224,7 +205,6 @@ describe('normalized automation definitions', () => {
         maximumAutonomy: 'execute_on_request',
         limits: [],
         enabled: false,
-        authorizations: [],
       }),
     ).resolves.toBeNull();
   });
@@ -353,22 +333,6 @@ describe('normalized automation definitions', () => {
     });
     const [readAction, publishAction] = automation.actions;
     if (!readAction || !publishAction) throw new Error('Expected two automation actions');
-    await upsertAutomationActionAuthorizations(db, [
-      {
-        automationActionId: readActionId,
-        agentId: 'reader-agent',
-        actorAccountId: 'reader-bot',
-        oxyAuthorizationId: `oxy-auth-${uuidv7()}`,
-        expiresAt: new Date(Date.now() + 60_000),
-      },
-      {
-        automationActionId: publishActionId,
-        agentId: 'publisher-agent',
-        actorAccountId: 'publisher-bot',
-        oxyAuthorizationId: `oxy-auth-${uuidv7()}`,
-        expiresAt: new Date(Date.now() + 60_000),
-      },
-    ]);
     await expect(
       claimAutomationRunPlan({
         db,
@@ -404,13 +368,8 @@ describe('normalized automation definitions', () => {
       automationStage: 0,
       task: 'read',
     });
-    const [readAuthorization] = await listAutomationExecutionAuthorizationsForRun(
-      db,
-      runId,
-      'reader-agent',
-      0,
-    );
-    if (!readAuthorization) throw new Error('Expected reader authorization');
+    const [readAuthorization] = await listAutomationRunActionSteps(db, runId, 'reader-agent', 0);
+    if (!readAuthorization) throw new Error('Expected the reader step');
     await markAutomationActionStep(db, readAuthorization.stepId, 'succeeded');
     await markAutomationRunForSession(db, reader.session.id, 'succeeded');
     await expect(automationRunProgressForSession(db, reader.session.id)).resolves.toEqual(
@@ -438,13 +397,13 @@ describe('normalized automation definitions', () => {
         session: expect.objectContaining({ id: publisher.session.id }),
       }),
     );
-    const [publishAuthorization] = await listAutomationExecutionAuthorizationsForRun(
+    const [publishAuthorization] = await listAutomationRunActionSteps(
       db,
       runId,
       'publisher-agent',
       1,
     );
-    if (!publishAuthorization) throw new Error('Expected publisher authorization');
+    if (!publishAuthorization) throw new Error('Expected the publisher step');
     await markAutomationActionStep(db, publishAuthorization.stepId, 'succeeded');
     await markAutomationRunForSession(db, publisher.session.id, 'succeeded');
     await expect(automationRunProgressForSession(db, publisher.session.id)).resolves.toEqual({

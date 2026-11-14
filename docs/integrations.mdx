@@ -334,9 +334,11 @@ app-specific code in Alia.
   the field whichever `@oxy.so/contracts` is installed (older ones refuse it).
 - One registry catalogue that does not parse is logged and skipped; it costs that
   app's tools, never the others'.
-- `packages/api/src/lib/oxy-capability-authority.ts` exchanges the turn's authority
-  (a verified direct requester, an original durable task, or an automation's stored authorization)
-  for opaque execution-authorization ids and short-lived tickets.
+- `packages/api/src/lib/tools/oxy-invocation.ts` asks Oxy for a two-minute execution
+  authorization per call on Gemies' declared first-party authority
+  (`createFirstPartyExecutionAuthorization`, Oxy ADR 0066: the person and the account, no session
+  or task), then a short-lived ticket. A structured automation's run calls only its run scope
+  ([requester authority](./requester-authority.md)).
 - When Oxy cannot confirm authority the model receives `oxy_app_unavailable` (or
   `oxy_app_result_unknown` when an effect's outcome is unknown) with a fixed
   sentence, never Oxy's raw reason, and is told not to route around it.
@@ -420,9 +422,8 @@ per gemie is its own Telegram bot ([below](#telegram-on-the-bot-api)).
   The gateway asks `POST /channel-accounts/inbound` before a message reaches a turn: it is answered
   only when a gemie answers the account and `shouldAnswer` says so; otherwise it gets no reply at
   all. The same call records the account's last activity. The turn is the answering gemie's
-  (`middleware/channel-auth.ts` reads it from the grants), authorised as unattended work, with the
-  account's Oxy task, whose actor is that gemie (`oxyActorFor`) and which moves when the person
-  chooses another; an account no gemie answers holds no task, and a turn on it is refused.
+  (`middleware/channel-auth.ts` reads it from the grants), for the account's person, on Gemies'
+  declared authority (no task); an account no gemie answers is not answered.
 - **Live status.** Listing the accounts asks the gateway for each session and stores what moved,
   so an account unlinked from the phone shows `logged-out`, not `connected`.
 - **Tools.** `listAccountChats`, `readAccountMessages` and `sendAccountMessage`
@@ -443,12 +444,10 @@ per gemie is its own Telegram bot ([below](#telegram-on-the-bot-api)).
   granted to, the `platforms`), `POST /me/accounts { platform }` (connect one; answers its first
   code), `PATCH /me/accounts/:accountId { answeringGemieId?, replies?, replyChatIds?,
   groupReplies? }`, `PUT|DELETE /me/accounts/:accountId/gemies/:gemieId` (grant or revoke; a gemie
-  the caller may not grant is `404|403 gemie_not_grantable`, and revoking the answering one revokes
-  the task), `GET /me/accounts/:accountId/qr|chats`, `POST /me/accounts/:accountId/reauthorize`
-  (renew the answering gemie's task; `409 no_answering_gemie` without one; what `@gemies/sdk`
-  before 7.1 calls, newer ones renew every channel at once, [below](#channel-tasks-are-renewed-before-they-lapse)) and
+  the caller may not grant is `404|403 gemie_not_grantable`, and revoking the answering one leaves
+  the account unanswered), `GET /me/accounts/:accountId/qr|chats` and
   `DELETE /me/accounts/:accountId` (the gateway logs the session out and deletes what it synced).
-  Deleting a gemie revokes the task of every account it answered; its grants cascade, and the
+  Deleting a gemie leaves every account it answered unanswered; its grants cascade, and the
   accounts stay their people's (`lib/connected-accounts.ts`).
 - **The apps.** The UI is the SDK's (`@gemies/sdk/accounts`): `GemieConnectedAccounts` is Settings ›
   Connected accounts in the Gemies and the Alia apps alike, and `GemieAccountGrants` is the
@@ -488,9 +487,8 @@ Telegram runs on its official Bot API only, in one layer in `packages/integratio
   connection (keep-alive spaces before the JSON; streamed `/alia/chat` for channel turns). The gemie's
   balance pays first, then the person who connected the bot if they allowed it.
 - **The bot recognises its person** (ADR 0037, amendment). In the editor, the person who connected
-  the bot taps *Link my Telegram* (`POST /agents/:id/telegram-bot/link`): it mints, with their
-  session, a durable Oxy task in which they are the effective account and the gemie the actor
-  (`bots.oxy_task_id`), and opens `t.me/<bot>?start=<code>`. Telegram sends `/start <code>`; the
+  the bot taps *Link my Telegram* (`POST /agents/:id/telegram-bot/link`), which opens
+  `t.me/<bot>?start=<code>`. Telegram sends `/start <code>`; the
   API redeems the one-time code (stored only as a hash, 15 minutes) for the Telegram account that
   sent it (`bots.linked_telegram_user_id`). From then on their **private** messages from that
   account answer `personTurn`, and the integrations process runs them through `/alia/chat` as the
@@ -500,7 +498,8 @@ Telegram runs on its official Bot API only, in one layer in `packages/integratio
   runtime (`scheduleFollowUp`, `continueInBackground`, browser, computer), `createAutomation`,
   billed to them. Everyone else, and the person in a group, is a third party: the gemie's public
   tools only, run in the API with nobody's authority, and the prompt says how the person links.
-  Unlinking (`DELETE …/link`) or removing the bot revokes the task.
+  Unlinking (`DELETE …/link`) or removing the bot ends it: the link is the off switch, there is no
+  grant or task to renew.
 - **The gemie writes back in the chat.** Whatever the gemie posts on its own into one of its bot's
   conversations (`postAgentMessage`: a follow-up's result, a scheduled task's result, a check-in)
   is also sent there as the bot (`POST /telegram/bots/send` of the integrations process). A task
@@ -515,7 +514,7 @@ and the API turns it into the turn's user message the same way for all of them
 (`lib/channel-messages.ts`):
 
 - **Media is kept like an app attachment, and drawn as one**: as a private Oxy file of the person whose
-  conversation it is (`storeChannelMedia`, with the channel's task), with a `file` part in the stored
+  conversation it is (`storeChannelMedia`, `assets.actingFor({ accountId })`), with a `file` part in the stored
   message that carries what it was (`kind`), its words (`description`, e.g. "Sticker 😂 from the set …"),
   its length and its transcript. The app draws it with `TurnAttachments` (`@gemies/sdk`), as it
   draws an attachment the person made: a photo, a sticker (an animated one by its still), a voice
@@ -523,12 +522,11 @@ and the API turns it into the turn's user message the same way for all of them
   a document are the file; a video, a round video or a GIF is its first frame. Documents are read as
   attachments are (`readFileForModel`); a type no model reads is named, not kept. Media that is not
   kept (a third party's) is said in the message's words.
-- **Kept only under the person's own task.** A channel message carries no session, and Oxy stores a
-  person's media for Gemies only into the account a verified session or task names
-  (`requireUserMediaOwner`). So media is kept with the channel's task — the connected account's, or
-  the one the person granted when linking their Telegram to a gemie bot — on their own turns only. A
-  third party's media on a gemie bot, or an account whose task lapsed, is shown to the gemie and
-  transcribed, but never stored as the person's: their authority is never inferred from owning the
+- **Kept only as the person whose channel it is.** A channel message carries no session; Gemies
+  stores the media on its declared `oxy:files` authority (Oxy ADR 0066) into the account of the
+  person the channel identifies — the connected account's, or the person who linked their Telegram
+  to a gemie bot — on their own turns only. A third party's media on a gemie bot is shown to the
+  gemie and transcribed, but never stored as anybody's: authority is never inferred from owning the
   bot.
 - **A voice note or audio is transcribed** on the dictation path (`transcribeDictation`, on the account
   whose turn it is), and its transcript travels with its file part (`transcript`), so a later turn
@@ -540,7 +538,7 @@ and the API turns it into the turn's user message the same way for all of them
 - **Media is read on the turn it arrived; later turns read it in words** (`turnContentText`: the text,
   and a line per file with its transcript). A turn through `/alia/chat` (a connected account's, or a
   bot's person's) resends the whole stored conversation unchanged, parts included, so the saver
-  appends to it; as a channel turn it reads only its newest message's files, with the channel's task
+  appends to it; as a channel turn it reads only its newest message's files, as the channel's person
   (`filePartsOf(…, { latestTurnOnly })`), and is given earlier ones in words.
 - **Who prepares it.** A connected account's gateway asks `POST /channel-accounts/messages` for the
   content, and a gemie bot's answer carries it (`personTurn.content`, stored under the Telegram
@@ -556,62 +554,6 @@ and the API turns it into the turn's user message the same way for all of them
 Background tasks — who runs them, their triggers and how a run executes — are in
 [Background work and proactive outreach](./proactive-intelligence.md); the
 `/automations` endpoints are in the [API reference](./api-reference.md#structured-automations).
-
-### Channel tasks are renewed before they lapse
-
-Every channel holds a durable Oxy task of its person's: a connected account a gemie answers
-(`connected_accounts`), a system bot link (`bot_users`) and a gemie bot's linked person (`bots`).
-Autonomy there never lapses unseen (ADR 0037, amendment of 2026-11-14; `lib/channel-task-authority.ts`):
-
-- **Minted with its expiry.** Every mint goes through `bindOxyTask` (`lib/oxy-task-authority.ts`),
-  which stores the expiry Oxy answered (`oxy_task_expires_at`), writes the task only while the
-  binding still holds the one it was read with, and releases that one only after the write. A link
-  token that expires mid-request leaves the row with its old task, still live.
-- **Renewed by the person's present session**, the only thing Oxy mints a task from: the apps call
-  `POST /me/channel-tasks/renew` once a session (`useChannelTaskRenewal`, `@gemies/sdk/accounts`),
-  which renews every live binding of theirs that is `reauth_required`, undated, or within 30 days
-  of its expiry, with the actor it was granted with (an account's gemie as one they may grant, a
-  gemie bot's as one they may act as, a system bot link's on their assistant's lane). It answers
-  `{ renewed, failed }`, each `{ kind, id }`. Settings › Connected accounts asks it too when an
-  account shows its task lapsed.
-- **Lapsed in one place.** The run reaper's minute sweep marks `reauth_required` every task past its
-  expiry, in the three tables; a tool call Oxy refuses for the task itself (`403 Task authority is
-  no longer active.`, `isTaskAuthorityRefusal`) marks the binding holding it.
-  `middleware/channel-auth.ts` never hands a turn a task known to be dead (`liveChannelTaskId`); a
-  gemie bot's person whose task lapsed is a third party there, told where to reauthorise.
-- **Told once.** The same sweep claims (`oxy_task_notified_at`, one conditional write per row, so
-  instances sweeping together notify once) every live binding whose task lapsed or lapses within 7
-  days, and sends one `integration_event` notification whose tap opens the app's one-tap page
-  (`data.path = '/channels/reauthorize'`, `useReauthorizeChannels`), in the person's language. The
-  channel itself says it too where it can still write: the shared bot for a connected account
-  (`notifyAccountPerson`), the system bot's chat, the gemie bot's private chat. A notification that
-  could not be sent is claimed again by the next sweep; each new task clears the claim.
-- **The gemie bot's editor** shows `personAuthorityLapsed` with a *Reauthorise* button that renews
-  it in place, keeping the Telegram link.
-
-### Channel task migration (source pending rollout)
-
-New bot links and personal messaging connections create an Oxy task while the
-actual requester is signed in. Only `oxy_task_id` is retained. The gateway checks
-its workload identity and the current platform/session binding, then supplies
-local account context plus the task id; it never invents a user session. Unlink
-and logout revoke that root before clearing the binding.
-
-The additive `0107_first_party_task_authority` migration defaults existing channels
-to `reauth_required`. It does not promote legacy links. On a controlled Alia server,
-`bun dist/db/migrate-channel-tasks.js --target-database=<actual-name>`
-reports candidate counts without mutation; `--apply` validates each legacy bot
-`metadata.sessionToken` through Oxy's task API against the stored original person
-and live link. A valid shared session creates a task and the bearer is removed.
-An expired/rejected session is purged and remains `reauth_required`; transient
-outages retain the candidate for retry. Concurrent unlink/relink revokes a newly
-created root rather than attaching it to another person. Reports contain counts,
-never bearer material. Existing connections without original requester proof remain typed inactive until
-the account is next present in its normal Oxy session. The app's silent renewal
-([below](#channel-tasks-are-renewed-before-they-lapse)) then mints its task, with no new consent
-button or provider reconnect. External OAuth connections and messages are preserved. This procedure has not been run in
-production. Deploy the Oxy task reader and published SDKs first, then the Alia
-schema and code, then perform the verified conversion and account-level readback.
 
 ### Workload readiness and development
 

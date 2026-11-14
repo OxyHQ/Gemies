@@ -185,7 +185,6 @@ export async function buildVoiceTurn(input: VoiceTurnInput): Promise<VoiceTurnCo
       model: null,
       isDirectUserSession: true,
       userId: oxyUserId,
-      accessToken: input.accessToken(),
       oxyUser: input.oxyUser,
       userMemory: input.userMemory,
       skills: runtime,

@@ -1,5 +1,15 @@
 # @gemies/server
 
+## 2.0.0
+
+- **Breaking — `requester` is `actingFor`.** `createGemieForOxyService` and
+  `createGemieTransportForOxyService` take `actingFor: { accountId, requesterAccountId? }` (the
+  account the Oxy service calls Gemies for, and the person when they operate it), passed to
+  `oxy.createServiceClient`. `GemieOxyRequester` (session bearer, task id or requester context) is
+  removed: Oxy's own services act for people with the authority the Oxy registry declares for them,
+  checked live on every request, and carry no proof (oxy ADR 0066). Needs `@oxy.so/core` 7.52.0 or
+  later.
+
 ## 1.0.1
 
 - `createGemieTurnControl().stop()` aborts the stream only when the server answers `cancelled`.

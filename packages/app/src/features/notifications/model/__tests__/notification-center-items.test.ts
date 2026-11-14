@@ -87,12 +87,12 @@ describe('notificationCenterItems', () => {
 
 describe('notificationHref', () => {
   it('opens the page a notice names before its conversation, and only a page of this app', () => {
-    expect(notificationHref(notice({ data: { path: '/channels/reauthorize' } }))).toBe(
-      '/channels/reauthorize',
+    expect(notificationHref(notice({ data: { path: '/settings/accounts' } }))).toBe(
+      '/settings/accounts',
     );
     expect(
-      notificationHref(notice({ data: { path: '/channels/reauthorize' }, conversationId: 'c1' })),
-    ).toBe('/channels/reauthorize');
+      notificationHref(notice({ data: { path: '/settings/accounts' }, conversationId: 'c1' })),
+    ).toBe('/settings/accounts');
     expect(notificationHref(notice({ conversationId: 'c1' }))).toBe('/(app)/c/c1');
     for (const path of [
       '//evil.example/x',
@@ -108,7 +108,7 @@ describe('notificationHref', () => {
   });
 
   it('gives a notice that opens a page its open action', () => {
-    const [item] = notificationCenterItems([notice({ data: { path: '/channels/reauthorize' } })], {
+    const [item] = notificationCenterItems([notice({ data: { path: '/settings/accounts' } })], {
       openLabel: 'Open',
       iconFor: () => ICON,
     });

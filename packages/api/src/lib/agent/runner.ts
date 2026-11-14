@@ -1,5 +1,4 @@
 import { autonomousWorkMayRun } from './work.js';
-import { retireFinishedOxyTasks } from '../oxy-task-authority.js';
 import { canReachAgent } from '../agent-account.js';
 /**
  * Agent Runner — Autonomous Agent Execution Engine (v3)
@@ -41,7 +40,7 @@ import { AgentStateMachine } from './state-machine.js';
 import { TodoManager } from './todo-manager.js';
 import { BrowserSession } from './browser-session.js';
 import { ToolPipeline } from '../tool-pipeline.js';
-import { agentIdentityPrompt, oxyExecutionAuthorizationKey } from '../tools/oxy-services.js';
+import { agentIdentityPrompt, oxyRunScopeKey } from '../tools/oxy-services.js';
 import { agentSpacePrompt } from './space-prompt.js';
 import { agentPromptName, attachAgentIdentity, findAgentByOxyHandle } from '../agent-identity.js';
 import { buildIdentityGuard } from '../identity-guard.js';
@@ -59,7 +58,7 @@ import { compactContext } from './context-compaction.js';
 import { redactSecrets } from './secret-scanner.js';
 import { readCapabilityGrants } from '../../domain/capability-grants.js';
 import {
-  listAutomationExecutionAuthorizationsForRun,
+  listAutomationRunActionSteps,
   markAutomationActionStep,
   markAutomationRunForSession,
 } from '../../db/automation/automationDefinitionRepository.js';
@@ -272,7 +271,6 @@ async function driveAgentSession(
             agentId: targetAgent._id,
             oxyUserId: session.oxyUserId,
             parentSessionId: session._id,
-            ...(session.oxyTaskId ? { oxyTaskId: session.oxyTaskId } : {}),
             task,
             status: 'queued',
             depth: session.depth + 1,
@@ -300,26 +298,23 @@ async function driveAgentSession(
         }
       : undefined;
 
-  const oxyAuthorizationRows = await listAutomationExecutionAuthorizationsForRun(
-    getDb(),
-    session.automationRunId ?? session.id,
-    agent.id,
-    session.automationStage ?? undefined,
-  );
-  const oxyExecutionAuthorizations = Object.fromEntries(
-    oxyAuthorizationRows.map((authorization) => [
-      oxyExecutionAuthorizationKey(
-        {
-          appId: authorization.resourceAppId,
-          effectiveAccountId: authorization.effectiveAccountId,
-          resourceType: authorization.resourceType,
-          resourceId: authorization.resourceId,
-        },
-        authorization.tool,
-      ),
-      { id: authorization.oxyAuthorizationId, stepId: authorization.stepId },
-    ]),
-  );
+  // A structured stage's exact scope: its declared actions, each once, with its step and limits.
+  // Each call is authorized when it is made, on Gemies' own first-party authority (oxy ADR 0066).
+  const oxyRunScope = session.automationRunId
+    ? Object.fromEntries(
+        (
+          await listAutomationRunActionSteps(
+            getDb(),
+            session.automationRunId,
+            agent.id,
+            session.automationStage ?? undefined,
+          )
+        ).map((step) => [
+          oxyRunScopeKey(step.resource, step.tool),
+          { stepId: step.stepId, limits: step.limits },
+        ]),
+      )
+    : undefined;
 
   // Transition: INITIALIZING → PLANNING
   stateMachine.transition('initialized');
@@ -354,13 +349,10 @@ async function driveAgentSession(
     agent,
     runId: session.automationRunId ?? session.id,
     oxyAutonomy: 'autonomous',
-    // An automation stage runs exactly its preauthorized steps. Any other run
-    // is the agent working on its own: its permissions come from Oxy's
-    // agent-run lane, not from an (always empty) step map.
-    ...(session.automationRunId
-      ? { oxyExecutionAuthorizations }
-      : { oxyTaskId: session.oxyTaskId ?? undefined }),
-    toolScope: session.automationRunId ? 'preauthorized_oxy_automation' : 'standard',
+    // An automation stage runs exactly its declared steps. Any other run is the
+    // agent working on its own for the session's person.
+    ...(oxyRunScope ? { oxyRunScope } : {}),
+    toolScope: session.automationRunId ? 'automation_run_scope' : 'standard',
     onOxyStepStatus: async (stepId, status, auditEventId) => {
       try {
         await markAutomationActionStep(getDb(), stepId, status, auditEventId);
@@ -465,7 +457,6 @@ async function driveAgentSession(
           _id: session._id,
           userId: session.oxyUserId,
           agentId: session.agentId,
-          oxyTaskId: session.oxyTaskId,
           depth: session.depth,
           config: session.config,
         },
@@ -866,7 +857,6 @@ async function driveAgentSession(
           ...(creditsCharged !== undefined && { creditsCharged }),
         },
       });
-      if (finalStatus !== undefined) await retireFinishedOxyTasks();
       if (finalStatus === 'completed') {
         await markAutomationRunForSession(getDb(), sessionId, 'succeeded');
       } else if (finalStatus === 'cancelled') {
@@ -929,7 +919,6 @@ async function driveAgentSession(
         stats: { completedAt: new Date() },
       });
       await markAutomationRunForSession(getDb(), sessionId, 'failed');
-      await retireFinishedOxyTasks();
       if (session.goalId) {
         const { recordAgentGoalRun } = await import('../../db/agents/agentRuntimeRepository.js');
         await recordAgentGoalRun(getDb(), {

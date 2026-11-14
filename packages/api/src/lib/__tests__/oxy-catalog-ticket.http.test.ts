@@ -5,14 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OxyToolExecutionContext } from '../tools/oxy-services.js';
 
-const state = vi.hoisted(() => ({ client: undefined as unknown, refused: [] as string[] }));
-// The real refusal predicate over the real SDK's error; only the binding it lapses is observed.
-vi.mock('../oxy-task-authority.js', async (actual) => ({
-  ...(await actual<typeof import('../oxy-task-authority.js')>()),
-  standingTaskRefused: async (taskId: string) => {
-    state.refused.push(taskId);
-  },
-}));
+const state = vi.hoisted(() => ({ client: undefined as unknown }));
 vi.mock('../oxy.js', () => ({
   get oxy() {
     return state.client;
@@ -39,14 +32,12 @@ const context: OxyToolExecutionContext = {
   ownerAccountId: 'owned-user',
   actor: { type: 'alia', ownerAccountId: 'owned-user' },
   runId: 'owned-run',
-  userAccessToken: 'owned-requester',
 };
 
 beforeEach(async () => {
   vi.resetModules();
   calls = [];
   denied = undefined;
-  state.refused = [];
   const catalog = () => ({
     schemaVersion: '1',
     appId: 'inbox',
@@ -96,7 +87,7 @@ beforeEach(async () => {
       '/capabilities/service-identity': {
         service: { applicationId: 'owned-app', credentialId: 'owned-credential' },
       },
-      '/capabilities/foreground-execution-authorizations': {
+      '/capabilities/first-party-execution-authorizations': {
         authorization: { id: 'owned-approval' },
       },
       '/capabilities/tickets': {
@@ -105,14 +96,6 @@ beforeEach(async () => {
       },
       '/product/search': { data: ['owned-result'] },
     };
-    if (
-      path === '/capabilities/execution-authorizations/owned-approval' &&
-      req.method === 'DELETE'
-    ) {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
     if (!(path in data)) {
       res.writeHead(404);
       res.end('{}');
@@ -151,7 +134,7 @@ describe('non-pilot catalog and ticket authority through installed SDK', () => {
       | undefined;
     return tool ? tool.execute({}) : undefined;
   }
-  it('uses canonical agency methods and keeps requester/service/product authority distinct', async () => {
+  it('uses canonical agency methods and keeps person/service/product authority distinct', async () => {
     const client = state.client as InstanceType<typeof OxyServer>;
     const catalogs = vi.spyOn(client.agency, 'serviceCatalogs');
     const tickets = vi.spyOn(client.agency, 'issueCapabilityTicket');
@@ -175,17 +158,22 @@ describe('non-pilot catalog and ticket authority through installed SDK', () => {
         body: { executionAuthorizationId: 'owned-approval' },
       }),
     ]);
-    expect(
-      calls.find((c) => c.path === '/capabilities/foreground-execution-authorizations')
-        ?.authorization,
-    ).toBe('Bearer owned-service');
-    expect(
-      calls.find((c) => c.path === '/capabilities/foreground-execution-authorizations')?.body,
-    ).toMatchObject({ authority: 'first_party', subjectToken: 'owned-requester' });
+    const authorization = calls.find(
+      (c) => c.path === '/capabilities/first-party-execution-authorizations',
+    );
+    // Gemies' own workload names the person; it carries no bearer of theirs.
+    expect(authorization?.authorization).toBe('Bearer owned-service');
+    expect(authorization?.body).toMatchObject({
+      authority: 'first_party',
+      kind: 'direct_request',
+      requesterAccountId: 'owned-user',
+    });
+    expect(authorization?.body).not.toHaveProperty('subjectToken');
     expect(calls.find((c) => c.path === '/product/search')?.authorization).toBe(
       'Capability owned-ticket',
     );
-    expect(calls.find((c) => c.method === 'DELETE')?.authorization).toBe('Bearer owned-requester');
+    // Nothing is held after the call, so nothing is retired.
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
   });
   it.each([401, 403, 503])(
     'does not retry denied catalog %s or execute an app effect',
@@ -199,53 +187,24 @@ describe('non-pilot catalog and ticket authority through installed SDK', () => {
     },
   );
   it.each([401, 403, 503])(
-    'does not retry denied ticket %s and retires only the existing approval',
+    'does not retry denied ticket %s or execute an app effect',
     async (status) => {
       denied = { path: '/capabilities/tickets', status };
       expect(await invoke()).toMatchObject({ error: 'oxy_app_unavailable' });
       expect(calls.filter((c) => c.path === '/capabilities/tickets')).toHaveLength(1);
       expect(calls.some((c) => c.path === '/product/search')).toBe(false);
-      expect(calls.filter((c) => c.method === 'DELETE')).toEqual([
-        expect.objectContaining({
-          path: '/capabilities/execution-authorizations/owned-approval',
-          authorization: 'Bearer owned-requester',
-        }),
-      ]);
+      expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
     },
   );
 
-  describe('a channel turn’s task', () => {
-    const channelContext: OxyToolExecutionContext = {
-      requesterAccountId: 'owned-user',
-      ownerAccountId: 'owned-user',
-      actor: { type: 'alia', ownerAccountId: 'owned-user' },
-      runId: 'owned-run',
-      taskId: 'channel-task',
+  it('runs nothing when Oxy refuses Gemies acting for the person', async () => {
+    denied = {
+      path: '/capabilities/first-party-execution-authorizations',
+      status: 403,
+      message: 'first_party_capability_not_declared',
     };
-    async function invokeAsChannel() {
-      const tools = await module.buildOxyServiceTools('owned-user', channelContext);
-      const tool = tools.oxy_inbox__searchEmails as unknown as
-        | { execute(args: Record<string, unknown>): Promise<unknown> }
-        | undefined;
-      return tool ? tool.execute({}) : undefined;
-    }
-    const taskPath = '/capabilities/tasks/channel-task/execution-authorizations';
-
-    it('lapses the channel holding a task Oxy no longer honours', async () => {
-      denied = { path: taskPath, status: 403, message: 'Task authority is no longer active.' };
-      expect(await invokeAsChannel()).toMatchObject({ error: 'oxy_app_unavailable' });
-      await vi.waitFor(() => expect(state.refused).toEqual(['channel-task']));
-      expect(calls.some((c) => c.path === '/product/search')).toBe(false);
-    });
-
-    it('keeps the channel when Oxy refuses the operation, not the task', async () => {
-      denied = {
-        path: taskPath,
-        status: 403,
-        message: 'The resource must belong to the authenticated requester account.',
-      };
-      expect(await invokeAsChannel()).toMatchObject({ error: 'oxy_app_unavailable' });
-      expect(state.refused).toEqual([]);
-    });
+    expect(await invoke()).toMatchObject({ error: 'oxy_app_unavailable' });
+    expect(calls.some((c) => c.path === '/capabilities/tickets')).toBe(false);
+    expect(calls.some((c) => c.path === '/product/search')).toBe(false);
   });
 });

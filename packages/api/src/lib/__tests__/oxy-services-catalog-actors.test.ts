@@ -133,7 +133,6 @@ describe('catalogue actors', () => {
       requesterAccountId: USER,
       ownerAccountId: USER,
       actor: { type: 'alia', ownerAccountId: USER },
-      userAccessToken: 'USER-BEARER',
     });
     expect(Object.keys(tools).sort()).toEqual([
       'oxy_inbox__searchEmails',
@@ -148,7 +147,6 @@ describe('catalogue actors', () => {
       ownerAccountId: USER,
       actor: { type: 'agent', accountId: AGENT },
       agentIdentity: { forUser: 'owner', self: true },
-      userAccessToken: 'USER-BEARER',
     });
     // `listPublicProfiles` names Alia but not agents; `readViewerGraph` names
     // neither. Inbox declares nothing, so both identities keep it.
@@ -215,7 +213,6 @@ describe('one catalogue that does not parse', () => {
       requesterAccountId: USER,
       ownerAccountId: USER,
       actor: { type: 'alia', ownerAccountId: USER },
-      userAccessToken: 'USER-BEARER',
     });
     expect(Object.keys(tools)).toEqual(['oxy_inbox__searchEmails']);
     expect(logged.error).toHaveBeenCalledTimes(2);

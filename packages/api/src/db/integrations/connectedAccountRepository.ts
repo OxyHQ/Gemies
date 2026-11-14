@@ -8,9 +8,8 @@
  */
 
 import type { GemieAccountPlatform, GemieAccountStatus } from '@gemies/server/internal';
-import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import type { StoredAgentIdentity } from '../../domain/agent';
-import type { OxyTask } from '../../lib/oxy-task-authority';
 import type { ApiDatabase } from '../index';
 import { agents } from '../schema/agents';
 import {
@@ -34,9 +33,6 @@ export interface ConnectedAccountRow {
   /** Whether the platform lets a gemie write from it; `null` where it grants no such right. */
   canReply: boolean | null;
   sessionId: string | null;
-  oxyTaskId: string | null;
-  oxyTaskState: 'active' | 'reauth_required';
-  oxyTaskExpiresAt: Date | null;
   replies: ConnectedAccountReplies;
   replyChatIds: string[];
   groupReplies: ConnectedAccountGroupReplies;
@@ -55,9 +51,6 @@ const COLUMNS = {
   status: connectedAccounts.status,
   canReply: connectedAccounts.canReply,
   sessionId: connectedAccounts.sessionId,
-  oxyTaskId: connectedAccounts.oxyTaskId,
-  oxyTaskState: connectedAccounts.oxyTaskState,
-  oxyTaskExpiresAt: connectedAccounts.oxyTaskExpiresAt,
   replies: connectedAccounts.replies,
   replyChatIds: connectedAccounts.replyChatIds,
   groupReplies: connectedAccounts.groupReplies,
@@ -388,24 +381,6 @@ export async function listAccountsGrantedTo(
 }
 
 /**
- * Every account a gemie answers, whoever's it is — for deleting the gemie, which revokes each
- * one's task before the grants cascade away. The accounts stay their people's.
- */
-export async function listAccountsAnsweredBy(
-  db: ApiDatabase,
-  agentId: string,
-): Promise<ConnectedAccountRow[]> {
-  const rows = await db
-    .select(COLUMNS)
-    .from(connectedAccounts)
-    .innerJoin(connectedAccountGrants, eq(connectedAccountGrants.accountId, connectedAccounts.id))
-    .where(
-      and(eq(connectedAccountGrants.agentId, agentId), eq(connectedAccountGrants.answers, true)),
-    );
-  return rows.map(withLegacyId);
-}
-
-/**
  * Resolve only a live gateway session; the person and the answering gemie come from its stored
  * binding and grants, never from the request. `answeringAgentId` is `null` when no gemie answers.
  */
@@ -440,39 +415,4 @@ export async function findConnectedAccountBySession(
   if (!row) return null;
   const { answeringAgentId, ...account } = row;
   return { ...withLegacyId(account), answeringAgentId };
-}
-
-/**
- * Put `task` in the account's place (or none, `null`), only while it still holds `expectedTaskId`
- * when one is given. A new task is `active` with Oxy's expiry and no notice sent; none is
- * `reauth_required`.
- */
-export async function setConnectedAccountTask(
-  db: ApiDatabase,
-  id: string,
-  task: OxyTask | null,
-  expectedTaskId?: string | null,
-): Promise<boolean> {
-  const rows = await db
-    .update(connectedAccounts)
-    .set({
-      oxyTaskId: task?.id ?? null,
-      oxyTaskState: task ? 'active' : 'reauth_required',
-      oxyTaskExpiresAt: task?.expiresAt ?? null,
-      oxyTaskNotifiedAt: null,
-    })
-    .where(
-      and(
-        eq(connectedAccounts.id, id),
-        ...(expectedTaskId === undefined
-          ? []
-          : [
-              expectedTaskId === null
-                ? isNull(connectedAccounts.oxyTaskId)
-                : eq(connectedAccounts.oxyTaskId, expectedTaskId),
-            ]),
-      ),
-    )
-    .returning({ id: connectedAccounts.id });
-  return rows.length === 1;
 }

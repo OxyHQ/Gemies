@@ -45,7 +45,6 @@ describe('where a task delivers', () => {
   it('is recorded by the task tool from the turn it runs in', async () => {
     const tool = createAutomationTool(
       'owner-1',
-      undefined,
       { _id: 'gemie-1', taskAuthority: 'session' },
       { conversationId: 'telegram:8988966019:570038640' },
     );

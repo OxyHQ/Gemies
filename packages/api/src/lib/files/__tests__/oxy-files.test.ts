@@ -20,7 +20,8 @@ const H = vi.hoisted(() => ({
   read: vi.fn(),
   metric: vi.fn(),
   fallback: vi.fn(),
-  requester: vi.fn(),
+  actingFor: vi.fn(),
+  retiredFacade: vi.fn(),
 }));
 
 vi.mock('../../../db/index.js', () => ({ getDb: () => ({}) }));
@@ -71,8 +72,9 @@ const { parseStoredLocator, storedLocator } = await import('../../../domain/oxy-
 const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 /**
- * A person's media is stored only through the requester facade (`withRequester`), never on
- * Alia's bare client, so the bare client here has no user-media uploads at all.
+ * A person's media is stored only acting for them (`assets.actingFor`, oxy ADR 0066), never on
+ * Alia's bare client, so the bare client here has no user-media uploads at all. The retired
+ * requester facade is there only to prove nothing calls it.
  */
 function fakeOxy(overrides: Record<string, unknown>): OxyServer {
   const { uploadUserMedia, uploadUserMediaLarge, ...bare } = overrides;
@@ -80,8 +82,12 @@ function fakeOxy(overrides: Record<string, unknown>): OxyServer {
   return {
     assets: {
       ...bare,
+      actingFor: (actingFor: unknown) => {
+        H.actingFor(actingFor);
+        return asPerson;
+      },
       withRequester: (proof: unknown) => {
-        H.requester(proof);
+        H.retiredFacade(proof);
         return asPerson;
       },
     },
@@ -136,11 +142,7 @@ describe('the backfill’s copy of an Alia file', () => {
 describe('private content', () => {
   const input = {
     kind: 'library_file' as const,
-    owner: {
-      kind: 'person' as const,
-      oxyUserId: 'u1',
-      requester: { requesterToken: 'session-of-u1' },
-    },
+    owner: { kind: 'person' as const, oxyUserId: 'u1' },
     bytes: Buffer.from('%PDF'),
     mime: 'application/pdf',
     name: 'a.pdf',
@@ -186,20 +188,10 @@ describe('private content', () => {
         visibility: 'private',
       }),
     );
-    // As the person, with their own session: Oxy stores user media only for that account.
-    expect(H.requester).toHaveBeenCalledWith({ requesterToken: 'session-of-u1' });
+    // Acting for the person: Oxy checks Gemies' declared `oxy:files` authority and their account.
+    expect(H.actingFor).toHaveBeenCalledWith({ accountId: 'u1' });
+    expect(H.retiredFacade).not.toHaveBeenCalled();
     expect(H.upload).not.toHaveBeenCalled();
-  });
-
-  it('never asks Oxy to store a person’s file without their requester proof', async () => {
-    const uploadUserMediaLarge = vi.fn();
-    setOxyFilesClientForTests(() => fakeOxy({ uploadUserMediaLarge }));
-    await expect(
-      storePrivateContent({ ...input, owner: { ...input.owner, requester: null } }),
-    ).resolves.toEqual(legacy);
-    expect(uploadUserMediaLarge).not.toHaveBeenCalled();
-    expect(H.requester).not.toHaveBeenCalled();
-    expect(H.fallback).toHaveBeenCalledWith('library_file', 'no_requester');
   });
 
   it('streams a person’s small image as their PRIVATE media', async () => {
@@ -215,7 +207,7 @@ describe('private content', () => {
       'image/png',
       expect.objectContaining({ visibility: 'private', originalName: 'a.png' }),
     );
-    expect(H.requester).toHaveBeenCalledWith({ requesterToken: 'session-of-u1' });
+    expect(H.actingFor).toHaveBeenCalledWith({ accountId: 'u1' });
   });
 
   it('stores a spoken clip as Alia’s private application file', async () => {
@@ -324,13 +316,12 @@ describe('channel media', () => {
   const webp = Buffer.from('RIFF0000WEBP');
   const media = {
     oxyUserId: 'u1',
-    taskId: 'task-of-u1',
     bytes: webp,
     mime: 'image/webp',
     name: 'sticker.webp',
   };
 
-  it('is stored as the person’s private media under the task they granted on the channel', async () => {
+  it('is stored as the person’s private media acting for them, with no session or task', async () => {
     const uploadUserMedia = vi.fn(async () => ({
       id: 'oxy-sticker',
       sha256: sha(webp),
@@ -338,7 +329,8 @@ describe('channel media', () => {
     }));
     setOxyFilesClientForTests(() => fakeOxy({ uploadUserMedia }));
     await expect(storeChannelMedia(media)).resolves.toBe('oxy-sticker');
-    expect(H.requester).toHaveBeenCalledWith({ taskId: 'task-of-u1' });
+    expect(H.actingFor).toHaveBeenCalledWith({ accountId: 'u1' });
+    expect(H.retiredFacade).not.toHaveBeenCalled();
     expect(uploadUserMedia).toHaveBeenCalledWith(
       'u1',
       webp,
@@ -356,23 +348,26 @@ describe('channel media', () => {
     await expect(
       storeChannelMedia({ ...media, bytes: pdf, mime: 'application/pdf', name: 'a.pdf' }),
     ).resolves.toBe('oxy-doc');
-    expect(H.requester).toHaveBeenCalledWith({ taskId: 'task-of-u1' });
+    expect(uploadUserMediaLarge).toHaveBeenCalledWith(
+      'u1',
+      pdf,
+      expect.objectContaining({ mime: 'application/pdf', visibility: 'private' }),
+    );
+    expect(H.actingFor).toHaveBeenCalledWith({ accountId: 'u1' });
+    expect(H.retiredFacade).not.toHaveBeenCalled();
   });
 
   it('is never written to the legacy bucket when Oxy refuses it', async () => {
     setOxyFilesClientForTests(() =>
       fakeOxy({
         uploadUserMedia: async () => {
-          throw Object.assign(
-            new Error('User media requires the authenticated requester account.'),
-            {
-              status: 403,
-            },
-          );
+          throw Object.assign(new Error('first_party_capability_not_declared'), {
+            status: 403,
+          });
         },
       }),
     );
-    await expect(storeChannelMedia(media)).rejects.toThrow(/requester account/);
+    await expect(storeChannelMedia(media)).rejects.toThrow(/first_party_capability_not_declared/);
     expect(H.order).toEqual([]);
   });
 });

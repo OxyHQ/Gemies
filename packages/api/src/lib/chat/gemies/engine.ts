@@ -48,11 +48,9 @@ import {
 /** What a continuing turn may write through: the next message of its chain, to its peer. */
 type GemieChainMessaging = NonNullable<Parameters<typeof runAgentTurn>[0]['gemieChain']>;
 
-/** One of the two gemies of a chain: who it is, and the Oxy task its unattended turns act under. */
+/** One of the two gemies of a chain. Its turns act for the person on Gemies' own authority. */
 export interface GemieMember {
   readonly info: AgentInfo;
-  /** Absent when Oxy could not mint one, or the gemie has no Oxy account: it then has no Oxy apps. */
-  readonly oxyTaskId?: string;
 }
 
 /** One step of a chain, as the queue carries it. JSON only: it crosses Redis. */
@@ -136,22 +134,14 @@ function emitterOf(deps: GemieEngineDeps, data: GemieStepData, conversationId: s
 }
 
 /**
- * The chain is over: both gemies' task authority goes back, and both conversations are told, so
- * the person's chat and the conversation between gemies stop showing anyone at work.
+ * The chain is over: both conversations are told, so the person's chat and the conversation
+ * between gemies stop showing anyone at work.
  */
 async function endChain(
   data: GemieStepData,
   deps: GemieEngineDeps,
   reason: 'done' | 'superseded' | 'error' | 'rate_limited',
 ): Promise<GemieStepOutcome> {
-  const taskIds = [data.initiator.oxyTaskId, data.recipient.oxyTaskId].filter(
-    (id): id is string => id !== undefined,
-  );
-  await deps.room
-    .revokeTasks(taskIds)
-    .catch((err: unknown) =>
-      log.general.warn({ err, chainId: data.chainId }, 'Could not revoke gemie chain tasks'),
-    );
   for (const conversationId of [data.conversationId, data.originConversationId]) {
     await emitterOf(deps, data, conversationId)('group.idle', { reason });
   }
@@ -263,7 +253,6 @@ async function reply(data: GemieStepData, deps: GemieEngineDeps): Promise<GemieS
     person: {
       oxyUserId: userId,
       isDirectSession: false,
-      ...(recipient.oxyTaskId ? { taskId: recipient.oxyTaskId } : {}),
       surfaceApplicationId: data.surfaceApplicationId,
       ...(data.personalization === false ? { personalization: false as const } : {}),
     },
@@ -436,7 +425,6 @@ async function continueChain(
     person: {
       oxyUserId: userId,
       isDirectSession: false,
-      ...(initiator.oxyTaskId ? { taskId: initiator.oxyTaskId } : {}),
       surfaceApplicationId: data.surfaceApplicationId,
       ...(data.personalization === false ? { personalization: false as const } : {}),
     },

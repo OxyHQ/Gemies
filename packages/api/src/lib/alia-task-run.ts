@@ -10,12 +10,12 @@
  * spent, closes the run and posts the answer into the task's own conversation
  * (`postAliaMessage`).
  *
- * Authority: Alia acts for the owner in their Oxy apps with the standing
- * authority provisioned when the task was created or edited
- * (`alia_task_authorizations`): every read tool of their apps, repeatable, and
- * each declared connected action once, correlated with its run step. A task
- * without it (created before it existed, or by an API-key caller) gets no Oxy
- * app tools rather than tools that are refused.
+ * Authority: Alia acts for the owner in their Oxy apps on Gemies' own
+ * first-party authority (oxy ADR 0066), with no session or task. The run's
+ * scope ({@link aliaRunScope}) is built here, at run time: every read tool of
+ * their apps, repeatable, and each declared connected action once, correlated
+ * with its run step and carrying its declared limits. Each call is authorized
+ * when it is made. The person stops it by disabling or deleting the task.
  *
  * Watch runs (`lib/alia-watch.ts`) carry the observed change in their trigger
  * and may conclude it is not worth telling the person: they reply
@@ -36,10 +36,10 @@ import type { User as OxyUser } from '@oxy.so/core';
 import { getDb } from '../db/index.js';
 import { findAgentById } from '../db/agents/agentRepository.js';
 import { attachAgentIdentity, type HydratedAgent } from './agent-identity.js';
-import { listAliaTaskAuthorizationsForRun } from '../db/automation/aliaTaskAuthorityRepository.js';
 import {
   findAutomationDefinitionById,
   findAutomationRunById,
+  listAutomationRunActionSteps,
   listAutomationRunSteps,
   markAliaAutomationRun,
   markAutomationActionStep,
@@ -49,6 +49,7 @@ import { oxy } from './oxy.js';
 import { postAliaMessage } from './agent/alia-outreach.js';
 import type { AliaTaskJobData } from './alia-task-queue.js';
 import { renderAutomationStageTask } from './automation-stage-task.js';
+import { WATCH_INPUT_KEY } from './alia-watch.js';
 import { getAIModel, resolveDefaultModel } from './chat-core.js';
 import { finalizeCredits, safeRefund, type CreditUsage } from './credits-manager.js';
 import { servedModelId, servedReferenceOf } from './models/power-levels.js';
@@ -58,8 +59,9 @@ import { log } from './logger.js';
 import { sendNotification } from './notification-service.js';
 import { ToolPipeline } from './tool-pipeline.js';
 import {
-  oxyExecutionAuthorizationKey,
-  type OxyExecutionAuthorizationRef,
+  listOxyAccountReadTools,
+  oxyRunScopeKey,
+  type OxyRunScopeEntry,
 } from './tools/oxy-services.js';
 import { userContextBlock } from './user-context.js';
 
@@ -86,20 +88,37 @@ The source this task watches changed; \`trigger.watch\` below says what changed.
 - If it is, tell them what is new, concisely, with links.
 - If it is not (noise, a reshuffle, nothing relevant), reply exactly ${WATCH_NOTHING_TO_REPORT} and nothing else.`;
 
-/** The authority map ToolPipeline takes, from the run's stored authorizations. */
-function aliaRunAuthorizationMap(
-  authorizations: Awaited<ReturnType<typeof listAliaTaskAuthorizationsForRun>>,
-): Record<string, OxyExecutionAuthorizationRef> {
-  return Object.fromEntries(
-    authorizations.map((authorization) => [
-      oxyExecutionAuthorizationKey(authorization.resource, authorization.tool),
-      {
-        id: authorization.oxyAuthorizationId,
-        ...(authorization.stepId ? { stepId: authorization.stepId } : {}),
-        repeatable: authorization.repeatable,
-      },
-    ]),
-  );
+/**
+ * What one Alia run may call: every read tool of the owner's Oxy apps at their account root,
+ * repeatable, and each connected action the task declares whose step belongs to this run, once,
+ * with its step and limits. A declared action wins over the read of the same tool. Reads the
+ * catalogue cannot list right now are left out (the run still does what it can); never an action.
+ * A watch reads only the open web (`reads: false`): least authority.
+ */
+export async function aliaRunScope(
+  ownerAccountId: string,
+  runId: string,
+  options: { reads: boolean } = { reads: true },
+): Promise<Record<string, OxyRunScopeEntry>> {
+  const [reads, steps] = await Promise.all([
+    options.reads
+      ? listOxyAccountReadTools(ownerAccountId).catch((err: unknown) => {
+          log.agents.warn({ err, runId }, 'Could not list the read tools of an Alia task run');
+          return [];
+        })
+      : [],
+    listAutomationRunActionSteps(getDb(), runId),
+  ]);
+  const scope: Record<string, OxyRunScopeEntry> = {};
+  for (const read of reads) scope[oxyRunScopeKey(read.resource, read.tool)] = { repeatable: true };
+  for (const step of steps) {
+    scope[oxyRunScopeKey(step.resource, step.tool)] = {
+      stepId: step.stepId,
+      repeatable: false,
+      limits: step.limits,
+    };
+  }
+  return scope;
 }
 
 function isWatchRun(input: Record<string, unknown>): boolean {
@@ -202,10 +221,12 @@ export async function runAliaTask(
       return 'skipped';
     }
 
-    const [{ oxyUser, memory }, resolved, authorizations] = await Promise.all([
+    const [{ oxyUser, memory }, resolved, runScope] = await Promise.all([
       loadPersonContext(data.userId),
       resolveDefaultModel(),
-      listAliaTaskAuthorizationsForRun(getDb(), automation.id, data.runId),
+      aliaRunScope(data.userId, data.runId, {
+        reads: automation.inputs[WATCH_INPUT_KEY] === undefined,
+      }),
     ]);
     const { tools, routing, appCatalogPrompt } = await ToolPipeline.forUser({
       inputLimits: resolved.catalogue,
@@ -219,8 +240,8 @@ export async function runAliaTask(
       isLocalRuntime: false,
       runId: data.runId,
       oxyAutonomy: automation.maximumAutonomy,
-      // Exactly her standing authority; `{}` (none) builds no Oxy tools.
-      oxyExecutionAuthorizations: aliaRunAuthorizationMap(authorizations),
+      // Exactly the run's scope; `{}` (none) builds no Oxy tools.
+      oxyRunScope: runScope,
       onOxyStepStatus: async (stepId, status, auditEventId) => {
         try {
           await markAutomationActionStep(getDb(), stepId, status, auditEventId);

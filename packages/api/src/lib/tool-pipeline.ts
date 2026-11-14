@@ -88,7 +88,7 @@ import { ALIA_GEMIE_ID } from '../domain/alia-gemie.js';
 import { buildSendMessageTool, type GemieChainDelivery } from './tools/send-message.js';
 import {
   buildOxyServiceTools,
-  type OxyExecutionAuthorizationRef,
+  type OxyRunScopeEntry,
   type OxyToolAutonomy,
 } from './tools/oxy-services.js';
 import { convertOpenAIToolsToToolSet, type OpenAITool } from './tool-converter.js';
@@ -216,16 +216,7 @@ export interface ForUserOptions {
   /** Maximum autonomy already selected by the direct request or automation. */
   oxyAutonomy?: OxyToolAutonomy;
   /** Exact durable Oxy authorizations for a normalized background run. */
-  oxyExecutionAuthorizations?: Readonly<Record<string, OxyExecutionAuthorizationRef>>;
-  /**
-   * The agent session of an UNATTENDED run (the runner, nobody present).
-   *
-   * With it, an agent's Oxy tools are authorized through Oxy's agent-run lane,
-   * which derives the requester from the bot's owner — the agent works within
-   * the levels its owner set, plus its own account. Without it (and without a
-   * bearer) an agent's tools could only ever be refused.
-   */
-  oxyTaskId?: string;
+  oxyRunScope?: Readonly<Record<string, OxyRunScopeEntry>>;
   onOxyStepStatus?: (
     stepId: string,
     status: 'running' | 'succeeded' | 'failed',
@@ -329,10 +320,10 @@ export interface ForUserOptions {
   instancedSources?: readonly InstancedToolSource[];
   /**
    * Restrict a normalized background stage to its protocol tools and the exact
-   * Oxy actions named by `oxyExecutionAuthorizations`. No user-bound, web,
+   * Oxy actions named by `oxyRunScope`. No user-bound, web,
    * editor, skill, connector, browser or delegation tool is built.
    */
-  toolScope?: 'standard' | 'preauthorized_oxy_automation';
+  toolScope?: 'standard' | 'automation_run_scope';
   /**
    * One hosted MCP connector selected for this turn, by the person composing it.
    *
@@ -456,8 +447,7 @@ export class ToolPipeline {
       requestId,
       runId,
       oxyAutonomy,
-      oxyExecutionAuthorizations,
-      oxyTaskId,
+      oxyRunScope,
       onOxyStepStatus,
       editorToolDefinitions,
       host,
@@ -512,16 +502,15 @@ export class ToolPipeline {
       return unrouted({ getCurrentDate: getCurrentDateTool }, toolNameMapping);
     }
 
-    if (toolScope === 'preauthorized_oxy_automation') {
-      if (!runtime || oxyExecutionAuthorizations === undefined) {
-        throw new Error(
-          'Preauthorized Oxy automation scope requires a runtime and exact authorizations',
-        );
+    if (toolScope === 'automation_run_scope') {
+      if (!runtime || oxyRunScope === undefined) {
+        throw new Error('A structured automation stage requires a runtime and its exact run scope');
       }
       // Legacy rows without a reconciled bot parent get no Oxy tools. `author`
       // is listing metadata and is never an authority fallback.
       const oxyServiceTools =
-        agent.ownerOxyAccountId == null
+        agent.ownerOxyAccountId == null ||
+        (agent.reach !== 'person' && gemieOxyAccountId(agent) === null)
           ? {}
           : await buildOxyServiceTools(userId, {
               requesterAccountId: agent.ownerOxyAccountId,
@@ -529,8 +518,7 @@ export class ToolPipeline {
               actor: oxyActorFor(agent, agent.ownerOxyAccountId),
               runId: runId ?? requestId,
               autonomy: oxyAutonomy,
-              executionAuthorizations: oxyExecutionAuthorizations,
-              taskId: oxyTaskId,
+              runScope: oxyRunScope,
               onStepStatus: onOxyStepStatus,
             });
       const tools: ToolSet = {
@@ -657,9 +645,9 @@ export class ToolPipeline {
         await buildAccountTools(accountScope),
       );
       // The person asks for it, so only with them present: their session, or a channel that
-      // verified it is them (its standing task is their authority, `createStructuredAutomation`).
+      // verified it is them.
       if (grants.allows('automation') && !nested && personPresent) {
-        aliaTools.createAutomation = createAutomationTool(userId, accessToken, agent, {
+        aliaTools.createAutomation = createAutomationTool(userId, agent, {
           ...(conversationId ? { conversationId } : {}),
         });
       }
@@ -783,34 +771,23 @@ export class ToolPipeline {
     const ownerIsPresent = oxyOwnerAccountId != null && requesterAccountId === oxyOwnerAccountId;
     /**
      * The actual requester keeps their own apps, including on another person's
-     * agent and in a durable child task. Ownership does not substitute identity.
+     * agent and in background work. Ownership does not substitute identity.
      */
-    const requesterIsPresent =
-      !personAssistant &&
-      !ownerIsPresent &&
-      requesterAccountId != null &&
-      ((isDirectSession && accessToken !== undefined) || oxyTaskId !== undefined);
+    const requesterIsPresent = !personAssistant && !ownerIsPresent && requesterAccountId != null;
     /**
-     * The person's apps (`oxy_*`) — the owner's per the levels they set, or
-     * anybody else's per the ceilings — and the agent's own bot account
-     * (`self_*`), which only its owner's turn carries: a stranger on a shared
-     * agent never gets the agent's mail, which may well be about the owner.
+     * The person's apps (`oxy_*`) and the agent's own bot account (`self_*`),
+     * which only its owner's turn carries: a stranger on a shared agent never
+     * gets the agent's mail, which may well be about the owner.
      */
-    const hasOwnAuthority =
-      (isDirectSession && accessToken !== undefined) ||
-      oxyTaskId !== undefined ||
-      oxyExecutionAuthorizations !== undefined;
     const agentIdentity = personAssistant
       ? undefined
       : requesterIsPresent
         ? { forUser: 'requester' as const, self: false }
         : {
             forUser: 'owner' as const,
-            // Only for a gemie whose account is a working one (`mailbox`), and
-            // only where a call can be authorized at all: the owner's bearer, or
-            // the runner's agent-run lane. Elsewhere (a Telegram turn) the agent's
-            // own account would be a list of tools Oxy refuses every time.
-            self: agent.mailbox && ownerIsPresent && hasOwnAuthority,
+            // Only for a gemie whose account is a working one (`mailbox`), on its
+            // owner's turn: Oxy admits the bot account while its owner operates it.
+            self: agent.mailbox && ownerIsPresent,
           };
     const oxyPersonAccountId = requesterAccountId;
     const [mcpTools, oxyServiceTools, ownAgentTools] = await Promise.all([
@@ -820,7 +797,8 @@ export class ToolPipeline {
       !wants('oxy_service') ||
       (!actsForPerson && personAssistant) ||
       (!ownerIsPresent && !requesterIsPresent) ||
-      !hasOwnAuthority ||
+      // A gemie with no Oxy account (ADR 0036) acts as nobody there.
+      (!personAssistant && gemieOxyAccountId(agent) === null) ||
       oxyPersonAccountId == null
         ? {}
         : buildOxyServiceTools(userId, {
@@ -830,9 +808,7 @@ export class ToolPipeline {
             ...(agentIdentity ? { agentIdentity } : {}),
             runId: runId ?? requestId,
             autonomy: oxyAutonomy,
-            userAccessToken: isDirectSession ? accessToken : undefined,
-            executionAuthorizations: oxyExecutionAuthorizations,
-            taskId: oxyTaskId,
+            runScope: oxyRunScope,
             onStepStatus: onOxyStepStatus,
           }).catch(bulkFailure('oxy-service')),
       // A gemie writes to another from the person's own chat (`gemieChat`, which only a
@@ -847,7 +823,6 @@ export class ToolPipeline {
                 person: {
                   oxyUserId: userId,
                   isDirectSession,
-                  taskId: oxyTaskId,
                   surfaceApplicationId,
                 },
                 from: agent,
@@ -861,7 +836,6 @@ export class ToolPipeline {
                   oxyUserId: userId,
                   ...(accessToken ? { accessToken } : {}),
                   isDirectSession,
-                  taskId: oxyTaskId,
                   surfaceApplicationId,
                   ...(personalization ? {} : { personalization: false as const }),
                 },

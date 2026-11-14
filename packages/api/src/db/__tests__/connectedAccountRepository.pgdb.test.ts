@@ -12,7 +12,6 @@ import {
   findConnectedAccountBySession,
   findPersonAccount,
   grantConnectedAccount,
-  listAccountsAnsweredBy,
   listAccountsGrantedTo,
   listPersonAccountGrants,
   listPersonAccounts,
@@ -181,7 +180,6 @@ describe('its grants', () => {
       [b, true],
     ]);
     expect(grants[0]?.identity).toEqual({ source: 'oxy', oxyAccountId: `cau-bot-${a}` });
-    expect((await listAccountsAnsweredBy(db, b)).map((row) => row.id)).toEqual([account.id]);
 
     // The database refuses a second answering gemie whatever the code does.
     let caught: unknown;

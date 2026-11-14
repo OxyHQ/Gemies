@@ -126,7 +126,6 @@ export interface RoomEngineDeps {
      */
     readonly toolInvocations?: readonly ToolInvocation[];
   }) => Promise<StoredReply>;
-  readonly revokeTasks: (taskIds: readonly string[]) => Promise<void>;
   readonly now: () => number;
   /** Waits between attempts to store a reply that did not store. Defaults to {@link STORE_RETRY_DELAYS_MS}. */
   readonly storeRetryDelaysMs?: readonly number[];
@@ -197,11 +196,6 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
     return sent;
   };
   const end = async (reason: string, outcome: RoomStepOutcome): Promise<RoomStepOutcome> => {
-    await deps
-      .revokeTasks(data.roster.flatMap((member) => (member.oxyTaskId ? [member.oxyTaskId] : [])))
-      .catch((err: unknown) =>
-        log.general.warn({ err, conversationId }, 'Could not revoke room tasks'),
-      );
     await emit('group.idle', { reason });
     return outcome;
   };
@@ -455,7 +449,6 @@ async function speak(input: {
       person: {
         oxyUserId: data.userId,
         isDirectSession: false,
-        ...(member.oxyTaskId ? { taskId: member.oxyTaskId } : {}),
         surfaceApplicationId: data.surfaceApplicationId,
         ...(data.personalization === false ? { personalization: false as const } : {}),
       },
@@ -542,13 +535,10 @@ async function speak(input: {
 }
 
 /**
- * A step the queue gave up on (its retries are spent): end the chain for the watchers and give the
- * members' task authority back, so a room never stays "typing" and no task outlives its chain.
+ * A step the queue gave up on (its retries are spent): end the chain for the watchers, so a room
+ * never stays "typing".
  */
 export async function abandonRoomChain(data: RoomJobData, deps: RoomEngineDeps): Promise<void> {
-  await deps
-    .revokeTasks(data.roster.flatMap((member) => (member.oxyTaskId ? [member.oxyTaskId] : [])))
-    .catch((err: unknown) => log.general.warn({ err }, 'Could not revoke room tasks'));
   await Promise.resolve(
     deps.publish({
       userId: data.userId,

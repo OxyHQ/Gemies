@@ -150,7 +150,6 @@ describe('a chain of several turns, on Postgres', () => {
       publish: (event) => {
         events.push(event);
       },
-      revokeTasks: async () => undefined,
       loadAgent: async (id) => ({ _id: id }) as Awaited<ReturnType<RoomEngineDeps['loadAgent']>>,
       runTurn: async (turn) => {
         if (turn.agent._id === LUMEN.id) {

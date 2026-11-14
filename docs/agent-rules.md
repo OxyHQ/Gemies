@@ -36,10 +36,11 @@ comprobable; aquí está el texto completo. Antes de tocar un área lee su doc
 - **Apps de Oxy = primera parte.** Alia llega a las apps del usuario (Inbox…)
   sin paso de «conectar/autorizar». Un fallo de autoridad llega al modelo como
   `oxy_app_unavailable`, jamás como el motivo crudo de Oxy — `lib/tools/oxy-services.ts`.
-- **Apps propias sin scopes/consent/niveles (ADR0022, Oxy ADR0049).** `oxy_*`
-  usa la cuenta efectiva del requester, nunca la del dueño por sustitución;
-  `self_*` sólo la cuenta bot con operador verificado. Tareas e hijos conservan
-  el task id de Oxy del requester original, no su bearer. Servicios propios sólo
+- **Apps propias sin scopes/consent/niveles ni tareas (ADR0022, Oxy ADR0066).** `oxy_*`
+  usa la cuenta de la persona, nunca la del dueño por sustitución; `self_*` sólo la
+  cuenta bot que la persona opera. Gemies actúa por ella con lo que declara el registro
+  de Oxy (`actsForPeople`: files y tools), también en segundo plano: ninguna tarea,
+  token ni contexto del requester que guardar o renovar. Servicios propios sólo
   workload; claves/OAuth externos conservan su autoridad limitada.
 - **Dónde abre un agente lo dice Oxy (ADR 0021).** `canReachAgent` exige `surfaceApplicationId`,
   la app de la aserción `X-Oxy-App-Assertion` verificada en `lib/app-surface.ts` y nada más; un

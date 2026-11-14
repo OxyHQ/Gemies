@@ -22,7 +22,6 @@ import { getDb } from '../db/index.js';
 import {
   createPendingConnectedAccount,
   deleteConnectedAccount,
-  findAnsweringGemieId,
   findPersonAccount,
   grantConnectedAccount,
   listPersonAccountGrants,
@@ -43,13 +42,11 @@ import { loadGrantableGemie, refusalMessage, refusalStatus } from '../lib/agent-
 import { agentPromptName, attachAgentIdentities } from '../lib/agent-identity.js';
 import {
   availablePlatforms,
-  bindAccountTask,
   endAccountSession,
   GatewayError,
   listAccountChats,
   openAccountSession,
   readAccountQr,
-  revokeAccountTask,
   setAccountAnswering,
   syncAccountSession,
 } from '../lib/connected-accounts.js';
@@ -60,7 +57,7 @@ import { publishConnectionsChanged } from '../lib/realtime/account.js';
 const router = Router();
 
 /**
- * Every change to the person's accounts — connected, granted, answered, reauthorized, removed —
+ * Every change to the person's accounts — connected, granted, answered, removed —
  * reaches their other surfaces as `connections` (`docs/realtime.mdx`), from here rather than from
  * each route: a write this router serves successfully is a change.
  */
@@ -131,7 +128,7 @@ function answerFailure(res: Response, err: unknown, what: string): void {
 
 /** An account as the panel reads it: its session, its grants, its answering gemie and its replies. */
 function serializeAccount(account: ConnectedAccountRow, grants: readonly ConnectedAccountGrant[]) {
-  const { sessionId: _session, oxyTaskId: _task, oxyTaskExpiresAt: _expires, ...shown } = account;
+  const { sessionId: _session, ...shown } = account;
   const own = grants.filter((grant) => grant.accountId === account.id);
   return {
     ...shown,
@@ -252,12 +249,7 @@ router.patch('/:accountId', authenticateToken, async (req: Request, res: Respons
       const gemie =
         answeringGemieId === null ? null : await grantableGemieOf(res, caller, answeringGemieId);
       if (answeringGemieId !== null && gemie === null) return;
-      await setAccountAnswering({
-        account,
-        gemie,
-        personAccountId: caller.oxyUserId,
-        accessToken: caller.accessToken,
-      });
+      await setAccountAnswering({ account, gemie });
     }
     const stored = Object.keys(replies).length
       ? await setConnectedAccountReplies(getDb(), account.id, caller.oxyUserId, replies)
@@ -290,7 +282,7 @@ router.put(
 /**
  * DELETE /me/accounts/:accountId/gemies/:gemieId — stop a gemie using the account. Always the
  * person's to do, even for a gemie they no longer act as. When it was the answering gemie, nobody
- * answers the account any more and its task is revoked.
+ * answers the account any more.
  */
 router.delete(
   '/:accountId/gemies/:gemieId',
@@ -299,12 +291,7 @@ router.delete(
     try {
       const found = await accountOf(req, res);
       if (!found) return;
-      const { answered } = await revokeConnectedAccountGrant(
-        getDb(),
-        found.account.id,
-        String(req.params.gemieId),
-      );
-      if (answered) await revokeAccountTask(found.account);
+      await revokeConnectedAccountGrant(getDb(), found.account.id, String(req.params.gemieId));
       res.status(204).end();
     } catch (err: unknown) {
       answerFailure(res, err, 'Revoking a connected account grant');
@@ -336,45 +323,12 @@ router.get('/:accountId/chats', authenticateToken, async (req: Request, res: Res
   }
 });
 
-/**
- * POST /me/accounts/:accountId/reauthorize — renew the task its answering gemie acts with, no new
- * provider link: the new task replaces the old one, which is released after. An account nobody
- * answers holds no task: `409 no_answering_gemie`. `@gemies/sdk` before 7.1 calls it; newer ones
- * renew every channel at once (`POST /me/channel-tasks/renew`).
- */
-router.post('/:accountId/reauthorize', authenticateToken, async (req: Request, res: Response) => {
-  try {
-    const found = await accountOf(req, res);
-    if (!found) return;
-    const { caller, account } = found;
-    const answeringId = await findAnsweringGemieId(getDb(), account.id);
-    if (answeringId === null) {
-      return res
-        .status(409)
-        .json({ error: 'No gemie answers this account', code: 'no_answering_gemie' });
-    }
-    const gemie = await grantableGemieOf(res, caller, answeringId);
-    if (!gemie) return;
-    await bindAccountTask({
-      account,
-      gemie,
-      personAccountId: caller.oxyUserId,
-      accessToken: caller.accessToken,
-    });
-    res.json({ success: true, oxyTaskState: 'active' });
-  } catch (err: unknown) {
-    log.channels.error({ err }, 'Channel task renewal failed');
-    res.status(503).json({ error: 'Could not resume channel tools' });
-  }
-});
-
-// DELETE /me/accounts/:accountId — end the session, revoke the task, forget the account and its grants.
+// DELETE /me/accounts/:accountId — end the session, forget the account and its grants.
 router.delete('/:accountId', authenticateToken, async (req: Request, res: Response) => {
   try {
     const found = await accountOf(req, res);
     if (!found) return;
     const { caller, account } = found;
-    await revokeAccountTask(account);
     await endAccountSession(account, caller.oxyUserId);
     await deleteConnectedAccount(getDb(), account.id);
     res.json({ success: true });

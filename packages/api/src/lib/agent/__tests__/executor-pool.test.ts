@@ -53,11 +53,8 @@ beforeEach(() => {
 });
 
 describe('an orchestrated session’s executors', () => {
-  it('run under the parent’s Oxy task, as a delegated child does, so they keep its oxy_* tools', async () => {
-    const results = await executeSubtasks(
-      subtasks,
-      options({ ...parentSession, oxyTaskId: 'oxy-task-1' }),
-    );
+  it('run for the parent’s person, as a delegated child does, so they keep its oxy_* tools', async () => {
+    const results = await executeSubtasks(subtasks, options(parentSession));
 
     expect(results.map((r) => r.success)).toEqual([true, true]);
     expect(H.create).toHaveBeenCalledTimes(2);
@@ -65,16 +62,8 @@ describe('an orchestrated session’s executors', () => {
       expect(session).toMatchObject({
         oxyUserId: 'person-1',
         parentSessionId: 'parent-1',
-        oxyTaskId: 'oxy-task-1',
         depth: 1,
       });
     }
-  });
-
-  it('carry no task when the parent runs without one', async () => {
-    await executeSubtasks(subtasks.slice(0, 1), options({ ...parentSession, oxyTaskId: null }));
-
-    const [[, session]] = H.create.mock.calls as [[unknown, Record<string, unknown>]];
-    expect(session).not.toHaveProperty('oxyTaskId');
   });
 });

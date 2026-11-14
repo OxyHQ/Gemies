@@ -43,6 +43,6 @@ export { GEMIES_APPLICATION_ID, GEMIES_SERVICE_AUDIENCE } from './identity.js';
 export {
   createGemieForOxyService,
   createGemieTransportForOxyService,
+  type GemieActingFor,
   type OxyServiceTransportFactory,
-  type GemieOxyRequester,
 } from './oxy.js';

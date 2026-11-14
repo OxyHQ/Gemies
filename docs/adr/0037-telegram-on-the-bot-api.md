@@ -3,7 +3,12 @@
 *Telegram usa solo su Bot API oficial: la cuenta de una persona por Telegram Business y el bot propio
 de cada gemie.*
 
-**Status:** Accepted
+**Status:** Accepted; amended 2026-11-14 by [Oxy ADR 0066](https://github.com/OxyHQ/oxy/blob/main/docs/adr/0066-first-party-services-act-for-people-without-permissions.md):
+a channel holds no Oxy task. The person who linked a gemie bot, a connected account or a system bot
+link is recognised by that link, and Gemies acts for them on its declared first-party authority
+(their media through `assets.actingFor`, their apps per call). Channel task renewal, the lapse
+notices, `/channels/reauthorize` and the `oxy_task_*` columns of the last amendment are retired;
+unlinking or disconnecting is the off switch.
 
 **Date:** 2026-11-13
 
@@ -274,6 +279,8 @@ full rewrite had stored the history the channel sent, prompt included, stamping 
   conversation row in one transaction, and an append that stored nothing (a retry) changes neither.
 
 ## Amendment (2026-11-14, later): a channel's authority is renewed before it lapses, never unseen
+
+*Retired the same day by Oxy ADR 0066 (see the status line): kept as history.*
 
 **Context.** Every channel task — a gemie bot's person's (decision 5's amendment), a connected
 account's (ADR 0035) and a system bot link's — was minted for 365 days and its expiry was stored

@@ -63,7 +63,6 @@ export interface SendMessageOptions {
     readonly oxyUserId: string;
     readonly accessToken?: string;
     readonly isDirectSession: boolean;
-    readonly taskId?: string;
     /** The app the person is in, by its verified app assertion (ADR 0021), or `null`. */
     readonly surfaceApplicationId: string | null;
     /** `false`: the person turned personalization off; the chain's turns read none of it. */
@@ -128,9 +127,6 @@ async function gateRefusal(
   if (gated.length === 0) return null;
   const person = {
     accountId: options.person.oxyUserId,
-    // The person's own bearer only: without one no lane can be authorized.
-    accessToken: options.person.isDirectSession ? options.person.accessToken : undefined,
-    taskId: options.person.taskId,
     runId: randomUUID(),
   };
   const refused =
@@ -219,7 +215,6 @@ export async function buildSendMessageTool(options: SendMessageOptions): Promise
                   to: { agent: recipient, info },
                   text,
                   originConversationId: delivery.startsIn,
-                  accessToken: options.person.accessToken,
                   surfaceApplicationId: options.person.surfaceApplicationId,
                   ...(options.person.personalization === false
                     ? { personalization: false as const }

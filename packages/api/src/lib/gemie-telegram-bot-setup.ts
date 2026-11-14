@@ -13,7 +13,6 @@ import {
 import { botChatOf } from '../domain/gemie-bot-person.js';
 import { integrationsServiceFetch } from './integrations-client.js';
 import { log } from './logger.js';
-import { revokeReleasedTask } from './oxy-task-authority.js';
 
 /** A setup call that did not succeed: the token is wrong, or Telegram or the service failed. */
 export class TelegramBotSetupError extends Error {
@@ -135,12 +134,12 @@ export async function relayToGemieBotChat(input: {
 }
 
 /**
- * Before a gemie is deleted, or when its bot is removed: stop its bot and forget it, with the
- * authority its person's link held.
+ * Before a gemie is deleted, or when its bot is removed: stop its bot and forget it, with its
+ * person's link.
  */
 export async function releaseGemieTelegramBot(agentId: string): Promise<void> {
   const db = getDb();
   const token = await findGemieBotToken(db, agentId);
   if (token) await tearDownTelegramBot(token);
-  await revokeReleasedTask(await deleteGemieBot(db, agentId));
+  await deleteGemieBot(db, agentId);
 }

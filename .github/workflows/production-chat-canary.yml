@@ -40,9 +40,26 @@ jobs:
       CLUSTER: oxy-cluster
       SERVICE: alia
       QA_USER_ID: ${{ vars.ALIA_CANARY_OXY_USER_ID }}
-      QA_TASK_ID: ${{ vars.ALIA_CANARY_OXY_TASK_ID }}
     steps:
       - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # The one pin is `packageManager` in package.json; scripts/check-bun-pin.mjs
+          # holds every setup-bun step and Docker image to it.
+          bun-version-file: package.json
+      # The QA session is opened here, by the QA account's own key sign-in, with only the two
+      # packages that needs, at the versions the repo pins; no lifecycle script runs.
+      - name: Install the QA sign-in
+        run: |
+          set -euo pipefail
+          core=$(jq -r '.overrides["@oxy.so/core"]' package.json)
+          protocol=$(jq -r '.overrides["@oxy.so/protocol"]' package.json)
+          [[ "$core" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$protocol" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '::error::the Oxy SDK pins are not exact'; exit 1; }
+          mkdir -p "$RUNNER_TEMP/qa-session"
+          cp scripts/canary-qa-session.mjs "$RUNNER_TEMP/qa-session/"
+          cd "$RUNNER_TEMP/qa-session"
+          echo '{"private":true,"type":"module"}' > package.json
+          bun add --exact --ignore-scripts "@oxy.so/core@$core" "@oxy.so/protocol@$protocol"
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::237343248947:role/oxy-github-deploy
@@ -52,6 +69,7 @@ jobs:
           EXPECTED_TASK_DEFINITION: ${{ inputs.expected_live_task_definition_arn }}
           EXPECTED_IMAGE_DIGEST: ${{ inputs.expected_live_image_digest }}
           REASON: ${{ inputs.reason }}
+          QA_KEY: ${{ secrets.ALIA_CANARY_OXY_QA_KEY }}
         run: |
           set -euo pipefail
           [[ "$EXPECTED_TASK_DEFINITION" =~ ^arn:aws:ecs:us-west-2:237343248947:task-definition/oxy-alia:[1-9][0-9]*$ ]] || {
@@ -84,12 +102,19 @@ jobs:
           # switch. This runs the LIVE image, so it needs a Bun image to be serving:
           # against a pre-switch Node revision the task fails to start (loudly, no
           # write), which is only possible until the first Bun deploy completes.
-          [[ -n "$QA_TASK_ID" && ${#QA_TASK_ID} -le 128 && ! "$QA_TASK_ID" =~ [[:space:]] ]] || { echo "::error::protected QA task id is missing or invalid"; exit 1; }
-          overrides=$(jq -cn --arg container "$container" --arg user "$QA_USER_ID" --arg task "$QA_TASK_ID" '{containerOverrides:[{name:$container,command:["bun","packages/api/dist/scripts/production-chat-canary.js"],environment:[{name:"ALIA_CANARY_OXY_USER_ID",value:$user},{name:"ALIA_CANARY_OXY_TASK_ID",value:$task}]}]}')
           task=''
+          session_id=''
+          session_token=''
           cleanup() {
             status=$?
             trap - EXIT INT TERM
+            # The QA session never outlives the run: signed out whatever happened.
+            if [ -n "$session_id" ]; then
+              if ! (cd "$RUNNER_TEMP/qa-session" && ALIA_CANARY_SESSION_ID="$session_id" ALIA_CANARY_SESSION_TOKEN="$session_token" bun canary-qa-session.mjs close); then
+                echo '::error::failed to close the QA session'
+                status=1
+              fi
+            fi
             if [ -n "$task" ]; then
               cleanup_failed=0
               if ! aws ecs stop-task --cluster "$CLUSTER" --task "$task" --reason "Alia canary workflow cleanup ${GITHUB_RUN_ID}" >/dev/null; then
@@ -106,6 +131,20 @@ jobs:
           trap cleanup EXIT
           trap 'exit 130' INT
           trap 'exit 143' TERM
+          # A fresh QA session for this run only: Oxy's normal key sign-in as the QA account, checked
+          # to be exactly that account, masked, and closed by `cleanup`.
+          session=$(cd "$RUNNER_TEMP/qa-session" && ALIA_CANARY_OXY_QA_KEY="$QA_KEY" ALIA_CANARY_OXY_USER_ID="$QA_USER_ID" bun canary-qa-session.mjs open) || { echo '::error::the QA account could not sign in'; exit 1; }
+          session_token=$(jq -r '.accessToken // empty' <<<"$session")
+          session_id=$(jq -r '.sessionId // empty' <<<"$session")
+          device_id=$(jq -r '.deviceId // empty' <<<"$session")
+          device_secret=$(jq -r '.deviceSecret // empty' <<<"$session")
+          unset session
+          [ -n "$session_token" ] && [ -n "$session_id" ] && [ -n "$device_id" ] && [ -n "$device_secret" ] || { echo '::error::the QA sign-in returned no session'; exit 1; }
+          echo "::add-mask::$session_token"
+          echo "::add-mask::$device_secret"
+          # The device credential lets the run mint a fresh access token past the first one's 15
+          # minutes; it dies with the session when `cleanup` signs it out.
+          overrides=$(jq -cn --arg container "$container" --arg user "$QA_USER_ID" --arg session "$session_token" --arg device "$device_id" --arg secret "$device_secret" '{containerOverrides:[{name:$container,command:["bun","packages/api/dist/scripts/production-chat-canary.js"],environment:[{name:"ALIA_CANARY_OXY_USER_ID",value:$user},{name:"ALIA_CANARY_SESSION_TOKEN",value:$session},{name:"ALIA_CANARY_DEVICE_ID",value:$device},{name:"ALIA_CANARY_DEVICE_SECRET",value:$secret}]}]}')
           # Where the alia service runs: its capacity provider strategy when it
           # has one (oxy-cluster's EC2 capacity, EC2-only revisions), otherwise
           # its launch type.
@@ -133,5 +172,5 @@ jobs:
           safe=${result#ALIA_PRODUCTION_CANARY }
           jq -e '.schemaVersion == 1 and .conversationId == null and (.results | length == 11) and ([.results[].label] | unique | length == 11) and ([.results[] | select(.label != "controlled-refusal") | select(.statusCode != 200 or .synthetic or (.done | not) or (.answerPresent | not) or (.markerMatched | not) or ((.reference | type != "string") or (.reference | test("^chatcmpl-[0-9a-f-]{36}$") | not)))] | length == 0) and ([.results[] | select(.label != "controlled-refusal") | .reference] | unique | length == 10) and ([.results[] | select(.label == "search-tool" and .toolEvent)] | length == 1) and ([.results[] | select(.label == "controlled-refusal" and .statusCode == 400 and .code == "REQUEST_REFUSED" and (.synthetic | not) and (.done | not) and (.answerPresent | not) and (.toolEvent | not))] | length == 1) and .results[-1].label == "recovery"' <<<"$safe" >/dev/null
           jq '{schemaVersion,conversationId,results}' <<<"$safe"
+          # The task already stopped; `cleanup` now only signs the QA session out.
           task=''
-          trap - EXIT INT TERM

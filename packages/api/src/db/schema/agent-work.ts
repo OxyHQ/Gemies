@@ -2,21 +2,6 @@
 import { check, index, integer, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { createdAt, generatedId, timestamptz, updatedAt } from '@oxy.so/db';
-import { agents } from './agents';
-
-export const agentWorkAuthorities = pgTable(
-  'agent_work_authorities',
-  {
-    agentId: text()
-      .primaryKey()
-      .references(() => agents.id, { onDelete: 'cascade' }),
-    ownerAccountId: text().notNull(),
-    oxyTaskId: text().notNull(),
-    expiresAt: timestamptz().notNull(),
-    createdAt: createdAt(),
-  },
-  (t) => [uniqueIndex('agent_work_authority_task_key').on(t.oxyTaskId)],
-);
 
 export const agentWorkItems = pgTable(
   'agent_work_items',
@@ -24,7 +9,6 @@ export const agentWorkItems = pgTable(
     id: generatedId(),
     agentId: text().notNull(),
     ownerAccountId: text().notNull(),
-    oxyTaskId: text().notNull(),
     kind: text({ enum: ['heartbeat', 'follow_up'] }).notNull(),
     objective: text().notNull(),
     /** Requested replies are delivered reliably; initiative stays quiet unless worth reporting. */
@@ -49,7 +33,6 @@ export const agentWorkItems = pgTable(
     index('agent_work_due_idx').on(t.dueAt).where(sql`${t.status} = 'pending'`),
     index('agent_work_agent_status_idx').on(t.agentId, t.status),
     index('agent_work_root_idx').on(t.rootId),
-    index('agent_work_authority_idx').on(t.oxyTaskId),
     uniqueIndex('agent_work_session_key').on(t.sessionId),
     uniqueIndex('agent_work_source_call_key').on(t.sourceSessionId, t.sourceToolCallId),
     uniqueIndex('agent_work_heartbeat_key')
@@ -68,9 +51,3 @@ export const agentWorkItems = pgTable(
       ),
   ],
 );
-
-/** Survives agent deletion until Oxy acknowledges revocation. No user credentials. */
-export const agentWorkRevocations = pgTable('agent_work_revocations', {
-  oxyTaskId: text().primaryKey(),
-  createdAt: createdAt(),
-});

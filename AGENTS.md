@@ -30,7 +30,7 @@ bun run dev:api                                       # también dev:app, dev:in
 - Índice: [`docs/index.mdx`](./docs/index.mdx). Quién actúa: [`docs/actors.mdx`](./docs/actors.mdx). Decisiones vinculantes: [`docs/adr/`](./docs/adr).
 - Reglas completas con su porqué: [`docs/agent-rules.md`](./docs/agent-rules.md).
 - Chat/SSE: [`docs/chat-runtime.mdx`](./docs/chat-runtime.mdx). Tiempo real (un socket, eventos, escribiendo…): [`docs/realtime.mdx`](./docs/realtime.mdx). Agentes: [`docs/agents.md`](./docs/agents.md). Tareas: [`docs/proactive-intelligence.md`](./docs/proactive-intelligence.md). Memoria: [`docs/memory-system.md`](./docs/memory-system.md). Despliegue: [`docs/deployment.md`](./docs/deployment.md).
-- Autoridad del requester entre productos: [`docs/requester-authority.md`](./docs/requester-authority.md).
+- Cómo actúa Gemies por las personas en Oxy (sin permisos ni tareas): [`docs/requester-authority.md`](./docs/requester-authority.md).
 
 ## Convenciones que difieren de lo habitual
 
@@ -42,6 +42,7 @@ bun run dev:api                                       # también dev:app, dev:in
 - Cada one-shot que arranca la imagen de la API nombra `bun`; la imagen es Bun, no Node.
 - Una pantalla nunca espera tras un spinner: usa el esqueleto de Bloom (`__tests__/no-loading-screens.test.ts`).
 - Los fallos de inferencia son errores tipados (`failTurn`), nunca un mensaje de relleno con `finish_reason: "stop"`.
+- Lo first-party nunca pide permisos a las personas: Gemies actúa por la persona con lo que declara el registro de Oxy (`actsForPeople`, ADR 0066 de oxy); los permisos son solo para terceros.
 
 ## Límites
 
@@ -71,4 +72,4 @@ Pregunta antes de: cambiar un contrato entre productos Oxy, añadir una ruta Web
 
 Vienen del entorno (`.env`, secretos de ECS), nunca se imprimen ni se commitean; `TEST_DATABASE_URL` solo apunta a una base de pruebas.
 
-Owner: OxyHQ. Last reviewed: 2026-11-13.
+Owner: OxyHQ. Last reviewed: 2026-11-14.

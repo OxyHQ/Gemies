@@ -2,7 +2,8 @@ import { registeredCatalog } from './fixtures/oxy-catalog.js';
 /**
  * Somebody else using an agent (Alia ADR 0022): own tools reach the verified
  * requester's effective account, never the owner's data or an unrelated bot.
- * Every operation carries that requester's proof, without app-level grants.
+ * Every operation is authorized on Gemies' own first-party authority for that
+ * person (oxy ADR 0066), without app-level grants and without their bearer.
  */
 import { createRequire } from 'node:module';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -110,7 +111,7 @@ beforeEach(() => {
     if (url.endsWith('/capabilities/capability-map'))
       throw new Error('the owner-grant map must never be asked for a non-owner');
     if (
-      url.endsWith('/capabilities/foreground-execution-authorizations') &&
+      url.endsWith('/capabilities/first-party-execution-authorizations') &&
       init?.method === 'POST'
     )
       return json({ authorization: { id: 'DIRECT-1' } }, 201);
@@ -132,7 +133,6 @@ const context: OxyToolExecutionContext = {
   agentIdentity: { forUser: 'requester', self: false },
   runId: 'run-1',
   autonomy: 'execute_on_request',
-  userAccessToken: 'PERSON-TOKEN',
 };
 
 function calls(suffix: string) {
@@ -162,26 +162,27 @@ describe('an agent used by somebody who is not its owner', () => {
     );
   });
 
-  it("acts as the person's own direct request with workload and requester proof, with no approval step", async () => {
+  it("acts as the person's own direct request on Gemies' declared authority, with no approval step", async () => {
     const tools = await buildOxyServiceTools(PERSON, context);
     const result = await (tools.oxy_homiio__saveHome as unknown as ExecutableTool).execute(
       { q: 'flat-1' },
       { toolCallId: 'call-1' },
     );
     expect(result).toEqual({ ok: true });
-    const authorization = calls('/capabilities/foreground-execution-authorizations')[0];
+    const authorization = calls('/capabilities/first-party-execution-authorizations')[0];
     expect(init(authorization).headers).toMatchObject({
       Authorization: 'Bearer ALIA-SERVICE-TOKEN',
     });
     expect(body(authorization)).toMatchObject({
       kind: 'direct_request',
       authority: 'first_party',
-      subjectToken: 'PERSON-TOKEN',
+      requesterAccountId: PERSON,
       actor: { type: 'agent', accountId: AGENT },
       resource: personRoot,
       tool: 'saveHome',
       expectedCatalog: expect.objectContaining({ registrationId: 'registration-homiio' }),
     });
+    expect(body(authorization)).not.toHaveProperty('subjectToken');
   });
 
   it('does not apply a historical read-only app setting', async () => {

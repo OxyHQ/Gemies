@@ -132,7 +132,6 @@ describe('Alia’s memory never reaches another gemie', () => {
       surface: 'chat',
       isDirectUserSession: true,
       userId: 'person-1',
-      accessToken: 'token-1',
       userMemory,
       linkedAgent: persona(),
       toolNames: NILO,
@@ -144,7 +143,6 @@ describe('Alia’s memory never reaches another gemie', () => {
       surface: 'chat',
       isDirectUserSession: true,
       userId: 'person-1',
-      accessToken: 'token-1',
       userMemory,
       linkedAgent: aliaGemie(),
       toolNames: NILO,
@@ -209,7 +207,6 @@ describe('a chat with Alia runs as it did', () => {
       surface: 'chat',
       isDirectUserSession: true,
       userId: 'person-1',
-      accessToken: 'token-1',
       oxyUser: { name: { full: 'Ana' } } as Parameters<
         typeof SystemPromptBuilder.build
       >[0]['oxyUser'],

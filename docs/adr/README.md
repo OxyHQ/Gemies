@@ -83,7 +83,7 @@ ADR 0021 is the owner's decision of 2026-10-16 that an Oxy application's own age
 
 ADR 0019 applies Oxy ADR 0043 to Alia: who owns each kind of stored bytes, how every use reaches Oxy (a transactional reference outbox, nightly reconciliation, file events), why show covers move out of Syra into Alia's own Oxy files, and how private content moves through one module on Oxy stage 4c (consent read-back, large uploads, a legacy fallback). The runbook is [Alia on Oxy Files](../oxy-files.md).
 
-- [0022 — Own platform authority and original-requester tasks](./0022-first-party-platform-authority.md).
+- [0022 — Own platform authority and original-requester tasks](./0022-first-party-platform-authority.md). Its requester proofs and tasks are retired by Oxy ADR 0066.
 - [0026 — An agent has an inbox and a heartbeat](./0026-agent-inbox-and-heartbeat.md).
 - [0027 — Always-on agents: what is decided](./0027-always-on-agents-what-is-decided.md).
 - [0030 — A coding-agent CLI on a person's own computer can be one of their agents](./0030-external-agents.md).
@@ -93,7 +93,7 @@ ADR 0019 applies Oxy ADR 0043 to Alia: who owns each kind of stored bytes, how e
 - [0034 — Gemies and Alia: agents become Gemies, and Alia is one of them](./0034-gemies-and-alia.md).
 - [0035 — A connected account belongs to one gemie; Gmail and Signal are retired](./0035-connected-accounts-belong-to-a-gemie.md).
 - [0036 — An external agent has no Oxy account; its identity is its own row](./0036-external-agents-have-no-oxy-account.md).
-- [0037 — Telegram runs on its official Bot API: a person's account through Telegram Business, and a gemie's own bot](./0037-telegram-on-the-bot-api.md).
+- [0037 — Telegram runs on its official Bot API: a person's account through Telegram Business, and a gemie's own bot](./0037-telegram-on-the-bot-api.md). Its channel tasks are retired by Oxy ADR 0066.
 - [0038 — An external agent connects with its own credential; the pairing code is the authorisation](./0038-external-agents-connect-with-their-own-credential.md).
 - [0039 — An external agent reaches its gemie's tools as an MCP server](./0039-external-agents-reach-their-tools-over-mcp.md).
 - [0040 — Realtime over one socket: an account log, typed frames, the turn on SSE](./0040-realtime-over-one-socket.md).

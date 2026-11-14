@@ -70,8 +70,6 @@ import {
   settleGemieBotTurn,
 } from '../db/integrations/gemieBotRepository.js';
 import { botConversationId, isPersonTurn } from '../domain/gemie-bot-person.js';
-import { liveChannelTaskId } from '../domain/channel-task.js';
-import { reauthorizeUrl } from './channel-task-authority.js';
 
 /**
  * Per-(bot, sender) limit. The bot is public and its turns are paid, so one sender flooding it
@@ -259,7 +257,7 @@ async function earlierAnswer(
   const turn = answer.personTurn;
   if (!turn) return answer;
   // Theirs only while they are still its person: a Telegram unlinked since gets nothing of it.
-  if (!isPersonTurn(bot, message, liveChannelTaskId(bot))) return { reply: null };
+  if (!isPersonTurn(bot, message)) return { reply: null };
   const replyId = channelReplyMessageId(turn.messageId);
   const replied = replyId
     ? await findClientMessageContent(db, bot.userId, turn.conversationId, replyId)
@@ -307,13 +305,13 @@ async function runTurn(
     }
     return { reply: claimed ? said.linked(name) : said.expired(steps) };
   }
-  if (isPersonTurn(bot, message, liveChannelTaskId(bot))) {
+  if (isPersonTurn(bot, message)) {
     if (start) return { reply: said.hello(name) };
     // Their turn, with what they sent kept and transcribed as theirs, as an attachment in the app:
-    // kept under the task they granted the gemie here (`isPersonTurn` holds only while it stands).
+    // stored as their Oxy file, on Gemies' declared authority for them (oxy ADR 0066).
     const turn = await prepareChannelTurn({
       message: message.message,
-      owner: bot.oxyTaskId ? { oxyUserId: bot.userId, taskId: bot.oxyTaskId } : null,
+      owner: { oxyUserId: bot.userId },
       payerAccountId: bot.userId,
     });
     // Shown in the app the moment it arrives, not once the gemie has answered: the chat route's
@@ -401,11 +399,7 @@ async function answerAsThirdParty(
     const reach = `In this turn your person's apps (email, calendar, files, connected accounts, memory, scheduling) are not reachable. When someone asks for any of them, call ${PERSONAL_ACCESS_TOOL} and tell them what it answers; never say the capability does not exist.`;
     const personalAccess = buildPersonalAccessTool({
       name: agentPromptName(agent),
-      personLinked: bot.linkedTelegramUserId !== null && bot.oxyTaskId !== null,
-      // Their own private chat, with the authority they granted lapsed: the one thing missing.
-      ...(message.chatKind === 'direct' && message.from.id === bot.linkedTelegramUserId
-        ? { reauthorizeAt: reauthorizeUrl() }
-        : {}),
+      personLinked: bot.linkedTelegramUserId !== null,
       chatKind: message.chatKind,
     });
 

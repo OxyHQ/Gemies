@@ -14,15 +14,8 @@ import { EventStream } from './event-stream.js';
 import { withAgentAdmission } from '../../db/agents/agentRuntimeRepository.js';
 import { startAgentSession } from './session-handoff.js';
 import { log } from '../logger.js';
-import { runtimeGemieAccountId } from '../gemie-oxy-actor.js';
+import { gemieOxyAccountId } from '../gemie-oxy-actor.js';
 import { scheduleChatFollowUp } from './chat-follow-ups.js';
-
-/**
- * The authority of the person present in a turn: their bearer, from which an Oxy task is minted
- * when durable work needs one, or a standing task they already granted the gemie (a gemie bot's
- * person, ADR 0037 amendment), which durable work borrows as it is.
- */
-export type PresentAuthority = { requesterToken: string } | { oxyTaskId: string };
 
 export interface CoordinatedAgentTurn {
   id: string;
@@ -34,12 +27,11 @@ export interface CoordinatedAgentTurn {
 export class AgentTurnCoordinator {
   static async begin(input: {
     agent: HydratedAgent;
+    /** The person present in the turn; Gemies acts for them on its own authority (oxy ADR 0066). */
     oxyUserId: string;
-    authority: PresentAuthority;
     conversationId?: string;
     task: string;
   }): Promise<CoordinatedAgentTurn> {
-    const standingTaskId = 'oxyTaskId' in input.authority ? input.authority.oxyTaskId : undefined;
     const conversation = input.conversationId
       ? await findConversation(getDb(), input.oxyUserId, input.conversationId)
       : undefined;
@@ -59,8 +51,6 @@ export class AgentTurnCoordinator {
           chatLeaseExpiresAt: new Date(Date.now() + 120_000),
           threadId: conversation?.agentThreadId ?? undefined,
           conversationId: input.conversationId,
-          // A standing task is the turn's authority as it is; never retired with the session.
-          ...(standingTaskId ? { oxyTaskId: standingTaskId } : {}),
         }),
     );
     if (!admission.admitted) throw new Error('Agent concurrency limit reached');
@@ -87,15 +77,14 @@ export class AgentTurnCoordinator {
       onComplete: (result) => {
         completedResult = result;
       },
-      ...(input.conversationId
+      // A gemie with no Oxy account (ADR 0036) has no background work to continue in.
+      ...(input.conversationId && gemieOxyAccountId(input.agent) !== null
         ? {
             scheduleFollowUp: (at: Date, note: string, now: Date, toolCallId: string) =>
               scheduleChatFollowUp({
                 agentId: input.agent._id,
-                agentAccountId: runtimeGemieAccountId(input.agent),
                 ownerAccountId: input.oxyUserId,
                 sourceSessionId: session.id,
-                authority: input.authority,
                 at,
                 note,
                 now,
@@ -117,7 +106,6 @@ export class AgentTurnCoordinator {
             startAgentSession({
               agent: input.agent,
               userId: input.oxyUserId,
-              authority: input.authority,
               task: task.slice(0, 2000),
               origin: 'delegation',
               ...(conversation?.agentThreadId ? { threadId: conversation.agentThreadId } : {}),

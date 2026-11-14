@@ -18,13 +18,11 @@ import { canReachAgent } from '../../agent-account.js';
 import { agentPromptName, attachAgentIdentity } from '../../agent-identity.js';
 import { saveConversation } from '../../conversation-saver.js';
 import { log } from '../../logger.js';
-import { createOxyTask, revokeOxyTask } from '../../oxy-task-authority.js';
 import type { RoomJobData } from './engine.js';
 import { enqueueRoomJob } from './queue.js';
 import type { RoomMember } from './policy.js';
 import type { GroupInputMessage } from './transcript.js';
 import { ROOM_GEMIE_ID } from '../../../domain/alia-gemie.js';
-import { gemieOxyAccountId } from '../../gemie-oxy-actor.js';
 
 type SaveParams = Parameters<typeof saveConversation>[0];
 
@@ -57,7 +55,6 @@ export type PrepareRoom = (input: PrepareRoomInput) => Promise<PreparedRoom>;
 export const prepareRoom: PrepareRoom = async (input) => {
   const { userId, conversationId } = input;
   const members: RoomMember[] = [];
-  const accountOf = new Map<string, string>();
   for (const agentId of input.memberAgentIds) {
     let info: AgentInfo = {
       id: agentId,
@@ -90,9 +87,6 @@ export const prepareRoom: PrepareRoom = async (input) => {
         members.push({ info, available: false });
         continue;
       }
-      // A member with no Oxy account (ADR 0036) acts as nobody there: it talks, with no Oxy task.
-      const actorAccountId = gemieOxyAccountId(found);
-      if (actorAccountId !== null) accountOf.set(agentId, actorAccountId);
       members.push({ info, available: true, description: found.description });
     } catch (error: unknown) {
       log.general.error({ err: error, agentId }, 'Could not check a group member');
@@ -124,34 +118,11 @@ export const prepareRoom: PrepareRoom = async (input) => {
         );
   if (trigger === undefined) throw new Error('The person’s message was not stored');
 
-  // Fetch everything that can fail before minting task authority.
   const space = await findSpaceByConversation(getDb(), userId, conversationId);
   const spaceBrief = space ? { name: space.name, instructions: space.instructions } : null;
 
-  // One Oxy task per member, bound to the person's bearer now and acting as that member later. A
-  // member whose task cannot be minted still talks; it just has no Oxy apps (less authority, never
-  // more).
-  const roster: RoomMember[] = await Promise.all(
-    members.map(async (member): Promise<RoomMember> => {
-      const { info } = member;
-      if (member.available === false || input.accessToken === undefined) return member;
-      try {
-        const actorAccountId = accountOf.get(info.id);
-        if (actorAccountId === undefined) return member;
-        const oxyTaskId = await createOxyTask({
-          accessToken: input.accessToken,
-          effectiveAccountId: userId,
-          actorAccountId,
-          origin: { kind: 'request', id: `room:${trigger.id}:${info.id}` },
-        });
-        return { ...member, oxyTaskId };
-      } catch (error: unknown) {
-        log.agents.warn({ err: error, agentId: info.id }, 'Could not mint a room member task');
-        return member;
-      }
-    }),
-  );
-  const taskIds = roster.flatMap((member) => (member.oxyTaskId ? [member.oxyTaskId] : []));
+  // Each member's turns act for the person on Gemies' own first-party authority (oxy ADR 0066).
+  const roster: readonly RoomMember[] = members;
 
   return {
     chainId: trigger.id,
@@ -184,7 +155,6 @@ export const prepareRoom: PrepareRoom = async (input) => {
     },
     abandon: async () => {
       await clearConversationActive(userId, conversationId, trigger.id);
-      await Promise.allSettled(taskIds.map((id) => revokeOxyTask(id)));
     },
   };
 };

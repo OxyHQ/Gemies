@@ -64,16 +64,11 @@ describe('structured automation creation tool', () => {
   });
 
   it('uses the same creation service as HTTP and returns the editable receipt', async () => {
-    const tool = createAutomationTool(
-      'owner-1',
-      'live-user-token',
-      aliaGemie(),
-    ) as unknown as ExecutableTool;
+    const tool = createAutomationTool('owner-1', aliaGemie()) as unknown as ExecutableTool;
     const result = await tool.execute(definition);
 
     expect(createStructuredAutomation).toHaveBeenCalledWith({
       ownerAccountId: 'owner-1',
-      accessToken: 'live-user-token',
       definition,
     });
     expect(result).toEqual({
@@ -95,7 +90,6 @@ describe('structured automation creation tool', () => {
         },
       },
     });
-    expect(JSON.stringify(result)).not.toContain('live-user-token');
   });
 
   it('accepts an assistant task with no fake app action', async () => {
@@ -106,11 +100,7 @@ describe('structured automation creation tool', () => {
       dataFlow: { sources: [], destinations: [] },
       inputs: { instructions: 'Remind me to call Alex' },
     };
-    const tool = createAutomationTool(
-      'owner-1',
-      'live-user-token',
-      aliaGemie(),
-    ) as unknown as ExecutableTool;
+    const tool = createAutomationTool('owner-1', aliaGemie()) as unknown as ExecutableTool;
 
     await expect(tool.execute(assistantTask)).resolves.toEqual(
       expect.objectContaining({
@@ -127,7 +117,6 @@ describe('structured automation creation tool', () => {
   it('binds an agent-created recurring task to the speaking agent', async () => {
     const tool = createAutomationTool(
       'owner-1',
-      'live-user-token',
       personaGemie({ _id: 'eusebio' }),
     ) as unknown as ExecutableTool;
     const { actorSelection: _, ...withoutActor } = definition;
@@ -149,7 +138,6 @@ describe('structured automation creation tool', () => {
     async (actorSelection) => {
       const tool = createAutomationTool(
         'owner-1',
-        'live-user-token',
         personaGemie({ _id: 'eusebio' }),
       ) as unknown as ExecutableTool;
       expect(await tool.execute({ ...definition, actorSelection })).toEqual({

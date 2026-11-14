@@ -146,10 +146,7 @@ describe('checkGatedParts', () => {
     expect((await checkGatedParts(agent, person, parts()))?.code).toBe('feature_check_unavailable');
   });
 
-  it('is locked without the person’s own bearer, and when the app stopped declaring it', async () => {
-    expect(
-      (await checkGatedParts(agent, { ...person, accessToken: undefined }, parts()))?.code,
-    ).toBe('feature_entitlement_required');
+  it('is locked when the app stopped declaring it', async () => {
     mocks.declared = null;
     expect((await checkGatedParts(agent, person, parts()))?.code).toBe(
       'feature_entitlement_required',

@@ -15,7 +15,6 @@ import { findSystemBot, findBotUser } from '../db/integrations/botRepository.js'
 import { findConnectedAccountBySession } from '../db/integrations/connectedAccountRepository.js';
 import { findActiveGemieBotByTelegramId } from '../db/integrations/gemieBotRepository.js';
 import { isPersonTurn } from '../domain/gemie-bot-person.js';
-import { type ChannelTaskHold, liveChannelTaskId } from '../domain/channel-task.js';
 import type { ChannelId } from '../lib/channels/types.js';
 
 export function channelAccountOf(req: Request): string | undefined {
@@ -29,6 +28,7 @@ const serviceTokenAuth = oxy.middleware.service();
 async function requireIntegrations(req: Request, res: Response, next: NextFunction): Promise<void> {
   if (
     req.headers['x-oxy-user-id'] !== undefined ||
+    req.headers['x-oxy-requester-id'] !== undefined ||
     req.headers['x-oxy-requester-token'] !== undefined
   ) {
     res.status(403).json({ error: 'Channel identity must come from its provider link' });
@@ -91,16 +91,6 @@ export async function authenticateChannelAccount(
   });
 }
 
-/**
- * The binding's task for the turn, only while it may still be live: never one Oxy refused or one
- * past the expiry Oxy gave it (`liveChannelTaskId`). Without one the turn runs with no authority of
- * the person's, and their channel is already marked as needing them (`channel-task-authority.ts`).
- */
-function withLiveTask(hold: ChannelTaskHold): { taskId?: string } {
-  const taskId = liveChannelTaskId(hold);
-  return taskId ? { taskId } : {};
-}
-
 async function resolveChannelAccount(
   req: Request,
   res: Response,
@@ -128,15 +118,13 @@ async function resolveChannelAccount(
       platformUserId.length > 0
     ) {
       // A gemie bot's person, only from the Telegram account they proved is theirs, in private
-      // (the integrations process asks only after the API said `personTurn`), and only with the
-      // authority they granted the gemie there. Anybody else on the bot is never an account here.
+      // (the integrations process asks only after the API said `personTurn`). Anybody else on the
+      // bot is never an account here.
       const bot = await findActiveGemieBotByTelegramId(getDb(), gemieBotId);
-      const taskId = bot ? liveChannelTaskId(bot) : undefined;
       if (
         bot &&
-        taskId &&
         isLiveEntityId(bot.userId) &&
-        isPersonTurn(bot, { chatKind: 'direct', from: { id: platformUserId } }, taskId)
+        isPersonTurn(bot, { chatKind: 'direct', from: { id: platformUserId } })
       ) {
         context = {
           kind: 'gemie_bot',
@@ -144,7 +132,6 @@ async function resolveChannelAccount(
           gemieId: bot.agentId,
           platform,
           identityId: bot.id,
-          taskId,
         };
       }
     } else if (
@@ -161,7 +148,6 @@ async function resolveChannelAccount(
           accountId: link.oxyUserId,
           platform,
           identityId: link.id,
-          ...withLiveTask(link),
         };
       }
     } else if (
@@ -179,7 +165,6 @@ async function resolveChannelAccount(
           gemieId: connection.answeringAgentId,
           platform,
           identityId: connection.id,
-          ...withLiveTask(connection),
         };
       }
     }

@@ -59,11 +59,10 @@ vi.mock('../../chat-core.js', () => ({
 }));
 
 vi.mock('../../tools/oxy-services.js', () => ({
-  presentPersonAgentContext: (params: { personAccountId: string; accessToken: string }) => ({
+  presentPersonAgentContext: (params: { personAccountId: string }) => ({
     requesterAccountId: params.personAccountId,
     ownerAccountId: params.personAccountId,
     actor: { type: 'agent', accountId: 'sindi-bot' },
-    userAccessToken: params.accessToken,
   }),
   findOxyAppFeature: async (_app: string, key: string) => ({
     feature: { key, description: 'Homiio+', checkTool: 'readFiles', consumeTool: 'spendFile' },
@@ -223,7 +222,7 @@ describe('a gated attachment', () => {
     expect(ctx?.files.get('lease')).toEqual([{ type: 'text', text: 'doc lease' }]);
     expect(resolvedWith[0]).toMatchObject({
       personAccountId: 'person-1',
-      accessToken: 'PERSON-TOKEN',
+      ownSession: true,
       modelAcceptsFiles: false,
     });
   });

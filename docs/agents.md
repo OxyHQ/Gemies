@@ -51,7 +51,7 @@ no account.
 - **Customisable.** Its owner renames and recolours it in the same editor (`PATCH /agents/:id`
   `name`, `color`), and changes its character as for any gemie.
 - **Nothing that needs an account.** No mailbox, its own connected accounts, event subscriptions,
-  heartbeat, background sessions, automations or Oxy tasks: each gate asks `gemieOxyAccountId`
+  heartbeat, background sessions or automations: each gate asks `gemieOxyAccountId`
   (`lib/gemie-oxy-actor.ts`), and Gemies' own runtime, which it never enters, refuses it
   (`runtimeGemieAccountId`).
 - **Connected by a code, not a sign-in (ADR 0038).** The person pastes one text into the CLI; the
@@ -290,7 +290,7 @@ never among the loose chats, though both are Alia's (`agentId: null`).
 
 **A turn in it is a turn of Alia.** Nothing on the turn path reads the stretch: the gemie is the
 one the request names (none, or her id, is Alia), and her row decides the rest — Nilo memory, the
-person's reach, her tools, standing authority, no `AgentTurnCoordinator` session.
+person's reach, her tools, the standing lane (`task_authority`), no `AgentTurnCoordinator` session.
 `alia-gemie-guarantees.test.ts` pins it. `searchThread` stays a tool of gemie memory
 (`memory_store = 'gemie'`); Alia recalls the person through Nilo, and the person searches her
 thread through the route above.
@@ -633,7 +633,7 @@ such as Homiio's Sindi. A gemie's grant narrows it further:
 
 Both sides' turns are `runAgentTurn` (`lib/tools/agent-turn.ts`): the SAME person's turn with that
 gemie as the agent — its own prompt, families and memory of this person, and the person's Oxy apps on
-the Oxy task minted when the chain started. The person pays for each. The gemie written to answers
+Gemies' declared authority, as on any of their turns. The person pays for each. The gemie written to answers
 nested: it can write to nobody, so A can write to B and B cannot start a chain of its own from there.
 When Alia is either side, her turn only reads: the base identity, the person's Oxy apps at
 `read_only`, no connector that acts and never her memory.
@@ -710,8 +710,8 @@ Homiio+ unlocks documents without Alia knowing what Homiio+ is.
   tools need an input is a 400, and catalogues Alia cannot read are a 503 rather
   than an unchecked save (`refuseFeatureGates`, `lib/agent-features.ts`).
 - **Asked on the requester's account.** `checkTool` and `consumeTool` use the
-  same workload, original requester proof and catalogue-pinned ticket as other own
-  tools. No app grant or ceiling is consulted. The app still decides product
+  same workload, declared first-party authority (Oxy ADR 0066) and catalogue-pinned
+  ticket as other own tools. No app grant or ceiling is consulted. The app still decides product
   entitlement and billing; unavailable authority is retryable, never a fabricated
   entitlement verdict. `self_*` bot accounts do not pay for the person's feature.
 - **What the app answers.** `checkTool` → `{ available, remaining? }`, `consumeTool`
@@ -740,13 +740,13 @@ that actor. `oxy_*` binds the verified requester; `self_*` binds the bot itself
 only when the requester may operate it. A public agent never exposes its
 owner's data to another person.
 
-Foreground calls use the shared requester-proof SDK. Goals store an Oxy task
-id created from the original requester, carry it into child runs — a delegated
-agent and every executor of an orchestrated session (`lib/agent/executor-pool.ts`)
-alike, so neither loses its `oxy_*` tools — and retire it on cancellation or
-terminal completion; only the session that owns it retires it, never a child. A worker never chooses the requester
-from the bot owner. Structured automations retain exact resources and limits.
-Old runs without provenance cannot acquire new own-data authority.
+Every call, foreground or background, gets its own execution authorization on
+Gemies' declared first-party authority (Oxy ADR 0066), naming the person the work
+is for and, for `self_*`, the bot account they operate. Child runs — a delegated
+agent and every executor of an orchestrated session — act for the same person;
+there is no task to carry, renew or retire. A worker never chooses the requester
+from the bot owner. Structured automations call only their run scope: exact
+resources and limits, once per stage for an effect.
 
 The catalogues are read from Oxy's registry and cached 60 seconds
 (`lib/tools/oxy-catalog-defs.ts`). One app's registration that does not parse
@@ -829,8 +829,8 @@ a notification that opens `/@handle`.
 
 Subscribed events collect in the agent's inbox. Its attention interval batches up
 to 20 into durable work; an empty inbox costs no inference. New agents start at
-60 minutes; existing pauses remain paused. The authenticated owner establishes
-the standing Oxy task, and workers use the ordinary agent runner and existing
+60 minutes; existing pauses remain paused. Turning attention on is the owner's
+setting, and workers use the ordinary agent runner and existing
 accesses to investigate and act. The editor exposes pending events and whether
 work is waiting, scheduled, running, paused or blocked.
 

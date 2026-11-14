@@ -1,8 +1,8 @@
 /**
  * Who a gemie's own Telegram bot recognises (ADR 0037, amendment): the person who connected it,
- * writing in private from the Telegram account they linked to it, while the authority they granted
- * the gemie there stands. Never in a group, where everybody reads the answer. Everybody else on the
- * bot is a third party.
+ * writing in private from the Telegram account they linked to it. Never in a group, where everybody
+ * reads the answer. Everybody else on the bot is a third party. The link is how Gemies knows who the
+ * person is, not a permission: Gemies acts for them with its own first-party authority (oxy ADR 0066).
  *
  * One predicate for the two places that ask: the bot's message route, which decides whose turn it
  * is, and the channel middleware, which verifies the identity `/alia/chat` then runs as.
@@ -10,13 +10,10 @@
 export function isPersonTurn(
   bot: { readonly linkedTelegramUserId: string | null },
   message: { readonly chatKind: 'direct' | 'group'; readonly from: { readonly id: string } },
-  /** The task they granted, while it stands (`liveChannelTaskId` in `channel-task.ts`). */
-  liveTaskId: string | undefined,
 ): boolean {
   return (
     message.chatKind === 'direct' &&
     bot.linkedTelegramUserId !== null &&
-    liveTaskId !== undefined &&
     message.from.id === bot.linkedTelegramUserId
   );
 }

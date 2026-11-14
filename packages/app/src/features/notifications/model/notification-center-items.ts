@@ -27,9 +27,9 @@ export interface InboxNotification {
 export const APP_PATH = /^\/(?!\/)[\w\-.~!$&'()*+,;=:@%/?#]*$/;
 
 /**
- * Where tapping a notice goes: the app page it names (`data.path`, e.g. the one-tap channel
- * reauthorisation), else its conversation; `null` when it opens nothing. Only a path of this app
- * ({@link APP_PATH}), so a notice can never send anyone elsewhere.
+ * Where tapping a notice goes: the app page it names (`data.path`, e.g. a settings page), else its
+ * conversation; `null` when it opens nothing. Only a path of this app ({@link APP_PATH}), so a
+ * notice can never send anyone elsewhere.
  */
 export function notificationHref(
   notification: Pick<InboxNotification, 'conversationId' | 'data'>,

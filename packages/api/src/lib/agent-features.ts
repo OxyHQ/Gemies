@@ -78,22 +78,16 @@ export interface GatedAgent {
 /** Who is asking, and the run their calls are part of. */
 export interface FeaturePerson {
   readonly accountId: string;
-  /** The person's own live bearer. Without one no lane can be authorized. */
-  readonly accessToken: string | undefined;
-  readonly taskId?: string;
   readonly runId: string;
 }
 
 function laneOf(agent: GatedAgent, person: FeaturePerson): OxyToolExecutionContext | null {
-  if (person.accessToken === undefined && !person.taskId) return null;
   // A gate is checked as the gemie's account; one with none (ADR 0036) unlocks nothing.
   const oxyAccountId = gemieOxyAccountId(agent);
   if (oxyAccountId === null) return null;
   return presentPersonAgentContext({
     agent: { oxyAccountId, ownerOxyAccountId: agent.ownerOxyAccountId },
     personAccountId: person.accountId,
-    accessToken: person.accessToken,
-    taskId: person.taskId,
     runId: person.runId,
   });
 }

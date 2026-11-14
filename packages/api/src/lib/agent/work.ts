@@ -6,16 +6,11 @@ import { getDb } from '../../db/index';
 import { agents } from '../../db/schema/agents';
 import { agentGoals } from '../../db/schema/agent-runtime';
 import { agentSessions } from '../../db/schema/agent-sessions';
-import {
-  agentWorkAuthorities,
-  agentWorkItems,
-  agentWorkRevocations,
-} from '../../db/schema/agent-work';
-import { findWorkAuthority, lockAgentWork, pendingWork } from '../../db/agents/agentWorkRepository';
+import { agentWorkItems } from '../../db/schema/agent-work';
+import { lockAgentWork, pendingWork } from '../../db/agents/agentWorkRepository';
 import { findAgentById } from '../../db/agents/agentRepository';
 import { createAgentSession } from '../../db/agents/agentSessionRepository';
 import { withAgentAdmission } from '../../db/agents/agentRuntimeRepository';
-import { createOxyTask, revokeOxyTask } from '../oxy-task-authority';
 import { prepareBackgroundCreditReservation } from '../product-credit-access';
 import { getOrCreateUserCredits } from '../user-credits-helpers';
 import { enqueueAgentSession } from '../task-queue';
@@ -25,12 +20,12 @@ import { log } from '../logger';
 import { agentHirePrice } from './session-handoff';
 import { deliverPendingAgentWorkResults } from './work-delivery';
 
-/** Only called from a verified, owner-present request. No bearer survives this call. */
-export async function establishAgentWork(
-  agentId: string,
-  ownerAccountId: string,
-  accessToken: string,
-) {
+/**
+ * The owner turned their gemie's attention on (or opened it): adopt its legacy one-shot wake
+ * schedules. Its work needs nothing else: it runs for the owner on Gemies' own first-party
+ * authority (oxy ADR 0066), while the gemie is active and its attention is on.
+ */
+export async function establishAgentWork(agentId: string, ownerAccountId: string) {
   const db = getDb();
   const agent = await findAgentById(db, agentId);
   if (
@@ -40,72 +35,15 @@ export async function establishAgentWork(
     !agent.scheduleInterval
   )
     return;
-  // Its work runs under an Oxy task with the gemie as its actor; a gemie with no Oxy account
-  // (ADR 0036) is nobody at Oxy, so it has none, and works only when its owner talks to it.
-  const actorAccountId = gemieOxyAccountId(agent);
-  if (actorAccountId === null) return;
-  const current = await findWorkAuthority(db, agentId, ownerAccountId);
-  if (current && current.expiresAt > new Date()) {
-    await migrateAgentWakeSchedules(agentId, ownerAccountId, current.oxyTaskId);
-    return;
-  }
-  const taskId = await createOxyTask({
-    accessToken,
-    effectiveAccountId: ownerAccountId,
-    actorAccountId,
-    origin: { kind: 'goal', id: `agent-work:${agentId}` },
-  });
-  let accepted = false;
-  try {
-    accepted = await db.transaction(async (tx) => {
-      await lockAgentWork(tx, agentId);
-      const [live] = await tx.select().from(agents).where(eq(agents.id, agentId));
-      if (
-        !live ||
-        live.ownerOxyAccountId !== ownerAccountId ||
-        live.status !== 'active' ||
-        !live.scheduleInterval
-      )
-        return false;
-      const winner = await findWorkAuthority(tx, agentId, ownerAccountId);
-      if (winner && winner.expiresAt > new Date()) return false;
-      if (winner)
-        await tx
-          .insert(agentWorkRevocations)
-          .values({ oxyTaskId: winner.oxyTaskId })
-          .onConflictDoNothing();
-      await tx
-        .insert(agentWorkAuthorities)
-        .values({
-          agentId,
-          ownerAccountId,
-          oxyTaskId: taskId,
-          expiresAt: new Date(Date.now() + 365 * 86400000),
-        })
-        .onConflictDoUpdate({
-          target: agentWorkAuthorities.agentId,
-          set: {
-            ownerAccountId,
-            oxyTaskId: taskId,
-            expiresAt: new Date(Date.now() + 365 * 86400000),
-          },
-        });
-      return true;
-    });
-  } finally {
-    if (!accepted) {
-      await db.insert(agentWorkRevocations).values({ oxyTaskId: taskId }).onConflictDoNothing();
-      await drainAgentWorkRevocations();
-    }
-  }
-  if (accepted) await migrateAgentWakeSchedules(agentId, ownerAccountId, taskId);
+  // A gemie with no Oxy account (ADR 0036) is nobody at Oxy, so it has no background work and
+  // works only when its owner talks to it.
+  if (gemieOxyAccountId(agent) === null) return;
+  await migrateAgentWakeSchedules(agentId, ownerAccountId);
 }
 
 /** Event batches and follow-ups use the existing durable runner, billing and tool policy. */
 export async function dispatchAgentWork(now = new Date()): Promise<number> {
   const db = getDb();
-  await retirePausedAgentWork();
-  await drainAgentWorkRevocations();
   // Reconcile after a worker or notification process died. A terminal execution is never replayed.
   await db.execute(sql`update agent_work_items w set status = s.status, updated_at = now()
     from agent_sessions s where w.session_id = s.id and w.status = 'running'
@@ -134,8 +72,8 @@ export async function dispatchAgentWork(now = new Date()): Promise<number> {
         (work.kind === 'heartbeat' && !agent.scheduleInterval)
       )
         continue;
-      // The requester already authorized this durable task. A private agent does
-      // not need the now-absent interactive bearer again; confinement stays live.
+      // Gemies acts for the owner on its own first-party authority (oxy ADR 0066); the agent's
+      // confinement stays live.
       if ((await agentOpensOn(agent, null)) !== 'reachable')
         throw new Error('Agent availability could not authorize this surface');
       await getOrCreateUserCredits(work.ownerAccountId);
@@ -173,26 +111,16 @@ export async function dispatchAgentWork(now = new Date()): Promise<number> {
             : null;
           if (
             work.sourceSessionId &&
-            (!source ||
-              source.agentId !== work.agentId ||
-              source.oxyUserId !== work.ownerAccountId ||
-              source.oxyTaskId !== work.oxyTaskId ||
-              source.oxyTaskRetiredAt)
+            (!source || source.agentId !== work.agentId || source.oxyUserId !== work.ownerAccountId)
           )
             return null;
-          if (work.kind === 'heartbeat') {
-            const authority = await findWorkAuthority(tx, work.agentId, work.ownerAccountId);
-            if (
-              !authority ||
-              authority.oxyTaskId !== work.oxyTaskId ||
-              authority.expiresAt <= now
-            ) {
-              await tx
-                .update(agentWorkItems)
-                .set({ status: 'failed', failure: 'needs_session', updatedAt: now })
-                .where(eq(agentWorkItems.id, work.id));
-              return null;
-            }
+          // A gemie with no Oxy account (ADR 0036) has no background work.
+          if (live.identity !== 'oxy') {
+            await tx
+              .update(agentWorkItems)
+              .set({ status: 'failed', failure: 'no_background_work', updatedAt: now })
+              .where(eq(agentWorkItems.id, work.id));
+            return null;
           }
           if (source && ['queued', 'running'].includes(source.status)) return null;
           const [used] = await tx
@@ -251,7 +179,6 @@ export async function dispatchAgentWork(now = new Date()): Promise<number> {
             id: randomUUID(),
             agentId: work.agentId,
             oxyUserId: work.ownerAccountId,
-            oxyTaskId: work.oxyTaskId,
             task: work.objective + context + currentWork,
             status: 'queued',
             ...(source?.threadId ? { threadId: source.threadId } : {}),
@@ -307,69 +234,29 @@ export async function dispatchAgentWork(now = new Date()): Promise<number> {
   return started;
 }
 
-/** Cancel locally and persist revocation before any remote call, including on deletion. */
+/**
+ * Pause or delete: cancel the gemie's work. Turning off attention only (`onlyIfPaused` on a gemie
+ * still active) cancels the work its attention started (`initiative`), never a continuation a
+ * person asked for (`requested`).
+ */
 export async function stopAgentWork(agentId: string, onlyIfPaused = false): Promise<void> {
   const db = getDb();
   await db.transaction(async (tx) => {
     await lockAgentWork(tx, agentId);
     const [agent] = await tx.select().from(agents).where(eq(agents.id, agentId));
-    const [authority] = await tx
-      .select()
-      .from(agentWorkAuthorities)
-      .where(eq(agentWorkAuthorities.agentId, agentId));
-    if (
-      onlyIfPaused &&
-      agent?.status === 'active' &&
-      agent.scheduleInterval &&
-      (!authority || agent.ownerOxyAccountId === authority.ownerAccountId)
-    )
-      return;
-    // Turning off attention must not discard a continuation explicitly requested
-    // by a person. Pausing/deleting the agent itself cancels all its work.
+    if (onlyIfPaused && agent?.status === 'active' && agent.scheduleInterval) return;
     const attentionOnly = onlyIfPaused && agent?.status === 'active';
-    if (attentionOnly && !authority) return;
     await tx
       .update(agentWorkItems)
       .set({ status: 'cancelled', failure: 'paused', updatedAt: new Date() })
       .where(
         and(
           eq(agentWorkItems.agentId, agentId),
-          attentionOnly && authority
-            ? eq(agentWorkItems.oxyTaskId, authority.oxyTaskId)
-            : undefined,
+          attentionOnly ? eq(agentWorkItems.deliveryMode, 'initiative') : undefined,
           inArray(agentWorkItems.status, ['pending', 'running']),
         ),
       );
-    if (authority) {
-      await tx
-        .insert(agentWorkRevocations)
-        .values({ oxyTaskId: authority.oxyTaskId })
-        .onConflictDoNothing();
-      await tx
-        .delete(agentWorkAuthorities)
-        .where(eq(agentWorkAuthorities.oxyTaskId, authority.oxyTaskId));
-    }
   });
-  await drainAgentWorkRevocations();
-}
-
-async function drainAgentWorkRevocations() {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(agentWorkRevocations)
-    .orderBy(agentWorkRevocations.createdAt)
-    .limit(100);
-  for (const row of rows) {
-    try {
-      await revokeOxyTask(row.oxyTaskId);
-      await db
-        .delete(agentWorkRevocations)
-        .where(eq(agentWorkRevocations.oxyTaskId, row.oxyTaskId));
-    } catch (err) {
-      log.agents.warn({ err }, 'Agent work authority revocation will retry');
-    }
-  }
 }
 
 export async function autonomousWorkMayRun(sessionId: string): Promise<boolean> {
@@ -390,7 +277,7 @@ export async function autonomousWorkMayRun(sessionId: string): Promise<boolean> 
 }
 
 /** Adopt only unexecuted internal one-shots. User automations and historical deliveries stay intact. */
-async function migrateAgentWakeSchedules(agentId: string, ownerAccountId: string, taskId: string) {
+async function migrateAgentWakeSchedules(agentId: string, ownerAccountId: string) {
   const db = getDb();
   await db.transaction(async (tx) => {
     const definitions = await tx
@@ -435,7 +322,6 @@ async function migrateAgentWakeSchedules(agentId: string, ownerAccountId: string
           rootId: id,
           agentId,
           ownerAccountId,
-          oxyTaskId: taskId,
           kind: 'follow_up',
           objective: definition.objective,
           dueAt,
@@ -449,21 +335,4 @@ async function migrateAgentWakeSchedules(agentId: string, ownerAccountId: string
         .where(eq(automationDefinitions.id, definition.id));
     }
   });
-}
-
-/** Retry remote revocation after a pause request lost its connection to Oxy. */
-async function retirePausedAgentWork() {
-  const rows = await getDb()
-    .select({ agentId: agentWorkAuthorities.agentId })
-    .from(agentWorkAuthorities)
-    .innerJoin(agents, eq(agents.id, agentWorkAuthorities.agentId))
-    .where(
-      sql`${agents.status} <> 'active' or ${agents.scheduleInterval} is null or ${agents.ownerOxyAccountId} is distinct from ${agentWorkAuthorities.ownerAccountId}`,
-    )
-    .limit(100);
-  for (const row of rows) {
-    await stopAgentWork(row.agentId, true).catch((err) =>
-      log.agents.warn({ err, agentId: row.agentId }, 'Agent work revocation will retry'),
-    );
-  }
 }

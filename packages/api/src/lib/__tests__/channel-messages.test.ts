@@ -7,7 +7,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const stored = vi.hoisted(() => ({
-  calls: [] as Array<{ oxyUserId: string; taskId: string; mime: string; name: string }>,
+  calls: [] as Array<Record<string, unknown>>,
   fail: false,
 }));
 const heard = vi.hoisted(() => ({
@@ -18,14 +18,11 @@ const heard = vi.hoisted(() => ({
 
 vi.mock('../files/oxy-files.js', () => ({
   storeChannelMedia: vi.fn(
-    async (input: { oxyUserId: string; taskId: string; mime: string; name: string }) => {
+    async (input: Record<string, unknown> & { mime: string; name: string }) => {
       if (stored.fail) throw new Error('Oxy is down');
-      stored.calls.push({
-        oxyUserId: input.oxyUserId,
-        taskId: input.taskId,
-        mime: input.mime,
-        name: input.name,
-      });
+      // Everything the owner carries, so a stray task or token would show here.
+      const { bytes: _bytes, ...rest } = input;
+      stored.calls.push(rest);
       return `file-${stored.calls.length}`;
     },
   ),
@@ -54,7 +51,7 @@ const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0]).toString('base64');
 const turn = (message: Parameters<typeof prepareChannelTurn>[0]['message'], extra = {}) =>
   prepareChannelTurn({
     message,
-    owner: { oxyUserId: 'owner-1', taskId: 'task-1' },
+    owner: { oxyUserId: 'owner-1' },
     payerAccountId: 'gemie-1',
     ...extra,
   });
@@ -67,7 +64,7 @@ beforeEach(() => {
 });
 
 describe('a channel message, as the turn carries it', () => {
-  it('keeps a sticker as the person’s file, under their task, and shows the gemie its image, emoji and set', async () => {
+  it('keeps a sticker as the person’s file, with nothing but their account, and shows the gemie its image, emoji and set', async () => {
     const result = await turn({
       text: '',
       media: [
@@ -93,7 +90,7 @@ describe('a channel message, as the turn carries it', () => {
       },
     ]);
     expect(stored.calls).toEqual([
-      { oxyUserId: 'owner-1', taskId: 'task-1', mime: 'image/webp', name: 'sticker.webp' },
+      { oxyUserId: 'owner-1', mime: 'image/webp', name: 'sticker.webp' },
     ]);
     expect(result.modelParts).toEqual([
       { type: 'text', text: '[Sticker 😂 from the set "HappyCats"]' },

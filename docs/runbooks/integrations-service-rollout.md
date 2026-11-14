@@ -13,11 +13,9 @@ process and the canonical audience exported by `@gemies/server`. Temporary
 workload credentials replace internal scopes and shared gateway/bot passwords.
 External connector OAuth and provider webhook signatures remain.
 
-Deploy the channel task schema before the API runtime. New links create a
-revocable automation task with the real requester and store only its ID. Run the
-controlled legacy task migration where a valid existing requester proof exists.
-Unprovable connections renew automatically on the owner’s normal signed-in visit;
-never manufacture requester authority from an account ID.
+A channel holds no Oxy task (Oxy ADR 0066): the API acts for the person the
+verified channel identifies, on Gemies' declared first-party authority. Never
+select that person from a bare account ID.
 
 ## Configuration
 
@@ -41,9 +39,9 @@ parameters through infra only after both transports are verified live.
 3. Resolve the private Cloud Map address from an API task.
 4. Read running task definitions: no Oxy client keys; process secrets remain
    only during B and must disappear in C.
-5. Exercise an owned connector and linked channel task; reject an external app,
+5. Exercise an owned connector and a linked channel; reject an external app,
    another workload, missing context and another account's session.
-6. Revoke/disconnect the task; the next private tool call must fail.
+6. Disconnect the channel; the next private tool call on it must fail.
 
 A health check alone does not prove authentication or account isolation. Roll
 back only to an image whose protocol matches its runtime configuration. Never

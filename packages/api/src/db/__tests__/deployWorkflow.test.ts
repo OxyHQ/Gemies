@@ -537,6 +537,9 @@ describe('runtime secrets live in SSM only; no workflow writes one', () => {
   /** What CI itself spends, per workflow. Every other workflow: the job token only. */
   const CI_ONLY_SECRETS: Record<string, readonly string[]> = {
     'deploy-frontends.yml': ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'],
+    // The QA account's key: the runner signs it in for one run (`scripts/canary-qa-session.mjs`)
+    // and signs it out after. Never runtime configuration, never written anywhere.
+    'production-chat-canary.yml': ['ALIA_CANARY_OXY_QA_KEY'],
   };
 
   it('read every deploy workflow', () => {

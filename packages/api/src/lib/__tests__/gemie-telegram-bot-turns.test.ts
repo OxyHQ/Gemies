@@ -4,12 +4,11 @@
  *
  * The production bug this pins: the person who connected Eusebio's bot asked it, from their own
  * Telegram, "¿qué hay en mi email?" and got "no tengo acceso", because every bot turn ran as nobody
- * (no person, no task) and nothing told the bot which Telegram account was its person's.
+ * (no person) and nothing told the bot which Telegram account was its person's.
  *
  *  - The bot's person, in private, from the Telegram account they linked: `personTurn`, which the
  *    integrations process runs through `/alia/chat` like any of their turns in the app.
- *  - Anybody else — a stranger, an unlinked person, the person in a group, a link without its
- *    task — is a third party: the turn runs here with the REAL assembler, and what reaches the model
+ *  - Anybody else — a stranger, an unlinked person, the person in a group — is a third party: the turn runs here with the REAL assembler, and what reaches the model
  *    is checked against the gemie's public tools. The bulk sources (connectors, Oxy apps, agents)
  *    are stubbed and must not even be asked.
  */
@@ -27,7 +26,7 @@ const state = vi.hoisted(() => ({
   appended: [] as unknown[],
   turnClaim: vi.fn(async (): Promise<unknown> => ({ kind: 'claimed' })),
   storedReplies: new Map<string, unknown>(),
-  storedMedia: vi.fn(async (_input: { oxyUserId: string; taskId: string }) => 'kept-file'),
+  storedMedia: vi.fn(async (_input: { oxyUserId: string }) => 'kept-file'),
 }));
 
 vi.mock('../../db/index.js', () => ({ getDb: () => ({}) }));
@@ -181,9 +180,6 @@ function bot(over: Partial<GemieBotRow> = {}): GemieBotRow {
     ownerPaysAgentTurns: true,
     linkedTelegramUserId: PERSON,
     linkedTelegramName: '@NateIsern',
-    oxyTaskId: 'bot-task',
-    oxyTaskState: 'active',
-    oxyTaskExpiresAt: new Date(Date.now() + 30 * 86_400_000),
     totalMessages: 0,
     lastMessageAt: null,
     profileSyncError: null,
@@ -248,13 +244,13 @@ const PHOTO = {
 };
 
 describe('media sent to the bot', () => {
-  it('from its person, in private, is kept as theirs under the task they granted the gemie there', async () => {
+  it('from its person, in private, is kept as theirs, acting for them with no task', async () => {
     const answer = await answerGemieTelegramMessage(bot(), { ...message(), message: PHOTO });
     expect(state.storedMedia).toHaveBeenCalledTimes(1);
-    expect(state.storedMedia.mock.calls[0]?.[0]).toMatchObject({
-      oxyUserId: 'owner-1',
-      taskId: 'bot-task',
-    });
+    const stored = state.storedMedia.mock.calls[0]?.[0];
+    // Gemies' declared `oxy:files` authority (oxy ADR 0066): the account, and nothing else.
+    expect(stored).toMatchObject({ oxyUserId: 'owner-1' });
+    expect(stored).not.toHaveProperty('taskId');
     expect(answer.personTurn?.content).toContainEqual(
       expect.objectContaining({
         type: 'file',
@@ -295,12 +291,17 @@ describe('the person who connected the bot', () => {
     expectThirdPartyTurn();
   });
 
-  it('before linking, or with the authority revoked, is a third party like anyone', async () => {
+  it('before linking, or once they unlinked, is a third party like anyone', async () => {
     await answerGemieTelegramMessage(bot({ linkedTelegramUserId: null }), message());
     expectThirdPartyTurn();
     state.model = [];
-    await answerGemieTelegramMessage(bot({ oxyTaskId: null }), message({ messageId: 'x2' }));
+    // Unlinked: what they send is no longer kept as theirs either.
+    await answerGemieTelegramMessage(bot({ linkedTelegramUserId: null }), {
+      ...message({ messageId: 'x2' }),
+      message: PHOTO,
+    });
     expect(state.model).toHaveLength(1);
+    expect(state.storedMedia).not.toHaveBeenCalled();
   });
 });
 
@@ -404,7 +405,7 @@ describe('asked for its person’s apps in a turn that cannot reach them', () =>
 
   it('says how its person links their Telegram while nobody has, never that it cannot', async () => {
     const said = await access(
-      { linkedTelegramUserId: null, oxyTaskId: null },
+      { linkedTelegramUserId: null },
       { from: { ...stranger(), languageCode: 'es' } },
     );
     expect(said).toContain('once its person links their Telegram');
@@ -456,7 +457,7 @@ describe('a retried delivery', () => {
     earlier(`telegram:${PERSON}:101`);
     state.storedReplies.set(`reply:telegram:${PERSON}:101`, 'Tu correo dice…');
 
-    const unlinked = bot({ linkedTelegramUserId: null, oxyTaskId: null });
+    const unlinked = bot({ linkedTelegramUserId: null });
     expect(await answerGemieTelegramMessage(unlinked, message({ messageId: '101' }))).toEqual({
       reply: null,
     });

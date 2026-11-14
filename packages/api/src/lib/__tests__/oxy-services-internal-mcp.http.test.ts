@@ -27,6 +27,7 @@ const real: typeof import('@oxy.so/core/server') = createRequire(import.meta.url
   '@oxy.so/core/server',
 );
 const keys = generateKeyPairSync('ed25519');
+/** A secret-looking string Oxy echoes in its refusals: it must never reach a log. */
 const requester = 'fixture-present-requester';
 const serviceToken = 'fixture-alia-service';
 const account = 'fixture-owner';
@@ -39,22 +40,21 @@ let denyReceiver = false;
 let receiverNotReady = false;
 let dropCallConnection = false;
 let receiverPosts = 0;
-let denyCleanup = false;
 let loseResponseAfterEffect = false;
 let destroyReceiverResponse: () => void;
 let registryFailure: 'digest' | 'missing-id' | 'version' | undefined;
 let wrongResource = false;
 let alive = true;
 let approvals = 0;
-let retirements = 0;
 let effects = 0;
 let legacyCalls = 0;
-let authorityBodies: unknown[];
+let authorityBodies: Array<Record<string, unknown>>;
 let ticketBodies: Array<Record<string, unknown>>;
 let seenKeys: string[];
 let fingerprints: Map<string, string>;
 let faults: string[];
 let toolsModule: typeof import('../tools/oxy-services.js');
+let stepOf: Map<string, string | undefined>;
 
 async function listen(server: Server) {
   servers.push(server);
@@ -68,7 +68,6 @@ function context(): OxyToolExecutionContext {
     actor: { type: 'alia' as const, ownerAccountId: account },
     runId: 'fixture-run',
     autonomy: 'execute_on_request' as const,
-    userAccessToken: requester,
   };
 }
 interface Executable {
@@ -93,7 +92,10 @@ function ticket(input: Record<string, unknown>) {
         id: String(input.executionAuthorizationId),
       },
       runId: 'fixture-run',
-      ...(typeof input.stepId === 'string' ? { stepId: input.stepId } : {}),
+      // The authorization bound its step (a run-scoped call); the ticket request names none.
+      ...(typeof stepOf.get(String(input.executionAuthorizationId)) === 'string'
+        ? { stepId: stepOf.get(String(input.executionAuthorizationId)) }
+        : {}),
       resource: {
         appId: 'mention',
         effectiveAccountId: account,
@@ -117,14 +119,14 @@ beforeEach(async () => {
     denyReceiver =
     receiverNotReady =
     dropCallConnection =
-    denyCleanup =
     wrongResource =
     loseResponseAfterEffect =
       false;
   receiverPosts = 0;
   registryFailure = undefined;
   alive = true;
-  approvals = retirements = effects = legacyCalls = 0;
+  approvals = effects = legacyCalls = 0;
+  stepOf = new Map();
   authorityBodies = [];
   ticketBodies = [];
   seenKeys = [];
@@ -164,22 +166,28 @@ beforeEach(async () => {
       service: { applicationId: 'fixture-alia-app', credentialId: 'fixture-alia-credential' },
     });
   });
-  authority.post('/capabilities/foreground-execution-authorizations', (req, res) => {
+  authority.post('/capabilities/first-party-execution-authorizations', (req, res) => {
+    // Gemies' own workload on its declared authority: the person by id, never a bearer of theirs.
     if (
       req.header('authorization') !== `Bearer ${serviceToken}` ||
-      req.body.subjectToken !== requester ||
+      'subjectToken' in req.body ||
+      req.body.requesterAccountId !== account ||
       req.body.authority !== 'first_party' ||
+      req.body.kind !== 'direct_request' ||
       req.header('x-oxy-user-id')
     )
-      faults.push('requester authority');
+      faults.push('first-party authority');
     approvals += 1;
     authorityBodies.push(req.body);
-    res.status(201).json({ authorization: { id: `fixture-approval-${approvals}` } });
+    const id = `fixture-approval-${approvals}`;
+    stepOf.set(id, req.body.stepId);
+    res.status(201).json({ authorization: { id } });
   });
   authority.post('/capabilities/tickets', (req, res) => {
     if (req.header('authorization') !== `Bearer ${serviceToken}` || req.header('x-oxy-user-id'))
       faults.push('ticket service authority');
     ticketBodies.push(req.body);
+    if ('runId' in req.body || 'stepId' in req.body) faults.push('ticket overrides its scope');
     if (denyTickets) {
       res.status(403).json({ message: requester });
       return;
@@ -188,15 +196,9 @@ beforeEach(async () => {
       .status(201)
       .json({ decision: { allowed: true, reason: 'synthetic_allowed' }, ticket: ticket(req.body) });
   });
-  authority.delete('/capabilities/execution-authorizations/:id', (req, res) => {
-    if (req.header('authorization') !== `Bearer ${requester}` || req.header('x-oxy-user-id'))
-      faults.push('retirement requester authority');
-    retirements += 1;
-    if (denyCleanup) {
-      res.status(503).json({ message: requester });
-      return;
-    }
-    alive = false;
+  // Nothing is held after a call, so nothing is ever retired.
+  authority.delete('/capabilities/execution-authorizations/:id', (_req, res) => {
+    faults.push('an authorization was retired');
     res.status(204).end();
   });
   issuer = await listen(createServer(authority));
@@ -374,7 +376,7 @@ afterEach(async () => {
 });
 
 describe('Alia installed common agency and internal MCP pilot', () => {
-  it('preserves domain result, pins catalogue and retires requester approval after real MCP', async () => {
+  it('preserves domain result and pins catalogue over real MCP, with nothing to retire', async () => {
     const save = await tool();
     expect(await save.execute({ postId: 'post-1' }, { toolCallId: 'call-1' })).toEqual({
       saved: 'post-1',
@@ -383,107 +385,43 @@ describe('Alia installed common agency and internal MCP pilot', () => {
     expect(authorityBodies[0]).toMatchObject({
       runId: 'fixture-run',
       actor: context().actor,
-      subjectToken: requester,
       authority: 'first_party',
+      kind: 'direct_request',
+      requesterAccountId: account,
     });
-    expect(ticketBodies[0]).toMatchObject({
+    expect(ticketBodies[0]).toEqual({
       expectedCatalog: binding,
       executionAuthorizationId: 'fixture-approval-1',
     });
-    expect(retirements).toBe(1);
     expect(effects).toBe(1);
     expect(legacyCalls).toBe(0);
   });
-  it('preserves acknowledged success across repeated retirement failures and retries only retirement', async () => {
-    denyCleanup = true;
-    const built = await toolsModule.buildOxyServiceTools(account, context());
-    const save = built.oxy_mention__savePost as unknown as Executable;
-    const outcome = (await save.execute({ postId: 'post-1' }, { toolCallId: 'cleanup-call' })) as {
-      operation: { id: string };
-      result: unknown;
-    };
-    expect(outcome).toMatchObject({
-      status: 'succeeded',
-      result: { saved: 'post-1', auditEventId: 'fixture-audit' },
-      retirement: { status: 'pending' },
-    });
-    expect(outcome.operation.id).toBe(seenKeys[0]);
-    expect(await save.execute({ postId: 'post-1' }, { toolCallId: 'cleanup-call' })).toEqual(
-      outcome,
-    );
-    expect(
-      await save.execute({ postId: 'changed' }, { toolCallId: 'cleanup-call' }),
-    ).toHaveProperty('error', 'oxy_operation_conflict');
-    const otherRun = await toolsModule.buildOxyServiceTools(account, {
-      ...context(),
-      runId: 'other-run',
-    });
-    const foreignRetire = otherRun.oxy_mention__retireApproval as unknown as Executable;
-    expect(await foreignRetire.execute({ operationId: outcome.operation.id })).toHaveProperty(
-      'error',
-    );
-    const retire = built.oxy_mention__retireApproval as unknown as Executable;
-    expect(await retire.execute({ operationId: outcome.operation.id })).toMatchObject({
-      status: 'succeeded',
-      result: outcome.result,
-      retirement: { status: 'pending' },
-    });
-    denyCleanup = false;
-    expect(await retire.execute({ operationId: outcome.operation.id })).toMatchObject({
-      status: 'succeeded',
-      result: outcome.result,
-      retirement: { status: 'retired' },
-    });
-    expect(await retire.execute({ operationId: 'not-from-this-run' })).toHaveProperty('error');
-    expect(approvals).toBe(1);
-    expect(ticketBodies).toHaveLength(1);
-    expect(retirements).toBe(3);
-    expect(effects).toBe(1);
-    expect(legacyCalls).toBe(0);
-  });
-  it('keeps transport-after-effect unknown distinct from acknowledged success when retirement fails', async () => {
+  it('keeps transport-after-effect unknown distinct from acknowledged success', async () => {
     loseResponseAfterEffect = true;
-    denyCleanup = true;
-    const built = await toolsModule.buildOxyServiceTools(account, context());
-    const save = built.oxy_mention__savePost as unknown as Executable;
-    const outcome = (await save.execute({ postId: 'post-1' }, { toolCallId: 'unknown-call' })) as {
-      operation: { id: string };
-    };
-    expect(outcome).toMatchObject({
-      error: 'oxy_app_result_unknown',
-      status: 'unknown',
-      retirement: { status: 'pending' },
-    });
-    denyCleanup = false;
-    const retire = built.oxy_mention__retireApproval as unknown as Executable;
-    expect(await retire.execute({ operationId: outcome.operation.id })).toMatchObject({
-      status: 'unknown',
-      retirement: { status: 'retired' },
-    });
+    const save = await tool();
+    const outcome = await save.execute({ postId: 'post-1' }, { toolCallId: 'unknown-call' });
+    expect(outcome).toMatchObject({ error: 'oxy_app_result_unknown', status: 'unknown' });
+    expect(outcome).not.toHaveProperty('retirement');
     expect(approvals).toBe(1);
     expect(ticketBodies).toHaveLength(1);
     expect(effects).toBe(1);
-    expect(retirements).toBe(2);
     expect(legacyCalls).toBe(0);
   });
   it('keeps a stable operation key across replay and rejects changed payload without a second effect', async () => {
     const save = await tool();
     for (let n = 0; n < 2; n++) {
-      alive = true;
       expect(await save.execute({ postId: 'post-1' }, { toolCallId: 'same-call' })).toMatchObject({
         saved: 'post-1',
       });
     }
-    alive = true;
     expect(
       await save.execute({ postId: 'other-post' }, { toolCallId: 'same-call' }),
     ).toHaveProperty('error');
     expect(new Set(seenKeys).size).toBe(1);
     expect(effects).toBe(1);
-    expect(retirements).toBe(3);
     expect(legacyCalls).toBe(0);
   });
-  it('retains background step/run/audit correlation without creating requester approvals', async () => {
+  it('authorizes a run-scoped step per call, bound to its run, step and limits, with no session', async () => {
     const statuses = vi.fn(async () => undefined);
     const resource = {
       appId: 'mention',
@@ -493,12 +431,11 @@ describe('Alia installed common agency and internal MCP pilot', () => {
     };
     const ctx = {
       ...context(),
-      userAccessToken: undefined,
       onStepStatus: statuses,
-      executionAuthorizations: {
-        [toolsModule.oxyExecutionAuthorizationKey(resource, 'savePost')]: {
-          id: 'fixture-standing',
+      runScope: {
+        [toolsModule.oxyRunScopeKey(resource, 'savePost')]: {
           stepId: 'fixture-step',
+          limits: [{ key: 'postId', value: 1 }],
         },
       },
     };
@@ -506,18 +443,25 @@ describe('Alia installed common agency and internal MCP pilot', () => {
     expect(await save.execute({ postId: 'post-1' }, { toolCallId: 'step-call' })).toMatchObject({
       saved: 'post-1',
     });
-    expect(ticketBodies[0]).toMatchObject({
-      executionAuthorizationId: 'fixture-standing',
-      runId: 'fixture-run',
-      stepId: 'fixture-step',
+    expect(authorityBodies).toEqual([
+      expect.objectContaining({
+        kind: 'direct_request',
+        runId: 'fixture-run',
+        stepId: 'fixture-step',
+        limits: [{ tool: 'savePost', key: 'postId', value: 1 }],
+        requesterAccountId: account,
+        resource,
+      }),
+    ]);
+    expect(ticketBodies[0]).toEqual({
+      executionAuthorizationId: 'fixture-approval-1',
       expectedCatalog: binding,
     });
     expect(statuses.mock.calls).toEqual([
       ['fixture-step', 'running'],
       ['fixture-step', 'succeeded', 'fixture-audit'],
     ]);
-    expect(approvals).toBe(0);
-    expect(retirements).toBe(0);
+    expect(approvals).toBe(1);
   });
   it.each(['digest', 'missing-id', 'version'] as const)(
     'refuses %s registry provenance before any authority/effect',
@@ -533,44 +477,20 @@ describe('Alia installed common agency and internal MCP pilot', () => {
     const save = await tool();
     expect(await save.execute({ postId: 'post-1' })).toHaveProperty('error');
     expect(effects).toBe(0);
-    expect(retirements).toBe(1);
     expect(legacyCalls).toBe(0);
   });
-  it('requires a named run and a real requester for direct use', async () => {
-    for (const ctx of [
-      { ...context(), runId: undefined },
-      { ...context(), userAccessToken: undefined },
-    ]) {
-      const save = await tool(ctx);
-      expect(await save.execute({ postId: 'post-1' })).toHaveProperty(
-        'error',
-        'oxy_app_unavailable',
-      );
-    }
+  it('requires a named run for direct use', async () => {
+    const save = await tool({ ...context(), runId: undefined });
+    expect(await save.execute({ postId: 'post-1' })).toHaveProperty('error', 'oxy_app_unavailable');
     expect(approvals).toBe(0);
     expect(effects).toBe(0);
   });
-  it('rejects ticket issuance before execution even when retirement also fails', async () => {
+  it('rejects ticket issuance before execution', async () => {
     denyTickets = true;
-    denyCleanup = true;
-    const built = await toolsModule.buildOxyServiceTools(account, context());
-    const save = built.oxy_mention__savePost as unknown as Executable;
-    const outcome = (await save.execute({ postId: 'post-1' }, { toolCallId: 'ticket-denied' })) as {
-      operation: { id: string };
-    };
-    expect(outcome).toMatchObject({
-      error: 'oxy_app_unavailable',
-      status: 'not_executed',
-      retirement: { status: 'pending' },
-    });
-    denyCleanup = false;
-    const retire = built.oxy_mention__retireApproval as unknown as Executable;
-    expect(await retire.execute({ operationId: outcome.operation.id })).toMatchObject({
-      status: 'not_executed',
-      retirement: { status: 'retired' },
-    });
+    const save = await tool();
+    const outcome = await save.execute({ postId: 'post-1' }, { toolCallId: 'ticket-denied' });
+    expect(outcome).toMatchObject({ error: 'oxy_app_unavailable' });
     expect(effects).toBe(0);
-    expect(retirements).toBe(2);
     expect(approvals).toBe(1);
     expect(legacyCalls).toBe(0);
   });
@@ -588,7 +508,6 @@ describe('Alia installed common agency and internal MCP pilot', () => {
           ? { error: 'oxy_app_unavailable' }
           : { error: 'oxy_app_unavailable', status: 'not_executed' },
       );
-      expect(retirements).toBe(1);
       expect(legacyCalls).toBe(0);
       expect(effects).toBe(0);
     },

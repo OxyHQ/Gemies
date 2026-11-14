@@ -40,15 +40,13 @@ export const PASS_SENTINEL = '[pass]';
 
 // ── Roster ──
 
-/** A member of the room as the chain carries it: who it is, and the authority its turns run on. */
+/** A member of the room as the chain carries it. */
 export interface RoomMember {
   readonly info: AgentInfo;
   /** Public remit, never private instructions or memory. */
   readonly description?: string;
-  /** Unavailable members remain identifiable but never receive a turn or task. */
+  /** Unavailable members remain identifiable but never receive a turn. */
   readonly available?: boolean;
-  /** The Oxy task its turns act under; absent when Oxy could not mint one (no Oxy apps then). */
-  readonly oxyTaskId?: string;
 }
 
 /** The state a chain carries from one member's turn to the next. */

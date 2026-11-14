@@ -1,7 +1,6 @@
 import { useOxy } from '@oxy.so/services/ui/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useGemieApi } from './api';
-import { renewChannelTasks } from './channel-tasks';
 import { errorStatus } from './error-utils';
 import { gemieQueryKeys } from './query-keys';
 import { ACCOUNT_ROUTES } from './routes';
@@ -46,7 +45,6 @@ export interface ConnectedAccount {
   status: GemieAccountStatus;
   /** Whether the platform lets a gemie write from it (Telegram Business); `null` elsewhere. */
   canReply: boolean | null;
-  oxyTaskState: 'active' | 'reauth_required';
   /** The gemies that may use it. */
   gemieIds: string[];
   /** The one that answers what arrives on it, or `null` when none does. */
@@ -87,13 +85,7 @@ export interface ConnectedAccountsAnswer {
   platforms: GemieAccountPlatform[];
 }
 
-/**
- * The caller's accounts, each as its session is now with its grants, and what can be connected.
- * When an account's answering gemie's Oxy task lapsed, the person's channels are renewed on the way
- * (`renewChannelTasks`: the provider link is kept; the person looking is the verified requester);
- * one that could not be renewed stays typed inactive for the next visit to retry. An account nobody
- * answers holds no task to renew.
- */
+/** The caller's accounts, each as its session is now with its grants, and what can be connected. */
 export function useConnectedAccounts() {
   const api = useGemieApi();
   const { isAuthenticated } = useOxy();
@@ -101,20 +93,6 @@ export function useConnectedAccounts() {
     queryKey: gemieQueryKeys.accounts.all,
     queryFn: async (): Promise<ConnectedAccountsAnswer> => {
       const { data } = await api.get<ConnectedAccountsAnswer>(ACCOUNT_ROUTES.all);
-      const lapsed = data.accounts.filter(
-        (account) => account.answeringGemieId && account.oxyTaskState === 'reauth_required',
-      );
-      if (lapsed.length === 0) return data;
-      try {
-        const { renewed } = await renewChannelTasks(api);
-        for (const account of lapsed) {
-          if (renewed.some((ref) => ref.kind === 'account' && ref.id === account._id)) {
-            account.oxyTaskState = 'active';
-          }
-        }
-      } catch {
-        /* Remains typed inactive; the next verified visit may retry. */
-      }
       return data;
     },
     enabled: isAuthenticated,
@@ -178,7 +156,7 @@ export interface ConnectedAccountPatch {
 }
 
 /**
- * Connecting, granting, who answers, and removing (its session ends and its task is revoked).
+ * Connecting, granting, who answers, and removing (its session ends and its grants go).
  * Every write re-reads the list, so each screen that shows an account shows it as it now is.
  */
 export function useConnectedAccountMutations() {

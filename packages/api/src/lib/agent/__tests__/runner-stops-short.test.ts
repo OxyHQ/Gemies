@@ -51,7 +51,6 @@ vi.mock('../activity-events.js', () => ({
   emitLegacyAliaActivity: () => undefined,
 }));
 vi.mock('../work.js', () => ({ autonomousWorkMayRun: async () => true }));
-vi.mock('../../oxy-task-authority.js', () => ({ retireFinishedOxyTasks: async () => undefined }));
 vi.mock('../../agent-account.js', () => ({ canReachAgent: async () => 'reachable' }));
 vi.mock('../../../db/agents/agentSessionRepository.js', () => ({
   RUNNER_MAX_ATTEMPTS: 3,
@@ -86,7 +85,7 @@ vi.mock('../../tool-pipeline.js', () => ({
 }));
 vi.mock('../../tools/oxy-services.js', () => ({
   agentIdentityPrompt: () => '',
-  oxyExecutionAuthorizationKey: () => 'key',
+  oxyRunScopeKey: () => 'key',
 }));
 vi.mock('../space-prompt.js', () => ({ agentSpacePrompt: async () => '' }));
 vi.mock('../../agent-identity.js', () => ({
@@ -113,7 +112,7 @@ vi.mock('../agent-memory-runtime.js', () => ({ agentMemoryPromptSection: async (
 vi.mock('../../computer/computer-actor.js', () => ({ resolveComputerActor: () => null }));
 vi.mock('../context-compaction.js', () => ({ compactContext: async () => undefined }));
 vi.mock('../../../db/automation/automationDefinitionRepository.js', () => ({
-  listAutomationExecutionAuthorizationsForRun: async () => [],
+  listAutomationRunActionSteps: async () => [],
   markAutomationActionStep: async () => undefined,
   markAutomationRunForSession: async () => undefined,
 }));
@@ -134,7 +133,6 @@ function SESSION() {
     workItemId: 'work-1',
     generation: 1,
     parentSessionId: null,
-    oxyTaskId: 'task-1',
     automationRunId: null,
     automationStage: null,
     status: 'running',

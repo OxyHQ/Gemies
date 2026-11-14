@@ -1,5 +1,4 @@
 import { establishAgentWork, stopAgentWork } from '../../lib/agent/work.js';
-import { releaseAnsweringGemie } from '../../lib/connected-accounts.js';
 import { releaseGemieTelegramBot } from '../../lib/gemie-telegram-bot-setup.js';
 import { listExternalLinks } from '../../db/agents/externalAgentRepository.js';
 import { externalAgentPresence } from '../../lib/external-agents/presence.js';
@@ -589,12 +588,9 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       ...(data.archetypeConfig !== undefined && { archetypeConfig: data.archetypeConfig }),
     });
 
-    if (req.accessToken && agent.ownerOxyAccountId === req.user.id) {
-      await establishAgentWork(agent._id, req.user.id, req.accessToken).catch((err) =>
-        log.agents.warn(
-          { err, agentId: agent._id },
-          'Work setup will retry from the owner session',
-        ),
+    if (agent.ownerOxyAccountId === req.user.id) {
+      await establishAgentWork(agent._id, req.user.id).catch((err) =>
+        log.agents.warn({ err, agentId: agent._id }, 'Work setup will retry'),
       );
     }
     void publishGemieChanged(req.user.id, agent._id, 'created');
@@ -750,8 +746,8 @@ router.patch('/:id', authenticateToken, async (req: Request, res: Response) => {
 
     if (data.status === 'idle' || data.status === 'offline' || data.scheduleInterval === null) {
       await stopAgentWork(id, true);
-    } else if (req.accessToken && outcome.agent.ownerOxyAccountId === req.user.id) {
-      await establishAgentWork(id, req.user.id, req.accessToken);
+    } else if (outcome.agent.ownerOxyAccountId === req.user.id) {
+      await establishAgentWork(id, req.user.id);
     }
 
     // The SAME shape `GET /agents/:id` answers with, child lists attached (`agentAnswer`).
@@ -790,9 +786,7 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
      * and a credit balance of its own. The owner archives it from Oxy.
      */
     await stopAgentWork(id);
-    // The connected accounts it answers lose the task it acted with; its grants cascade, and the
-    // accounts stay their people's (ADR 0035 as amended).
-    await releaseAnsweringGemie(id);
+    // Its grants on connected accounts cascade; the accounts stay their people's (ADR 0035).
     // Its own Telegram bot stops answering for it (ADR 0037).
     await releaseGemieTelegramBot(id);
     const deleted = await deleteAgent(getDb(), id);
