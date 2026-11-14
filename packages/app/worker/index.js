@@ -64,17 +64,17 @@ const REDIRECT_HOSTS = new Set(['www.gemies.ai']);
  * `index.html` and never renders an `app/+html.tsx`; the `<Head>` a screen sets only lands once
  * the bundle runs, which a link preview never waits for. This is the one place the shell's
  * metadata can be said for every route.
+ *
+ * The install tags (manifest link, `theme-color`, `apple-touch-icon`, the Apple and mobile web app
+ * tags) and the worker registration are not here: `oxy-web-pwa` writes them into the exported
+ * `index.html` at build time (`package.json` `build`), so saying them again would duplicate them.
  */
 const DESCRIPTION =
   'Create your Gemies. Let them work together. Gemies are AI teammates you shape, and Alia is one of them.';
 const SHARE_IMAGE = `${CANONICAL_ORIGIN}/og-image.jpg`;
 const SHELL_HEAD = [
   `<meta name="description" content="${DESCRIPTION}" />`,
-  '<meta name="theme-color" content="#004403" />',
-  '<link rel="manifest" href="/manifest.json" />',
   '<link rel="icon" href="/favicon.ico" sizes="any" />',
-  '<link rel="apple-touch-icon" href="/apple-touch-icon.png" />',
-  '<meta name="apple-mobile-web-app-title" content="Gemies" />',
   '<meta property="og:type" content="website" />',
   '<meta property="og:site_name" content="Gemies" />',
   '<meta property="og:title" content="Gemies" />',
