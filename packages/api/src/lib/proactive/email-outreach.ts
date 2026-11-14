@@ -119,6 +119,16 @@ export interface InboxEmailEvent {
  */
 const EMAIL_OUTREACH_MAX_AGE_MS = 2 * 60 * 60_000;
 
+/**
+ * Whether the email is now past {@link EMAIL_OUTREACH_MAX_AGE_MS}. Asked on
+ * arrival and again before each slow step (the classifier takes up to
+ * {@link CLASSIFIER_BUDGET_MS}), so an email that arrived just inside the window
+ * is not written about after it closed.
+ */
+function isStale(occurredAt: Date): boolean {
+  return Date.now() - occurredAt.getTime() > EMAIL_OUTREACH_MAX_AGE_MS;
+}
+
 export type EmailOutreachOutcome =
   | {
       readonly status: 'posted';
@@ -351,9 +361,7 @@ async function languageOf(oxyUserId: string): Promise<Language> {
 
 /** Decide about one `new_email` event and, when it is important, tell the person. Never throws. */
 export async function handleInboxEmailEvent(event: InboxEmailEvent): Promise<EmailOutreachOutcome> {
-  if (Date.now() - event.occurredAt.getTime() > EMAIL_OUTREACH_MAX_AGE_MS) {
-    return { status: 'ignored', reason: 'stale' };
-  }
+  if (isStale(event.occurredAt)) return { status: 'ignored', reason: 'stale' };
   const parsed = newEmailDataSchema.safeParse(event.data);
   if (!parsed.success) return { status: 'ignored', reason: 'invalid_event' };
   const data = parsed.data;
@@ -386,6 +394,11 @@ export async function handleInboxEmailEvent(event: InboxEmailEvent): Promise<Ema
     agentId: audience.agentId,
   });
   if (claim === null) return { status: 'ignored', reason: 'duplicate' };
+  /** The window closed while deciding: settled for good, so a redelivery finds the claim and stops. */
+  const settleStale = async (): Promise<EmailOutreachOutcome> => {
+    await settleEmailOutreach(db, claim, { verdict: 'skipped', reason: 'stale' });
+    return { status: 'ignored', reason: 'stale' };
+  };
 
   try {
     const refusal = audience.ownInbox
@@ -395,6 +408,7 @@ export async function handleInboxEmailEvent(event: InboxEmailEvent): Promise<Ema
       await settleEmailOutreach(db, claim, { verdict: 'skipped', reason: refusal });
       return { status: 'skipped', reason: refusal };
     }
+    if (isStale(event.occurredAt)) return await settleStale();
 
     const from = oneLine(data.from, MAX_SENDER_CHARS);
     const subject = oneLine(data.subject, MAX_SUBJECT_CHARS);
@@ -425,6 +439,7 @@ export async function handleInboxEmailEvent(event: InboxEmailEvent): Promise<Ema
       from,
       subject,
     });
+    if (isStale(event.occurredAt)) return await settleStale();
     const posted = audience.ownInbox
       ? await postAliaCheckIn({
           oxyUserId: audience.oxyUserId,

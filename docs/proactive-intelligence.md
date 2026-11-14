@@ -101,6 +101,16 @@ The order is cheapest first, and the model is last:
    unanswered. A person who got three today costs no inference.
 6. One call to the computed utility model (`generateTextViaKaana` with no
    `model`, ADR 0012), `json_schema` response, temperature 0.
+7. The post, which re-reads the budget under a per-person lock in the same
+   transaction as the append (`lockOutreachBudget`): two important emails
+   arriving together never both spend the last slot.
+
+An email older than **2 hours** (`occurredAt`) is never written about: Oxy's
+outbox delivers a backlog late and in bulk. The age is checked on arrival and
+again right before the classifier and right before the post, since the steps
+between (the classifier alone may take 15 s) can carry an email past the
+window; one that ages out after its claim settles it `skipped` / `stale`, so a
+redelivery stops at the claim.
 
 **The email is untrusted.** The classifier sees sender, subject and snippet —
 never the body — JSON-encoded inside an `<email>` block it is told is data

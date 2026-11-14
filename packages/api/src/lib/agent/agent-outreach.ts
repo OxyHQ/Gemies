@@ -1,4 +1,3 @@
-import { sql } from 'drizzle-orm';
 /**
  * An agent writing to a person first — into its conversation with them.
  *
@@ -41,7 +40,7 @@ import {
 import { AGENT_OUTREACH_MESSAGE_ID_PREFIX } from '../../domain/conversation.js';
 import { agentPromptName, attachAgentIdentity } from '../agent-identity.js';
 import { log } from '../logger.js';
-import { checkInRefusal, type CheckInRefusal } from './outreach-budget.js';
+import { checkInRefusal, lockOutreachBudget, type CheckInRefusal } from './outreach-budget.js';
 import { sendNotification } from '../notification-service.js';
 import { publishConversation } from '../realtime/conversations.js';
 import { relayToGemieBotChat } from '../gemie-telegram-bot-setup.js';
@@ -115,9 +114,7 @@ export async function postAgentMessage(input: AgentOutreachInput): Promise<Agent
     handle: agent.handle ?? '',
   };
   const written = await getDb().transaction(async (tx) => {
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${`agent-outreach:${input.oxyUserId}:${agent._id}`}))`,
-    );
+    await lockOutreachBudget(tx, input.oxyUserId, agent._id);
     const receipt = await findMessageReceipt(tx, input.oxyUserId, messageId);
     if (receipt)
       return {
