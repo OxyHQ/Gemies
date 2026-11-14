@@ -111,6 +111,7 @@ function safeError(error: unknown): string {
 }
 
 import { createAgentReactionTurn, reactionStepCalls } from '../agent-tool.js';
+import { messageFrom, replyInstructions } from '../../gemies/policy.js';
 import { selectRoomDecision } from '../../room/selector.js';
 import { getAIModel, resolveStoredModel } from '../../../chat-core.js';
 import { buildIdentityGuard, agentSectionHeading } from '../../../identity-guard.js';
@@ -155,12 +156,33 @@ const ownThumb: MessageReactionEntry = { emoji: '👍', author: { kind: 'agent',
 
 type ToolCase = {
   label: string;
+  peerTurn?: true;
   messages: ModelMessage[];
   targets: AgentReactionTarget[];
   initial?: Record<string, MessageReactionEntry[]>;
   expected: 'optional' | 'user-reaction' | 'peer-reaction' | 'remove-own' | 'answer' | 'forbidden';
 };
+const peerIdentity = { ...peer, handle: 'eusebio', color: null, character: null };
+const selfIdentity = { ...actor, handle: 'salella', color: null, character: null };
+const peerAcknowledgement =
+  'Gracias por revisar el informe. Si has leído esta nota, puedes dejar tu ❤️ en mi mensaje; no necesito otra explicación ni acción.';
+const peerQuestion =
+  '¿Cuánto es 17 por 23? Explica brevemente cómo lo calculas; necesito la respuesta para terminar el informe.';
 const cases: ToolCase[] = [
+  {
+    label: 'peer-turn-natural-acknowledgement',
+    peerTurn: true,
+    expected: 'peer-reaction',
+    messages: [{ role: 'user', content: messageFrom(peerIdentity, peerAcknowledgement) }],
+    targets: [{ ...peerMessage, content: peerAcknowledgement }],
+  },
+  {
+    label: 'peer-turn-substantive-answer',
+    peerTurn: true,
+    expected: 'answer',
+    messages: [{ role: 'user', content: messageFrom(peerIdentity, peerQuestion) }],
+    targets: [{ ...peerMessage, content: peerQuestion }],
+  },
   {
     label: 'voluntary-acknowledgement',
     expected: 'optional',
@@ -344,7 +366,7 @@ async function evaluateTool(testCase: ToolCase, iteration: number): Promise<Reco
           metrics.toolAttempts += phase === 'prepared' ? 1 : -1;
         },
       }),
-      system: `${buildIdentityGuard({ agentName: actor.name })}\n\n${agentSectionHeading(actor.name)}\n\nAyuda con las preguntas, los cálculos aritméticos y la revisión editorial de esta conversación.\n\n${turn.prompt}`,
+      system: `${buildIdentityGuard({ agentName: actor.name })}\n\n${agentSectionHeading(actor.name)}\n\nAyuda con las preguntas, los cálculos aritméticos y la revisión editorial de esta conversación.\n\n${turn.prompt}${testCase.peerTurn ? `\n\n${replyInstructions({ self: selfIdentity, peer: peerIdentity })}` : ''}`,
       messages: testCase.messages,
       tools: { react_to_message: turn.tool },
       stopWhen: [stepBudget(4), turn.stopWhen],

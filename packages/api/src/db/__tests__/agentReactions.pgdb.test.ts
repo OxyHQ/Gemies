@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
 import { agents } from '../schema/agents';
-import { conversationMembers, messages } from '../schema/chat';
+import { conversationMembers, gemieConversations, messages } from '../schema/chat';
 import {
   agentReactionTurns,
   messageReactionStates,
@@ -18,6 +18,7 @@ import {
   toStoredMessage,
 } from '../chat/messageRepository';
 import {
+  type AgentReactionTrigger,
   claimReactionEvents,
   findAgentReactionTurnComplete,
   listReactionContext,
@@ -103,7 +104,7 @@ async function fixture(direct = false) {
     mutateAgentMessageReaction(db, userId, conversationId, target, {
       actor,
       turnId,
-      expectedLatestUserMessage: { id: 'person', content: 'Gracias' },
+      trigger: { kind: 'person', message: { id: 'person', content: 'Gracias' } },
       expectedTarget: {
         content: target === 'person' ? 'Gracias' : 'Listo',
         role: target === 'person' ? 'user' : 'assistant',
@@ -130,7 +131,7 @@ describe('authored agent reactions', () => {
           f.conversationId,
           f.first.id,
           'admitted-turn',
-          { id: 'person', content: 'Gracias' },
+          { kind: 'person', message: { id: 'person', content: 'Gracias' } },
         ),
       ).toBe(true);
     }
@@ -166,7 +167,7 @@ describe('authored agent reactions', () => {
         f.conversationId,
         f.first.id,
         'admitted-turn',
-        { id: 'person', content: 'Gracias' },
+        { kind: 'person', message: { id: 'person', content: 'Gracias' } },
       ),
     ).toBe(true);
     await insertMessages(
@@ -405,7 +406,7 @@ describe('authored agent reactions', () => {
       await mutateAgentMessageReaction(db, 'stranger', f.conversationId, 'person', {
         actor: f.first,
         turnId: 'turn',
-        expectedLatestUserMessage: { id: 'person', content: 'Gracias' },
+        trigger: { kind: 'person', message: { id: 'person', content: 'Gracias' } },
         expectedTarget: { content: 'Gracias', role: 'user', actorId: null },
         mutationId: 'x',
         emoji: '❤️',
@@ -523,7 +524,7 @@ describe('authored agent reactions', () => {
         f.conversationId,
         f.first.id,
         'admitted-turn',
-        { id: 'person', content: 'Gracias' },
+        { kind: 'person', message: { id: 'person', content: 'Gracias' } },
       ),
     ).toBe(false);
     await f.react('done');
@@ -543,7 +544,7 @@ describe('authored agent reactions', () => {
         f.conversationId,
         f.second.id,
         'admitted-turn',
-        { id: 'person', content: 'Gracias' },
+        { kind: 'person', message: { id: 'person', content: 'Gracias' } },
       ),
     ).toBe(false);
     expect(
@@ -553,7 +554,7 @@ describe('authored agent reactions', () => {
         f.conversationId,
         f.first.id,
         'different-content-turn',
-        { id: 'person', content: 'Gracias' },
+        { kind: 'person', message: { id: 'person', content: 'Gracias' } },
       ),
     ).toBe(false);
     expect(
@@ -565,7 +566,7 @@ describe('authored agent reactions', () => {
             f.conversationId,
             f.first.id,
             'admitted-turn',
-            { id: 'person', content: 'Gracias' },
+            { kind: 'person', message: { id: 'person', content: 'Gracias' } },
           ),
         ),
       ),
@@ -613,14 +614,10 @@ it('keeps canonical direct retry completion distinct from edits reusing the same
   expect(retry).toBe(first);
   await f.react('first-operation', true, '❤️', 'person', f.first, first);
   expect(
-    await markAgentReactionTurnComplete(
-      db,
-      f.userId,
-      f.conversationId,
-      f.first.id,
-      first,
-      snapshot,
-    ),
+    await markAgentReactionTurnComplete(db, f.userId, f.conversationId, f.first.id, first, {
+      kind: 'person',
+      message: snapshot,
+    }),
   ).toBe(true);
   expect(
     await findAgentReactionTurnComplete(db, f.userId, f.conversationId, f.first.id, retry),
@@ -633,4 +630,174 @@ it('keeps canonical direct retry completion distinct from edits reusing the same
   expect(
     await findAgentReactionTurnComplete(db, 'other-person', f.conversationId, f.first.id, retry),
   ).toBeNull();
+});
+
+async function peerFixture(reply = false) {
+  const f = await fixture();
+  const chainId = randomUUID();
+  const id = reply ? `group-reply-gemies-${chainId}-1` : `gemie-message-${chainId}-0`;
+  const sorted = [f.first.id, f.second.id].sort();
+  await db.insert(gemieConversations).values({
+    oxyUserId: f.userId,
+    conversationId: f.conversationId,
+    firstAgentId: sorted[0]!,
+    secondAgentId: sorted[1]!,
+  });
+  await db
+    .update(messages)
+    .set({ clientMessageId: id })
+    .where(and(eq(messages.oxyUserId, f.userId), eq(messages.clientMessageId, 'peer')));
+  const trigger: AgentReactionTrigger = {
+    kind: 'peer',
+    chainId,
+    message: { id, content: 'Listo', actorId: f.second.id },
+  };
+  const react = (admission: AgentReactionTrigger = trigger, mutationId = 'peer-op') =>
+    mutateAgentMessageReaction(db, f.userId, f.conversationId, id, {
+      actor: f.first,
+      turnId: 'peer-turn',
+      trigger: admission,
+      expectedTarget: { content: 'Listo', role: 'assistant', actorId: f.second.id },
+      mutationId,
+      emoji: '❤️',
+      active: true,
+    });
+  const complete = () =>
+    markAgentReactionTurnComplete(db, f.userId, f.conversationId, f.first.id, 'peer-turn', trigger);
+  return { ...f, id, trigger, react, complete };
+}
+
+describe('peer-message reaction admission', () => {
+  it.each([false, true])(
+    'persists and replays a peer contribution without a person trigger or a new wake (reply=%s)',
+    async (reply) => {
+      const f = await peerFixture(reply);
+      expect(await f.complete()).toBe(false);
+      const stored = await f.react();
+      expect(stored).toMatchObject({
+        reactionEntries: [{ emoji: '❤️', author: { kind: 'agent', ...f.first } }],
+      });
+      expect(await f.react()).toMatchObject({ revision: stored!.revision });
+      expect(await f.complete()).toBe(true);
+      expect(await f.complete()).toBe(true);
+      expect(await countAgentReactionTurnsSince(db, f.userId, f.conversationId, new Date(0))).toBe(
+        1,
+      );
+      expect(
+        await listAgentReactionTurnSnapshots(
+          db,
+          f.userId,
+          f.conversationId,
+          f.first.id,
+          'peer-turn',
+        ),
+      ).toHaveLength(1);
+      const events = await db
+        .select()
+        .from(reactionEvents)
+        .where(eq(reactionEvents.oxyUserId, f.userId));
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ responseEligible: false, status: 'completed' });
+    },
+  );
+
+  it('rejects fabricated person admission, wrong peer, chain and owner without feedback writes', async () => {
+    const f = await peerFixture();
+    expect(await f.react({ kind: 'person', message: null })).toBeUndefined();
+    expect(
+      await f.react({ kind: 'person', message: { id: 'person', content: 'Gracias' } }),
+    ).toBeUndefined();
+    expect(
+      await markAgentReactionTurnComplete(
+        db,
+        randomUUID(),
+        f.conversationId,
+        f.first.id,
+        'peer-turn',
+        f.trigger,
+      ),
+    ).toBe(false);
+    const trigger = f.trigger;
+    if (trigger.kind !== 'peer') throw new Error('Peer fixture required');
+    expect(await f.react({ ...trigger, chainId: 'different-chain' })).toBeUndefined();
+    expect(
+      await f.react({ ...trigger, message: { ...trigger.message, actorId: f.first.id } }),
+    ).toBeUndefined();
+    expect(
+      await f.react({ ...trigger, message: { ...trigger.message, content: 'Edited' } }),
+    ).toBeUndefined();
+    await db.delete(gemieConversations).where(eq(gemieConversations.oxyUserId, f.userId));
+    expect(await f.react()).toBeUndefined();
+    expect(await f.complete()).toBe(false);
+    expect(
+      await db.select().from(reactionEvents).where(eq(reactionEvents.oxyUserId, f.userId)),
+    ).toEqual([]);
+  });
+
+  it('rejects a hosted actor that becomes local before the locked mutation or completion', async () => {
+    const f = await peerFixture();
+    await f.react();
+    await db
+      .update(agents)
+      .set({
+        identity: 'local',
+        oxyAccountId: null,
+        localName: 'Local peer',
+        localColor: '#123456',
+        isPublished: false,
+        access: 'private',
+        mailbox: false,
+        reach: 'grants',
+        ownerOxyAccountId: f.userId,
+      })
+      .where(eq(agents.id, f.first.id));
+    expect(await f.react(f.trigger, 'after-local')).toBeUndefined();
+    expect(await f.complete()).toBe(false);
+    expect(await countAgentReactionTurnsSince(db, f.userId, f.conversationId, new Date(0))).toBe(0);
+  });
+
+  it.each(['mutation', 'completion'] as const)(
+    'serializes a newer peer message before stale %s',
+    async (operation) => {
+      const f = await peerFixture();
+      if (operation === 'completion') await f.react();
+      let locked!: () => void, release!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        locked = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const writer = db.transaction(async (tx) => {
+        await lockMessageThread(tx, f.userId, f.conversationId);
+        locked();
+        await gate;
+        await insertMessages(tx, [
+          {
+            oxyUserId: f.userId,
+            conversationId: f.conversationId,
+            clientMessageId: `gemie-message-${randomUUID()}-0`,
+            role: 'assistant',
+            content: 'Nueva petición',
+            seq: 2,
+            agentInfo: { ...f.second, handle: '', color: null, character: null },
+          },
+        ]);
+      });
+      await ready;
+      const stale = operation === 'mutation' ? f.react() : f.complete();
+      release();
+      await writer;
+      expect(await stale).toBe(operation === 'mutation' ? undefined : false);
+      expect(
+        await findAgentReactionTurnComplete(
+          db,
+          f.userId,
+          f.conversationId,
+          f.first.id,
+          'peer-turn',
+        ),
+      ).toBeNull();
+    },
+  );
 });

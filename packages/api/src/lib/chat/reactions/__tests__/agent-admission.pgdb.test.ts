@@ -67,7 +67,7 @@ async function fixture() {
     mutationId: 'operation',
     emoji: '❤️',
     active: true,
-    expectedLatestUserMessage: snapshot,
+    trigger: { kind: 'person', message: snapshot },
     expectedTarget: { content: input.content, role: 'user', actorId: null },
   });
   expect(reaction?.reactionEntries).toEqual([{ emoji: '❤️', author: { kind: 'agent', ...actor } }]);
@@ -79,14 +79,10 @@ describe('direct reaction admission and final persistence', () => {
     const f = await fixture();
     expect(f.messages[0]?.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(
-      await markAgentReactionTurnComplete(
-        db,
-        f.userId,
-        f.conversationId,
-        f.actor.id,
-        'admitted',
-        f.snapshot,
-      ),
+      await markAgentReactionTurnComplete(db, f.userId, f.conversationId, f.actor.id, 'admitted', {
+        kind: 'person',
+        message: f.snapshot,
+      }),
     ).toBe(true);
     expect(
       await findAgentReactionTurnComplete(db, f.userId, f.conversationId, f.actor.id, 'admitted'),

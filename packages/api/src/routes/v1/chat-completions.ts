@@ -512,7 +512,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
             conversationId,
             agent: linkedAgent,
             turnId: agentReactionTurnId(`direct:${controlIdentity?.id ?? nativeTurnId}`, snapshot),
-            expectedLatestUserMessage: snapshot,
+            trigger: { kind: 'person', message: snapshot },
             surfaceApplicationId: ctx.surfaceApplicationId,
             allowedActorIds: [linkedAgent._id],
             signal: providerAbort.signal,
