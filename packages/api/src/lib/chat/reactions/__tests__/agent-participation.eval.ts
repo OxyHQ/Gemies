@@ -8,6 +8,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { MessageReactionEntry } from '../../../../domain/message-reactions.js';
 import type { RoomSelectionInput } from '../../room/decision.js';
 import type { TranscriptRow } from '../../room/engine.js';
+import type { RoomObligationPlan, RoomReactionContribution } from '../../room/obligations.js';
+import { replyIdOf } from '../../room/engine.js';
 import type { RoomMember } from '../../room/policy.js';
 import type { AgentReactionTarget } from '../agent-tool.js';
 
@@ -110,7 +112,7 @@ function safeError(error: unknown): string {
     : 'unclassified';
 }
 
-import { createAgentReactionTurn, reactionStepCalls } from '../agent-tool.js';
+import { createAgentReactionTurn, reactionStepCalls, agentReactionTurnId } from '../agent-tool.js';
 import { emitEvaluationProgress } from '../../__tests__/evaluation-progress.js';
 import { messageFrom, replyInstructions } from '../../gemies/policy.js';
 import { selectRoomDecision } from '../../room/selector.js';
@@ -521,16 +523,32 @@ async function evaluateSelection(label: string, iteration: number): Promise<Reco
     const rows = [request];
     const expected = isTwo ? [actor.id, peer.id, null] : [peer.id, null];
     let previous: string | null = null;
+    let obligationPlan: RoomObligationPlan | undefined;
+    const reactionContributions: RoomReactionContribution[] = [];
+    let turn = 1;
     let passed = true;
     for (const desired of expected) {
       metrics.selectorInvocations++;
-      const decision = await selectRoomDecision(selection(rows, previous));
+      const decision = await selectRoomDecision({
+        ...selection(rows, previous),
+        obligationPlan,
+        reactionContributions,
+      });
+      obligationPlan = decision.obligationPlan;
       decisions.push({ action: decision.action, agentId: decision.agentId });
       passed &&=
         decision.action === (desired === null ? 'idle' : 'speak') && decision.agentId === desired;
       if (desired === null) break;
-      // Fixture progression represents durable authoritative contributions, never invented text.
-      if (isTwo)
+      // Fixture progression mirrors clean current-turn repository receipts; old emoji is not proof.
+      if (isTwo) {
+        reactionContributions.push({
+          id: agentReactionTurnId(replyIdOf(request.id, turn), {
+            id: request.id,
+            content: request.content,
+          }),
+          actorId: desired,
+          mutations: [{ messageId: request.id, emoji: '👍', active: true }],
+        });
         rows[0] = {
           ...request,
           reactionEntries: [
@@ -545,7 +563,7 @@ async function evaluateSelection(label: string, iteration: number): Promise<Reco
             },
           ],
         };
-      else
+      } else
         rows.push({
           id: 'reply',
           clientMessageId: 'reply',
@@ -556,6 +574,7 @@ async function evaluateSelection(label: string, iteration: number): Promise<Reco
             'Puedo ayudarte a investigar información, redactar textos y organizar tus tareas. ¿Qué necesitas?',
         });
       previous = desired;
+      turn += 2;
     }
     return {
       label,

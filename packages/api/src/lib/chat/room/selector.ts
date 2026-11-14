@@ -1,5 +1,13 @@
 /** The room selector has no tools and cannot act for any member. */
 import { generateObject } from 'ai';
+import { z } from 'zod';
+import {
+  ObligationUpdatesSchema,
+  OBLIGATION_SELECTION_POLICY,
+  validateObligationSelection,
+  assertObligationBinding,
+  type RoomSelectionResult,
+} from './obligations.js';
 import {
   getAIModel,
   resolveDefaultModel,
@@ -20,7 +28,6 @@ import {
   roomChoiceDecision,
   roomSelectionData,
   validateRoomDecision,
-  type RoomDecision,
   type RoomSelectionInput,
 } from './decision.js';
 
@@ -31,9 +38,15 @@ const REACTION_SELECTION_TIMEOUT_MS = 10_000;
 // workload policy must admit the full allowance rather than truncate reasoning.
 const ROOM_SELECTION_OUTPUT_TOKENS = 8_192;
 
-export async function selectRoomDecision(input: RoomSelectionInput): Promise<RoomDecision> {
+export async function selectRoomDecision(input: RoomSelectionInput): Promise<RoomSelectionResult> {
   const choices = input.trigger ? undefined : roomDecisionChoices(input);
-  const schema = choices ? roomChoiceSchema(choices) : ReactionDecisionSchema;
+  const tracked = !!choices && input.obligationMode !== 'legacy';
+  if (input.obligationPlan) assertObligationBinding(input.obligationPlan, input);
+  const schema = choices
+    ? tracked
+      ? z.object({ obligations: ObligationUpdatesSchema, ...roomChoiceSchema(choices).shape })
+      : roomChoiceSchema(choices)
+    : ReactionDecisionSchema;
   const prompt = roomSelectionData(input, choices);
   // Multi-member planning uses Kaana's capability-aware default; the fixed-recipient binary
   // feedback decision remains a utility call. Structured output reaches Kaana unchanged.
@@ -49,7 +62,11 @@ export async function selectRoomDecision(input: RoomSelectionInput): Promise<Roo
     const result = await generateObject({
       model: getAIModel(resolved, 'agent_run'),
       schema,
-      system: input.trigger ? REACTION_SELECTION_SYSTEM : ROOM_SELECTION_SYSTEM,
+      system: input.trigger
+        ? REACTION_SELECTION_SYSTEM
+        : tracked
+          ? `${ROOM_SELECTION_SYSTEM}\n${OBLIGATION_SELECTION_POLICY}`
+          : ROOM_SELECTION_SYSTEM,
       prompt,
       maxOutputTokens: input.trigger ? utilityOutputTokens(512) : ROOM_SELECTION_OUTPUT_TOKENS,
       maxRetries: 1,
@@ -75,6 +92,13 @@ export async function selectRoomDecision(input: RoomSelectionInput): Promise<Roo
         : roomChoiceDecision(result.object, choices!),
       input,
     );
+    const selection = tracked
+      ? validateObligationSelection(
+          z.object({ obligations: ObligationUpdatesSchema }).parse(result.object).obligations,
+          decision,
+          input,
+        )
+      : decision;
     log.agents.info(
       {
         conversationId: input.conversationId,
@@ -88,7 +112,7 @@ export async function selectRoomDecision(input: RoomSelectionInput): Promise<Roo
       },
       'Room participation selected',
     );
-    return decision;
+    return selection;
   } finally {
     if (!settled) await refundReservation(reservation);
   }

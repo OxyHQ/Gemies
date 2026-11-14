@@ -1175,7 +1175,7 @@ export async function listLatestMessageMarks(
  * client's id, because a client may omit its id and a rewrite re-inserts rows.
  */
 export async function findLatestUserMessage(
-  db: ApiDatabase,
+  db: Executor,
   oxyUserId: string,
   conversationId: string,
 ): Promise<{ id: string; clientMessageId: string | null; seq: number | null } | undefined> {

@@ -956,3 +956,57 @@ export async function listAgentReactionTurnSnapshots(
     return snapshots;
   });
 }
+
+/** Clean completions for exact server-derived turns of one request; historic emoji sets are not evidence. */
+export async function listAgentReactionContributions(
+  db: Executor,
+  userId: string,
+  conversationId: string,
+  turnIds: readonly string[],
+) {
+  if (!turnIds.length) return [];
+  if (turnIds.length > 64) throw new Error('Too many reaction evidence turns');
+  const rows = await db
+    .select({
+      id: agentReactionTurns.turnId,
+      actorId: agentReactionTurns.actorId,
+      messageId: reactionEvents.messageId,
+      emoji: reactionEvents.emoji,
+      active: reactionEvents.active,
+    })
+    .from(agentReactionTurns)
+    .innerJoin(
+      reactionEvents,
+      and(
+        eq(reactionEvents.oxyUserId, agentReactionTurns.oxyUserId),
+        eq(reactionEvents.conversationId, agentReactionTurns.conversationId),
+        eq(reactionEvents.reactorAgentId, agentReactionTurns.actorId),
+        eq(reactionEvents.reactionTurnId, agentReactionTurns.turnId),
+        eq(reactionEvents.status, 'completed'),
+        eq(reactionEvents.responseEligible, false),
+      ),
+    )
+    .where(
+      and(
+        eq(agentReactionTurns.oxyUserId, userId),
+        eq(agentReactionTurns.conversationId, conversationId),
+        inArray(agentReactionTurns.turnId, [...turnIds]),
+      ),
+    )
+    .orderBy(asc(agentReactionTurns.completedAt), asc(reactionEvents.createdAt));
+  const grouped = new Map<
+    string,
+    {
+      id: string;
+      actorId: string;
+      mutations: Array<{ messageId: string; emoji: string; active: boolean }>;
+    }
+  >();
+  for (const { id, actorId, ...mutation } of rows) {
+    const key = JSON.stringify([id, actorId]);
+    const contribution = grouped.get(key) ?? { id, actorId, mutations: [] };
+    contribution.mutations.push(mutation);
+    grouped.set(key, contribution);
+  }
+  return [...grouped.values()];
+}
