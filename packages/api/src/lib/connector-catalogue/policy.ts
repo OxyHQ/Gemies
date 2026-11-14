@@ -1,20 +1,22 @@
 /**
- * What of a public registry the store takes, and how it presents it.
+ * What of a public catalogue the store takes, and how it presents it, whatever catalogue listed it:
+ * each source reads its own format into a `ListedServer` (`official-registry.ts`,
+ * `docker-catalogue.ts`), and everything below judges that one shape.
  *
- * A server is a candidate only when it can be connected the way every connector is (ADR: only
- * remote, provider-hosted MCP servers, nothing run on our hosts):
+ * A server is a candidate only when it can be connected the way every connector is (only remote
+ * servers, nothing run on our hosts, `docs/integrations.mdx`):
  *
  * - it has a remote endpoint, streamable HTTP (preferred) or SSE, at an `https` URL with no
  *   `{template}` the person would have to fill in; a server that is only a package (`npx`, a
  *   container, stdio) is not;
- * - that endpoint needs no header the registry marks required (an API key pasted by hand is the
+ * - that endpoint needs no header its catalogue marks required (an API key pasted by hand is the
  *   custom connector's job, not the store's);
- * - it is `active` in its registry, and not denied below.
+ * - it is active in its catalogue, and not denied below.
  *
  * Whether its sign-in is one Gemies supports (none, or OAuth with Dynamic Client Registration) is
  * learnt by its health check (`health.ts`), not believed from the registry.
  *
- * Everything shown is the registry's text, sanitised (`untrustedPlainText`).
+ * Everything shown is the catalogue's text, sanitised (`untrustedPlainText`).
  */
 
 import { createHash } from 'node:crypto';
@@ -22,11 +24,11 @@ import {
   type ConnectorCategory,
   type ConnectorIcon,
   MCP_CATALOGUE_SOURCES,
+  type McpCatalogueSource,
   type McpCatalogueTrust,
   type McpServerTransport,
 } from '../../db/schema/integrations.js';
 import { untrustedPlainText } from '../untrusted-text.js';
-import type { RegistryServer } from './official-registry.js';
 
 export const MAX_NAME_LENGTH = 60;
 export const MAX_DESCRIPTION_LENGTH = 280;
@@ -51,9 +53,59 @@ export type CandidateRefusal =
  */
 export const MAX_SERVERS_PER_PUBLISHER = 25;
 
+/** One remote endpoint a catalogue lists for a server. */
+export interface ListedRemote {
+  type: string;
+  url: string;
+  /** Whether a header (an API key) must be filled in to reach it. */
+  requiresHeaders: boolean;
+  /** Whether the URL has parts the person must fill in (`{tenant}`). */
+  templated: boolean;
+}
+
+/** A server as any catalogue lists it, before the store judges it. */
+export interface ListedServer {
+  source: McpCatalogueSource;
+  /** Its name in that catalogue, stable across versions. */
+  name: string;
+  version: string;
+  updatedAt: Date | null;
+  active: boolean;
+  title?: string;
+  description?: string;
+  websiteUrl?: string;
+  repositoryUrl?: string;
+  icons: readonly ConnectorIcon[];
+  remotes: readonly ListedRemote[];
+  /** Who published it, for the listing-farm gate; `null` for a catalogue its owner curates. */
+  publisher: string | null;
+  /** Its category when the catalogue says one we use; otherwise it is read from its words. */
+  category?: ConnectorCategory;
+  /** Its badge, from how the catalogue proves who published it and where it is reached. */
+  trustAt: (url: string) => McpCatalogueTrust;
+}
+
+/** One complete read of a catalogue. A partial read is never a pass: it throws. */
+export interface CataloguePass {
+  servers: ListedServer[];
+  /** Listed items whose shape did not parse, skipped one by one. */
+  malformed: number;
+}
+
+/** A catalogue said to come back later: the sync waits until `retryAt`, on whichever task leads. */
+export class CatalogueRateLimitError extends Error {
+  constructor(
+    readonly retryAt: Date,
+    catalogue: string,
+  ) {
+    super(`${catalogue} asked to wait until ${retryAt.toISOString()}`);
+  }
+}
+
 /** A server the store may offer once its health check passes. */
 export interface CatalogueCandidate {
   id: string;
+  source: McpCatalogueSource;
   upstreamName: string;
   upstreamVersion: string;
   upstreamUpdatedAt: Date | null;
@@ -106,10 +158,18 @@ export function catalogueOverride(
   overrides: Readonly<Record<string, CatalogueOverride>> = CATALOGUE_OVERRIDES,
 ): CatalogueOverride | undefined {
   return (
-    overrides[upstreamName] ??
+    ownOverride(overrides, upstreamName) ??
     hostOverride(url, overrides) ??
-    overrides[`publisher:${publisherOf(upstreamName)}`]
+    ownOverride(overrides, `publisher:${publisherOf(upstreamName)}`)
   );
+}
+
+/** A key a catalogue chose (`constructor` is a valid server name) never reaches `Object.prototype`. */
+function ownOverride(
+  overrides: Readonly<Record<string, CatalogueOverride>>,
+  key: string,
+): CatalogueOverride | undefined {
+  return Object.hasOwn(overrides, key) ? overrides[key] : undefined;
 }
 
 /** `host:example.com` covers `example.com` and every host under it (`mcp.example.com`). */
@@ -120,19 +180,19 @@ function hostOverride(
   if (!URL.canParse(url)) return undefined;
   const labels = new URL(url).hostname.toLowerCase().split('.');
   for (let start = 0; start < labels.length - 1; start += 1) {
-    const override = overrides[`host:${labels.slice(start).join('.')}`];
+    const override = ownOverride(overrides, `host:${labels.slice(start).join('.')}`);
     if (override) return override;
   }
   return undefined;
 }
 
-/** The namespace a server was published under, which its publisher proved: `com.notion`. */
+/** The namespace a registry server was published under, which its publisher proved: `com.notion`. */
 export function publisherOf(upstreamName: string): string {
   return upstreamName.split('/')[0] ?? upstreamName;
 }
 
 // ---------------------------------------------------------------------------
-// Reading a registry server
+// Judging a listed server
 // ---------------------------------------------------------------------------
 
 /** `com.example.mcp` → `mcp.example.com`; `null` for a GitHub namespace. */
@@ -247,8 +307,8 @@ function httpsUrlOrNull(value: string | undefined): string | null {
   return url.protocol === 'https:' ? url.toString() : null;
 }
 
-function icons(server: RegistryServer['server']): ConnectorIcon[] {
-  return (server.icons ?? [])
+function safeIcons(icons: readonly ConnectorIcon[]): ConnectorIcon[] {
+  return icons
     .filter((icon) => icon.src.startsWith('https://') || icon.src.startsWith('data:image/'))
     .slice(0, MAX_ICONS)
     .map((icon) => ({
@@ -258,16 +318,14 @@ function icons(server: RegistryServer['server']): ConnectorIcon[] {
     }));
 }
 
-/** The store's reading of one registry server, or why it is not a candidate. */
-export function candidateFromRegistry(
-  listed: RegistryServer,
+/** The store's reading of one listed server, or why it is not a candidate. */
+export function candidateOf(
+  listed: ListedServer,
   overrides: Readonly<Record<string, CatalogueOverride>> = CATALOGUE_OVERRIDES,
 ): { ok: true; candidate: CatalogueCandidate } | { ok: false; reason: CandidateRefusal } {
-  const { server } = listed;
-  const official = listed._meta?.['io.modelcontextprotocol.registry/official'];
-  if (official?.status && official.status !== 'active') return { ok: false, reason: 'not_active' };
+  if (!listed.active) return { ok: false, reason: 'not_active' };
 
-  const remotes = (server.remotes ?? []).filter(
+  const remotes = listed.remotes.filter(
     (remote) => remote.type === 'streamable-http' || remote.type === 'sse',
   );
   if (remotes.length === 0) return { ok: false, reason: 'no_remote' };
@@ -275,45 +333,47 @@ export function candidateFromRegistry(
     (remote) => URL.canParse(remote.url) && new URL(remote.url).protocol === 'https:',
   );
   if (https.length === 0) return { ok: false, reason: 'not_https' };
-  const concrete = https.filter((remote) => !remote.url.includes('{') && !remote.variables);
+  const concrete = https.filter((remote) => !remote.templated && !remote.url.includes('{'));
   if (concrete.length === 0) return { ok: false, reason: 'templated_url' };
-  const open = concrete.filter((remote) => !remote.headers?.some((header) => header.isRequired));
+  const open = concrete.filter((remote) => !remote.requiresHeaders);
   if (open.length === 0) return { ok: false, reason: 'requires_headers' };
   const chosen = open.find((remote) => remote.type === 'streamable-http') ?? open[0];
 
-  const override = catalogueOverride(server.name, chosen.url, overrides);
+  const override = catalogueOverride(listed.name, chosen.url, overrides);
   if (override?.hide) return { ok: false, reason: 'denied' };
 
   const name =
-    untrustedPlainText(server.title, MAX_NAME_LENGTH) ||
-    untrustedPlainText(server.name.split('/').at(-1), MAX_NAME_LENGTH) ||
-    server.name;
-  const description = untrustedPlainText(server.description, MAX_DESCRIPTION_LENGTH);
-  const updatedAt = official?.updatedAt ? new Date(official.updatedAt) : null;
+    untrustedPlainText(listed.title, MAX_NAME_LENGTH) ||
+    untrustedPlainText(listed.name.split('/').at(-1), MAX_NAME_LENGTH) ||
+    listed.name;
+  const description = untrustedPlainText(listed.description, MAX_DESCRIPTION_LENGTH);
+  const updatedAt =
+    listed.updatedAt && !Number.isNaN(listed.updatedAt.getTime()) ? listed.updatedAt : null;
   return {
     ok: true,
     candidate: {
-      id: syncedEntryId(server.name),
-      upstreamName: server.name,
-      upstreamVersion: server.version.slice(0, 64),
-      upstreamUpdatedAt: updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt : null,
-      slug: slugOf(server.name, name),
+      id: syncedEntryId(listed.source, listed.name),
+      source: listed.source,
+      upstreamName: listed.name,
+      upstreamVersion: listed.version.slice(0, 64),
+      upstreamUpdatedAt: updatedAt,
+      slug: slugOf(listed.name, name),
       name,
       description,
-      category: override?.category ?? categoryOf(name, description),
-      trust: override?.trust ?? trustOf(server.name, chosen.url),
+      category: override?.category ?? listed.category ?? categoryOf(name, description),
+      trust: override?.trust ?? listed.trustAt(chosen.url),
       url: chosen.url,
       transport: chosen.type as McpServerTransport,
-      websiteUrl: httpsUrlOrNull(server.websiteUrl),
-      repositoryUrl: httpsUrlOrNull(server.repository?.url),
-      icons: icons(server),
+      websiteUrl: httpsUrlOrNull(listed.websiteUrl),
+      repositoryUrl: httpsUrlOrNull(listed.repositoryUrl),
+      icons: safeIcons(listed.icons),
     },
   };
 }
 
-/** A synced entry's id: its registry and its name there, never the shape of a curated id. */
-export function syncedEntryId(upstreamName: string): string {
-  return `mcp_registry:${upstreamName}`;
+/** A synced entry's id: its catalogue and its name there, never the shape of a curated id. */
+export function syncedEntryId(source: McpCatalogueSource, upstreamName: string): string {
+  return `${source}:${upstreamName}`;
 }
 
 export function isSyncedEntryId(id: string): boolean {
@@ -323,9 +383,10 @@ export function isSyncedEntryId(id: string): boolean {
 const TRUST_RANK: Record<McpCatalogueTrust, number> = { official: 0, verified: 1, community: 2 };
 
 /**
- * One candidate per endpoint: two listings of the same address (a server republished under
- * another name, or by somebody else) are one server, and the store keeps the best-proven
- * publisher's listing, then the most recently updated.
+ * One candidate per endpoint: two listings of the same address in one catalogue (a server
+ * republished under another name, or by somebody else) are one server, and the store keeps the
+ * best-proven publisher's listing, then the most recently updated. Across catalogues the official
+ * registry's listing is kept (`sync.ts`).
  */
 export function preferredListing(a: CatalogueCandidate, b: CatalogueCandidate): CatalogueCandidate {
   const rank = TRUST_RANK[a.trust] - TRUST_RANK[b.trust];

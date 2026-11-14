@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RegistryRateLimitError, readOfficialRegistry } from '../official-registry.js';
+import { readOfficialRegistry } from '../official-registry.js';
+import { CatalogueRateLimitError } from '../policy.js';
 
 function page(servers: unknown[], nextCursor?: string) {
   return new Response(
@@ -21,7 +22,7 @@ describe('reading the official MCP Registry', () => {
       .mockResolvedValueOnce(page([item('a.b/two')]));
     const pass = await readOfficialRegistry(fetchImpl as unknown as typeof fetch, 0);
 
-    expect(pass.servers.map((listed) => listed.server.name)).toEqual(['a.b/one', 'a.b/two']);
+    expect(pass.servers.map((listed) => listed.name)).toEqual(['a.b/one', 'a.b/two']);
     expect(pass.malformed).toBe(1);
     const first = new URL(String(fetchImpl.mock.calls[0]?.[0]));
     expect(first.origin + first.pathname).toBe(
@@ -39,7 +40,7 @@ describe('reading the official MCP Registry', () => {
       .mockResolvedValue(new Response('', { status: 429, headers: { 'retry-after': '120' } }));
     await expect(
       readOfficialRegistry(fetchImpl as unknown as typeof fetch, 0),
-    ).rejects.toBeInstanceOf(RegistryRateLimitError);
+    ).rejects.toBeInstanceOf(CatalogueRateLimitError);
   });
 
   it('asks a failed page again, and never returns half a registry', async () => {

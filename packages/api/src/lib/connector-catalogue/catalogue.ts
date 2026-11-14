@@ -20,10 +20,11 @@ import {
 import {
   CONNECTOR_CATEGORIES,
   type ConnectorCategory,
+  type McpCatalogueSource,
   type McpCatalogueTrust,
   type McpServerTransport,
 } from '../../db/schema/integrations.js';
-import type { LogoSubject } from '../connector-logos.js';
+import { type LogoSubject, mcpRegistryListingUrl } from '../connector-logos.js';
 import { connectorCallbackUrl } from '../connector-return.js';
 import {
   isRegistryEntryConfigured,
@@ -32,6 +33,7 @@ import {
 } from '../mcp-connector-config.js';
 import { MCP_REGISTRY, type McpRegistryEntry } from '../mcp-registry.js';
 import { TTLCache } from '../ttl-cache.js';
+import { dockerListingUrl } from './docker-catalogue.js';
 import { CATALOGUE_OVERRIDES, type CatalogueOverride, catalogueOverride } from './policy.js';
 
 export interface CatalogueEntry {
@@ -46,8 +48,8 @@ export interface CatalogueEntry {
   /** How a person connects it: through the provider's sign-in, or at once. */
   signIn: 'oauth' | 'none';
   trust: McpCatalogueTrust;
-  /** `curated` by Gemies, or synced from the official MCP Registry. */
-  source: 'curated' | 'mcp_registry';
+  /** `curated` by Gemies, or the catalogue it was synced from. */
+  source: 'curated' | McpCatalogueSource;
   featured: boolean;
   /** Where to read about it: the provider's documentation, or the server's website. */
   docsUrl: string | null;
@@ -168,7 +170,14 @@ export async function catalogueLogoSubjects(db: ApiDatabase): Promise<LogoSubjec
   }));
   const synced = (await listOfferedCatalogueRows(db)).map((row) => ({
     registryId: row.id,
-    icons: row.icons,
+    listing: {
+      source: row.source,
+      icons: row.icons,
+      url:
+        row.source === 'docker'
+          ? dockerListingUrl(row.upstreamName)
+          : mcpRegistryListingUrl(row.upstreamName),
+    },
     website: row.websiteUrl ?? new URL(row.url).origin,
   }));
   return [...curated, ...synced];

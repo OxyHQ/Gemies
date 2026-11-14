@@ -65,11 +65,12 @@ export type McpServerStatus = (typeof MCP_SERVER_STATUSES)[number];
 
 /**
  * Where a connector's logo came from, in the order they are preferred: the
- * server's own `serverInfo.icons` (MCP `initialize`), the official MCP
- * Registry's `server.json` icons, the provider website's brand mark
- * (`lib/connector-logos.ts`). No logo is a monogram the client draws.
+ * server's own `serverInfo.icons` (MCP `initialize`), its catalogue listing's
+ * icons (the official MCP Registry's `server.json`, or Docker's catalogue entry),
+ * the provider website's brand mark (`lib/connector-logos.ts`). No logo is a
+ * monogram the client draws.
  */
-export const CONNECTOR_LOGO_SOURCES = ['server', 'mcp_registry', 'website'] as const;
+export const CONNECTOR_LOGO_SOURCES = ['server', 'mcp_registry', 'docker', 'website'] as const;
 export type ConnectorLogoSource = (typeof CONNECTOR_LOGO_SOURCES)[number];
 
 /**
@@ -353,8 +354,11 @@ export const CONNECTOR_CATEGORIES = [
 ] as const;
 export type ConnectorCategory = (typeof CONNECTOR_CATEGORIES)[number];
 
-/** The public registries the store is synced from (`lib/connector-catalogue/`). */
-export const MCP_CATALOGUE_SOURCES = ['mcp_registry'] as const;
+/**
+ * The public catalogues the store is synced from (`lib/connector-catalogue/`): the official MCP
+ * Registry, and Docker's MCP catalogue (`github.com/docker/mcp-registry`, MIT).
+ */
+export const MCP_CATALOGUE_SOURCES = ['mcp_registry', 'docker'] as const;
 export type McpCatalogueSource = (typeof MCP_CATALOGUE_SOURCES)[number];
 
 /**
@@ -362,7 +366,8 @@ export type McpCatalogueSource = (typeof MCP_CATALOGUE_SOURCES)[number];
  *
  * - `official` — its publisher proved a domain to the registry (a reverse-DNS namespace) and the
  *   server is reached on that domain: the provider's own server.
- * - `verified` — its publisher proved a domain, and the server is reached somewhere else.
+ * - `verified` — its publisher proved a domain and the server is reached somewhere else, or a
+ *   reviewed catalogue (Docker's) lists it.
  * - `community` — its publisher proved only a GitHub account (`io.github.*`).
  */
 export const MCP_CATALOGUE_TRUST = ['official', 'verified', 'community'] as const;

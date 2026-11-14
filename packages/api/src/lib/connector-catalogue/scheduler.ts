@@ -4,8 +4,8 @@
  * One leader-gated job (its own lease, like the skill catalogue's sync): it writes rows every
  * account reads and reaches hundreds of outside servers, so exactly one task does it. Every hour:
  *
- *  1. **Sync** the official MCP Registry, when the last complete pass is older than
- *     `SYNC_EVERY_MS` and the registry did not ask to wait (`sync.ts`).
+ *  1. **Sync** each source (the official MCP Registry, then Docker's MCP catalogue) whose last
+ *     complete pass is older than `SYNC_EVERY_MS` and that did not ask to wait (`sync.ts`).
  *  2. **Check health** of the synced servers that are due, a bounded round (`health.ts`).
  *  3. **Keep logos** of every offered entry, curated and synced, a bounded round
  *     (`connector-logos.ts`).
@@ -25,7 +25,7 @@ import { startLeaderElection, type LeaderElectionHandle } from '../leader-electi
 import { log } from '../logger.js';
 import { catalogueLogoSubjects, invalidateCatalogue } from './catalogue.js';
 import { checkCatalogueHealth } from './health.js';
-import { syncConnectorCatalogue } from './sync.js';
+import { syncCatalogueSources } from './sync.js';
 
 const LEASE = 'connector-catalogue';
 const TICK_MS = 60 * 60 * 1000;
@@ -42,9 +42,13 @@ let running = false;
 export async function runConnectorCatalogueUpkeep(now = new Date()): Promise<void> {
   const db = getDb();
   try {
-    const state = await getCatalogueSyncState(db, 'mcp_registry');
-    const last = state?.lastSuccessAt?.getTime() ?? 0;
-    if (now.getTime() - last >= SYNC_EVERY_MS) await syncConnectorCatalogue(db, { now });
+    await syncCatalogueSources(db, {
+      now,
+      isDue: async (source) => {
+        const last = (await getCatalogueSyncState(db, source))?.lastSuccessAt?.getTime() ?? 0;
+        return now.getTime() - last >= SYNC_EVERY_MS;
+      },
+    });
   } catch (err: unknown) {
     log.general.error({ err }, 'Connector catalogue sync failed');
   }

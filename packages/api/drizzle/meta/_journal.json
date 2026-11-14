@@ -1170,6 +1170,13 @@
       "when": 1794600879544,
       "tag": "0166_gemie_bots_redraw_their_photo",
       "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1794617787896,
+      "tag": "0167_connector_catalogue_docker",
+      "breakpoints": true
     }
   ]
 }

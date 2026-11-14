@@ -19,6 +19,12 @@
  */
 
 import { z } from 'zod';
+import {
+  CatalogueRateLimitError,
+  type CataloguePass,
+  type ListedServer,
+  trustOf,
+} from './policy.js';
 
 export const OFFICIAL_REGISTRY_ORIGIN = 'https://registry.modelcontextprotocol.io';
 const SERVERS_PATH = '/v0.1/servers';
@@ -85,22 +91,36 @@ const page = z.object({
 /** One server as the registry lists it, already shape-checked. */
 export type RegistryServer = z.infer<typeof listedServer>;
 
-export class RegistryRateLimitError extends Error {
-  constructor(readonly retryAt: Date) {
-    super(`The MCP Registry asked to wait until ${retryAt.toISOString()}`);
-  }
-}
-
 export class RegistryHttpError extends Error {
   constructor(readonly status: number) {
     super(`The MCP Registry answered ${status}`);
   }
 }
 
-export interface RegistryPass {
-  servers: RegistryServer[];
-  /** Listed items whose shape did not parse, skipped one by one. */
-  malformed: number;
+/** A registry server as the store judges every catalogue's (`policy.ts`). */
+export function listedFromRegistry(listed: RegistryServer): ListedServer {
+  const { server } = listed;
+  const official = listed._meta?.['io.modelcontextprotocol.registry/official'];
+  return {
+    source: 'mcp_registry',
+    name: server.name,
+    version: server.version,
+    updatedAt: official?.updatedAt ? new Date(official.updatedAt) : null,
+    active: !official?.status || official.status === 'active',
+    title: server.title,
+    description: server.description,
+    websiteUrl: server.websiteUrl,
+    repositoryUrl: server.repository?.url,
+    icons: server.icons ?? [],
+    remotes: (server.remotes ?? []).map((remote) => ({
+      type: remote.type,
+      url: remote.url,
+      requiresHeaders: remote.headers?.some((header) => header.isRequired) ?? false,
+      templated: Boolean(remote.variables) || remote.url.includes('{'),
+    })),
+    publisher: server.name.split('/')[0] ?? server.name,
+    trustAt: (url) => trustOf(server.name, url),
+  };
 }
 
 /** When a 429 says to come back: its `Retry-After`, or an hour. */
@@ -124,7 +144,9 @@ async function readPage(
     headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
     signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
   });
-  if (response.status === 429) throw new RegistryRateLimitError(retryAtOf(response, new Date()));
+  if (response.status === 429) {
+    throw new CatalogueRateLimitError(retryAtOf(response, new Date()), 'The MCP Registry');
+  }
   if (!response.ok) throw new RegistryHttpError(response.status);
   const length = Number(response.headers.get('content-length') ?? 0);
   if (length > MAX_PAGE_BYTES) throw new Error('The MCP Registry page is too large');
@@ -147,7 +169,7 @@ async function readPageWithRetries(
       return await readPage(cursor, fetchImpl);
     } catch (err: unknown) {
       const lasting =
-        err instanceof RegistryRateLimitError ||
+        err instanceof CatalogueRateLimitError ||
         err instanceof z.ZodError ||
         err instanceof SyntaxError ||
         (err instanceof RegistryHttpError && err.status < 500);
@@ -160,21 +182,21 @@ async function readPageWithRetries(
 
 /**
  * Every server's latest version, the whole registry in one pass. Throws when a page cannot be read
- * (and `RegistryRateLimitError` on a 429): a partial pass is never returned, because the sync reads
- * a server missing from a pass as removed.
+ * (and `CatalogueRateLimitError` on a 429): a partial pass is never returned, because the sync
+ * reads a server missing from a pass as removed.
  */
 export async function readOfficialRegistry(
   fetchImpl: typeof fetch = fetch,
   pauseMs = PAGE_PAUSE_MS,
-): Promise<RegistryPass> {
-  const servers: RegistryServer[] = [];
+): Promise<CataloguePass> {
+  const servers: ListedServer[] = [];
   let malformed = 0;
   let cursor: string | null = null;
   for (let pages = 0; pages < MAX_PAGES; pages += 1) {
     const current = await readPageWithRetries(cursor, fetchImpl, pauseMs);
     for (const item of current.servers) {
       const parsed = listedServer.safeParse(item);
-      if (parsed.success) servers.push(parsed.data);
+      if (parsed.success) servers.push(listedFromRegistry(parsed.data));
       else malformed += 1;
     }
     cursor = current.metadata?.nextCursor ?? null;

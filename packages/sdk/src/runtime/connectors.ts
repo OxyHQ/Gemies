@@ -76,8 +76,8 @@ export interface ConnectorEntry {
   category: ConnectorCategory;
   featured: boolean;
   trust: ConnectorTrust;
-  /** `curated` by Gemies, or synced from the official MCP Registry. */
-  source: 'curated' | 'mcp_registry';
+  /** `curated` by Gemies, or the catalogue it was synced from: the official MCP Registry, Docker's. */
+  source: 'curated' | 'mcp_registry' | 'docker';
   /** `oauth` opens the provider's sign-in; `none` connects at once. */
   signIn: 'oauth' | 'none';
   /** How many tools it offers, when known before connecting. */

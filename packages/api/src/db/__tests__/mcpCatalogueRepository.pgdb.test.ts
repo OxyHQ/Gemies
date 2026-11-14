@@ -9,6 +9,7 @@ import {
   listOfferedCatalogueRows,
   recordCatalogueHealth,
 } from '../integrations/mcpCatalogueRepository';
+import { listedFromRegistry } from '../../lib/connector-catalogue/official-registry';
 import { syncConnectorCatalogue } from '../../lib/connector-catalogue/sync';
 
 /**
@@ -23,16 +24,13 @@ let db: ApiDatabase;
 const now = new Date('2026-11-13T12:00:00Z');
 
 function listed(name: string, url: string) {
-  return {
+  return listedFromRegistry({
     server: { name, version: '1.0.0', remotes: [{ type: 'streamable-http', url }] },
     _meta: { 'io.modelcontextprotocol.registry/official': { status: 'active' } },
-  };
+  });
 }
 
-const pass = (servers: ReturnType<typeof listed>[]) => async () => ({
-  servers: servers as never,
-  malformed: 0,
-});
+const pass = (servers: ReturnType<typeof listed>[]) => async () => ({ servers, malformed: 0 });
 
 beforeAll(() => {
   const connected = connectPostgres(process.env.DATABASE_URL);
