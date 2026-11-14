@@ -1,6 +1,6 @@
 /**
  * Group room queue — one job per step of a room's chain (ADR 0025), on the shared conversation step
- * queue (`step-queue.ts`). New chains use `group-rooms-v3`; v2 and v1 queues retain workers to drain admitted jobs
+ * queue (`step-queue.ts`). The v3 consumer is installed before producer activation; v2 and v1 retain workers to drain admitted jobs
  * with their original policy.
  */
 
