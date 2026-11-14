@@ -36,7 +36,7 @@ const input = () => ({
   conversationId: 'thread',
   agent: actor(),
   turnId: 'turn',
-  expectedLatestUserMessage: { id: 'person-message', content: 'Gracias' },
+  trigger: { kind: 'person' as const, message: { id: 'person-message', content: 'Gracias' } },
   surfaceApplicationId: 'surface',
   allowedActorIds: ['a'],
 });

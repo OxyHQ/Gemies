@@ -148,6 +148,12 @@ choose an author. Independent author sets share a revision while the legacy emoj
 the person's own selection. Store agent mutations without wake eligibility, so they cannot create
 autonomous reaction loops. Removing or replacing the target clears both author sets.
 
+ADR 0042 peer conversations retain the person's read-only boundary. Hosted peer turns use an
+explicit peer-message admission, checked against the owned pair and current attributed message;
+never a missing person trigger. Their existing bounded chain may consume that feedback, but the
+reaction itself cannot enqueue a new chain. Clean completions and retries use the same durable
+receipts and contribution limits as other hosted turns.
+
 Persist a reaction-only turn completion separately from its mutation receipts, only after a clean
 model finish. Queued room retries replay that completion and current snapshots for its touched
 targets before continuing selection; direct retries retain existing turn admission semantics.

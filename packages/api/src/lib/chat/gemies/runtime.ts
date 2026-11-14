@@ -86,6 +86,8 @@ export function gemieRuntime(): GemieRuntime {
           ...deps,
           room: {
             ...room,
+            prepareReaction: (input) =>
+              room.prepareReaction!({ ...input, signal: controller.signal }),
             runTurn: (input) => room.runTurn({ ...input, signal: controller.signal }),
           },
         });

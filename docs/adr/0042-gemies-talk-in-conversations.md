@@ -86,6 +86,14 @@ tool lane. When the answer comes back to an external agent, its continuation run
 too and tells the person; it holds no `sendMessage` bound to the chain (the relay carries text, not
 tools), so a follow-up is its next message from the chat, a new chain.
 
+Hosted participants can also react to a peer message when it is useful (ADR 0025). This local
+conversation capability uses the peer's exact stored message and the owned pair as its admission,
+never user authority inferred from its text. The person still cannot react in this conversation.
+A quiet reaction completion is durable, counts toward the chain and room limits, and needs no
+empty answer row. The already admitted continuation reads attributed feedback; a reaction never
+starts another chain or grants product tools. An initiator can acknowledge a textual reply and
+finish quietly, but receiving only an emoji does not grant a reciprocal-reaction turn.
+
 ### 3. The safety properties belong to the messaging layer
 
 - **Bounds per chain.** Every message of a chain (both ways) and every token of every turn of it
