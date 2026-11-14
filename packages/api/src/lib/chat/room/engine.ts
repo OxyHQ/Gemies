@@ -58,7 +58,7 @@ import type { prepareAgentReactionTurn } from '../reactions/agent-runtime.js';
 
 /** One step of a chain, as the queue carries it. JSON only: it crosses Redis. */
 export interface RoomJobData {
-  /** New admissions are v3; v2 and v1 jobs drain with their original selection contract. */
+  /** v3 consumers precede producer activation; v2 and v1 retain their original selection contract. */
   readonly version?: 2 | 3;
   readonly obligationPlan?: RoomObligationPlan;
   readonly requestDigest?: string;

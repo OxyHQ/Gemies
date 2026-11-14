@@ -171,7 +171,7 @@ existing contribution rate limit. Reaction observation turns retain their no-too
 
 ### Original assignments survive selection steps
 
-New admissions use `group-rooms-v3`. The selector's same structured inference returns the next
+After the separately gated producer activation, new admissions use `group-rooms-v3`. The selector's same structured inference returns the next
 choice and a bounded inventory of explicit assignments from the person's request. Each assignment
 has a stable recipient, task, dependencies, state and evidence IDs. Open questions need not assign
 every member. The initial extraction remains semantic: validation cannot prove that the model
@@ -200,11 +200,40 @@ completions can replay without a fresh actor execution or contribution slot afte
 The JSON plan is limited to 16 assignments with bounded text and evidence, carried only in the
 existing durable jobs. No SQL migration, bearer, transcript copy or public SDK schema is added.
 Keep workers for `group-rooms-v2` and `group-rooms` during rolling deployment: old processes produce
-and consume their old queues; new processes produce v3 and also drain old jobs with the original
+and consume their old queues; after release B activates the producer, new processes produce v3
+and also drain old jobs with the original
 choice-only/legacy contract. A v2 successor stays v2. Never let an old worker consume a v3 job or
 reinterpret a queued v2 job as a newly extracted plan. Retire each old worker only after its
-waiting, active, delayed and retryable jobs have drained. A rollback must retain a v3 worker until
-its jobs drain; deleting or abandoning a queue is not a rollback procedure.
+waiting, active, delayed and retryable jobs have drained.
+
+**Two releases make the rollback consumer concrete.** Release A installs all three workers but
+`prepareRoom` still creates version 2 jobs. Release B changes that producer to version 3 only after
+A is the sole completed deployment and its v3 Redis worker is verified. The existing ECS circuit
+breaker and `deploy-ecs-image.sh` rollback restore the entire previous service revision; therefore
+B must have A (not a v2-only image) as its actual rollback baseline. A continues consuming v3 even
+when serving after B rolls back. It creates no new v3 human admissions; existing v3 continuations
+still use v3. This uses the normal maintained API service, not an auxiliary API process starting
+unrelated schedulers, and needs no new runtime flag, role or service.
+
+Before A, prove that no v3 producer or outstanding v3 jobs already exist. Before B, verify A's exact
+image/source, positive steady fleet, queue-specific v3 worker presence and unpaused Redis state;
+HTTP readiness alone does not establish worker readiness. Preserve that source/image as the oldest
+permitted rollback revision while v3 producers or work remain. A forced process exit or a graceful
+shutdown timeout is not a drain proof. A rollback never deletes/relabels jobs, restores an earlier
+Oxy authority path, or changes the existing first-party/Kaana authority.
+
+If a later release removes the v3 worker, first eliminate all v3 producers (including old draining
+API tasks), keep A running, and verify no waiting, active, delayed, prioritized, paused,
+waiting-children or stalled-recovery work remains. Review terminal failed jobs' chain-end and conversation-activity
+cleanup separately: a zero waiting count, expired lease, or failed-state count is not completion.
+Use a narrow read-only Redis inspector; this repository does not yet ship one for room queues.
+The installed BullMQ count helper can remove deprecated wait-list markers, so it must not be called
+a read-only probe. Retirement is a separate reviewed operation; automatic rollback B→A does not
+retire the worker.
+
+Real selector evaluation exercises the final v3 plan contract during A; its source pin does not
+claim A already admits v3. Activation evidence additionally checks B's actual producer version.
+No model call is used as a production queue health check.
 
 ### Bounds
 
