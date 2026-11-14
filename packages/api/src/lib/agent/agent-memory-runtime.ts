@@ -10,7 +10,8 @@
  *
  * Writes go through `writeAgentMemory` with the hash it just read, so an
  * agent and the person editing the same file cannot silently overwrite each
- * other, and every write is journaled with origin `agent`.
+ * other, and every write is journaled with origin `agent`. A turn never puts
+ * back what the person forgot while it ran ({@link buildAgentMemoryTool}).
  */
 
 import { tool } from 'ai';
@@ -56,13 +57,31 @@ export async function agentMemoryPromptSection(
   return `${memoryDataBlock('Your memory of this person (MEMORY.md)', body)}${options?.readOnly ? '' : `\n\n${MEMORY_UPKEEP}`}`;
 }
 
-/** The `memory` tool: read, list and write this agent's files about this person. */
+/**
+ * The `memory` tool: read, list and write this agent's files about this person. Built once per
+ * turn.
+ *
+ * The turn holds what its memory said when it began (the prompt carries MEMORY.md). A file of it
+ * gone by the time the agent writes was forgotten by the person while the turn ran: the hash check
+ * cannot see that (the file is new again, its hash the empty one), and the write put back what
+ * they had removed, from the copy the turn still held. So no file is written then.
+ */
 export function buildAgentMemoryTool(input: {
   oxyUserId: string;
   agentId: string;
   actorOxyAccountId: string;
 }) {
   const { oxyUserId, agentId, actorOxyAccountId } = input;
+  // What was kept when the turn began. Unreadable then, the turn holds no copy to put back.
+  const atStart = Promise.resolve()
+    .then(() => listAgentMemory(getDb(), oxyUserId, agentId))
+    .then((files) => new Set(files.map((file) => file.path)))
+    .catch(() => new Set<string>());
+  const forgottenByAgent = new Set<string>();
+  const forgottenByPerson = async (): Promise<boolean> => {
+    const now = new Set((await listAgentMemory(getDb(), oxyUserId, agentId)).map((f) => f.path));
+    return [...(await atStart)].some((path) => !now.has(path) && !forgottenByAgent.has(path));
+  };
   return tool({
     description:
       "Your own long-term memory about this person, kept across conversations: MEMORY.md (the index you always see) and memory/<topic>.md files. Actions: list; read a file; append a line; replace a file's whole content; forget (delete) a whole file when the person asks you to forget it. Save only what will still matter later.",
@@ -76,6 +95,8 @@ export function buildAgentMemoryTool(input: {
     }),
     execute: async ({ action, path, content }) => {
       try {
+        // Settled before anything this turn reads or writes, so it is what the turn began with.
+        await atStart;
         if (action === 'list') {
           const files = await listAgentMemory(getDb(), oxyUserId, agentId);
           return files.length === 0
@@ -85,11 +106,15 @@ export function buildAgentMemoryTool(input: {
         const target = parseAgentMemoryPath(path ?? AGENT_MEMORY_INDEX).path;
         if (action === 'forget') {
           const removed = await deleteAgentMemory(getDb(), { oxyUserId, agentId, path: target });
+          forgottenByAgent.add(target);
           return removed === 0 ? `${target} did not exist.` : `Forgot ${target}.`;
         }
         const current = await readAgentMemory(getDb(), oxyUserId, agentId, target);
         if (action === 'read') return current?.content || `${target} is empty.`;
         if (!content?.trim()) return 'Error: content is required';
+        if (await forgottenByPerson()) {
+          return 'Error: the person removed part of your memory while you were working. Nothing was saved; do not save it again unless they ask you to.';
+        }
         const before = current?.content ?? '';
         const next =
           action === 'append'

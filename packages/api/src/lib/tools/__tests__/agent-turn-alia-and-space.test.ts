@@ -207,6 +207,17 @@ describe('a turn whose callee is Alia', () => {
     });
   });
 
+  it('reads none of the person’s memory when they turned personalization off', async () => {
+    await runAgentTurn({
+      agent: aliaGemie(),
+      task: 'What does the person usually eat?',
+      person: { ...person, personalization: false },
+      payerOxyUserId: 'person-1',
+    });
+
+    expect(H.pipeline).toMatchObject({ nested: true, personalization: false });
+  });
+
   it('gives her the answering prompt and no agent identity, and only the read-only tools', async () => {
     await runAgentTurn({ agent: aliaGemie(), task: 'q', person, payerOxyUserId: 'person-1' });
 

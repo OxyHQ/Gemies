@@ -344,8 +344,8 @@ export function runPostChatHooks(
     ...(ctx.personalization === false ? { personalization: false as const } : {}),
   }).catch((err) => log.v1.error({ err }, 'Error in afterChat hooks'));
 
-  // Alia's run scoring is about Alia's turns.
-  if (gemieMemoryTurn) return;
+  // Alia's run scoring is about Alia's turns, and learns from none the person kept unpersonalized.
+  if (gemieMemoryTurn || ctx.personalization === false) return;
   runAutonomyAfterChat({
     userId,
     runtimeContext: autonomyRuntime,

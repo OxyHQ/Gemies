@@ -33,7 +33,12 @@ credential never join Kaana's hosted credential pool.
    validates `reasoningEffort` against it, admits the turn's attachments (the
    agent's feature gates are checked, `file` parts are read from Oxy Files as the
    person, gated parts are spent — [Embedding an agent](./agent-embedding.md) §5),
-   then reserves product credits. A refused attachment reserves nothing.
+   then reserves product credits. A refused attachment reserves nothing. A
+   verified channel turn (a gemie bot's person, a connected account, a linked
+   system bot) is paid from that channel's account like the person's own session,
+   and refused `402` when it is out of credits, although the integrations workload
+   carries it. Having no bearer of its own, its account's product grants are read
+   as a service, as background work reads them.
 3. Alia assembles conversation context, memory, agent instructions and tools.
 4. The inference seam calls the published Kaana SDK directly at
    `https://kaana.ai/v1`, with the requested model or level and reasoning effort.
@@ -73,7 +78,8 @@ financial-ledger migration (Kaana ADR 0010); see the
 ```
 
 `personalization: false` turns personalization off for the turn: no memory profile, no recall,
-no memory tools and nothing learned from it; the conversation is still stored.
+no learned rules, no memory tools (nor for an agent it consults) and nothing learned from it; the
+conversation is still stored.
 `tool_choice: "none"` (OpenAI's field; `"auto"` is the default, anything else is a 400) offers the turn
 no tool at all, for a call that only needs words, such as a sample phrase. A host tool may
 declare `awaitsResult: true` to be answered within the same turn on
