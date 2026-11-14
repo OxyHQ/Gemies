@@ -14,6 +14,7 @@ import {
   upsertConversation,
 } from '../db/chat/conversationRepository.js';
 import {
+  clientMessageExists,
   countMessages,
   countMessagesInConversation,
   rewriteMessages,
@@ -24,6 +25,7 @@ import {
   type NewMessage,
 } from '../db/chat/messageRepository.js';
 import {
+  channelReplyMessageId,
   isAgentWrittenMessageId,
   usableMessageId,
   type AgentInfo,
@@ -99,6 +101,12 @@ export interface SaveConversationParams {
    * last member's.
    */
   omitLeadReply?: boolean;
+  /**
+   * The channel of a verified channel turn (a gemie bot's person, a connected account): the turn is
+   * appended after what the conversation holds, never reconciled from the history it sent
+   * ({@link appendChannelTurn}), and a conversation it creates is labelled with it.
+   */
+  channelSource?: ConversationSource;
 }
 
 /**
@@ -163,8 +171,8 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
     originApp,
     agentMessages,
     omitLeadReply = false,
+    channelSource,
   } = params;
-  const assistantMessageId = usableMessageId(params.assistantMessageId);
 
   /**
    * Every message keeps the id the client sent with it.
@@ -188,6 +196,15 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
         ...(isAgentWrittenMessageId(id) ? { agentInfo: m.agentInfo } : {}),
       };
     });
+
+  // A channel turn answers its person's last message, and its reply is named after it: that is how
+  // a retried delivery of the message knows it was answered (`channelReplyMessageId`).
+  const channelMessage = channelSource
+    ? [...clientHistory].reverse().find((message) => message.role === 'user')
+    : undefined;
+  const assistantMessageId =
+    usableMessageId(params.assistantMessageId) ??
+    (channelMessage?.id === undefined ? undefined : channelReplyMessageId(channelMessage.id));
 
   const turnTail: InputMessage[] = [
     // Insert agent messages before the final assistant response
@@ -224,10 +241,12 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
     // writes the preview as each reply lands, and an empty one here would blank the last.
     ...(omitLeadReply && preview === '' ? {} : { lastMessage: preview }),
     titleOnInsert: title,
-    source: source || 'app',
+    source: channelSource ?? source ?? 'app',
     agentId,
     ...(originApp ? { originApp } : {}),
   });
+
+  if (channelSource) return appendChannelTurn(userId, conversationId, channelMessage, turnTail);
 
   const [storedCount, lastStored] = await Promise.all([
     countMessages(getDb(), userId, conversationId),
@@ -236,10 +255,8 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
 
   // Fast path: stored history is exactly the client history minus the new turn,
   // with a contiguous seq that matches the client's last echoed message.
-  // Or stored history is ALL of the client history: a channel stores the person's message the
-  // moment it arrives (so the app shows it at once), and the turn then appends only its reply.
   const canAppend =
-    (storedCount === clientHistory.length - 1 || storedCount === clientHistory.length) &&
+    storedCount === clientHistory.length - 1 &&
     (storedCount === 0 ||
       (lastStored?.seq === storedCount - 1 &&
         sameMessage(lastStored, clientHistory[storedCount - 1])));
@@ -329,6 +346,35 @@ export async function appendConversationMessages<Content extends MessageContent 
     source: params.source ?? 'app',
     agentId: params.agentId,
   });
+  const next = await appendAtEnd(userId, conversationId, (from) =>
+    messages.map((message, index) => ({
+      conversationId,
+      oxyUserId: userId,
+      clientMessageId: message.id,
+      role: message.role,
+      content: message.content,
+      seq: from + index,
+      createdAt: new Date(),
+      ...(message.toolInvocations && message.toolInvocations.length > 0
+        ? { toolInvocations: message.toolInvocations }
+        : {}),
+      ...(message.interruptedAfterMs === undefined
+        ? {}
+        : { interruptedAfterMs: Math.round(message.interruptedAfterMs) }),
+    })),
+  );
+  void publishConversation(userId, conversationId, { appendedFromSeq: next });
+}
+
+/**
+ * Insert rows at the END of a conversation: from the `seq` after its last message, retried on
+ * exactly the conflict a concurrent append claiming the same `seq` produces. Returns that `seq`.
+ */
+async function appendAtEnd(
+  userId: string,
+  conversationId: string,
+  rowsFrom: (seq: number) => NewMessage[],
+): Promise<number> {
   for (let attempt = 1; ; attempt++) {
     const [stored, count] = await Promise.all([
       findLastMessage(getDb(), userId, conversationId),
@@ -337,30 +383,40 @@ export async function appendConversationMessages<Content extends MessageContent 
     // A legacy thread without `seq` continues after its last position.
     const next = stored?.seq == null ? count : stored.seq + 1;
     try {
-      await insertMessages(
-        getDb(),
-        messages.map((message, index) => ({
-          conversationId,
-          oxyUserId: userId,
-          clientMessageId: message.id,
-          role: message.role,
-          content: message.content,
-          seq: next + index,
-          createdAt: new Date(),
-          ...(message.toolInvocations && message.toolInvocations.length > 0
-            ? { toolInvocations: message.toolInvocations }
-            : {}),
-          ...(message.interruptedAfterMs === undefined
-            ? {}
-            : { interruptedAfterMs: Math.round(message.interruptedAfterMs) }),
-        })),
-      );
-      void publishConversation(userId, conversationId, { appendedFromSeq: next });
-      return;
+      await insertMessages(getDb(), rowsFrom(next));
+      return next;
     } catch (err) {
       if (attempt >= MAX_APPEND_ATTEMPTS || !isUniqueViolation(err, APPEND_SEQ_INDEX)) throw err;
     }
   }
+}
+
+/**
+ * A channel turn, appended after whatever its conversation holds by then.
+ *
+ * A channel is not a client with a view of the thread. It keeps each message the moment it arrives
+ * (`gemie-telegram-bot.ts`, `POST /channel-accounts/messages`) and its turns overlap, so the history
+ * it sent is the model's context, not the stored transcript. Reconciled from it, a reply deleted
+ * every message that arrived while it ran, and a history the channel could not read rewrote the
+ * thread down to the new turn. Its person's message is appended too when the channel did not keep
+ * it (a system bot's).
+ */
+async function appendChannelTurn(
+  userId: string,
+  conversationId: string,
+  sent: InputMessage | undefined,
+  turnTail: readonly InputMessage[],
+): Promise<ConversationChange> {
+  const kept =
+    sent?.id !== undefined && (await clientMessageExists(getDb(), userId, conversationId, sent.id));
+  const messages = [...(sent && !kept ? [sent] : []), ...turnTail];
+  if (messages.length === 0) return {};
+  const appendedFromSeq = await appendAtEnd(userId, conversationId, (from) =>
+    messages.map((message, index) =>
+      buildStoredMessage(message, userId, conversationId, from + index),
+    ),
+  );
+  return { appendedFromSeq };
 }
 
 /**

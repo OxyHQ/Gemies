@@ -39,14 +39,18 @@ import { stepBudget } from './tool-budget.js';
 import { ToolPipeline } from './tool-pipeline.js';
 import { getOrCreateUserCredits } from './user-credits-helpers.js';
 import { createHash, randomUUID } from 'node:crypto';
-import type { GemieTelegramBotAnswer, GemieTelegramBotMessage } from '@gemies/server/internal';
+import {
+  type GemieTelegramBotAnswer,
+  type GemieTelegramBotMessage,
+  turnContentText,
+} from '@gemies/server/internal';
 import { findAgentById } from '../db/agents/agentRepository.js';
 import {
-  findLastMessage,
+  findClientMessageContent,
   listRecentTurns,
   replaceChannelMessageWords,
 } from '../db/chat/messageRepository.js';
-import type { MessageContent } from '../domain/conversation.js';
+import { channelReplyMessageId, type MessageContent } from '../domain/conversation.js';
 import { prepareChannelTurn } from './channel-messages.js';
 import { buildPersonalAccessTool, PERSONAL_ACCESS_TOOL } from './channels/personal-access-tool.js';
 import { buildReactionTool, REACT_TOOL } from './channels/reaction-tool.js';
@@ -180,6 +184,11 @@ export function saidTo(from: Pick<GemieTelegramBotMessage['from'], 'languageCode
 
 /** How long one attempt holds a message's turn before another instance may take it over. */
 const TURN_LEASE_MS = 10 * 60_000;
+/**
+ * How long a turn may run: it ends before its lease does, so an attempt that takes the turn over
+ * once the lease runs out never runs (and bills) beside it.
+ */
+const TURN_RUN_MS = TURN_LEASE_MS - 60_000;
 /** How long a retry waits for an attempt still running before it answers nothing. */
 const TURN_WAIT_MS = 200_000;
 const TURN_POLL_MS = 1_000;
@@ -207,7 +216,7 @@ export async function answerGemieTelegramMessage(
   const db = getDb();
   const key = { botId: bot.botId, chatId: message.chatId, messageId: message.messageId };
   const claim = await claimGemieBotTurn(db, key, TURN_LEASE_MS);
-  if (claim.kind !== 'claimed') return earlierAnswer(bot, key, claim);
+  if (claim.kind !== 'claimed') return earlierAnswer(bot, message, key, claim);
   let answer: GemieTelegramBotAnswer;
   try {
     answer = await runTurn(bot, message);
@@ -220,11 +229,14 @@ export async function answerGemieTelegramMessage(
 }
 
 /**
- * A retry's answer: the earlier attempt's, once it settles. A person's turn ran through the chat
- * route, which stored their message under its id: if it did, it is not run again.
+ * A retry's answer: the earlier attempt's, once it settles. A person's turn runs through the chat
+ * route, which stores its reply under an id derived from their message's: once that reply is
+ * stored, the turn is not run again, and the retry delivers that reply, since the attempt it
+ * repeats may have stopped before it did.
  */
 async function earlierAnswer(
   bot: GemieBotRow,
+  message: GemieTelegramBotMessage,
   key: GemieBotTurnKey,
   claim: GemieBotTurnClaim,
 ): Promise<GemieTelegramBotAnswer> {
@@ -235,13 +247,24 @@ async function earlierAnswer(
     await new Promise((resolve) => setTimeout(resolve, TURN_POLL_MS));
     state = await readGemieBotTurn(db, key);
   }
-  if (state.kind !== 'answered') return { reply: null };
+  // Still running at the deadline: the attempt holding it may have died with it, which only its
+  // lease tells. Settled with no answer, the message would go unanswered for good; tried again
+  // later, the retry takes the turn over once the lease runs out.
+  if (state.kind !== 'answered') return { reply: null, retryLater: true };
   const answer = state.answer as unknown as GemieTelegramBotAnswer;
-  // A person's turn ran through the chat route if something follows their message, which is kept
-  // the moment it arrives: then it is not run again.
-  if (answer.personTurn) {
-    const last = await findLastMessage(db, bot.userId, answer.personTurn.conversationId);
-    if (last && last.role !== 'user') return { reply: null };
+  // Answered is THIS message's reply being stored, never how the conversation ends: their next
+  // message may already have arrived after it, and the conversation then ends in theirs again.
+  const turn = answer.personTurn;
+  if (!turn) return answer;
+  // Theirs only while they are still its person: a Telegram unlinked since gets nothing of it.
+  if (!isPersonTurn(bot, message)) return { reply: null };
+  const replyId = channelReplyMessageId(turn.messageId);
+  const replied = replyId
+    ? await findClientMessageContent(db, bot.userId, turn.conversationId, replyId)
+    : undefined;
+  if (replied) {
+    const text = turnContentText(replied.content).trim();
+    return { reply: text || null };
   }
   return answer;
 }
@@ -412,6 +435,7 @@ async function answerAsThirdParty(
       ...routing,
       maxOutputTokens: 2048,
       stopWhen: stepBudget(5),
+      abortSignal: AbortSignal.timeout(TURN_RUN_MS),
     });
 
     try {

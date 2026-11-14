@@ -43,7 +43,7 @@ import {
   type LifecycleContext,
   type TurnObservation,
 } from '../chat-lifecycle.js';
-import { turnOwnerId } from './turn-owner.js';
+import { channelTurnSource, turnOwnerId } from './turn-owner.js';
 import { log } from '../logger.js';
 import { recordEvent } from '../observability/index.js';
 import type { ReasoningEffort } from '../models/catalogue.js';
@@ -235,6 +235,7 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
    */
   const lifecycleContext = (): LifecycleContext => ({
     userId: turnOwnerId(req),
+    channelSource: channelTurnSource(req),
     conversationId,
     agentId,
     assistantMessageId,

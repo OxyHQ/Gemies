@@ -167,45 +167,6 @@ describe('saveConversation (append-only)', () => {
     expect(rows.slice(0, 2).map((row) => row.id)).toEqual(firstIds);
   });
 
-  it('(f) a message kept when it arrived (a channel) gets only the reply appended after it', async () => {
-    await saveConversation({
-      agentId: ALIA_GEMIE_ID,
-      userId: USER,
-      conversationId: CONV,
-      messages: [{ role: 'user', content: 'U1' }],
-      assistantResponse: 'A1',
-    });
-    // The channel kept U2 the moment it arrived; the turn's client history ends with it.
-    const { appendConversationMessages } = await import('../conversation-saver.js');
-    await appendConversationMessages({
-      userId: USER,
-      conversationId: CONV,
-      agentId: ALIA_GEMIE_ID,
-      titleOnInsert: 'x',
-      messages: [{ id: 'telegram:1:2', role: 'user', content: 'U2' }],
-    });
-    const before = (await stored()).map((row) => row.id);
-
-    await saveConversation({
-      agentId: ALIA_GEMIE_ID,
-      userId: USER,
-      conversationId: CONV,
-      messages: THREE_TURNS,
-      assistantResponse: 'A2',
-    });
-
-    const rows = await stored();
-    expect(rows.map((row) => [row.seq, row.content])).toEqual([
-      [0, 'U1'],
-      [1, 'A1'],
-      [2, 'U2'],
-      [3, 'A2'],
-    ]);
-    // Appended, not rewritten: U2 keeps the row (and the id) it arrived with.
-    expect(rows.slice(0, 3).map((row) => row.id)).toEqual(before);
-    expect(rows[2]?.clientMessageId).toBe('telegram:1:2');
-  });
-
   it('(b) an edited history diverges from the stored tail and forces a rewrite', async () => {
     await saveConversation({
       agentId: ALIA_GEMIE_ID,
@@ -702,5 +663,93 @@ describe('reaction preservation during server reconciliation', () => {
     expect((await stored()).find((row) => row.clientMessageId === 'reaction-answer')).toMatchObject(
       { reactions: null, reactionRevision: 2 },
     );
+  });
+});
+
+/**
+ * A channel keeps each message the moment it arrives and its turns overlap, so a channel turn is
+ * appended after what the conversation holds; the history it sent is only the model's context.
+ */
+describe('saveConversation (a channel turn)', () => {
+  const keep = async (id: string, content: string) => {
+    const { appendConversationMessages } = await import('../conversation-saver.js');
+    await appendConversationMessages({
+      userId: USER,
+      conversationId: CONV,
+      agentId: ALIA_GEMIE_ID,
+      titleOnInsert: 'Telegram · Ana',
+      source: 'telegram',
+      messages: [{ id, role: 'user', content }],
+    });
+  };
+  const reply = (history: { id?: string; role: string; content: string }[], text: string) =>
+    saveConversation({
+      agentId: ALIA_GEMIE_ID,
+      userId: USER,
+      conversationId: CONV,
+      messages: history,
+      assistantResponse: text,
+      channelSource: 'telegram',
+    });
+
+  it('appends only the reply after a message kept when it arrived, named after it', async () => {
+    await keep('telegram:1:1', 'U1');
+    const before = (await stored()).map((row) => row.id);
+
+    await reply([{ id: 'telegram:1:1', role: 'user', content: 'U1' }], 'A1');
+
+    const rows = await stored();
+    expect(rows.map((row) => [row.seq, row.clientMessageId, row.content])).toEqual([
+      [0, 'telegram:1:1', 'U1'],
+      [1, 'reply:telegram:1:1', 'A1'],
+    ]);
+    expect(rows[0]?.id).toBe(before[0]);
+  });
+
+  it('keeps a message that arrived while the turn before it ran, and both replies', async () => {
+    await keep('telegram:1:1', 'U1');
+    await keep('telegram:1:2', 'U2');
+
+    // Each turn read the conversation before the other's reply was stored.
+    await reply([{ id: 'telegram:1:1', role: 'user', content: 'U1' }], 'A1');
+    await reply(
+      [
+        { id: 'telegram:1:1', role: 'user', content: 'U1' },
+        { id: 'telegram:1:2', role: 'user', content: 'U2' },
+      ],
+      'A2',
+    );
+
+    expect((await stored()).map((row) => [row.clientMessageId, row.content])).toEqual([
+      ['telegram:1:1', 'U1'],
+      ['telegram:1:2', 'U2'],
+      ['reply:telegram:1:1', 'A1'],
+      ['reply:telegram:1:2', 'A2'],
+    ]);
+  });
+
+  it('never cuts the thread down to a history the channel could not read', async () => {
+    await keep('telegram:1:1', 'U1');
+    await reply([{ id: 'telegram:1:1', role: 'user', content: 'U1' }], 'A1');
+    await keep('telegram:1:2', 'U2');
+
+    // The channel's read of the conversation failed: it sent the new message alone.
+    await reply([{ id: 'telegram:1:2', role: 'user', content: 'U2' }], 'A2');
+
+    expect((await stored()).map((row) => row.content)).toEqual(['U1', 'A1', 'U2', 'A2']);
+  });
+
+  it('appends its person’s message too when the channel did not keep it', async () => {
+    await reply([{ role: 'user', content: 'U1' }], 'A1');
+
+    expect((await stored()).map((row) => [row.role, row.content])).toEqual([
+      ['user', 'U1'],
+      ['assistant', 'A1'],
+    ]);
+    const [conversation] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.oxyUserId, USER));
+    expect(conversation?.source).toBe('telegram');
   });
 });
