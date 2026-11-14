@@ -135,7 +135,7 @@ router.post('/speech', async (req: Request, res: Response) => {
       return res.status(404).json({ error: { message: 'Message not found', retryable: false } });
     // Standalone speech historically admits every authenticated user without
     // an Alia credit operation. Bundle presence must not change that policy.
-    // Voice-call chat turns and show episodes retain their own existing metering.
+    // Voice-call chat turns retain their own existing metering.
     const clip = await obtainSpeechClip(getDb(), {
       userId,
       input: body.input,

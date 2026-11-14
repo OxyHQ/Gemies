@@ -51,7 +51,8 @@ const used = files.flatMap((file) =>
 describe('the keys the app names', () => {
   it('read a real census, not an empty one', () => {
     expect(files.length).toBeGreaterThan(250);
-    expect(used.length).toBeGreaterThan(1000);
+    // 919 when the shows screens left (generated podcasts are Syra's); a floor, not the count.
+    expect(used.length).toBeGreaterThan(800);
     expect(used.map((use) => use.key)).toContain('models.localInvite.title');
   });
 

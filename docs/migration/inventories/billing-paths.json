@@ -214,7 +214,7 @@
           "classification": "ENTITLEMENT",
           "callers": ["lib/credits-manager.ts"],
           "reachable": true,
-          "entrypoint": "reserveCredits and the under-reserved branch of _adjustReservation \u2014 every chat, image, audio, voice, show and agent turn. Consumes the allowance free-first, which is why a request is funded by the free bucket wherever it can be."
+          "entrypoint": "reserveCredits and the under-reserved branch of _adjustReservation \u2014 every chat, image, audio, voice and agent turn. Consumes the allowance free-first, which is why a request is funded by the free bucket wherever it can be."
         },
         {
           "fn": "spendCreditsPaidFirst",
@@ -266,11 +266,9 @@
       "lib/chat/request-context.ts",
       "lib/gemie-telegram-bot.ts",
       "lib/seed-comped-accounts.ts",
-      "lib/show/show-pipeline.ts",
       "routes/billing.ts",
       "routes/credits.ts",
       "routes/referrals.ts",
-      "routes/shows.ts",
       "routes/v1.ts"
     ]
   },

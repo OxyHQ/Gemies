@@ -14,7 +14,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 const H = vi.hoisted(() => ({
   handled: new Set<string>(),
-  dropCover: vi.fn(async (_db: unknown, _fileId: string) => ['series-1']),
   deleteLibrary: vi.fn(async (_db: unknown, _fileId: string) => 1),
   deleteClips: vi.fn(async (_db: unknown, _fileId: string) => [
     { cacheKey: 'clip-1', objectKey: 'legacy/clip.mp3', oxyFileId: 'f' },
@@ -39,7 +38,6 @@ vi.mock('../../db/files/oxyFileRepository.js', () => ({
   recordFileReferences: H.references,
   markLegacyObjectsMaybeGarbage: H.garbage,
 }));
-vi.mock('../../db/shows/showRepository.js', () => ({ dropSeriesCoverFile: H.dropCover }));
 vi.mock('../../db/library/libraryFileRepository.js', () => ({
   deleteLibraryFilesByOxyFile: H.deleteLibrary,
 }));
@@ -126,7 +124,7 @@ describe('the endpoint', () => {
     const response = await post(body, sign(body, 'whsec_issued_in_the_response'));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ challenge: 'c-0' });
-    expect(H.dropCover).not.toHaveBeenCalled();
+    expect(H.deleteLibrary).not.toHaveBeenCalled();
   });
 
   it('echoes the verification challenge', async () => {
@@ -136,19 +134,19 @@ describe('the endpoint', () => {
   });
 
   it('refuses a missing, wrong or stale signature', async () => {
-    const body = event('file.deleted', [{ entityType: 'show_series', entityId: 's' }]);
+    const body = event('file.deleted', [{ entityType: 'library_file', entityId: 'l' }]);
     expect((await post(body)).status).toBe(401);
     expect((await post(body, sign(body, 'whsec_someone_else'))).status).toBe(401);
     expect(
       (await post(body, sign(body, SECRET, Math.floor(Date.now() / 1000) - 3600))).status,
     ).toBe(401);
-    expect(H.dropCover).not.toHaveBeenCalled();
+    expect(H.deleteLibrary).not.toHaveBeenCalled();
   });
 
   it('refuses a body some parser already consumed', async () => {
-    const body = event('file.deleted', [{ entityType: 'show_series', entityId: 's' }]);
+    const body = event('file.deleted', [{ entityType: 'library_file', entityId: 'l' }]);
     expect((await post(body, sign(body), parsedBase)).status).toBe(500);
-    expect(H.dropCover).not.toHaveBeenCalled();
+    expect(H.deleteLibrary).not.toHaveBeenCalled();
   });
 
   it('is mounted above express.json() in the real app', () => {
@@ -165,12 +163,10 @@ describe('the endpoint', () => {
 describe('what an event does', () => {
   it('a deleted or blocked file lets go of every row of Alia that used it', async () => {
     const body = event('file.blocked', [
-      { entityType: 'show_series', entityId: 's' },
       { entityType: 'library_file', entityId: 'l' },
       { entityType: 'speech_clip', entityId: 'clip-1' },
     ]);
     expect((await post(body, sign(body))).status).toBe(204);
-    expect(H.dropCover).toHaveBeenCalledWith(expect.anything(), 'f');
     expect(H.deleteLibrary).toHaveBeenCalledWith(expect.anything(), 'f');
     expect(H.deleteClips).toHaveBeenCalledWith(expect.anything(), 'f');
     expect(H.references).toHaveBeenCalledWith(expect.anything(), [
@@ -184,10 +180,10 @@ describe('what an event does', () => {
   });
 
   it('acts on a redelivery only once', async () => {
-    const body = event('file.deleted', [{ entityType: 'show_series', entityId: 's' }]);
+    const body = event('file.deleted', [{ entityType: 'library_file', entityId: 'l' }]);
     expect((await post(body, sign(body))).status).toBe(204);
     expect((await post(body, sign(body))).status).toBe(204);
-    expect(H.dropCover).toHaveBeenCalledTimes(1);
+    expect(H.deleteLibrary).toHaveBeenCalledTimes(1);
   });
 
   it('only records trash, restore and visibility changes', async () => {
@@ -197,18 +193,17 @@ describe('what an event does', () => {
       'file.unblocked',
       'file.visibility_changed',
     ]) {
-      const body = event(type, [{ entityType: 'show_series', entityId: 's' }]);
+      const body = event(type, [{ entityType: 'library_file', entityId: 'l' }]);
       expect((await post(body, sign(body))).status).toBe(204);
     }
-    expect(H.dropCover).not.toHaveBeenCalled();
     expect(H.deleteLibrary).not.toHaveBeenCalled();
   });
 
   it('answers 500 when handling fails, so Oxy delivers it again', async () => {
-    H.dropCover.mockRejectedValueOnce(new Error('connection lost'));
-    const body = event('file.deleted', [{ entityType: 'show_series', entityId: 's' }]);
+    H.deleteLibrary.mockRejectedValueOnce(new Error('connection lost'));
+    const body = event('file.deleted', [{ entityType: 'library_file', entityId: 'l' }]);
     expect((await post(body, sign(body))).status).toBe(500);
     expect((await post(body, sign(body))).status).toBe(204);
-    expect(H.dropCover).toHaveBeenCalledTimes(2);
+    expect(H.deleteLibrary).toHaveBeenCalledTimes(2);
   });
 });

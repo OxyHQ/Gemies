@@ -27,15 +27,14 @@
  * Only Alia's OWN references in the event are acted on (`event.references`):
  *
  * - `file.deleted`, `file.blocked`: the file can never be shown again, so what
- *   uses it lets go — a series loses its cover (the legacy Syra cover too: it
- *   is the same bytes, and showing it would route around a takedown), a library
- *   file or a spoken clip loses its row. A skill's bundled file cannot be
- *   removed from a published version, so it is logged for a person: the file
- *   route answers 404 for it from then on, because Oxy will not serve it.
+ *   uses it lets go — a library file or a spoken clip loses its row. A skill's
+ *   bundled file cannot be removed from a published version, so it is logged
+ *   for a person: the file route answers 404 for it from then on, because Oxy
+ *   will not serve it.
  * - `file.trashed`, `file.restored`, `file.unblocked`, `file.visibility_changed`:
  *   recorded in the log. Nothing Alia uses is trashed while referenced; a
  *   person's trash is theirs to restore; a takedown that is lifted does not
- *   bring back a cover that was already cleared.
+ *   bring back a row that was already removed.
  *
  * Delivery is at least once. Every handler is idempotent, and an event is
  * remembered by id only after it was handled, so a failure answers 500 and Oxy
@@ -57,7 +56,6 @@ import {
 } from '../db/files/oxyFileRepository.js';
 import { deleteLibraryFilesByOxyFile } from '../db/library/libraryFileRepository.js';
 import { deleteSpeechClipsByOxyFile } from '../db/chat/speechClipRepository.js';
-import { dropSeriesCoverFile } from '../db/shows/showRepository.js';
 import { log } from '../lib/logger.js';
 
 /** Event types after which nothing may show the file again. */
@@ -135,22 +133,11 @@ async function handleFileEvent(event: FileEvent): Promise<void> {
       { type: event.type, status: event.file.status, visibility: event.file.visibility },
       'Oxy file event recorded',
     );
-    if (
-      event.type === 'file.visibility_changed' &&
-      event.file.visibility !== 'public' &&
-      event.references.some((reference) => reference.entityType === 'show_series')
-    ) {
-      log.files.error('A show cover stopped being public; its artwork will not load');
-    }
     return;
   }
 
   const types = new Set(event.references.map((reference) => reference.entityType));
   const db = getDb();
-  if (types.has('show_series')) {
-    const series = await dropSeriesCoverFile(db, fileId);
-    log.files.warn({ type: event.type, series: series.length }, 'Series covers removed by Oxy');
-  }
   if (types.has('library_file')) {
     const removed = await deleteLibraryFilesByOxyFile(db, fileId);
     log.files.warn({ type: event.type, removed }, 'Library files removed by Oxy');

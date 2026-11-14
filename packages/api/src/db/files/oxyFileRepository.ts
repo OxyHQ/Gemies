@@ -14,6 +14,7 @@ import type {
   LegacyReadKind,
   LegacyStoredObjectKind,
   OxyFileEntityType,
+  OxyFileReferenceEntityType,
   OxyFileReferenceState,
 } from '../../domain/oxy-files.js';
 import type { ApiDatabase, Executor } from '../index';
@@ -25,7 +26,6 @@ import {
   oxyFileReferenceSync,
   storageGcCandidates,
 } from '../schema/oxy-files';
-import { showSeries } from '../schema/shows';
 import { skillFiles } from '../schema/skills';
 import { speechClips } from '../schema/speech';
 
@@ -96,7 +96,13 @@ export async function recordFileReferences(
     });
 }
 
-export interface ClaimedReferenceSync extends FileReferenceIntent {
+/**
+ * A claimed intent. Its entity class may be one Alia only releases now
+ * (`RELEASE_ONLY_OXY_FILE_ENTITY_TYPES`): the outbox delivers whatever a
+ * transaction or a migration left in it.
+ */
+export interface ClaimedReferenceSync extends Omit<FileReferenceIntent, 'entityType'> {
+  readonly entityType: OxyFileReferenceEntityType;
   readonly generation: number;
   readonly attempts: number;
 }
@@ -238,8 +244,6 @@ async function inventoryPage(
   after: string,
 ): Promise<{ fileId: string; entityId: string }[]> {
   switch (entityType) {
-    case 'show_series':
-      return pageOf(db, showSeries, showSeries.id, showSeries.coverFileId, after);
     case 'library_file':
       return pageOf(db, libraryFiles, libraryFiles.id, libraryFiles.oxyFileId, after);
     case 'speech_clip':
@@ -251,7 +255,7 @@ async function inventoryPage(
 
 async function pageOf(
   db: ApiDatabase,
-  // biome-ignore lint/suspicious/noExplicitAny: four concrete tables share one keyset query.
+  // biome-ignore lint/suspicious/noExplicitAny: three concrete tables share one keyset query.
   table: any,
   // biome-ignore lint/suspicious/noExplicitAny: see above.
   idColumn: any,
@@ -381,7 +385,7 @@ export async function legacyReadsInWindow(
 /** Rows still naming a legacy object and no Oxy file — the second half of the retirement gate. */
 export async function rowsStillOnLegacyStorage(db: ApiDatabase): Promise<Record<string, number>> {
   const count = async (
-    // biome-ignore lint/suspicious/noExplicitAny: four concrete tables share one count.
+    // biome-ignore lint/suspicious/noExplicitAny: three concrete tables share one count.
     table: any,
     // biome-ignore lint/suspicious/noExplicitAny: see above.
     legacy: any,
@@ -395,7 +399,6 @@ export async function rowsStillOnLegacyStorage(db: ApiDatabase): Promise<Record<
     return row?.n ?? 0;
   };
   return {
-    show_series: await count(showSeries, showSeries.coverImageAssetId, showSeries.coverFileId),
     library_file: await count(libraryFiles, libraryFiles.url, libraryFiles.oxyFileId),
     speech_clip: await count(speechClips, speechClips.objectKey, speechClips.oxyFileId),
     skill_file: await count(skillFiles, skillFiles.s3Key, skillFiles.oxyFileId),

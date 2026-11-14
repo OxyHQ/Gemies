@@ -30,8 +30,6 @@ export const REALTIME_SIGNAL_TYPES = [
   'presence',
   /** A device offering its own inference runtime joined or left. */
   'runtimes',
-  /** A show episode's generation progress. */
-  'show.progress',
   /** An agent run's detailed activity, on its topic (`agent:<id>`, `agent-session:<id>`). */
   'agent.activity',
 ] as const;

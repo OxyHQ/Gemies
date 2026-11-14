@@ -472,4 +472,5 @@ reported that same `shell: false, browser: false` and went with it.
   #327: it does not. The workstream 1 inventory had already assigned all five routes
   `"proposedOwner": "alia"` and `"targetPath": "keep-alia-product"`, so they moved to
   `/shows` beside `/conversations`, `/skills` and `/agents`. This surface is fifteen
-  routes, and it lost five without gaining any.
+  routes, and it lost five without gaining any. `/shows` itself went later with podcast
+  generation, which belongs to Syra (reached through the Syra connector).

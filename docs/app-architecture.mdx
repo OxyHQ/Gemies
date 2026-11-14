@@ -44,9 +44,9 @@ packages/app/
       testing/              stubs and helpers only tests import
 ```
 
-The features are `chat`, `voice`, `agents`, `automations` (tasks included),
-`memory`, `library`, `projects`, `shows`, `skills`, `connections`,
-`local-models`, `billing`, `onboarding`, `notifications` and `settings`. A
+The features are `chat`, `voice`, `agents`, `memory`, `library`, `projects`,
+`spaces`, `skills`, `connections`, `local-models`, `billing`, `onboarding`,
+`notifications`, `profile`, `realtime` and `settings`. A
 test sits in `__tests__/` beside the layer it mainly tests.
 
 ## Who may import whom
@@ -56,12 +56,12 @@ the shell. Between features, only these edges exist:
 
 | Feature | May import |
 | --- | --- |
-| shell | agents, chat, library, memory, onboarding, projects, settings, shows |
-| settings | billing, chat, connections, library, local-models, memory, skills |
-| automations | agents |
-| agents | chat |
-| chat | billing, connections, local-models, memory, notifications, projects, skills, voice |
-| shows | notifications |
+| shell | agents, chat, library, memory, onboarding, projects, settings, spaces |
+| spaces | agents |
+| settings | billing, chat, connections, library, local-models, memory, notifications, skills |
+| agents | chat, notifications, settings |
+| chat | billing, local-models, memory, notifications, projects, skills, voice |
+| realtime | billing, chat, local-models, projects |
 
 Every other feature imports only `shared/`. The graph has no cycle. When two
 features need the same type, it goes to `shared/contracts` rather than one

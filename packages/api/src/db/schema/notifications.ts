@@ -5,12 +5,6 @@
  * Seven models are EIGHT tables — `referral_redemptions` is a child
  * table, for the reason given at `referrals`.
  *
- * **`shows` left this file**, and its departure is the reason "small independent
- * tables" now names two rather than three: a generated show became a SERIES
- * published to Syra, which is three tables, a foreign key and a destination
- * outside Alia. That is a domain, not a table travelling with the neighbours it
- * happened to be ported beside. It lives in `shows.ts`.
- *
  * ## `dismissed_at` is the conditional TTL made expressible
  *
  * A dismissed notification is deleted 90 days after DISMISSAL — a CONDITIONAL

@@ -54,7 +54,7 @@ export function flatConversations({
 }
 
 /** The primary sidebar rows that are routes, keyed by the first path segment they own. */
-const ROUTE_ITEMS = ['agents', 'tasks', 'shows', 'notifications'] as const;
+const ROUTE_ITEMS = ['agents', 'tasks', 'notifications'] as const;
 
 /**
  * The sidebar's selected primary row for a pathname: its first segment, when
