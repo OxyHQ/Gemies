@@ -1404,7 +1404,9 @@
         "forgetDescription": "{{name}} will not remember it any more. This cannot be undone.",
         "forgotten": "Forgotten",
         "forgetFailed": "Could not forget it. Try again.",
-        "changedMeanwhile": "The Gemie changed this note while you were editing. Its latest version is shown."
+        "changedMeanwhile": "This note changed while you were editing it. Your edit is kept; its newest version is:",
+        "saveMineOverIt": "Save mine over it",
+        "discardMine": "Discard mine"
       },
       "telegramBot": {
         "title": "Telegram bot",

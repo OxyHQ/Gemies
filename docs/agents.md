@@ -856,8 +856,11 @@ content inside a `<memory>` element its content cannot close.
 
 **The person sees, edits and forgets it.** The agent's editor shows what it
 remembers about the person: its files (`GET|PUT /agents/:id/memory`),
-editable with the hash they were read at, and forgettable one file or all at
-once (`DELETE /agents/:id/memory[?path=]`). The caller only ever reaches their
+editable with the hash the edit started from, and forgettable one file or all at
+once (`DELETE /agents/:id/memory[?path=]`). An unsaved edit is the person's: a
+refetch never replaces it, and when the file changed under it (a 409) the editor
+keeps it, shows the newest version and lets them save theirs over it or discard
+it (`agent-memory-section.tsx`). The caller only ever reaches their
 OWN rows; an agent is addressable when it already remembers them (a public
 agent included) or when they may act as its bot account. "Olvida esto" in chat
 uses `forgetUserMemory` (Alia: entry and its embedding) or the agent's
