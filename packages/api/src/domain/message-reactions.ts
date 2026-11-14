@@ -35,7 +35,7 @@ export function parseReaction(value: unknown): string | null {
 
 /** Emoji characters only, however many: what a reaction was before it had to be one emoji. */
 const HELD =
-  /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|[0-9#*\u200d\ufe0f\u20e3])+$/u;
+  /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|[0-9#*]|\u200d|\ufe0f|\u20e3)+$/u;
 
 /**
  * A reaction the person takes back: one emoji, or one stored before a reaction had to be (`👍🎉`).
