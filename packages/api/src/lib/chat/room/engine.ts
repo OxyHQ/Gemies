@@ -446,9 +446,9 @@ async function speak(input: {
               id: trigger.clientMessageId ?? trigger.id,
               content: trigger.content,
             }),
-            expectedLatestUserMessage: {
-              id: trigger.clientMessageId ?? trigger.id,
-              content: trigger.content,
+            trigger: {
+              kind: 'person',
+              message: { id: trigger.clientMessageId ?? trigger.id, content: trigger.content },
             },
             surfaceApplicationId: data.surfaceApplicationId,
             allowedActorIds: data.roster

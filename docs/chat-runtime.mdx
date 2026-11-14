@@ -222,10 +222,18 @@ runs in its external daemon and receives no hosted reaction capability; a sender
 local after admission cannot mutate or complete a hosted reaction turn. Its historical messages
 remain valid feedback targets without creating an Oxy account or waking that daemon.
 
-This capability applies to normal person-to-gemie and group turns. Conversations between gemies
-(ADR 0042) remain read-only for the person, including the reaction endpoint's `403` response.
-Their asynchronous `sendMessage` chain receives no reaction capability. A turn that also calls
-`sendMessage` cannot finish as reaction-only: its message and ordinary completion remain visible.
+Conversations between gemies (ADR 0042) remain read-only for the person, including the reaction
+endpoint's `403` response. Their hosted actors can react under a separate peer admission: the
+server checks the owned pair, both identities and the exact latest peer message under the thread
+lock. An absent person message never substitutes for this authority. A peer reaction creates no
+new chain and grants no additional Oxy tools or task authority.
+
+A clean recipient reaction counts as a contribution and continues the already admitted chain
+once, carrying attributed feedback rather than a fabricated answer. The initiator can react to a
+textual peer reply in that pair while finishing its work for the person; a quiet completion ends
+the chain and is replayable after a lost delivery. Receiving only an emoji does not create a
+reciprocal reaction capability. A turn that also calls `sendMessage` cannot finish as reaction-only:
+its message and ordinary completion remain visible.
 
 `reactions` remains the person's own emoji selection. Additive `reactionEntries` contains
 `{ emoji, author: { kind: 'user', id } }` or

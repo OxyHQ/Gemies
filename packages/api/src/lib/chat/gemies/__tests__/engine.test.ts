@@ -28,9 +28,13 @@ const LUMEN: AgentInfo = {
 
 type Turn = Parameters<RoomEngineDeps['runTurn']>[0];
 /** What each gemie does on its turn: its words, and whether (and what) it writes on. */
-type Script = (
-  turn: Turn,
-) => Promise<{ text: string; write?: string; error?: string; canvas?: ToolInvocation[] }>;
+type Script = (turn: Turn) => Promise<{
+  text: string;
+  write?: string;
+  error?: string;
+  canvas?: ToolInvocation[];
+  reactionOnly?: true;
+}>;
 
 function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUNDS) {
   const store = new Map<string, TranscriptRow[]>();
@@ -69,6 +73,7 @@ function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUN
         response: done.text,
         tokensUsed: 100,
         creditsCharged: 1,
+        ...(done.reactionOnly ? { reactionOnly: true } : {}),
         ...(done.error ? { error: done.error } : {}),
         ...(done.canvas ? { canvas: done.canvas } : {}),
       } as AgentTurnResult;
@@ -217,8 +222,8 @@ describe('a conversation between two gemies', () => {
     expect(pepe.gemieChain?.peerId).toBe('lumen');
     expect(pepe.person).toMatchObject({ isDirectSession: false, taskId: 'task-pepe' });
     expect(JSON.parse(pepe.task.slice(pepe.task.indexOf('['))) as unknown).toEqual([
-      { from: 'you', text: 'Hello?' },
-      { from: 'Lumen', text: 'Fine.' },
+      { from: 'you', text: 'Hello?', reactions: [] },
+      { from: 'Lumen', text: 'Fine.', reactions: [] },
     ]);
   });
 
@@ -387,6 +392,123 @@ describe('failures and retries', () => {
         ['between', 'group.idle', 'error'],
         ['chat', 'group.idle', 'error'],
       ],
+    );
+  });
+});
+
+describe('peer reactions within an already admitted chain', () => {
+  it('continues once with attributed feedback and counts a quiet recipient contribution without an empty row', async () => {
+    const w = world({
+      lumen: async () => {
+        const row = w.rowsOf('between')[0]!;
+        w.rowsOf('between')[0] = {
+          ...row,
+          reactionEntries: [
+            { emoji: '❤️', author: { kind: 'agent', id: LUMEN.id, name: LUMEN.name } },
+          ],
+        };
+        return { text: '', reactionOnly: true };
+      },
+      pepe: async (turn) => {
+        expect(turn.task).toContain('"emoji":"❤️"');
+        expect(turn.task).toContain('"kind":"agent"');
+        // Receiving only a reaction does not grant a capability to react back.
+        expect(turn.conversationReaction).toBeUndefined();
+        return { text: '' };
+      },
+    });
+    const prepare = vi.fn<NonNullable<RoomEngineDeps['prepareReaction']>>(async () => undefined);
+    const deps = { ...w.deps, room: { ...w.deps.room, prepareReaction: prepare } };
+    await w.start('Gracias por comprobarlo.');
+    expect(await processGemieStep(w.queue.shift()!, deps)).toBe('continued');
+    expect(prepare.mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'between',
+      allowedActorIds: ['lumen'],
+      trigger: {
+        kind: 'peer',
+        chainId: 'chain',
+        message: {
+          id: 'gemie-message-chain-0',
+          content: 'Gracias por comprobarlo.',
+          actorId: 'pepe',
+        },
+      },
+    });
+    expect(w.queue[0]?.messages).toBe(2);
+    expect(await processGemieStep(w.queue.shift()!, deps)).toBe('ended');
+    expect(w.queue).toEqual([]);
+    expect(w.said('between')).toHaveLength(1);
+    expect(w.said('chat')).toEqual([]);
+    expect(w.events).toContainEqual(
+      expect.objectContaining({
+        conversationId: 'between',
+        event: 'alia.agent_end',
+        data: expect.objectContaining({ status: 'completed', reactionOnly: true }),
+      }),
+    );
+  });
+
+  it('replays a durable recipient reaction after lost enqueue without another inference or double count', async () => {
+    let completed = false;
+    const w = world({
+      lumen: async () => {
+        completed = true;
+        return { text: '', reactionOnly: true };
+      },
+    });
+    await w.start('Gracias.');
+    const job = w.queue.shift()!;
+    const replay = vi.fn(async () => undefined);
+    const enqueue = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Queue unavailable'))
+      .mockImplementation(w.deps.enqueue);
+    const deps = {
+      ...w.deps,
+      enqueue,
+      room: { ...w.deps.room, reactionCompleted: async () => completed, replayReactions: replay },
+    };
+    await expect(processGemieStep(job, deps)).rejects.toThrow('Queue unavailable');
+    expect(await processGemieStep(job, deps)).toBe('continued');
+    expect(w.turns).toHaveLength(1);
+    expect(replay).toHaveBeenCalledOnce();
+    expect(w.queue).toHaveLength(1);
+    expect(w.queue[0]).toMatchObject({ phase: 'continue', messages: 2 });
+    expect(w.said('between')).toHaveLength(1);
+  });
+
+  it('lets the initiator react to a textual peer reply in the pair, then ends without another message', async () => {
+    const w = world({
+      lumen: async () => ({ text: 'Hecho.' }),
+      pepe: async () => ({ text: '', reactionOnly: true }),
+    });
+    const prepare = vi.fn<NonNullable<RoomEngineDeps['prepareReaction']>>(async () => undefined);
+    const deps = { ...w.deps, room: { ...w.deps.room, prepareReaction: prepare } };
+    await w.start('Comprueba el enlace.');
+    await processGemieStep(w.queue.shift()!, deps);
+    const continuation = w.queue.shift()!;
+    expect(await processGemieStep(continuation, deps)).toBe('ended');
+    expect(prepare.mock.calls[1]?.[0]).toMatchObject({
+      conversationId: 'between',
+      allowedActorIds: ['pepe'],
+      trigger: { kind: 'peer', message: { actorId: 'lumen', content: 'Hecho.' } },
+    });
+    expect(w.said('between')).toHaveLength(2);
+    expect(w.said('chat')).toEqual([]);
+    expect(w.queue).toEqual([]);
+    const replay = vi.fn(async () => undefined);
+    await processGemieStep(continuation, {
+      ...deps,
+      room: { ...deps.room, reactionCompleted: async () => true, replayReactions: replay },
+    });
+    expect(replay).toHaveBeenCalledOnce();
+    expect(w.turns).toHaveLength(2);
+    expect(w.events).toContainEqual(
+      expect.objectContaining({
+        conversationId: 'chat',
+        event: 'alia.agent_end',
+        data: expect.objectContaining({ reactionOnly: true }),
+      }),
     );
   });
 });

@@ -5,7 +5,7 @@ import {
   listAgentReactionTargets,
   markAgentReactionTurnComplete,
   mutateAgentMessageReaction,
-  type ReactionUserSnapshot,
+  type AgentReactionTrigger,
 } from '../../../db/chat/reactionRepository.js';
 import { agentOpensOn } from '../../agent-availability.js';
 import { agentPromptName, type HydratedAgent } from '../../agent-identity.js';
@@ -17,7 +17,7 @@ export async function prepareAgentReactionTurn(input: {
   conversationId: string;
   agent: HydratedAgent;
   turnId: string;
-  expectedLatestUserMessage: ReactionUserSnapshot;
+  trigger: AgentReactionTrigger;
   surfaceApplicationId: string | null;
   /** The reachable roster authorized at admission; a direct turn contains only its own actor. */
   allowedActorIds: readonly string[];
@@ -54,7 +54,7 @@ export async function prepareAgentReactionTurn(input: {
         mutationId,
         emoji,
         active,
-        expectedLatestUserMessage: input.expectedLatestUserMessage,
+        trigger: input.trigger,
         expectedTarget: { content: target.content, role: target.role, actorId: target.agentInfoId },
       });
     },
@@ -71,7 +71,7 @@ export async function prepareAgentReactionTurn(input: {
         input.conversationId,
         input.agent._id,
         input.turnId,
-        input.expectedLatestUserMessage,
+        input.trigger,
       ),
   });
 }

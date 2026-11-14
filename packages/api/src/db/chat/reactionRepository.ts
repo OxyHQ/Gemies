@@ -15,7 +15,7 @@ import {
   sql,
 } from 'drizzle-orm';
 import type { ApiDatabase, Executor } from '../index';
-import { conversationMembers, conversations, messages } from '../schema/chat';
+import { conversationMembers, conversations, gemieConversations, messages } from '../schema/chat';
 import {
   agentReactionTurns,
   conversationActivities,
@@ -148,11 +148,16 @@ export async function mutateMessageReaction(
 
 export type ReactionUserSnapshot = { id: string; content: unknown } | null;
 
+/** Internal admission provenance. A peer message never stands in for a person request. */
+export type AgentReactionTrigger =
+  | { kind: 'person'; message: ReactionUserSnapshot }
+  | { kind: 'peer'; chainId: string; message: { id: string; content: unknown; actorId: string } };
+
 export interface AgentReactionMutation {
   /** Bound by the authorized actor runtime; never parsed from public reaction input. */
   actor: { id: string; name: string };
   turnId: string;
-  expectedLatestUserMessage: ReactionUserSnapshot;
+  trigger: AgentReactionTrigger;
   expectedTarget: { content: unknown; role: string; actorId: string | null };
   mutationId: string;
   emoji: string;
@@ -173,7 +178,7 @@ async function memberExists(db: Executor, userId: string, conversationId: string
   const [agent] = await db
     .select({ id: agents.id })
     .from(agents)
-    .where(eq(agents.id, actorId))
+    .where(and(eq(agents.id, actorId), eq(agents.identity, 'oxy')))
     .limit(1)
     .for('share');
   if (!agent) return false;
@@ -216,6 +221,57 @@ async function latestMatches(
     : expected === null;
 }
 
+/** Called under the same thread lock as every message mutation and completion. */
+async function reactionTriggerMatches(
+  db: Executor,
+  userId: string,
+  conversationId: string,
+  actorId: string,
+  trigger: AgentReactionTrigger,
+) {
+  const [pair] = await db
+    .select()
+    .from(gemieConversations)
+    .where(
+      and(
+        eq(gemieConversations.oxyUserId, userId),
+        eq(gemieConversations.conversationId, conversationId),
+      ),
+    )
+    .limit(1)
+    .for('share');
+  if (trigger.kind === 'person') {
+    // A null person snapshot must never turn an unattended peer conversation into a person turn.
+    return !pair && latestMatches(db, userId, conversationId, trigger.message);
+  }
+  if (!pair || actorId === trigger.message.actorId) return false;
+  const members = [pair.firstAgentId, pair.secondAgentId];
+  if (!members.includes(actorId) || !members.includes(trigger.message.actorId)) return false;
+  const prefixes = [`gemie-message-${trigger.chainId}-`, `group-reply-gemies-${trigger.chainId}-`];
+  if (
+    !trigger.chainId ||
+    !prefixes.some(
+      (prefix) =>
+        trigger.message.id.startsWith(prefix) &&
+        /^[0-9]+$/.test(trigger.message.id.slice(prefix.length)),
+    )
+  )
+    return false;
+  const [latest] = await db
+    .select()
+    .from(messages)
+    .where(scope(userId, conversationId))
+    .orderBy(sql`${messages.seq} desc nulls last`, desc(messages.createdAt))
+    .limit(1);
+  return (
+    latest !== undefined &&
+    latest.role === 'assistant' &&
+    stableId(latest) === trigger.message.id &&
+    latest.agentInfoId === trigger.message.actorId &&
+    isDeepStrictEqual(latest.content, trigger.message.content)
+  );
+}
+
 async function mutateReaction(
   db: ApiDatabase,
   userId: string,
@@ -238,7 +294,13 @@ async function mutateReaction(
       return undefined;
     if (
       agentInput &&
-      !(await latestMatches(tx, userId, conversationId, agentInput.expectedLatestUserMessage))
+      !(await reactionTriggerMatches(
+        tx,
+        userId,
+        conversationId,
+        agentInput.actor.id,
+        agentInput.trigger,
+      ))
     )
       return undefined;
     const row = await targetRow(tx, userId, conversationId, messageId, true);
@@ -759,11 +821,11 @@ export async function markAgentReactionTurnComplete(
   conversationId: string,
   actorId: string,
   turnId: string,
-  expectedLatestUserMessage: ReactionUserSnapshot,
+  trigger: AgentReactionTrigger,
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
     await lockMessageThread(tx, userId, conversationId);
-    if (!(await latestMatches(tx, userId, conversationId, expectedLatestUserMessage))) return false;
+    if (!(await reactionTriggerMatches(tx, userId, conversationId, actorId, trigger))) return false;
     if (!(await memberExists(tx, userId, conversationId, actorId))) return false;
     const [receipt] = await tx
       .select({ id: reactionEvents.id })

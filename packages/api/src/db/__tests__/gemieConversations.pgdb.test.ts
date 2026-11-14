@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { personaGemie } from '../../__tests__/support/gemies';
 import { fileURLToPath } from 'node:url';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -151,7 +152,8 @@ describe('a chain of several turns, on Postgres', () => {
         events.push(event);
       },
       revokeTasks: async () => undefined,
-      loadAgent: async (id) => ({ _id: id }) as Awaited<ReturnType<RoomEngineDeps['loadAgent']>>,
+      loadAgent: async (id) =>
+        personaGemie({ _id: id, id, name: id === LUMEN.id ? 'Lumen' : 'Pepe' }),
       runTurn: async (turn) => {
         if (turn.agent._id === LUMEN.id) {
           const said = JSON.parse(turn.task.slice(turn.task.lastIndexOf('): ') + 3)) as string;
