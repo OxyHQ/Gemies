@@ -160,7 +160,7 @@ describe('onTurnEnd', () => {
     await deliver(contentFrame('Half of'));
 
     await act(async () => {
-      api.stop();
+      void api.stop();
       await settle();
     });
 

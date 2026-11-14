@@ -1,5 +1,11 @@
 # @gemies/server
 
+## 1.0.1
+
+- `createGemieTurnControl().stop()` aborts the stream only when the server answers `cancelled`.
+  A generation already past its commit point (`finishing`, `completed`, `failed`) was not stopped:
+  its stream now runs to its own end instead of being detached as if it had been cancelled.
+
 ## 1.0.0
 
 **`@alia.onl/server` becomes `@gemies/server`** (Gemies ADR 0034 §6), with no bridge package. The

@@ -1,5 +1,22 @@
 # @gemies/sdk
 
+## 6.4.0
+
+- **Stop no longer cancels an answer that had already finished.** The stop endpoint answers
+  `finishing` or `completed` when the turn was past its commit point; Stop cut the stream on any
+  `2xx`, so a stored answer settled as `cancelled` and kept `unsaved`. Now only `cancelled` cuts it;
+  any other answer lets the stream reach its own end, completed.
+- **Clearing a conversation waits for its running turn to end.** `useConversationStream().stop()`
+  now returns `Promise<boolean>`: `true` once the turn's stream is over, `false` when the server
+  could not stop it (the error is surfaced, as before). `clearConversation` awaits it before the
+  server clear, and refuses (keeping everything) when the turn could not be stopped, so a turn that
+  was finishing can no longer save its question and answer back into the cleared thread.
+  `GemieChatTurnControl` gains `ended`, which settles when `finish()` has run.
+- **Decks, dashboards and every other canvas open in the host.** `host.onArtifact` now receives
+  each finished `canvas` result as a `GemieArtifact` (`type` the canvas type, `content` its data,
+  `id` the tool call), read by `canvasResultOf` like the thread. A refused canvas (`{ error }`)
+  opens nothing.
+
 ## 6.3.1
 
 - **A turn's attachments keep the order they were sent in** (`TurnAttachments`): a document sent
