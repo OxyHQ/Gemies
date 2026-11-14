@@ -108,8 +108,9 @@ application's routing policy (`lib/chat/request-context.ts`).
 ## Group conversations are rooms
 
 A conversation with `conversation_members` is a group. Its members answer in a **room** that lives
-in API workers (ADR 0025). The request stores the person's message, checks member reach, mints Oxy
-task authority and subscribes before queueing. It forwards `alia.group_turn` and the existing
+in API workers (ADR 0025). The request stores the person's message, checks member reach and
+subscribes before queueing. First-party calls act for that person under Oxy's live registry
+authority; jobs retain owner, actor and surface identities, with no bearer or Oxy task grant. It forwards `alia.group_turn` and the existing
 `alia.agent_*` frames until the chain ends or its 70-second HTTP budget expires. Work can continue
 after that connection ends; the same room events arrive as `room` frames on the account's
 realtime connection ([Realtime](./realtime.mdx)), and each stored reply as a `conversation` frame.

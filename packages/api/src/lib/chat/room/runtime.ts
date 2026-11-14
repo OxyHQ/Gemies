@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { RoomRequestSupersededError } from './obligations.js';
 /**
- * The room engine wired to the real world: Postgres, Oxy tasks, the agent turn, the queue, the bus
+ * The room engine wired to the real world: Postgres, the agent turn, the queue, the bus
  * and the room lock. `engine.ts` takes all of these as parameters; this is the one place that
  * names the real ones. Resolved lazily so importing the queue does not load the database.
  */

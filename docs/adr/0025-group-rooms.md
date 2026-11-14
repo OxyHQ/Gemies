@@ -77,10 +77,11 @@ claim that Alia reproduces Grok Bot's internal implementation.
    actor's identity, remit, memory and tools; it describes capabilities from what is actually
    available. External agents receive this context through their existing task/history interface.
 7. **Authority stays at the edge.** `room/start.ts` checks `canReachAgent` including the surface
-   (ADR 0021), then mints each reachable member's Oxy task while the person's bearer is present.
-   Jobs carry task IDs, never bearers. A selected member runs through `runAgentTurn` as a task turn
-   (`isDirectSession: false`, `taskId`) with its own memory and tools, never Alia's. Failure to mint
-   a task gives that member no Oxy apps. Every chain exit revokes its tasks.
+   (ADR 0021) before admitting the roster. Jobs carry the owner, actor and surface identities, never
+   bearers. A selected member runs through `runAgentTurn` (`isDirectSession: false`) with its own
+   memory and tools, never Alia's. First-party Oxy calls act for the person under the live registry's
+   `actsForPeople` declaration (Oxy ADR 0066); no task grant is minted or retained. Every chain exit
+   clears its conversation activity.
 8. **Real time remains the existing event bus.** The bus publishes `alia.agent_start`,
    `agent_delta`, `agent_tool`, `agent_end`, `group.message` and `group.idle`. It uses Redis pub/sub
    or the local emitter and also sends `group:event` on the existing Socket.IO connection. Selection
@@ -187,7 +188,7 @@ or edits to that same row supersede it. The worker rechecks after inference and 
 text persistence also compares the original snapshot under the message-thread database lock.
 Workers intersect admitted members with current membership, active status and surface confinement;
 this does not repeat the full private-standing authorization performed at admission, does not
-expand its roster, and grants no new Oxy task authority. Already committed replies or reaction
+expand its roster, and grants no additional first-party or external authority. Already committed replies or reaction
 completions can replay without a fresh actor execution or contribution slot after membership loss.
 
 The JSON plan is limited to 16 assignments with bounded text and evidence, carried only in the
@@ -222,7 +223,7 @@ its jobs drain; deleting or abandoning a queue is not a rollback procedure.
   because it belongs to the room, and a completed exchange can stay quiet.
 - Selection adds a bounded inference call before an actor runs. Schema/roster validation makes
   control flow testable, but understanding a request still requires real-inference evaluation.
-- Jobs contain roster metadata, counters, task IDs, bounded assignments and a selected decision, not the transcript or
+- Jobs contain roster metadata, counters, bounded assignments and a selected decision, not the transcript or
   bearer. Workers load conversation data from Postgres when needed.
 - Infrastructure retries and at-most-once event delivery retain their existing limits. The stored
   message is the record after reconnection; the in-process queue fallback is not durable across a
@@ -246,8 +247,8 @@ its jobs drain; deleting or abandoning a queue is not a rollback procedure.
   already the truth and needs no second store.
 - **Reusing `agent-push-` ids for room replies.** Rejected: that prefix counts against an agent's
   check-in budget (`outreach-budget.ts`); a room reply is not a check-in.
-- **Carrying the person's bearer in the job.** Rejected: bearers do not belong in Redis; the Oxy task
-  is the sanctioned delegation (ADR 0022).
+- **Carrying the person's bearer in the job.** Rejected: bearers do not belong in Redis. First-party
+  calls use the admitted person's account and live registry authority (ADR 0022, Oxy ADR 0066).
 
 ## Enforcement
 

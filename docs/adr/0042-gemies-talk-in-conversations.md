@@ -110,9 +110,10 @@ finish quietly, but receiving only an emoji does not grant a reciprocal-reaction
   they are in), narrowed by the writer's `agent` grant, and for a space member exactly its peers and
   Alia (ADR 0028 §6's cut, unchanged). The recipient's feature gates are checked and spent against
   the turn's attachments before anything is sent (ADR 0020 §6).
-- **Authority and billing.** Each gemie's unattended turns act under an Oxy task minted when the
-  chain starts, while the person's bearer is present (as a room member's, ADR 0025 §7); every exit
-  revokes them. The person pays for every turn, as for every room turn.
+- **Authority and billing.** Each gemie's unattended turns act for the person under the live Oxy
+  registry's `actsForPeople` declaration (Oxy ADR 0066), preserving the admitted owner, actor and
+  surface checks (ADR 0025 §7). No Oxy task is minted or renewed; each exit clears chain activity.
+  The person pays for every turn, as for every room turn.
 - **Alia's memory.** When Alia is either side, her turns hold her reading tools only — never her
   memory (Nilo), never anything that sends, writes or acts — and her Oxy apps at `read_only`. Her
   memory never reaches another gemie (ADR 0034). This is stricter than `askAlia`, which let her read
