@@ -441,6 +441,7 @@ async function driveAgentSession(
           _id: session._id,
           userId: session.oxyUserId,
           agentId: session.agentId,
+          oxyTaskId: session.oxyTaskId,
           depth: session.depth,
           config: session.config,
         },

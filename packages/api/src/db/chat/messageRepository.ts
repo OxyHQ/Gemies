@@ -1094,7 +1094,7 @@ export async function countAgentOutreachSince(
  * of hers (`lib/agent/alia-outreach.ts`), so that conversation is the scope.
  */
 export async function countOutreachInConversationSince(
-  db: ApiDatabase,
+  db: Executor,
   oxyUserId: string,
   conversationId: string,
   since: Date,

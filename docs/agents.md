@@ -725,10 +725,18 @@ only when the requester may operate it. A public agent never exposes its
 owner's data to another person.
 
 Foreground calls use the shared requester-proof SDK. Goals store an Oxy task
-id created from the original requester, carry it into child runs, and retire it
-on cancellation or terminal completion. A worker never chooses the requester
+id created from the original requester, carry it into child runs — a delegated
+agent and every executor of an orchestrated session (`lib/agent/executor-pool.ts`)
+alike, so neither loses its `oxy_*` tools — and retire it on cancellation or
+terminal completion; only the session that owns it retires it, never a child. A worker never chooses the requester
 from the bot owner. Structured automations retain exact resources and limits.
 Old runs without provenance cannot acquire new own-data authority.
+
+The catalogues are read from Oxy's registry and cached 60 seconds
+(`lib/tools/oxy-catalog-defs.ts`). One app's registration that does not parse
+costs only that app, and not even that while its last valid catalogue is known:
+that one keeps serving, logged, until the registration parses again. An app
+the registry no longer lists goes.
 
 Nothing in the product has own-app access switches. Primary tools choose which catalogue
 tools appear immediately; feature gates still ask the product about entitlement.
@@ -792,7 +800,10 @@ a notification that opens `/@handle`.
   At most 3 per person and agent per rolling day, and none while its last 2
   messages are unanswered (`lib/agent/outreach-budget.ts`). Alia's own
   initiative (`postAliaCheckIn`, her outreach conversation) spends the same
-  budget, counted in that conversation.
+  budget, counted in that conversation. Both are serialized per person and
+  actor: one transaction takes `lockOutreachBudget`, re-reads the budget with
+  it and appends, so two check-ins arriving together never both spend the last
+  slot.
 - `scheduleFollowUp` persists a dated continuation of the current session, with
   the same requester task and cumulative step/token budget (at most 5 pending).
   Its result is not posted automatically; the agent speaks through
