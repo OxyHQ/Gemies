@@ -154,7 +154,6 @@ async function summarizeEntries(entries: EventStreamEntry[]): Promise<string> {
       system:
         'Summarize the following agent activity log into a concise bullet-point summary. Focus on: what was done, what was found, what decisions were made, and any errors encountered. Keep it under 300 words.',
       messages: [{ role: 'user', content }],
-      temperature: 0.1,
       maxRetries: 1,
     });
 

@@ -615,7 +615,6 @@ async function generateScript(
         model: getAIModel(resolved, 'media'),
         system: system,
         messages: [{ role: 'user', content: user }],
-        temperature: 0.8,
         maxRetries: 0,
       });
 

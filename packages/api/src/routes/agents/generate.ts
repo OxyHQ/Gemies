@@ -61,7 +61,6 @@ Do not include any text outside the JSON object.`,
               content: prompt.trim(),
             },
           ],
-          temperature: 0.7,
           maxRetries: 0,
         });
         break; // Success — exit retry loop

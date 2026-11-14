@@ -275,7 +275,6 @@ async function synthesizeResult(task: string, results: ExecutorResult[]): Promis
           content: `Original task: ${task}\n\nSubtask results:\n\n${resultsSummary}`,
         },
       ],
-      temperature: 0.2,
       maxRetries: 1,
     });
 

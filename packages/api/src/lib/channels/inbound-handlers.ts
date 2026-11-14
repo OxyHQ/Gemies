@@ -166,7 +166,6 @@ export async function processChannelMessage(
         role: m.role as 'user' | 'assistant',
         content: m.content,
       })),
-      temperature: 0.7,
       maxOutputTokens: 2048,
     });
 

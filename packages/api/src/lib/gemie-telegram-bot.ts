@@ -396,7 +396,6 @@ async function answerAsThirdParty(
         [PERSONAL_ACCESS_TOOL]: personalAccess,
       },
       ...routing,
-      temperature: 0.7,
       maxOutputTokens: 2048,
       stopWhen: stepBudget(5),
     });

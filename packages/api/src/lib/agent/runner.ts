@@ -561,7 +561,6 @@ async function driveAgentSession(
           // a tool `loadTools` loaded in an earlier iteration stays loaded, because
           // the routing state lives for the whole run (`lib/tool-budget.ts`).
           ...toolRouting,
-          temperature: 0.3,
           maxRetries: 0,
           stopWhen: stepCountIs(1), // One action per iteration (Manus principle)
         });

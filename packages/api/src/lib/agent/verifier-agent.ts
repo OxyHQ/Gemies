@@ -83,7 +83,6 @@ Consider:
 
 A score of ${minScore}+ means "passed". Be fair but thorough.`,
       prompt: `## Original Task\n${originalTask}\n\n## Executor Results (${failedCount} of ${executorResults.length} failed)\n\n${resultsSummary}`,
-      temperature: 0.1,
       maxRetries: 1,
     });
 

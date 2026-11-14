@@ -81,7 +81,6 @@ Respond with ONLY valid JSON, no markdown or explanation.`;
       model,
       prompt,
       maxRetries: 1,
-      temperature: 0.3,
     });
 
     // Parse response

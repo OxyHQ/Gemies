@@ -349,7 +349,6 @@ export async function runAgentTurn(input: {
         (input.room ? `\n\n${input.room.instructions}` : '') +
         (input.observation ? `\n\n${input.observation.instructions}` : ''),
       maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS,
-      temperature: 0.4,
       abortSignal: signal,
     };
     const result = streamText({

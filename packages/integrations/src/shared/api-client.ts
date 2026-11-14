@@ -398,7 +398,6 @@ export class APIClient {
         model: options.model,
         stream: true,
         conversationId: options.conversationId,
-        temperature: 0.7,
         max_tokens: 2048,
       }),
       signal: AbortSignal.timeout(CHAT_TURN_TIMEOUT_MS),

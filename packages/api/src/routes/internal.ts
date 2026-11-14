@@ -172,7 +172,6 @@ router.post('/trigger', oxyServiceAuth, async (req, res) => {
       tools,
       // Bounds each request to the per-request tool budget (`lib/tool-budget.ts`).
       ...toolRouting,
-      temperature: 0.3,
       maxRetries: 0,
       stopWhen: stepBudget(5),
     });

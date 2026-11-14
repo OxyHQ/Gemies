@@ -98,7 +98,6 @@ ${context?.agentDescription ? `\nAgent description: ${context.agentDescription}`
       schema: ExecutionPlanSchema,
       system: systemPrompt,
       prompt: `Decompose this task into subtasks:\n\n${task}`,
-      temperature: 0.2,
       maxRetries: 1,
     });
 

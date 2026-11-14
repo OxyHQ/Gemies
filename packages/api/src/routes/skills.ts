@@ -405,7 +405,6 @@ router.post('/generate', authenticateToken, async (req: Request, res: Response) 
         model: getAIModel(resolved, 'authoring'),
         system: draftInstructions(language),
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
         maxRetries: 0,
       });
       text = result.text;
