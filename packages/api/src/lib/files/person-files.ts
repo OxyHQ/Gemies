@@ -1,4 +1,5 @@
 import { oxy } from '../oxy.js';
+import { readLinkedFile } from './oxy-files.js';
 /**
  * The documents a person attaches to a turn, read from Oxy Files with verified
  * requester proof (`{ type: 'file', file: { file_id, filename, mime } }`,
@@ -251,16 +252,63 @@ export async function readFileForModel(
   return documentParts(file.name, reading);
 }
 
+/** Where a turn's files are read from: what a file is, and its bytes. */
+interface FileSource {
+  record(fileId: string): Promise<{
+    readonly status: string;
+    readonly mime: string;
+    readonly size: number;
+    readonly originalName?: string | null;
+  }>;
+  bytes(fileId: string): Promise<Uint8Array>;
+}
+
+/** The person's own files, read as them: their session, or the task they granted. */
+function requesterSource(assets: Pick<OxyServices['assets'], 'get' | 'blob'>): FileSource {
+  return {
+    record: async (fileId) => (await assets.get(fileId)).file,
+    bytes: async (fileId) => new Uint8Array(await (await assets.blob(fileId)).arrayBuffer()),
+  };
+}
+
+/**
+ * A channel turn's media, stored by this application for the channel's person
+ * (`storeChannelMedia`): read through its own consented link to them
+ * (`readLinkedFile`, the Oxy Files seam). Only a file this application stored,
+ * or the person attached to it, answers; anything else is absent, so no id a
+ * channel sends can reach another file.
+ */
+function linkedSource(): FileSource {
+  const links = new Map<string, ReturnType<typeof readLinkedFile>>();
+  const open = async (fileId: string) => {
+    let found = links.get(fileId);
+    if (!found) {
+      found = readLinkedFile(fileId);
+      links.set(fileId, found);
+    }
+    const file = await found;
+    if (!file) throw unavailable(fileId);
+    return file;
+  };
+  return {
+    record: async (fileId) => {
+      const file = await open(fileId);
+      return { status: 'active', mime: file.mime, size: file.size };
+    },
+    bytes: async (fileId) => (await open(fileId)).bytes(),
+  };
+}
+
 async function resolveOne(
-  assets: Pick<OxyServices['assets'], 'get' | 'blob'>,
+  source: FileSource,
   ref: FilePartRef,
   options: { personAccountId: string; modelAcceptsFiles: boolean },
 ): Promise<ResolvedFilePart[]> {
-  let record: Awaited<ReturnType<OxyServices['assets']['get']>>['file'];
+  let record: Awaited<ReturnType<FileSource['record']>>;
   try {
-    record = (await assets.get(ref.file_id)).file;
+    record = await source.record(ref.file_id);
   } catch (error: unknown) {
-    if (!(error instanceof OxyApiError)) {
+    if (!(error instanceof OxyApiError) && !(error instanceof FilePartError)) {
       log.v1.warn({ err: error, fileId: ref.file_id }, 'Oxy Files did not answer for a file part');
     }
     throw unavailable(ref.file_id);
@@ -298,7 +346,7 @@ async function resolveOne(
 
   let bytes: Uint8Array;
   try {
-    bytes = new Uint8Array(await (await assets.blob(ref.file_id)).arrayBuffer());
+    bytes = await source.bytes(ref.file_id);
   } catch (error: unknown) {
     log.v1.warn({ err: error, fileId: ref.file_id }, 'Could not download a file part');
     throw unavailable(ref.file_id);
@@ -330,25 +378,66 @@ export async function resolveFileParts(
     accessToken: string | undefined;
     taskId?: string;
     modelAcceptsFiles: boolean;
+    /**
+     * A channel turn (a connected account's, a gemie bot's person's): its files are the media this
+     * application kept for the channel's person, read through its own link to them, and one that
+     * cannot be read is said in words rather than refusing the turn — the person's message
+     * arrived, and is answered.
+     */
+    channel?: boolean;
   },
 ): Promise<ResolvedFiles> {
   if (refs.size === 0) return new Map();
   const { personAccountId, accessToken, modelAcceptsFiles } = options;
+  if (options.channel) {
+    if (personAccountId === undefined) {
+      throw new FilePartError('file_session_required', 'This channel turn has no account.');
+    }
+    const source = linkedSource();
+    const resolved = await Promise.all(
+      [...refs.values()].map(async (ref) => {
+        try {
+          return [
+            ref.file_id,
+            await resolveOne(source, ref, { personAccountId, modelAcceptsFiles }),
+          ] as const;
+        } catch (error: unknown) {
+          log.v1.warn(
+            { err: error, fileId: ref.file_id },
+            'A channel turn could not read one of its files',
+          );
+          const what = ref.description ?? `A file, ${ref.filename ?? 'unnamed'}`;
+          const said: ResolvedFilePart[] = [
+            {
+              type: 'text',
+              text: ref.transcript
+                ? `[${what}. It says: ${ref.transcript}]`
+                : `[${what}; it could not be opened]`,
+            },
+          ];
+          return [ref.file_id, said] as const;
+        }
+      }),
+    );
+    return new Map(resolved);
+  }
   if (personAccountId === undefined || (!accessToken && !options.taskId)) {
     throw new FilePartError(
       'file_session_required',
       'Files are read with your own Oxy session; this request has none.',
     );
   }
-  const assets = oxy.assets.withRequester(
-    options.taskId ? { taskId: options.taskId } : { requesterToken: accessToken! },
+  const source = requesterSource(
+    oxy.assets.withRequester(
+      options.taskId ? { taskId: options.taskId } : { requesterToken: accessToken! },
+    ),
   );
   const resolved = await Promise.all(
     [...refs.values()].map(
       async (ref) =>
         [
           ref.file_id,
-          await resolveOne(assets, ref, { personAccountId, modelAcceptsFiles }),
+          await resolveOne(source, ref, { personAccountId, modelAcceptsFiles }),
         ] as const,
     ),
   );

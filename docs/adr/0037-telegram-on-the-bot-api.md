@@ -222,3 +222,22 @@ before linking finished in Telegram. Now:
 
 The identity guard said "the Alia AI platform". A gemie runs on Gemies, and Alia is the official
 gemie (ADR 0034).
+
+## Amendment (2026-11-14): a channel's media is read back by the application, and its messages show on arrival
+
+A sticker the person sent their gemie's bot failed the turn with "The file … could not be opened".
+The media was stored as their Oxy file under the channel's task, but the turn read it back as a
+requester. Oxy does not take that task as a read proof, and a channel turn has no session.
+
+- **How a channel turn reads its files.** It reads its newest message's files through this
+  application's own consented link to the media it stored (`readLinkedFile`, `linkedDownloadUrls`):
+  only files this application stored, or that the person attached to it, answer.
+- **A file that cannot be read never fails the turn.** It is said in words (its description, or a
+  voice note's transcript).
+- **A channel message is kept the moment it arrives, before the gemie answers.**
+  - Where: a gemie bot's person and a third party in the bot turn, a connected account in
+    `POST /channel-accounts/messages`.
+  - The app shows the message at once, through the conversation's realtime event.
+  - The turn then appends only its reply: the saver appends when the stored history already ends
+    with the client's last message.
+- **The gemie shows as typing in the app** while a channel turn runs.

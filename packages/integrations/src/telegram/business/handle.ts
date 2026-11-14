@@ -178,6 +178,7 @@ async function onBusinessMessage(api: BotApi, message: TelegramMessage) {
         sessionId: session.sessionId,
         inbound: { chatId, chatKind: 'direct', mentionsAccount: false },
         readMessage: () => readTelegramMessage(api, message, { selfId: connection.telegramUserId }),
+        messageId: String(message.message_id),
         sendResponse: async (reply) => {
           await sendAsAccount({
             sessionId: session.sessionId,

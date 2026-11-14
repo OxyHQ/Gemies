@@ -26,6 +26,8 @@ export interface IncomingMessageParams {
    * it, because reading downloads its media.
    */
   readMessage: () => Promise<GemieChannelMessage>;
+  /** The platform's id for the message, so it is kept once under it. */
+  messageId?: string;
   /** Send a response message back on this platform */
   sendResponse: (text: string) => Promise<void>;
   /** Show/hide typing indicator (best-effort) */
@@ -62,11 +64,20 @@ export async function handleIncomingMessage(
     const message = await params.readMessage();
     if (channelMessageIsEmpty(message)) return;
     // Its media kept in the person's Oxy Files and its voice transcribed: the API's to do.
+    const messageId = params.messageId
+      ? `${platform}:${params.inbound.chatId}:${params.messageId}`
+      : undefined;
+    // Kept by the API at once, so the app shows it before the gemie answers.
     const { content } = await apiClient.prepareAccountMessage(identity, {
       chatId: params.inbound.chatId,
       message,
+      conversationId,
+      ...(messageId ? { messageId } : {}),
     });
-    await answerThroughChat({ ...params, identity, conversationId, content }, apiClient);
+    await answerThroughChat(
+      { ...params, identity, conversationId, content, ...(messageId ? { messageId } : {}) },
+      apiClient,
+    );
   } catch (error: unknown) {
     // Nothing is said in the chat: it is the person's own account writing to one of their
     // contacts, and an apology from it would be a message the person never wrote.
@@ -127,13 +138,22 @@ export async function answerThroughChat(
     if (conversation?.messages?.length) {
       messages = conversation.messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => ({ role: m.role, content: m.content }));
+        .map((m) => ({
+          ...(typeof m.id === 'string' ? { id: m.id } : {}),
+          role: m.role,
+          content: m.content,
+        }));
     }
   } catch (error) {
     logger.error('Failed to load history:', error);
   }
 
-  messages.push({ ...(params.messageId ? { id: params.messageId } : {}), role: 'user', content });
+  // The API kept the message the moment it arrived: it is already the history's last one, and the
+  // turn appends only its reply. Otherwise it is the turn's new message.
+  const kept = params.messageId !== undefined && messages.at(-1)?.id === params.messageId;
+  if (!kept) {
+    messages.push({ ...(params.messageId ? { id: params.messageId } : {}), role: 'user', content });
+  }
 
   // Platform instructions as first system message —
   // the API extracts this as clientContext and merges it into the full system prompt

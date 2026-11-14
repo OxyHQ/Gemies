@@ -110,6 +110,12 @@ export interface GemieAccountInboundDecision {
 export interface GemieAccountIncoming {
   readonly chatId: string;
   readonly message: GemieChannelMessage;
+  /**
+   * The conversation the turn continues and the platform's id for the message: the API keeps the
+   * message there at once, so the app shows it the moment it arrives, before the gemie answers.
+   */
+  readonly conversationId?: string;
+  readonly messageId?: string;
 }
 
 /** The API's answer to {@link GemieAccountIncoming}. */

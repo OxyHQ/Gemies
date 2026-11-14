@@ -114,6 +114,8 @@ export async function admitTurnFeatures(input: {
     accessToken: string | undefined;
     taskId?: string;
     runId: string;
+    /** A verified channel's turn: its files are read as `resolveFileParts` reads a channel's. */
+    channel?: boolean;
   };
   modelAcceptsFiles: boolean;
 }): Promise<FeatureAdmission> {
@@ -163,6 +165,7 @@ export async function admitTurnFeatures(input: {
       accessToken: input.person.accessToken,
       taskId: input.person.taskId,
       modelAcceptsFiles: input.modelAcceptsFiles,
+      channel: input.person.channel === true,
     });
   } catch (error: unknown) {
     if (!(error instanceof FilePartError)) throw error;

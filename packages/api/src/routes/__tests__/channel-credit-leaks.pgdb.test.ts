@@ -1,6 +1,6 @@
 import { TEST_CHARACTER } from '../../db/__tests__/support/agent-character';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 
 /**
  * The two inbound chat handlers — the system bot's (`routes/webhooks.ts`) and a
@@ -33,6 +33,12 @@ vi.mock('@oxy.so/core/server', () => ({ verifySecret: vi.fn(() => false) }));
 // configured, which this file never does; the real module would construct an
 // OxyServer at import time.
 vi.mock('../../lib/oxy.js', () => ({ oxy: {} }));
+vi.mock('../../lib/kaana/transport.js', () => ({ getKaanaClient: () => null }));
+// A voice note is transcribed on the dictation path; here, its words.
+vi.mock('../../lib/voice/transcribe.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  transcribeDictation: vi.fn(async () => ({ text: 'hola, ¿quedamos mañana?', model: 'stt' })),
+}));
 // A channel message's media is kept as the person's Oxy file; here, an id.
 vi.mock('../../lib/files/oxy-files.js', () => ({
   storeChannelMedia: vi.fn(async () => 'oxy-file-1'),
@@ -401,7 +407,9 @@ describe('what a gemie bot’s conversation keeps of a message', () => {
     const stored = await db
       .select({ role: messages.role, content: messages.content })
       .from(messages)
-      .where(eq(messages.oxyUserId, ownerId));
+      .where(eq(messages.oxyUserId, ownerId))
+      // In the order they were kept: the message when it arrived, then the answer.
+      .orderBy(asc(messages.seq));
     // A third party's media is never stored as the bot person's file: the person's authority is
     // for their own turns (`docs/integrations.mdx`), so the conversation keeps its words.
     expect(storeChannelMedia).not.toHaveBeenCalled();
@@ -491,5 +499,80 @@ describe('a message’s turn on a gemie bot runs once, whatever is retried', () 
       reply: 'Sorry, something went wrong. Please try again.',
     });
     expect(generateText).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a gemie bot’s person sends media: kept at once, and read on the turn without failing it', () => {
+  it('a sticker, a photo and a voice note reach the conversation the moment they arrive', async () => {
+    const ownerId = await account(100, 0);
+    const bot: GemieBotRow = {
+      ...(await gemieBot(ownerId)),
+      linkedTelegramUserId: 'tg-1',
+      oxyTaskId: 'bot-task',
+    };
+    let n = 0;
+    vi.mocked(storeChannelMedia).mockImplementation(async () => `kept-${(n += 1)}`);
+    const b64 = (bytes: number[]) => Buffer.from(bytes).toString('base64');
+    const answer = await answerGemieTelegramMessage(bot, {
+      ...botMessage,
+      messageId: '901',
+      message: {
+        text: '',
+        media: [
+          { kind: 'sticker', emoji: '😂', file: { mime: 'image/webp', data: b64([1, 2, 3]) } },
+          { kind: 'photo', file: { mime: 'image/jpeg', data: b64([0xff, 0xd8, 0xff]) } },
+          { kind: 'voice', durationSeconds: 4, file: { mime: 'audio/ogg', data: b64([79, 103]) } },
+        ],
+      },
+    });
+
+    // The person's own turn, run by the chat route: what it carries is what the app will show.
+    expect(answer.personTurn?.content).toEqual([
+      expect.objectContaining({
+        type: 'file',
+        file: expect.objectContaining({ file_id: 'kept-1', kind: 'sticker' }),
+      }),
+      expect.objectContaining({
+        type: 'file',
+        file: expect.objectContaining({ file_id: 'kept-2', kind: 'photo' }),
+      }),
+      expect.objectContaining({
+        type: 'file',
+        file: expect.objectContaining({
+          file_id: 'kept-3',
+          kind: 'voice',
+          transcript: 'hola, ¿quedamos mañana?',
+        }),
+      }),
+    ]);
+    // Kept before any answer, so the app shows it at once.
+    const kept = await db
+      .select({ role: messages.role, content: messages.content, id: messages.clientMessageId })
+      .from(messages)
+      .where(eq(messages.oxyUserId, ownerId));
+    expect(kept).toEqual([
+      { role: 'user', content: answer.personTurn?.content, id: 'telegram:chat-1:901' },
+    ]);
+
+    // The chat route reads each file as a channel's: none can fail the turn (Oxy cannot answer
+    // here, so each is said in words).
+    const { filePartsOf, resolveFileParts } = await import('../../lib/files/person-files.js');
+    const resolved = await resolveFileParts(
+      filePartsOf([{ role: 'user', content: answer.personTurn?.content as never }]),
+      {
+        personAccountId: ownerId,
+        accessToken: undefined,
+        taskId: 'bot-task',
+        modelAcceptsFiles: false,
+        channel: true,
+      },
+    );
+    expect(resolved.get('kept-1')).toEqual([
+      { type: 'text', text: '[Sticker 😂; it could not be opened]' },
+    ]);
+    expect(resolved.get('kept-3')).toEqual([
+      { type: 'text', text: '[Voice note, 0:04. It says: hola, ¿quedamos mañana?]' },
+    ]);
+    vi.mocked(storeChannelMedia).mockImplementation(async () => 'oxy-file-1');
   });
 });

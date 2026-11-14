@@ -167,6 +167,45 @@ describe('saveConversation (append-only)', () => {
     expect(rows.slice(0, 2).map((row) => row.id)).toEqual(firstIds);
   });
 
+  it('(f) a message kept when it arrived (a channel) gets only the reply appended after it', async () => {
+    await saveConversation({
+      agentId: ALIA_GEMIE_ID,
+      userId: USER,
+      conversationId: CONV,
+      messages: [{ role: 'user', content: 'U1' }],
+      assistantResponse: 'A1',
+    });
+    // The channel kept U2 the moment it arrived; the turn's client history ends with it.
+    const { appendConversationMessages } = await import('../conversation-saver.js');
+    await appendConversationMessages({
+      userId: USER,
+      conversationId: CONV,
+      agentId: ALIA_GEMIE_ID,
+      titleOnInsert: 'x',
+      messages: [{ id: 'telegram:1:2', role: 'user', content: 'U2' }],
+    });
+    const before = (await stored()).map((row) => row.id);
+
+    await saveConversation({
+      agentId: ALIA_GEMIE_ID,
+      userId: USER,
+      conversationId: CONV,
+      messages: THREE_TURNS,
+      assistantResponse: 'A2',
+    });
+
+    const rows = await stored();
+    expect(rows.map((row) => [row.seq, row.content])).toEqual([
+      [0, 'U1'],
+      [1, 'A1'],
+      [2, 'U2'],
+      [3, 'A2'],
+    ]);
+    // Appended, not rewritten: U2 keeps the row (and the id) it arrived with.
+    expect(rows.slice(0, 3).map((row) => row.id)).toEqual(before);
+    expect(rows[2]?.clientMessageId).toBe('telegram:1:2');
+  });
+
   it('(b) an edited history diverges from the stored tail and forces a rewrite', async () => {
     await saveConversation({
       agentId: ALIA_GEMIE_ID,

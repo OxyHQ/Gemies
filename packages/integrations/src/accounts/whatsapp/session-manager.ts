@@ -353,6 +353,7 @@ class SessionManager {
                 chatKind: isGroup ? 'group' : 'direct',
                 mentionsAccount,
               },
+              ...(msg.key.id ? { messageId: msg.key.id } : {}),
               readMessage: () =>
                 readWhatsAppMessage(msg, (message) => downloadMediaMessage(message, 'buffer', {})),
               sendResponse: async (text) => {

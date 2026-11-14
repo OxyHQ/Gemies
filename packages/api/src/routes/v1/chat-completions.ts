@@ -46,6 +46,7 @@ import {
   AgentTurnCoordinator,
   type CoordinatedAgentTurn,
 } from '../../lib/agent/agent-turn-coordinator.js';
+import { turnOwnerId } from '../../lib/chat/turn-owner.js';
 import { startActorActivity, type ActorActivity } from '../../lib/realtime/activity.js';
 import { agentPromptName } from '../../lib/agent-identity.js';
 
@@ -382,10 +383,12 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
     }
 
     // "Pepe is typing…" on the person's other surfaces while this turn runs (`docs/realtime.mdx`);
-    // the device that sent it reads the turn itself from this stream. Ended in `finally`.
-    if (req.user?.id && conversationId) {
+    // the device that sent it reads the turn itself from this stream. Ended in `finally`. A channel
+    // turn (a gemie bot's person, a connected account) shows it in the app too.
+    const activityOwner = turnOwnerId(req);
+    if (activityOwner && conversationId) {
       activity = startActorActivity({
-        oxyUserId: req.user.id,
+        oxyUserId: activityOwner,
         conversationId,
         agentId: linkedAgent._id,
         name: agentPromptName(linkedAgent),

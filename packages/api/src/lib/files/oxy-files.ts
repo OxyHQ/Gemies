@@ -512,6 +512,30 @@ async function openOxyFile(fileId: string): Promise<StoredContentStream | null> 
   };
 }
 
+/**
+ * A file this application stored for a person, or that they attached to it, read through its own
+ * consented link (`linkedDownloadUrls`): the read a channel turn has, since it carries no session
+ * and the task that stored its media is not a proof Oxy takes to read it back. `null` is Oxy's
+ * refusal (the person revoked it, or it is not this application's to read).
+ */
+export async function readLinkedFile(
+  fileId: string,
+): Promise<{ mime: string; size: number; bytes: () => Promise<Uint8Array> } | null> {
+  const [link] = await oxy().assets.linkedDownloadUrls([fileId]);
+  if (link === undefined) return null;
+  return {
+    mime: link.mime,
+    size: link.size,
+    bytes: async () => {
+      const response = await fetch(link.url, {
+        signal: AbortSignal.timeout(OXY_DOWNLOAD_RESPONSE_TIMEOUT_MS),
+      });
+      if (!response.ok) throw new OxyDownloadError(response.status);
+      return new Uint8Array(await response.arrayBuffer());
+    },
+  };
+}
+
 /** Read one legacy object, and count the read. */
 async function openLegacyObject(
   key: string,

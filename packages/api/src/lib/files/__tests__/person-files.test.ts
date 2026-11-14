@@ -18,7 +18,11 @@ const files = vi.hoisted(
       }
     >(),
 );
-const seen = vi.hoisted(() => ({ tokens: [] as string[], downloads: [] as string[] }));
+const seen = vi.hoisted(() => ({
+  tokens: [] as string[],
+  downloads: [] as string[],
+  linked: [] as string[],
+}));
 
 vi.mock('../../oxy.js', async () => {
   const actual = await import('@oxy.so/core');
@@ -50,6 +54,20 @@ vi.mock('../../oxy.js', async () => {
     get oxy() {
       return {
         assets: {
+          // This application's own link to a file it stored for the person (a channel's media).
+          linkedDownloadUrls: async (ids: string[]) => {
+            seen.linked.push(...ids);
+            return ids
+              .filter((id) => files.has(id))
+              .map((id) => ({
+                id,
+                url: `https://files.test/${id}`,
+                mime: files.get(id)?.mime ?? '',
+                size: files.get(id)?.size ?? 0,
+                expiresIn: 60,
+                sha256: '',
+              }));
+          },
           withRequester: (proof: { requesterToken?: string; taskId?: string }) => {
             seen.tokens.push(proof.requesterToken ?? `task:${proof.taskId}`);
             return client.assets;
@@ -106,6 +124,7 @@ beforeEach(() => {
   files.clear();
   seen.tokens.length = 0;
   seen.downloads.length = 0;
+  seen.linked.length = 0;
 });
 
 describe('filePartsOf', () => {
@@ -152,6 +171,53 @@ describe('filePartsOf', () => {
     expect(resolved.get('voice')).toEqual([
       { type: 'text', text: '[Voice note, 0:04. It says: hola]' },
     ]);
+  });
+
+  it('reads a channel turn’s media through the application’s own link, never failing the turn', async () => {
+    // A channel turn has no session, and the task that stored its media is not a proof Oxy takes
+    // to read it back (production: "The file … could not be opened" on a sticker).
+    files.set('sticker', { mime: 'image/webp', size: 4, bytes: new Uint8Array([1, 2, 3, 4]) });
+    files.set('voice', { mime: 'audio/ogg', size: 10, bytes: new Uint8Array(10) });
+    vi.stubGlobal('fetch', async (url: string) => {
+      const id = String(url).split('/').pop() ?? '';
+      return new Response(files.get(id)?.bytes ?? new Uint8Array());
+    });
+    try {
+      const turn: ChatMessage = {
+        role: 'user',
+        content: [
+          { type: 'file', file: { file_id: 'sticker', description: 'Sticker 😂' } },
+          {
+            type: 'file',
+            file: { file_id: 'voice', description: 'Voice note, 0:04', transcript: 'hola' },
+          },
+          { type: 'file', file: { file_id: 'gone', description: 'Photo' } },
+        ],
+      };
+      const resolved = await resolveFileParts(filePartsOf([turn]), {
+        personAccountId: 'person-1',
+        accessToken: undefined,
+        taskId: 'channel-task',
+        modelAcceptsFiles: false,
+        channel: true,
+      });
+      expect(resolved.get('sticker')).toEqual([
+        { type: 'text', text: '[Sticker 😂]' },
+        { type: 'image', image: new Uint8Array([1, 2, 3, 4]), mediaType: 'image/webp' },
+      ]);
+      expect(resolved.get('voice')).toEqual([
+        { type: 'text', text: '[Voice note, 0:04. It says: hola]' },
+      ]);
+      // A file that cannot be opened is said, and the turn goes on.
+      expect(resolved.get('gone')).toEqual([
+        { type: 'text', text: '[Photo; it could not be opened]' },
+      ]);
+      // Never as a requester: no session or task read.
+      expect(seen.tokens).toEqual([]);
+      expect(seen.linked.sort()).toEqual(['gone', 'sticker', 'voice']);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('refuses a malformed part, a file outside a user message, and too many files', () => {
