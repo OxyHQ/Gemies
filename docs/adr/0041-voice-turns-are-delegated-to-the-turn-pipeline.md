@@ -2,7 +2,8 @@
 
 *Cada turno de voz lo responde el mismo pipeline que el chat escrito; qué voz suena lo decide el catálogo de Kaana.*
 
-**Status:** Accepted by the owner on 2026-11-14. Implementation is pending (phase G1 of Kaana ADR 0012).
+**Status:** Accepted by the owner on 2026-11-14, with the answers recorded in Kaana ADR 0012 §9 (one
+OpenAI project, verbatim spans, `marin`/`cedar`, Grok kept as the fallback). Being built as phase G1.
 Production voice stays on the ADR 0017 path until G1 ships and its canary passes.
 
 **Date:** 2026-11-14
@@ -28,17 +29,20 @@ be kept in step with text.
 
 ## Decision
 
-1. **A call opens a Kaana `live` session with `model: "default"`.** Kaana and Oxy resolve the default from
-   the application's policy (Kaana ADR 0012 §4). Gemies names no voice model and ranks none. The voice is
-   the catalogue voice of the person's gender (`male` | `female`) on the line the catalogue marks as the
-   `live` default. The audio format is `pcm16_24khz`, as the SDK's audio engine already plays.
+1. **A call opens a Kaana `live` session on the catalogue's default line.** Gemies reads `GET /v1/models`
+   and takes the active line whose `capabilities.realtime.defaultKinds` names `live` (Kaana ADR 0012 §4),
+   then the other `live` lines as fallbacks, tried only on the model's own refusal, as today. Gemies names
+   no model and ranks none by price. The voice is the catalogue voice of the person's gender
+   (`male` | `female`) on that line (`cedar` and `marin` on GPT-Live). The audio format is `pcm16_24khz`
+   both ways, as the SDK's audio engine already plays.
 2. **Every `delegation.requested` is one turn of the conversation, through the chat route.** The person's
    words (`text`) are appended to the conversation as their message. The gemie answers through the same
    path a typed turn takes, the one a Telegram person turn already takes (`POST /alia/chat`, see
    `lib/gemie-telegram-bot.ts`), with `responseMode: 'voice'` so `prompts/voice.md` shapes the answer for
    speech. Same gemie, same `ToolPipeline`, same memory, same skills, same model selection through Kaana,
    same credits. The answer streams back as `delegation.reply` chunks, one per sentence, the last one with
-   `final: true`, and is stored as the gemie's message.
+   `final: true`, and is stored as the gemie's message. Each chunk marks its numbers, addresses, names and
+   codes as `verbatim` spans, which the voice says exactly (Kaana ADR 0012 §9.2).
 3. **The voice holds only a persona.** The `live` open carries the gemie's name, its voice style and the
    person's language, plus the recent conversation as `history`. No tools and no backend instructions go
    to the voice.
@@ -61,5 +65,5 @@ be kept in step with text.
 - Changing the voice provider is an Oxy catalogue change. Gemies is not edited.
 - A spoken answer waits for a backend turn. The voice's acknowledgement and per-sentence replies cover the
   gap.
-- GPT-Live paraphrases what it is given (Kaana ADR 0012 §9.2). `prompts/voice.md` keeps answers short and
-  speakable, which narrows that gap.
+- GPT-Live paraphrases what it is given. Verbatim spans keep figures, addresses, names and codes exact, and
+  `prompts/voice.md` keeps answers short and speakable.
