@@ -131,9 +131,6 @@ export const agentSessions = pgTable(
     agentId: text().notNull(),
     /** An Oxy account. No foreign key: Oxy owns identity. */
     oxyUserId: text().notNull(),
-    /** Opaque Oxy task proof for the original requester; never a stored bearer. */
-    oxyTaskId: text(),
-    oxyTaskRetiredAt: timestamptz(),
     /** Durable product thread and bounded conversation stretch for this turn. */
     threadId: text(),
     conversationId: text(),

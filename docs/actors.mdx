@@ -23,14 +23,14 @@ makes her different is the configuration of her row, never a `null` agent or her
 | `memory_store` | `nilo` | `gemie` | Whose memory of the person: Nilo's (`oxy_nilo_memories__*`, answer settings, writing style) or its own `agent_memory_documents` |
 | `reach` | `person` | `grants` | The person's own assistant (Oxy's person lane, every connector and agent of the person, their installed skills, their name and Inbox context, the base identity, no remit) or a persona under its grants, linked skills and remit. Either reaches only the WhatsApp and Telegram accounts the person granted it ([connected accounts](./integrations.mdx#connected-accounts)) |
 | `mailbox` | `false` | `true` | Whether its own Oxy account is a working one (`self_*` tools, own-mailbox alerts) |
-| `task_authority` | `standing` | `session` | Tasks under standing authority on `alia-tasks`, no agent session; her chats are loose and her thread with a person is one `agent_threads` row. Or durable sessions, and every conversation with the person is a stretch of its thread |
+| `task_authority` | `standing` | `session` | Tasks on her standing lane on `alia-tasks`, no agent session; her chats are loose and her thread with a person is one `agent_threads` row. Or durable sessions, and every conversation with the person is a stretch of its thread |
 | `capability_grants` | no `computer`, no `browser` | its owner's | Its fixed families; Alia has no machine |
 
 ## The two actors
 
 | | For the person (their data) | As itself (its own account) |
 |---|---|---|
-| **Alia** — one for everybody, the default | Every Oxy app of the person, read and act, with no permission prompts and no "connect" step. Authority: the person present in the turn, or the task's standing authority in the background. | Oxy account "alia": a public identity with no mailbox. |
+| **Alia** — one for everybody, the default | Every Oxy app of the person, read and act, with no permission prompts and no "connect" step. Authority: Gemies' declared first-party authority for the person, in the turn and in the background (Oxy ADR 0066). | Oxy account "alia": a public identity with no mailbox. |
 | **An agent** — a persona a person creates | Every live own-app tool on the verified requester's account; no per-app levels. | Its own Oxy `bot` account: its own Inbox, its own sign-ups on websites. No grant needed. |
 
 **Alia** is the assistant everyone gets: the orchestrator that answers, remembers,
@@ -53,7 +53,7 @@ every gemie's thread is (`lib/gemie-thread.ts`): one `agent_threads` row per per
 whose stretches carry its id in `conversations.agent_thread_id`. A loose chat carries
 none, so the two never mix. She has no handle yet, so the thread is opened by her
 gemie id (`GET /agents/:id/thread`). A turn in it is a turn of her gemie like any
-other: Nilo memory, the person's reach, her tools, standing authority and no agent
+other: Nilo memory, the person's reach, her tools, the standing lane and no agent
 session.
 
 **An agent** is optional. It is an Oxy `bot` account owned by the person who
@@ -74,8 +74,8 @@ The agent's owner is never substituted for a missing requester.
 | Turn | `oxy_*` account | `self_*` account |
 |---|---|---|
 | Alia or agent with a person present | Verified effective requester | Bot only when that requester operates it |
-| Goal/background work | Original Oxy task root requester | Same bot/operator rule checked live |
-| Nested agent | Same task root and requester; separate actor | No access to an unrelated bot owner |
+| Goal/background work | The person the work belongs to | Same bot/operator rule checked live |
+| Nested agent | The same person; separate actor | No access to an unrelated bot owner |
 | Structured automation | Original operation's exact account/resource | Only when explicitly bound |
 
 Own service identity is an attested workload. The shared SDK carries requester
@@ -110,8 +110,9 @@ agent.
 - **Alia's tasks** (a gemie with `task_authority = 'standing'`) run unattended on the
   `alia-tasks` queue (`lib/alia-task-queue.ts`, `lib/alia-task-run.ts`, which loads the
   gemie recorded on the run) and post their result into the task's own conversation.
-  They use **standing Oxy authority** asked for when the task is saved with the
-  owner present (`provisionAliaTaskAuthorizations` in `lib/automation-authority.ts`).
+  They act for the owner on Gemies' declared first-party authority, within the run's
+  scope (the owner's app reads and the declared actions), with nothing provisioned
+  when the task is saved ([background work](./proactive-intelligence.md#alias-standing-lane)).
 - **Watches** make a recurring "tell me when X changes" cheap: each tick is a hashed
   Clarity read, and only a change queues an Alia run (`lib/alia-watch.ts`).
 - **Abandoned Alia runs** are failed and refunded by `lib/alia-task-reaper.ts`,

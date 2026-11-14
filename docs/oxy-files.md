@@ -155,8 +155,7 @@ the one-shot above):
 and the same for `--kind speech` and `--kind skills`. An item Oxy does not take
 (below) is reported `failed` and stays on legacy storage; the next run tries it
 again. A PERSON's file (every `library` item, a person's own skill file) is
-reported `skipped`: Oxy stores it only with that person's requester proof, and
-a backfill acts for nobody, so it stays on legacy storage.
+stored as theirs, on Gemies' declared files authority (below).
 
 ## How private content is stored (stage 4c)
 
@@ -168,14 +167,12 @@ fails if any other source stores bytes in Oxy or reads them back.
   them, so `linkedDownloadUrls` serves it back to Alia — until the person
   revokes Alia's access in their file manager. Alia's own files (clips,
   catalogue skills) are always readable by Alia.
-- **As the person, with their own proof.** Oxy stores user media for a
-  first-party workload only into the account its verified requester proof
-  names (`requireUserMediaOwner`); the owner Alia names is never enough. A
-  person's file is uploaded through `assets.withRequester(proof)`: their
-  session bearer on their own request (the library, their skills;
-  `ownSessionProof`), or the channel's task for media that arrived on a
-  channel. With no proof Oxy is not asked: the write falls back (reason
-  `no_requester`), and a channel's media is not kept.
+- **As the person, on Gemies' declared authority.** Oxy's first-party registry
+  declares `oxy:files` write for Gemies (Oxy ADR 0066), so a person's file is
+  uploaded through `assets.actingFor({ accountId })` naming their account, in
+  the foreground or the background (the library, their skills, media that
+  arrived on their channel). Oxy checks the workload, the declaration and the
+  account live; no session, task or other proof is sent.
 - **Which upload.** Media (image, video, audio) of at most 40 MiB is streamed
   (`uploadAppFile` / `uploadUserMedia`); anything else — PDFs, documents, text,
   archives, skill binaries, files over 40 MiB — is a resumable large upload
@@ -226,9 +223,8 @@ Alia's Oxy application (internal tier, granted by staff): `files:app:write`
 this repository since the cover handover went), `files:linked:read` (read-back),
 and `files:user-media:write` (staff-granted act-as: the library and a person's
 own skill files, stored for them as their private files — the grant Oxy's
-consent for Alia to read them back rests on). Since Alia is a first-party
-workload, each such write also needs that person's own requester proof (above);
-no scope stands in for it.
+consent for Alia to read them back rests on). Each such write also
+needs Gemies' `oxy:files` declaration in Oxy's registry (above).
 
 | Variable | Default | Meaning |
 |---|---|---|

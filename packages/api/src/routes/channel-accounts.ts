@@ -11,7 +11,6 @@ import {
   GEMIE_ACCOUNT_STATUSES,
   type GemieAccountInboundDecision,
   type GemieAccountTurnContent,
-  turnContentText,
 } from '@gemies/server/internal';
 import { channelMessageSchema, prepareChannelTurn } from '../lib/channel-messages.js';
 import { appendConversationMessages } from '../lib/conversation-saver.js';
@@ -84,16 +83,13 @@ router.post('/messages', authenticateToken, async (req: Request, res: Response) 
   const parsed = incomingSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid message' });
   try {
-    // Kept as the person's under the account's task; without one nothing of it is stored.
+    // Kept as the person's Oxy files, on Gemies' declared authority for them (oxy ADR 0066).
     const turn = await prepareChannelTurn({
       message: parsed.data.message,
-      owner: context.taskId ? { oxyUserId: context.accountId, taskId: context.taskId } : null,
+      owner: { oxyUserId: context.accountId },
       payerAccountId: context.accountId,
     });
-    // Files are read on the turn with the account's task; without one, the turn reads their words.
-    const content: GemieAccountTurnContent['content'] = context.taskId
-      ? turn.content
-      : [{ type: 'text', text: turnContentText(turn.content) }];
+    const content: GemieAccountTurnContent['content'] = turn.content;
     // Kept in its conversation the moment it arrives, so the app shows it before the gemie
     // answers; the turn then appends only its reply (`conversation-saver.ts`).
     const { conversationId, messageId } = parsed.data;

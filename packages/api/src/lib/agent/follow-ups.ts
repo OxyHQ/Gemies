@@ -34,8 +34,8 @@ export async function scheduleAgentFollowUp(input: {
   readonly at: Date;
   readonly note: string;
   readonly now?: Date;
-  /** Minted only by an authenticated chat turn; bound atomically with the continuation. */
-  readonly chatAuthorityTaskId?: string;
+  /** Asked for in a live chat turn: its reply is delivered to that conversation. */
+  readonly fromChat?: boolean;
   readonly toolCallId?: string;
 }): Promise<FollowUpOutcome> {
   const note = input.note.trim();
@@ -48,7 +48,7 @@ export async function scheduleAgentFollowUp(input: {
     sourceSessionId: input.sourceSessionId,
     at: input.at,
     note,
-    ...(input.chatAuthorityTaskId ? { chatAuthorityTaskId: input.chatAuthorityTaskId } : {}),
+    ...(input.fromChat ? { fromChat: true } : {}),
     ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
   });
   return work

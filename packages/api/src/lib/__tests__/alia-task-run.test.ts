@@ -18,7 +18,14 @@ const state = vi.hoisted(() => ({
   finalize: vi.fn(),
   refund: vi.fn(),
   notify: vi.fn(),
-  authorizations: vi.fn(),
+  actionSteps: vi.fn(),
+  readTools: vi.fn(),
+  agency: {
+    createFirstPartyExecutionAuthorization: vi.fn(),
+    issueCapabilityTicket: vi.fn(),
+  },
+  /** Every agency method the code reached for, whatever it is. */
+  agencyUsed: [] as string[],
   markStep: vi.fn(),
 }));
 
@@ -30,15 +37,27 @@ vi.mock('../agent-identity.js', () => ({ attachAgentIdentity: async (row: unknow
 vi.mock('../../db/automation/automationDefinitionRepository.js', () => ({
   findAutomationRunById: state.findRun,
   findAutomationDefinitionById: state.findDefinition,
+  listAutomationRunActionSteps: state.actionSteps,
   listAutomationRunSteps: state.listSteps,
   markAliaAutomationRun: state.markRun,
   markAutomationActionStep: state.markStep,
 }));
-vi.mock('../../db/automation/aliaTaskAuthorityRepository.js', () => ({
-  listAliaTaskAuthorizationsForRun: state.authorizations,
+vi.mock('../tools/oxy-services.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../tools/oxy-services.js')>()),
+  listOxyAccountReadTools: state.readTools,
 }));
 vi.mock('../../db/memory/userMemoryRepository.js', () => ({ findUserMemory: state.memory }));
-vi.mock('../../lib/oxy.js', () => ({ oxy: { users: { get: state.oxyUser } } }));
+vi.mock('../../lib/oxy.js', () => ({
+  oxy: {
+    users: { get: state.oxyUser },
+    agency: new Proxy(state.agency, {
+      get(target, property) {
+        if (typeof property === 'string') state.agencyUsed.push(property);
+        return Reflect.get(target, property);
+      },
+    }),
+  },
+}));
 vi.mock('../agent/alia-outreach.js', () => ({ postAliaMessage: state.post }));
 vi.mock('../chat-core.js', () => ({
   resolveDefaultModel: state.resolveModel,
@@ -63,9 +82,12 @@ import {
   ALIA_TASK_LEASE_MS,
   ALIA_TASK_MAX_STEPS,
   WATCH_NOTHING_TO_REPORT,
+  aliaRunScope,
   runAliaTask,
 } from '../alia-task-run.js';
-import { oxyExecutionAuthorizationKey } from '../tools/oxy-services.js';
+import { oxyRunScopeKey, type OxyToolExecutionContext } from '../tools/oxy-services.js';
+import { callBoundTool } from '../tools/oxy-invocation.js';
+import type { BoundTool } from '../tools/oxy-catalog-defs.js';
 
 const RESERVATION = {
   userId: 'owner-1',
@@ -106,10 +128,12 @@ beforeEach(() => {
     ownerAccountId: 'owner-1',
     objective: 'Track the latest releases from Meta',
     conversationId: 'conversation-1',
+    inputs: {},
   });
   state.listSteps.mockResolvedValue([{ tool: 'alia.run', input: taskInput }]);
   state.markRun.mockResolvedValue(true);
-  state.authorizations.mockResolvedValue([]);
+  state.actionSteps.mockResolvedValue([]);
+  state.readTools.mockResolvedValue([]);
   state.markStep.mockResolvedValue(undefined);
   state.memory.mockResolvedValue(null);
   state.oxyUser.mockResolvedValue({ id: 'owner-1', username: 'nate' });
@@ -147,8 +171,8 @@ describe('an Alia task run', () => {
         toolsEnabled: true,
         webSearch: true,
         runId: 'run-1',
-        // No standing authority: no Oxy app tools, rather than refused ones.
-        oxyExecutionAuthorizations: {},
+        // Nothing the owner's apps offer and nothing declared: an empty scope builds no Oxy tools.
+        oxyRunScope: {},
       }),
     );
     expect(state.generate).toHaveBeenCalledWith(
@@ -266,7 +290,7 @@ describe('an Alia task run', () => {
     expect(state.refund).toHaveBeenCalledWith(RESERVATION, 'Alia task definition not found');
   });
 
-  it("acts in the owner's apps with the task's standing authority", async () => {
+  it("acts in the owner's apps within the run scope it builds when it runs", async () => {
     const inbox = {
       appId: 'inbox',
       effectiveAccountId: 'owner-1',
@@ -279,36 +303,170 @@ describe('an Alia task run', () => {
       objective: 'Summarise my email',
       conversationId: 'conversation-1',
       maximumAutonomy: 'autonomous',
+      inputs: {},
     });
-    state.authorizations.mockResolvedValueOnce([
-      { resource: inbox, tool: 'listEmails', oxyAuthorizationId: 'oxy-read', repeatable: true },
+    state.readTools.mockResolvedValueOnce([
+      { resource: inbox, tool: 'listEmails' },
+      { resource: inbox, tool: 'sendEmail' },
+    ]);
+    state.actionSteps.mockResolvedValueOnce([
       {
+        stepId: 'step-2',
+        automationActionId: 'action-2',
         resource: inbox,
         tool: 'sendEmail',
-        oxyAuthorizationId: 'oxy-send',
-        stepId: 'step-2',
-        repeatable: false,
+        limits: [{ key: 'recipients', value: 1 }],
       },
     ]);
 
     await expect(runAliaTask(job, { finalAttempt: true })).resolves.toBe('completed');
-    expect(state.authorizations).toHaveBeenCalledWith(database, 'automation-1', 'run-1');
+    expect(state.readTools).toHaveBeenCalledWith('owner-1');
+    expect(state.actionSteps).toHaveBeenCalledWith(database, 'run-1');
     const options = state.forUser.mock.calls[0]?.[0] as {
       oxyAutonomy: string;
-      oxyExecutionAuthorizations: Record<string, unknown>;
+      oxyRunScope: Record<string, unknown>;
       onOxyStepStatus: (stepId: string, status: string, audit?: string) => Promise<void>;
     };
     expect(options.oxyAutonomy).toBe('autonomous');
-    expect(options.oxyExecutionAuthorizations).toEqual({
-      [oxyExecutionAuthorizationKey(inbox, 'listEmails')]: { id: 'oxy-read', repeatable: true },
-      [oxyExecutionAuthorizationKey(inbox, 'sendEmail')]: {
-        id: 'oxy-send',
+    // Every read of the owner's apps, repeatable; a declared action once, with its step and
+    // limits, and it wins over the read of the same tool.
+    expect(options.oxyRunScope).toEqual({
+      [oxyRunScopeKey(inbox, 'listEmails')]: { repeatable: true },
+      [oxyRunScopeKey(inbox, 'sendEmail')]: {
         stepId: 'step-2',
         repeatable: false,
+        limits: [{ key: 'recipients', value: 1 }],
       },
     });
     await options.onOxyStepStatus('step-2', 'succeeded', 'audit-1');
     expect(state.markStep).toHaveBeenCalledWith(database, 'step-2', 'succeeded', 'audit-1');
+  });
+
+  it('still runs, with the declared actions, when the catalogue cannot list the reads', async () => {
+    state.readTools.mockRejectedValueOnce(new Error('catalogue down'));
+    const resource = {
+      appId: 'inbox',
+      effectiveAccountId: 'owner-1',
+      resourceType: 'email_account',
+      resourceId: 'owner-1',
+    };
+    state.actionSteps.mockResolvedValueOnce([
+      { stepId: 's', automationActionId: 'a', resource, tool: 'sendEmail', limits: [] },
+    ]);
+    expect(await aliaRunScope('owner-1', 'run-1')).toEqual({
+      [oxyRunScopeKey(resource, 'sendEmail')]: { stepId: 's', repeatable: false, limits: [] },
+    });
+  });
+
+  it('gives a watch run no app reads: it reads only the open web', async () => {
+    state.readTools.mockClear();
+    state.actionSteps.mockResolvedValueOnce([]);
+    expect(await aliaRunScope('owner-1', 'run-1', { reads: false })).toEqual({});
+    expect(state.readTools).not.toHaveBeenCalled();
+  });
+
+  it('authorizes each scoped call as it is made, on first-party authority, with no task', async () => {
+    const resource = {
+      appId: 'inbox',
+      effectiveAccountId: 'owner-1',
+      resourceType: 'email_account',
+      resourceId: 'owner-1',
+    };
+    state.agencyUsed.length = 0;
+    state.agency.createFirstPartyExecutionAuthorization.mockResolvedValueOnce({ id: 'auth-1' });
+    // Refused at the ticket: the call stops there, which is all this test needs to see.
+    state.agency.issueCapabilityTicket.mockResolvedValueOnce({
+      decision: { allowed: false, reason: 'test_stop' },
+    });
+    const binding = {
+      resource,
+      suffix: null,
+      compiled: {
+        definition: { name: 'sendEmail', effect: 'write' },
+        catalogBinding: { registrationId: 'reg-1', version: '1.0.0', digest: 'a'.repeat(64) },
+        catalog: { appId: 'inbox' },
+      },
+    } as unknown as BoundTool;
+    const context: OxyToolExecutionContext = {
+      requesterAccountId: 'owner-1',
+      ownerAccountId: 'owner-1',
+      actor: { type: 'alia', ownerAccountId: 'owner-1' },
+      runId: 'run-1',
+      autonomy: 'autonomous',
+      runScope: {
+        [oxyRunScopeKey(resource, 'sendEmail')]: {
+          stepId: 'step-2',
+          repeatable: false,
+          limits: [{ key: 'recipients', value: 1 }],
+        },
+      },
+    };
+
+    await expect(callBoundTool(binding, { to: 'a@b.c' }, context)).rejects.toThrow();
+
+    expect(state.agency.createFirstPartyExecutionAuthorization).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authority: 'first_party',
+        kind: 'direct_request',
+        actor: { type: 'alia', ownerAccountId: 'owner-1' },
+        resource,
+        tool: 'sendEmail',
+        runId: 'run-1',
+        stepId: 'step-2',
+        limits: [{ tool: 'sendEmail', key: 'recipients', value: 1 }],
+      }),
+      { requesterAccountId: 'owner-1' },
+    );
+    // The authorization bound its own run and step; the ticket request names neither.
+    expect(state.agency.issueCapabilityTicket).toHaveBeenCalledWith({
+      executionAuthorizationId: 'auth-1',
+    });
+    // Nothing else of Oxy's agency: no task, no requester-bound authorization.
+    expect(new Set(state.agencyUsed)).toEqual(
+      new Set(['createFirstPartyExecutionAuthorization', 'issueCapabilityTicket']),
+    );
+  });
+
+  it('authorizes nothing once the owner stopped the task, even mid-run', async () => {
+    state.agency.createFirstPartyExecutionAuthorization.mockClear();
+    const resource = {
+      appId: 'inbox',
+      effectiveAccountId: 'owner-1',
+      resourceType: 'email_account',
+      resourceId: 'owner-1',
+    };
+    const binding = {
+      resource,
+      suffix: null,
+      compiled: {
+        definition: { name: 'sendEmail', effect: 'write' },
+        catalogBinding: { registrationId: 'reg-1', version: '1.0.0', digest: 'a'.repeat(64) },
+        catalog: { appId: 'inbox' },
+      },
+    } as unknown as BoundTool;
+    const context: OxyToolExecutionContext = {
+      requesterAccountId: 'owner-1',
+      ownerAccountId: 'owner-1',
+      actor: { type: 'alia', ownerAccountId: 'owner-1' },
+      runId: 'run-1',
+      runScope: { [oxyRunScopeKey(resource, 'sendEmail')]: { stepId: 'step-2' } },
+      runIsOpen: async () => false,
+    };
+    await expect(callBoundTool(binding, { to: 'a@b.c' }, context)).rejects.toThrow(/stopped/);
+    expect(state.agency.createFirstPartyExecutionAuthorization).not.toHaveBeenCalled();
+  });
+
+  it('gives back the hold of a run its owner stopped before it ran, and runs nothing', async () => {
+    state.findRun.mockResolvedValueOnce({
+      id: 'run-1',
+      automationId: 'automation-1',
+      selectedActorType: 'alia',
+      selectedAgentId: ALIA_GEMIE_ID,
+      status: 'cancelled',
+    });
+    await expect(runAliaTask(job, { finalAttempt: false })).resolves.toBe('skipped');
+    expect(state.refund).toHaveBeenCalledWith(RESERVATION, 'Alia task stopped by its owner');
+    expect(state.generate).not.toHaveBeenCalled();
   });
 
   it('charges a watch run but posts nothing when the change is not worth telling', async () => {

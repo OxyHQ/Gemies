@@ -95,7 +95,7 @@ beforeEach(() => {
       return json({ service: { applicationId: 'alia-app', credentialId: 'alia-credential' } });
     }
     if (
-      url.endsWith('/capabilities/foreground-execution-authorizations') &&
+      url.endsWith('/capabilities/first-party-execution-authorizations') &&
       init?.method === 'POST'
     )
       return json({ authorization: { id: 'DIRECT-1' } }, 201);
@@ -116,7 +116,6 @@ async function searchNotes() {
     ownerAccountId: USER,
     actor: { type: 'alia', ownerAccountId: USER },
     runId: 'run-1',
-    userAccessToken: 'USER-TOKEN',
   });
   const built = tools.oxy_noted__searchNotes;
   if (!built) throw new Error('searchNotes was not built');

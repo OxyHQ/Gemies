@@ -10,15 +10,14 @@ and [Agents](./agents.md) as the runtime contract.
   selected agent and resource account remain separate identities.
 - `self_*` explicitly selects the agent's own account and requires Oxy's live
   actor/relationship checks. It does not select the owner's Inbox.
-- Each operation uses a live catalogue pin and revocable task/requester proof.
-  Products enforce tenant, ownership, membership, entitlements and action policy.
-- Background runs and nested agents retain the originating task id; workers never
-  persist the person's bearer or reconstruct authority from an owner id.
+- Each operation uses a live catalogue pin and a per-call execution authorization on
+  Gemies' declared first-party authority (Oxy ADR 0066), naming the person and the
+  account. Products enforce tenant, ownership, membership, entitlements and action policy.
+- Background runs and nested agents act for the person the work belongs to; workers
+  never persist the person's bearer or reconstruct authority from an owner id.
 - External connectors, external OAuth providers and local device permissions keep
   their existing controls. Retiring internal app scopes does not alter them.
 
 Transport tests exercise account-bound tickets over HTTP and MCP, replay behavior,
 revocation, unavailable receivers and ambiguous effect results. Database tests cover
-persisted task provenance, compensation and verified legacy channel conversion.
-Source changes require the published Oxy task SDK and reader-first deployment;
-this document does not assert that production has completed that rollout.
+run scopes, compensation and idempotency.

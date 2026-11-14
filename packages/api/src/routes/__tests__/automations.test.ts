@@ -10,20 +10,14 @@ const state = vi.hoisted(() => ({
   dispatch: vi.fn(),
   find: vi.fn(),
   setEnabled: vi.fn(),
+  cancelRuns: vi.fn(async () => []),
   update: vi.fn(),
-  listActive: vi.fn(),
-  markRevoked: vi.fn(),
-  upsert: vi.fn(),
-  provision: vi.fn(),
-  revoke: vi.fn(),
   reload: vi.fn(),
   scheduleError: vi.fn(),
   tooFrequent: vi.fn(() => false),
   enabledCount: vi.fn(async () => 0),
   oxyMap: vi.fn(),
   list: vi.fn(),
-  provisionAlia: vi.fn(),
-  replaceAlia: vi.fn(),
   readTools: vi.fn(),
 }));
 
@@ -63,32 +57,15 @@ vi.mock('../../db/agents/agentRepository.js', async () => {
   };
 });
 vi.mock('../../db/automation/automationDefinitionRepository.js', () => ({
+  cancelOpenAutomationRuns: state.cancelRuns,
   countEnabledAutomationDefinitions: state.enabledCount,
   createAutomationDefinition: state.create,
   findAutomationDefinition: state.find,
-  listActiveAutomationAuthorizations: state.listActive,
   listAutomationDefinitions: state.list,
   listAutomationRuns: vi.fn(async () => []),
   listAutomationRunSteps: vi.fn(async () => []),
-  markAutomationAuthorizationsRevoked: state.markRevoked,
   setAutomationEnabled: state.setEnabled,
   updateAutomationDefinition: state.update,
-  upsertAutomationActionAuthorizations: state.upsert,
-}));
-vi.mock('../../db/automation/aliaTaskAuthorityRepository.js', () => ({
-  // The agent path's rows and Alia's are listed and retired together.
-  listActiveTaskAuthorityIds: vi.fn(async (db: unknown, automationId: string) =>
-    (
-      ((await state.listActive(db, automationId)) ?? []) as Array<{ oxyAuthorizationId: string }>
-    ).map((authorization) => authorization.oxyAuthorizationId),
-  ),
-  markTaskAuthorityRevoked: state.markRevoked,
-  replaceAliaTaskAuthorizations: state.replaceAlia,
-}));
-vi.mock('../../lib/automation-authority.js', () => ({
-  provisionAutomationAuthorizations: state.provision,
-  provisionAliaTaskAuthorizations: state.provisionAlia,
-  revokeAutomationAuthorizations: state.revoke,
 }));
 vi.mock('../../lib/automation-dispatcher.js', () => ({
   dispatchStructuredAutomation: state.dispatch,
@@ -238,11 +215,7 @@ beforeEach(() => {
     createdAt: new Date(),
     updatedAt: new Date(),
   }));
-  state.provision.mockResolvedValue([]);
   state.dispatch.mockResolvedValue({ status: 'queued', sessionId: 'session-1' });
-  state.listActive.mockResolvedValue([]);
-  state.revoke.mockResolvedValue({ revoked: [], failed: [] });
-  state.markRevoked.mockResolvedValue(undefined);
   state.reload.mockResolvedValue(undefined);
   state.scheduleError.mockReturnValue(null);
   state.tooFrequent.mockReturnValue(false);
@@ -290,7 +263,6 @@ describe('structured automation control plane', () => {
   it('defaults to observation without creating Oxy execution authority', async () => {
     const response = await send('POST', '/automations', payload);
     expect(response.status).toBe(201);
-    expect(state.provision).not.toHaveBeenCalled();
     expect(state.create).toHaveBeenCalledWith(
       database,
       expect.objectContaining({
@@ -306,13 +278,16 @@ describe('structured automation control plane', () => {
     );
   });
 
-  it('requires a live user session before execution authority is created', async () => {
+  it('creates an execute definition with no user session: nothing is provisioned at Oxy', async () => {
     state.token = undefined;
     const response = await send('POST', '/automations', { ...payload, executionMode: 'execute' });
-    expect(response.status).toBe(401);
-    expect(response.body.error).toBe('user_session_required_for_execution_authority');
-    expect(state.provision).not.toHaveBeenCalled();
-    expect(state.create).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    // Enabled at once: each run's calls are authorized when they are made (oxy ADR 0066).
+    expect(state.create).toHaveBeenCalledWith(
+      database,
+      expect.objectContaining({ executionMode: 'execute', enabled: true }),
+    );
+    expect(state.setEnabled).not.toHaveBeenCalled();
   });
 
   it('creates an assistant task without a user token or fabricated app authority', async () => {
@@ -333,16 +308,15 @@ describe('structured automation control plane', () => {
 
     expect(response.status).toBe(201);
     expect(state.oxyMap).not.toHaveBeenCalled();
-    expect(state.provision).not.toHaveBeenCalled();
     expect(state.create).toHaveBeenCalledWith(
       database,
       expect.objectContaining({
         actions: [],
         resources: [],
-        enabled: false,
+        enabled: true,
       }),
     );
-    expect(state.setEnabled).toHaveBeenCalledWith(database, expect.any(String), 'owner-1', true);
+    expect(state.setEnabled).not.toHaveBeenCalled();
   });
 
   it('rejects an invalid schedule before persisting the definition', async () => {
@@ -378,35 +352,15 @@ describe('structured automation control plane', () => {
     expect(saved.status).toBe(201);
   });
 
-  it('persists only opaque authorization references for execute mode', async () => {
-    state.provision.mockImplementationOnce(async (input) => [
-      {
-        automationActionId: input.pairs[0].action.id,
-        agentId: 'agent-1',
-        actorAccountId: 'bot-agent-1',
-        oxyAuthorizationId: 'authorization-1',
-        expiresAt: new Date(Date.now() + 60_000),
-      },
-    ]);
+  it('stores no bearer and no Oxy authorization with an execute definition', async () => {
     const response = await send('POST', '/automations', { ...payload, executionMode: 'execute' });
     expect(response.status).toBe(201);
-    expect(state.provision).toHaveBeenCalledWith(
-      expect.objectContaining({
-        accessToken: 'user-token',
-        ownerAccountId: 'owner-1',
-        maximumAutonomy: 'autonomous',
-      }),
-    );
     const persisted = state.create.mock.calls[0]?.[1];
-    expect(persisted.enabled).toBe(false);
-    expect(state.upsert).toHaveBeenCalledWith(database, [
-      expect.objectContaining({
-        oxyAuthorizationId: 'authorization-1',
-      }),
-    ]);
-    expect(state.setEnabled).toHaveBeenCalledWith(database, persisted.id, 'owner-1', true);
-    expect(state.reload).toHaveBeenCalledWith(persisted.id);
+    expect(persisted.enabled).toBe(true);
+    expect(persisted).not.toHaveProperty('authorizations');
+    expect(persisted).not.toHaveProperty('aliaAuthorizations');
     expect(JSON.stringify(persisted)).not.toContain('user-token');
+    expect(state.reload).toHaveBeenCalledWith(persisted.id);
   });
 
   it('resolves manual authority at execute-on-request rather than autonomous level', async () => {
@@ -436,7 +390,6 @@ describe('structured automation control plane', () => {
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('background_execution_requires_autonomous_policy');
     expect(state.create).not.toHaveBeenCalled();
-    expect(state.provision).not.toHaveBeenCalled();
   });
 
   it('rejects manual execution under a draft policy', async () => {
@@ -450,7 +403,6 @@ describe('structured automation control plane', () => {
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('manual_execution_requires_request_autonomy');
     expect(state.create).not.toHaveBeenCalled();
-    expect(state.provision).not.toHaveBeenCalled();
   });
 
   it('does not reactivate an execute definition with an incompatible policy', async () => {
@@ -466,7 +418,6 @@ describe('structured automation control plane', () => {
 
     expect(response.status).toBe(409);
     expect(response.body.error).toBe('background_execution_requires_autonomous_policy');
-    expect(state.provision).not.toHaveBeenCalled();
     expect(state.setEnabled).not.toHaveBeenCalled();
   });
 
@@ -499,7 +450,7 @@ describe('structured automation control plane', () => {
         maximumAutonomy: 'autonomous',
         limits: update.limits,
         enabled: true,
-        authorizations: [],
+        expectedUpdatedAt: new Date('2026-09-01T10:00:00.000Z'),
       }),
     );
     expect(response.body.receipt).toEqual(
@@ -515,63 +466,29 @@ describe('structured automation control plane', () => {
     );
   });
 
-  it('rotates exact Oxy authority before re-enabling an edited execute definition', async () => {
+  it('edits an execute definition in place, against the version it read', async () => {
     state.find.mockResolvedValue(storedAutomation());
-    state.listActive.mockResolvedValue([{ oxyAuthorizationId: 'authorization-old' }]);
-    state.provision.mockResolvedValue([
-      {
-        automationActionId: 'action-1',
-        agentId: 'agent-1',
-        actorAccountId: 'bot-agent-1',
-        oxyAuthorizationId: 'authorization-new',
-        expiresAt: new Date('2027-09-01T10:00:00.000Z'),
-      },
-    ]);
-    state.revoke.mockResolvedValue({ revoked: ['authorization-old'], failed: [] });
 
     const response = await send('PATCH', '/automations/automation-1', {
       objective: 'Reply to urgent email only',
     });
 
     expect(response.status).toBe(200);
-    expect(state.provision).toHaveBeenCalledWith(
-      expect.objectContaining({
-        automationId: 'automation-1',
-        accessToken: 'user-token',
-      }),
-    );
-    expect(state.setEnabled).toHaveBeenCalledWith(
-      database,
-      'automation-1',
-      'owner-1',
-      false,
-      new Date('2026-09-01T10:00:00.000Z'),
-    );
-    expect(state.revoke).toHaveBeenCalledWith('user-token', ['authorization-old']);
-    expect(state.markRevoked).toHaveBeenCalledWith(database, ['authorization-old']);
+    // Nothing to stop, revoke or re-provision first: it stays enabled throughout.
+    expect(state.setEnabled).not.toHaveBeenCalled();
     expect(state.update).toHaveBeenCalledWith(
       database,
       expect.objectContaining({
-        authorizations: [expect.objectContaining({ oxyAuthorizationId: 'authorization-new' })],
+        objective: 'Reply to urgent email only',
+        expectedUpdatedAt: new Date('2026-09-01T10:00:00.000Z'),
         enabled: true,
       }),
     );
-    expect(response.body.revocation).toEqual({ revoked: 1, failed: 0 });
+    expect(response.body).not.toHaveProperty('revocation');
   });
 
-  it('revalidates authority against the newly assigned actor capability map', async () => {
+  it('revalidates actor coverage against the newly assigned actor capability map', async () => {
     state.find.mockResolvedValue(storedAutomation());
-    state.listActive.mockResolvedValue([{ oxyAuthorizationId: 'authorization-old' }]);
-    state.revoke.mockResolvedValue({ revoked: ['authorization-old'], failed: [] });
-    state.provision.mockImplementationOnce(async (input) => [
-      {
-        automationActionId: input.pairs[0].action.id,
-        agentId: input.pairs[0].agent.agentId,
-        actorAccountId: input.pairs[0].agent.actorAccountId,
-        oxyAuthorizationId: 'authorization-agent-2',
-        expiresAt: new Date('2027-09-01T10:00:00.000Z'),
-      },
-    ]);
 
     const response = await send('PATCH', '/automations/automation-1', {
       actorSelection: { mode: 'fixed', agentId: 'agent-2' },
@@ -583,27 +500,23 @@ describe('structured automation control plane', () => {
         actor: { type: 'agent', accountId: 'bot-agent-2' },
       }),
     );
-    expect(state.provision).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pairs: [
-          expect.objectContaining({
-            agent: expect.objectContaining({ agentId: 'agent-2', actorAccountId: 'bot-agent-2' }),
-          }),
-        ],
-      }),
-    );
     expect(state.update).toHaveBeenCalledWith(
       database,
-      expect.objectContaining({
-        fixedAgentId: 'agent-2',
-        authorizations: [
-          expect.objectContaining({
-            agentId: 'agent-2',
-            oxyAuthorizationId: 'authorization-agent-2',
-          }),
-        ],
-      }),
+      expect.objectContaining({ fixedAgentId: 'agent-2' }),
     );
+  });
+
+  it('refuses an edit whose new actor cannot cover the declared action', async () => {
+    state.find.mockResolvedValue(storedAutomation());
+    state.oxyMap.mockResolvedValue([]);
+
+    const response = await send('PATCH', '/automations/automation-1', {
+      actorSelection: { mode: 'fixed', agentId: 'agent-2' },
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('automation_actor_coverage_missing');
+    expect(state.update).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate global limits before rotating authority', async () => {
@@ -618,25 +531,26 @@ describe('structured automation control plane', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('invalid_automation_patch');
-    expect(state.provision).not.toHaveBeenCalled();
     expect(state.setEnabled).not.toHaveBeenCalled();
   });
 
-  it('stops locally first and reports Oxy revocation results', async () => {
+  it('stops the task: disabling it is the off switch, and its open runs end now', async () => {
     state.find.mockResolvedValue({
       id: 'automation-1',
       ownerAccountId: 'owner-1',
       executionMode: 'execute',
       enabled: true,
     });
-    state.listActive.mockResolvedValue([{ oxyAuthorizationId: 'authorization-1' }]);
-    state.revoke.mockResolvedValue({ revoked: ['authorization-1'], failed: [] });
     const response = await send('DELETE', '/automations/automation-1');
     expect(response.status).toBe(200);
     expect(state.setEnabled).toHaveBeenCalledWith(database, 'automation-1', 'owner-1', false);
-    expect(state.revoke).toHaveBeenCalledWith('user-token', ['authorization-1']);
-    expect(state.markRevoked).toHaveBeenCalledWith(database, ['authorization-1']);
-    expect(response.body.revocation).toEqual({ revoked: 1, failed: 0 });
+    // Each call is authorized as it is made, so ending its runs is what stops one already queued.
+    expect(state.cancelRuns).toHaveBeenCalledWith(database, 'automation-1');
+    expect(state.reload).toHaveBeenCalledWith('automation-1');
+    expect(response.body).toEqual({
+      automation: { id: 'automation-1', enabled: false },
+      stopped: true,
+    });
   });
 
   it('dispatches a manual definition with the caller and an explicit idempotency key', async () => {
@@ -693,38 +607,12 @@ describe('Alia as the default responsible actor', () => {
     { resource: inboxRoot, tool: 'listEmails' },
     { resource: inboxRoot, tool: 'getEmail' },
   ];
-  const expiresAt = new Date('2027-10-01T00:00:00.000Z');
 
   beforeEach(() => {
     state.readTools.mockResolvedValue(reads);
-    state.replaceAlia.mockResolvedValue(undefined);
-    state.provisionAlia.mockImplementation(
-      async (input: {
-        actions: Array<{ id: string; resource: unknown; tool: string }>;
-        reads: Array<{ resource: unknown; tool: string }>;
-      }) => ({
-        provisioned: [
-          ...input.actions.map((action) => ({
-            automationActionId: action.id,
-            resource: action.resource,
-            tool: action.tool,
-            oxyAuthorizationId: `oxy-${action.tool}`,
-            expiresAt,
-          })),
-          ...input.reads.map((read) => ({
-            automationActionId: null,
-            resource: read.resource,
-            tool: read.tool,
-            oxyAuthorizationId: `oxy-${read.tool}`,
-            expiresAt,
-          })),
-        ],
-        refusedReads: 0,
-      }),
-    );
   });
 
-  it("makes Alia responsible when no actor is named and gives her standing reads of the owner's apps", async () => {
+  it('makes Alia responsible when no actor is named, enabled at once', async () => {
     const response = await send('POST', '/automations', assistantTask);
 
     expect(response.status).toBe(201);
@@ -735,40 +623,23 @@ describe('Alia as the default responsible actor', () => {
         fixedAgentId: ALIA_GEMIE_ID,
         eligibleAgentIds: [],
         actions: [],
-        // Inert until her authority is durable.
-        enabled: false,
+        enabled: true,
       }),
     );
     expect(state.oxyMap).not.toHaveBeenCalled();
-    expect(state.provision).not.toHaveBeenCalled();
-    expect(state.readTools).toHaveBeenCalledWith('owner-1');
-    expect(state.provisionAlia).toHaveBeenCalledWith(
-      expect.objectContaining({
-        accessToken: 'user-token',
-        ownerAccountId: 'owner-1',
-        maximumAutonomy: 'autonomous',
-        actions: [],
-        reads,
-      }),
-    );
-    expect(state.replaceAlia).toHaveBeenCalledWith(database, expect.any(String), [
-      expect.objectContaining({
-        automationActionId: null,
-        tool: 'listEmails',
-        oxyAuthorizationId: 'oxy-listEmails',
-      }),
-      expect.objectContaining({ automationActionId: null, tool: 'getEmail' }),
-    ]);
-    expect(state.setEnabled).toHaveBeenCalledWith(database, expect.any(String), 'owner-1', true);
+    // Her reads of the owner's apps are her run's scope, built when it runs (`aliaRunScope`).
+    expect(state.readTools).not.toHaveBeenCalled();
   });
 
-  it('creates an Alia task with no app authority when no person is present', async () => {
+  it('creates an Alia task with no session at all', async () => {
     state.token = undefined;
     const response = await send('POST', '/automations', assistantTask);
 
     expect(response.status).toBe(201);
-    expect(state.provisionAlia).not.toHaveBeenCalled();
-    expect(state.replaceAlia).toHaveBeenCalledWith(database, expect.any(String), []);
+    expect(state.create).toHaveBeenCalledWith(
+      database,
+      expect.objectContaining({ fixedAgentId: ALIA_GEMIE_ID, enabled: true }),
+    );
   });
 
   it('accepts Alia named explicitly', async () => {
@@ -784,43 +655,22 @@ describe('Alia as the default responsible actor', () => {
     );
   });
 
-  it('authorizes Alia herself for the exact connected actions a task declares', async () => {
+  it('keeps the exact connected actions an Alia task declares, with nothing provisioned', async () => {
     const { actorSelection: _agent, ...connected } = payload;
     const response = await send('POST', '/automations', { ...connected, executionMode: 'execute' });
 
     expect(response.status).toBe(201);
     expect(state.oxyMap).not.toHaveBeenCalled();
-    expect(state.provision).not.toHaveBeenCalled();
-    expect(state.provisionAlia).toHaveBeenCalledWith(
+    expect(state.create).toHaveBeenCalledWith(
+      database,
       expect.objectContaining({
+        fixedAgentId: ALIA_GEMIE_ID,
         actions: [
           expect.objectContaining({ id: expect.any(String), resource, tool: 'replyToEmail' }),
         ],
+        enabled: true,
       }),
     );
-    expect(state.replaceAlia).toHaveBeenCalledWith(
-      database,
-      expect.any(String),
-      expect.arrayContaining([
-        expect.objectContaining({ tool: 'replyToEmail', automationActionId: expect.any(String) }),
-      ]),
-    );
-  });
-
-  it('keeps the task inert when Oxy refuses a declared action', async () => {
-    state.provisionAlia.mockRejectedValueOnce(new Error('Oxy user authority error (400)'));
-    const { actorSelection: _agent, ...connected } = payload;
-    const response = await send('POST', '/automations', { ...connected, executionMode: 'execute' });
-
-    expect(response.status).toBe(403);
-    expect(response.body).toEqual(
-      expect.objectContaining({
-        error: 'automation_execution_authority_refused',
-        stopped: true,
-      }),
-    );
-    expect(state.replaceAlia).not.toHaveBeenCalled();
-    expect(state.setEnabled).not.toHaveBeenCalled();
   });
 
   it('creates a watch with no app reads: it only looks at the open web', async () => {
@@ -832,8 +682,9 @@ describe('Alia as the default responsible actor', () => {
 
     expect(response.status).toBe(201);
     expect(state.readTools).not.toHaveBeenCalled();
-    expect(state.provisionAlia).toHaveBeenCalledWith(
-      expect.objectContaining({ reads: [], actions: [] }),
+    expect(state.create).toHaveBeenCalledWith(
+      database,
+      expect.objectContaining({ inputs: { watch: { query: 'Meta announces' } }, enabled: true }),
     );
   });
 
@@ -906,39 +757,13 @@ describe('Alia as the default responsible actor', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(state.provisionAlia).toHaveBeenCalledWith(
-      expect.objectContaining({ automationId: 'automation-1', reads }),
-    );
     expect(state.update).toHaveBeenCalledWith(
       database,
       expect.objectContaining({
         actorMode: 'fixed',
         fixedAgentId: ALIA_GEMIE_ID,
         eligibleAgentIds: [],
-        authorizations: [],
-        aliaAuthorizations: [
-          expect.objectContaining({ tool: 'listEmails' }),
-          expect.objectContaining({ tool: 'getEmail' }),
-        ],
       }),
     );
-  });
-
-  it("revokes Alia's standing authority with the task when it is stopped", async () => {
-    state.find.mockResolvedValueOnce(
-      storedAutomation({ actorSelection: { mode: 'fixed', agentId: ALIA_GEMIE_ID } }),
-    );
-    state.listActive.mockResolvedValueOnce([
-      { oxyAuthorizationId: 'oxy-listEmails' },
-      { oxyAuthorizationId: 'oxy-getEmail' },
-    ]);
-    state.revoke.mockResolvedValueOnce({ revoked: ['oxy-listEmails', 'oxy-getEmail'], failed: [] });
-
-    const response = await send('DELETE', '/automations/automation-1');
-
-    expect(response.status).toBe(200);
-    expect(state.revoke).toHaveBeenCalledWith('user-token', ['oxy-listEmails', 'oxy-getEmail']);
-    expect(state.markRevoked).toHaveBeenCalledWith(database, ['oxy-listEmails', 'oxy-getEmail']);
-    expect(response.body.revocation).toEqual({ revoked: 2, failed: 0 });
   });
 });

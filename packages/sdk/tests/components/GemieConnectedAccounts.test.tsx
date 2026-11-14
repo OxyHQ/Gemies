@@ -82,7 +82,6 @@ const account = (over: Record<string, unknown> = {}) => ({
   phoneNumber: '+34 600',
   displayName: null,
   status: 'connected',
-  oxyTaskState: 'active',
   gemieIds: [],
   answeringGemieId: null,
   replies: 'everyone',
@@ -325,22 +324,7 @@ describe('a connected account in Settings', () => {
     expect(all(tree, 'Switch')).toHaveLength(0);
   });
 
-  it('renews the answering gemie’s lapsed task without a new link, and only where one answers', async () => {
-    accounts = [
-      account({ oxyTaskState: 'reauth_required', answeringGemieId: 'scout' }),
-      account({ _id: 'acc-10', oxyTaskState: 'reauth_required' }),
-    ];
-    api.post.mockImplementation(async (path: string) =>
-      path === '/me/channel-tasks/renew'
-        ? { data: { renewed: [{ kind: 'account', id: 'acc-9' }], failed: [] } }
-        : { data: {} },
-    );
-    await render();
-    // Every channel of the person's that needs it, in one renewal; none per account.
-    expect(api.post.mock.calls).toEqual([['/me/channel-tasks/renew']]);
-  });
-
-  it('asks for no renewal while every answered account’s task stands', async () => {
+  it('only reads the list: nothing to renew', async () => {
     accounts = [account({ answeringGemieId: 'scout' }), account({ _id: 'acc-10' })];
     await render();
     expect(api.post).not.toHaveBeenCalled();

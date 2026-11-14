@@ -1,13 +1,13 @@
 /**
- * A person's connected accounts: the provider sessions behind them, who answers them and the Oxy
- * authority the answering gemie acts with (ADR 0035 as amended).
+ * A person's connected accounts: the provider sessions behind them and who answers them (ADR 0035
+ * as amended).
  *
  * A person connects a WhatsApp account, or Telegram through Telegram Business (ADR 0037), once, and
  * grants it to the gemies that may use it. The integrations gateway holds the provider session and
  * speaks one contract for every platform (`@gemies/server/internal`); this service holds the row and
  * its grants. At most one granted gemie ANSWERS what arrives on it, when the account's replies say
- * so (`shouldAnswer`), with a durable Oxy task the person granted when choosing it, whose actor is
- * that gemie's (`oxyActorFor`). Every granted gemie can read and send through it when the person
+ * so (`shouldAnswer`), acting for the person on Gemies' own first-party authority (oxy ADR 0066):
+ * choosing no gemie, or disconnecting the account, is the off switch. Every granted gemie can read and send through it when the person
  * asks or its tasks need it (`tools/accounts.ts`).
  */
 
@@ -23,16 +23,12 @@ import {
 } from '@gemies/server/internal';
 import { getDb } from '../db/index.js';
 import {
-  listAccountsAnsweredBy,
   setAnsweringGemie,
   setConnectedAccountSessionState,
-  setConnectedAccountTask,
   type ConnectedAccountRow,
 } from '../db/integrations/connectedAccountRepository.js';
-import { oxyActorFor, type OxyActorGemie } from './gemie-oxy-actor.js';
 import { integrationsFetch } from './integrations-client.js';
 import { log } from './logger.js';
-import { bindOxyTask, revokeOxyTask } from './oxy-task-authority.js';
 
 /**
  * A gateway call that did not answer what the contract says: it could not be reached
@@ -227,48 +223,6 @@ export function shouldAnswer(
 }
 
 /**
- * Grant the account its durable Oxy task: its person's authority, acted on by the answering gemie,
- * with the expiry Oxy gave it. Replaces the task the row held (`account.oxyTaskId`) only if nobody
- * changed it meanwhile, and releases that one only after (`bindOxyTask`).
- */
-export async function bindAccountTask(input: {
-  account: ConnectedAccountRow;
-  gemie: OxyActorGemie;
-  personAccountId: string;
-  accessToken: string;
-}): Promise<void> {
-  const { account } = input;
-  const expected = account.oxyTaskId;
-  const task = await bindOxyTask(
-    {
-      accessToken: input.accessToken,
-      effectiveAccountId: input.personAccountId,
-      actor: oxyActorFor(input.gemie, input.personAccountId),
-      origin: { kind: 'automation', id: `channel:${account.id}` },
-    },
-    async (minted) =>
-      (await setConnectedAccountTask(getDb(), account.id, minted, expected))
-        ? { replaced: expected }
-        : null,
-  );
-  if (!task) throw new Error('Channel authority changed during renewal');
-  account.oxyTaskId = task.id;
-  account.oxyTaskState = 'active';
-  account.oxyTaskExpiresAt = task.expiresAt;
-}
-
-/** Revoke the account's task, if it holds one. */
-export async function revokeAccountTask(account: ConnectedAccountRow): Promise<void> {
-  if (account.oxyTaskId) await revokeOxyTask(account.oxyTaskId);
-  if (!(await setConnectedAccountTask(getDb(), account.id, null, account.oxyTaskId))) {
-    throw new Error('Channel authority changed during revocation');
-  }
-  account.oxyTaskId = null;
-  account.oxyTaskState = 'reauth_required';
-  account.oxyTaskExpiresAt = null;
-}
-
-/**
  * Log the account's provider session out and have the gateway forget it, with everything it
  * synced. Best effort: an account is removed here even when the gateway cannot be reached, and a
  * session the gateway still holds then answers nothing, because no row resolves it any more.
@@ -285,36 +239,10 @@ export async function endAccountSession(
   }
 }
 
-/**
- * Choose the gemie that answers the account, or none (`null`): stored, then the account's task is
- * revoked and, for a gemie, granted again with that gemie as its actor. The person is present (it
- * is their bearer that grants the task); a task that cannot be granted leaves the account typed
- * `reauth_required`, which their next visit renews (`lib/channel-task-authority.ts`).
- */
+/** Choose the gemie that answers the account, or none (`null`). */
 export async function setAccountAnswering(input: {
   account: ConnectedAccountRow;
-  gemie: (OxyActorGemie & { readonly _id: string }) | null;
-  personAccountId: string;
-  accessToken: string;
+  gemie: { readonly _id: string } | null;
 }): Promise<void> {
-  const { account, gemie } = input;
-  await setAnsweringGemie(getDb(), account.id, gemie?._id ?? null);
-  await revokeAccountTask(account);
-  if (gemie) await bindAccountTask({ ...input, gemie });
-}
-
-/**
- * Before a gemie is deleted: every account it answers loses its task, since the task's actor is the
- * gemie. The grants cascade with the gemie; the accounts stay their people's, answered by nobody
- * until they choose another. Best effort per account, so one Oxy failure does not keep the gemie.
- */
-export async function releaseAnsweringGemie(agentId: string): Promise<void> {
-  const accounts = await listAccountsAnsweredBy(getDb(), agentId);
-  await Promise.all(
-    accounts.map((account) =>
-      revokeAccountTask(account).catch((err: unknown) =>
-        log.channels.warn({ err, accountId: account.id }, 'Could not revoke a channel task'),
-      ),
-    ),
-  );
+  await setAnsweringGemie(getDb(), input.account.id, input.gemie?._id ?? null);
 }

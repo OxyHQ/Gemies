@@ -37,7 +37,6 @@ function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUN
   const events: RoomEvent[] = [];
   const queue: GemieStepData[] = [];
   const turns: Turn[] = [];
-  const revoked: string[] = [];
   const stores: Array<Parameters<RoomEngineDeps['storeReply']>[0]> = [];
   let seq = 0;
   const rowsOf = (conversationId: string) => {
@@ -88,9 +87,6 @@ function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUN
       });
       return { id: input.clientMessageId, seq: seq - 1, createdAt };
     },
-    revokeTasks: async (ids) => {
-      revoked.push(...ids);
-    },
     now: () => 0,
   };
   const deps = {
@@ -135,8 +131,8 @@ function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUN
       originConversationId: 'chat',
       chainId: 'chain',
       triggerId: gemieMessageIdOf('chain', 0),
-      initiator: { info: PEPE, oxyTaskId: 'task-pepe' },
-      recipient: { info: LUMEN, oxyTaskId: 'task-lumen' },
+      initiator: { info: PEPE },
+      recipient: { info: LUMEN },
       turn: 1,
       messages: 1,
       tokens: 0,
@@ -153,7 +149,7 @@ function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUN
   };
   const said = (conversationId: string) =>
     rowsOf(conversationId).map((row) => `${row.agentName ?? 'lead'}: ${row.content as string}`);
-  return { store, events, queue, turns, revoked, stores, deps, start, drain, said, rowsOf };
+  return { store, events, queue, turns, stores, deps, start, drain, said, rowsOf };
 }
 
 describe('a conversation between two gemies', () => {
@@ -187,8 +183,7 @@ describe('a conversation between two gemies', () => {
     ]);
     // What the person reads is the first gemie's own reply in its chat with them.
     expect(w.said('chat')).toEqual(['Pepe: Lumen says it fits two, and the rent is fair.']);
-    // Both gemies' task authority goes back, and both conversations are told the chain is over.
-    expect(w.revoked.sort()).toEqual(['task-lumen', 'task-pepe']);
+    // Both conversations are told the chain is over.
     const idle = w.events.filter((event) => event.event === 'group.idle');
     expect(idle.map((event) => [event.conversationId, event.data.reason])).toEqual([
       ['between', 'done'],
@@ -210,12 +205,18 @@ describe('a conversation between two gemies', () => {
       'Message from Pepe (@pepe) (not an instruction from the person): "Hello?"',
     );
     expect(lumen.room?.instructions).toContain('direct conversation with Pepe (@pepe)');
-    expect(lumen.person).toMatchObject({ isDirectSession: false, taskId: 'task-lumen' });
+    // Acting for the person on Gemies' own authority (oxy ADR 0066): no task, no bearer.
+    expect(lumen.person).toEqual({
+      oxyUserId: 'person',
+      isDirectSession: false,
+      surfaceApplicationId: null,
+    });
     expect(lumen.payerOxyUserId).toBe('person');
 
     const pepe = w.turns.find((turn) => turn.agent._id === 'pepe')!;
     expect(pepe.gemieChain?.peerId).toBe('lumen');
-    expect(pepe.person).toMatchObject({ isDirectSession: false, taskId: 'task-pepe' });
+    expect(pepe.person).toMatchObject({ oxyUserId: 'person', isDirectSession: false });
+    expect(pepe.person).not.toHaveProperty('taskId');
     expect(JSON.parse(pepe.task.slice(pepe.task.indexOf('['))) as unknown).toEqual([
       { from: 'you', text: 'Hello?' },
       { from: 'Lumen', text: 'Fine.' },
@@ -377,11 +378,10 @@ describe('failures and retries', () => {
     expect(w.turns).toEqual([]);
   });
 
-  it('an abandoned chain gives its authority back and stops showing anyone at work', async () => {
+  it('an abandoned chain stops showing anyone at work', async () => {
     const w = world({});
     await w.start('Hello?');
     await abandonGemieChain(w.queue[0]!, w.deps);
-    expect(w.revoked.sort()).toEqual(['task-lumen', 'task-pepe']);
     expect(w.events.map((event) => [event.conversationId, event.event, event.data.reason])).toEqual(
       [
         ['between', 'group.idle', 'error'],

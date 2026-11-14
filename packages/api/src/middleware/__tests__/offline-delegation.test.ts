@@ -220,6 +220,8 @@ describe('a delegated service request is verified by a credentialed client', () 
         credentialId: 'homiio-credential-id',
         ownerAccountId: 'homiio-owner-account',
         environment: 'production',
+        // The request's effect (a POST writes), which Oxy checks against what is declared.
+        effect: 'write',
       },
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: `Bearer ${verifier.ownToken}` }),

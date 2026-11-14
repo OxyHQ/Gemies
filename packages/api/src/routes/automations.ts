@@ -1,10 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import {
-  listActiveTaskAuthorityIds,
-  markTaskAuthorityRevoked,
-} from '../db/automation/aliaTaskAuthorityRepository.js';
-import {
+  cancelOpenAutomationRuns,
   findAutomationDefinition,
   listAutomationDefinitions,
   listAutomationRuns,
@@ -12,7 +9,6 @@ import {
   setAutomationEnabled,
 } from '../db/automation/automationDefinitionRepository.js';
 import { getDb } from '../db/index.js';
-import { revokeAutomationAuthorizations } from '../lib/automation-authority.js';
 import { dispatchStructuredAutomation } from '../lib/automation-dispatcher.js';
 import { log } from '../lib/logger.js';
 import {
@@ -41,37 +37,20 @@ function userId(request: Request): string | null {
   return request.user?.id ?? null;
 }
 
-async function stopAutomation(input: {
-  request: Request;
-  ownerAccountId: string;
-  automation: AutomationRecord;
-}) {
+/**
+ * Stopping is the off switch: a disabled task never runs again, and its runs still open end now,
+ * so not one more call is made for it (each is authorized as it is made). Nothing is held at Oxy.
+ */
+async function stopAutomation(input: { ownerAccountId: string; automation: AutomationRecord }) {
   const stopped = await setAutomationEnabled(
     getDb(),
     input.automation.id,
     input.ownerAccountId,
     false,
   );
+  await cancelOpenAutomationRuns(getDb(), input.automation.id);
   await refreshAutomationSchedule(input.automation.id);
-  // The agent path's authority and Alia's standing authority alike.
-  const active = await listActiveTaskAuthorityIds(getDb(), input.automation.id);
-  if (active.length === 0) return { automation: stopped, revoked: 0, failed: 0 };
-  if (!input.request.accessToken) {
-    log.triggers.error(
-      { automationId: input.automation.id, count: active.length },
-      'Automation stopped locally but no user session was available to revoke Oxy authority',
-    );
-    return { automation: stopped, revoked: 0, failed: active.length };
-  }
-  const result = await revokeAutomationAuthorizations(input.request.accessToken, active);
-  await markTaskAuthorityRevoked(getDb(), result.revoked);
-  if (result.failed.length > 0) {
-    log.triggers.error(
-      { automationId: input.automation.id, failed: result.failed.length },
-      'Automation stopped locally; some Oxy authorizations still require revocation',
-    );
-  }
-  return { automation: stopped, revoked: result.revoked.length, failed: result.failed.length };
+  return stopped;
 }
 
 router.get('/', async (request: Request, response: Response) => {
@@ -93,7 +72,6 @@ router.post('/', async (request: Request, response: Response) => {
   try {
     const created = await createStructuredAutomation({
       ownerAccountId,
-      accessToken: request.accessToken,
       definition: parsed.data,
     });
     return response.status(201).json(created);
@@ -191,7 +169,6 @@ router.patch('/:id', async (request: Request, response: Response) => {
     return response.json(
       await updateStructuredAutomation({
         ownerAccountId,
-        accessToken: request.accessToken,
         existing,
         patch: parsed.data,
       }),
@@ -217,13 +194,9 @@ router.delete('/:id', async (request: Request, response: Response) => {
     ownerAccountId,
   );
   if (!existing) return response.status(404).json({ error: 'Automation not found' });
-  const stopped = await stopAutomation({ request, ownerAccountId, automation: existing });
+  const automation = await stopAutomation({ ownerAccountId, automation: existing });
   log.triggers.info({ automationId: existing.id, ownerAccountId }, 'Automation stopped');
-  return response.json({
-    automation: stopped.automation,
-    stopped: true,
-    revocation: { revoked: stopped.revoked, failed: stopped.failed },
-  });
+  return response.json({ automation, stopped: true });
 });
 
 export default router;

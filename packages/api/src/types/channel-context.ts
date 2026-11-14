@@ -17,7 +17,6 @@ export interface VerifiedChannelContext {
   gemieId?: string | null;
   platform: string;
   identityId: string;
-  taskId?: string;
 }
 
 declare global {

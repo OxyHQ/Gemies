@@ -296,20 +296,13 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
     // second paid session launched beside this turn.
     const agentRuntimeEnabled = linkedAgent.taskAuthority === 'session';
     /**
-     * The person in this turn, when they are present with their authority: their own session, or a
-     * channel that verified it is them and holds the authority they granted (a gemie bot's person,
-     * ADR 0037 amendment). Their turn is the same turn wherever it came from.
+     * The person in this turn, when they are present: their own session, or a channel that verified
+     * it is them (a gemie bot's person, ADR 0037 amendment). Their turn is the same turn wherever it
+     * came from; Gemies acts for them on its own first-party authority (oxy ADR 0066).
      */
     const presentPersonId = personPresent
       ? (req.user?.id ?? req.channelContext?.accountId)
       : undefined;
-    const presentAuthority = isDirectUserSession
-      ? req.accessToken
-        ? { requesterToken: req.accessToken }
-        : undefined
-      : req.channelContext?.taskId
-        ? { oxyTaskId: req.channelContext.taskId }
-        : undefined;
 
     // The correlation record for this turn, before the first branch below can
     // take a request somewhere else. `kaana` is null because Alia serves this
@@ -354,7 +347,7 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       }
     }
 
-    if (agentRuntimeEnabled && presentPersonId && presentAuthority) {
+    if (agentRuntimeEnabled && presentPersonId) {
       const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
       const task =
         typeof lastUserMessage?.content === 'string'
@@ -373,7 +366,6 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
                 .join('\n')
             : 'Continue the agent thread';
       coordinatedTurn = await AgentTurnCoordinator.begin({
-        authority: presentAuthority,
         agent: linkedAgent,
         oxyUserId: presentPersonId,
         conversationId,
@@ -470,12 +462,12 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
         ? ToolPipeline.forMachineTurn()
         : await ToolPipeline.forUser({
             userId: req.user?.id ?? req.channelContext?.accountId ?? '',
-            oxyTaskId: req.channelContext?.taskId,
             accessToken: req.accessToken,
             isDirectSession: isDirectUserSession,
             personPresent,
-            // A session acts for the person holding it; an API key does not.
-            actsForPerson: isDirectUserSession || Boolean(req.channelContext?.taskId),
+            // A session acts for the person holding it, and a verified channel for its person; an
+            // API key does not.
+            actsForPerson: isDirectUserSession || req.channelContext !== undefined,
             // The app the person is in (ADR 0021), for `sendMessage` and `searchAgents`.
             surfaceApplicationId: ctx.surfaceApplicationId,
             // A gemie that writes to another continues in this chat when it answers (ADR 0042):
@@ -551,7 +543,6 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       isDirectUserSession,
       personPresent,
       userId: presentPersonId ?? req.user?.id,
-      accessToken: req.accessToken,
       oxyUser,
       userMemory,
       personalization,

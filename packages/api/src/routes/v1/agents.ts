@@ -75,9 +75,6 @@ router.get('/:id/features', async (req: Request, res: Response) => {
     if (agent === null || !req.user?.id) return notFound(res);
     const features = await readAgentFeatures(agent, {
       accountId: req.user.id,
-      // The person's own bearer only: a service token acting for them is not them,
-      // and no lane is authorized without the person (`lib/agent-features.ts`).
-      accessToken: req.serviceApp ? undefined : req.accessToken,
       runId: randomUUID(),
     });
     res.json({ features });

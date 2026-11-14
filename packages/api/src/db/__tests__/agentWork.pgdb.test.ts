@@ -11,7 +11,8 @@ import {
   listInboxItems,
 } from '../agents/agentInboxRepository';
 import { acceptHeartbeat, addAgentFollowUp, listAgentWork } from '../agents/agentWorkRepository';
-import { agentWorkAuthorities, agentWorkItems } from '../schema/agent-work';
+import { agentWorkItems } from '../schema/agent-work';
+import { agents } from '../schema/agents';
 import { createAgentSession } from '../agents/agentSessionRepository';
 import { TEST_CHARACTER } from './support/agent-character';
 
@@ -24,7 +25,8 @@ beforeAll(() => {
 });
 afterAll(() => closePostgres());
 
-async function setup(authorize = true) {
+/** `attention: false` is the gemie's attention turned off: the owner's off switch for its work. */
+async function setup(attention = true) {
   const owner = randomUUID();
   const agent = await createAgent(db, {
     identity: { source: 'oxy', oxyAccountId: randomUUID() },
@@ -36,14 +38,8 @@ async function setup(authorize = true) {
     category: 'research',
     scheduleInterval: 5,
   });
-  const taskId = randomUUID();
-  if (authorize)
-    await db.insert(agentWorkAuthorities).values({
-      agentId: agent.id,
-      ownerAccountId: owner,
-      oxyTaskId: taskId,
-      expiresAt: new Date(now.getTime() + 86400000),
-    });
+  if (!attention)
+    await db.update(agents).set({ scheduleInterval: null }).where(eq(agents.id, agent.id));
   await addInboxItem(db, {
     agentId: agent.id,
     ownerAccountId: owner,
@@ -59,10 +55,10 @@ async function setup(authorize = true) {
     intervalMinutes: 5,
     lastHeartbeatAt: null,
   };
-  if (authorize)
+  if (attention)
     expect((await dueHeartbeats(db, now)).map((row) => row.agentId)).toContain(agent.id);
   else expect((await dueHeartbeats(db, now)).map((row) => row.agentId)).not.toContain(agent.id);
-  return { agent, owner, taskId, candidate };
+  return { agent, owner, candidate };
 }
 
 it('rolls back acknowledgement and heartbeat time when work creation fails', async () => {
@@ -91,7 +87,7 @@ it('two replicas create exactly one durable batch and acknowledge its events', a
   expect(await listAgentWork(db, agent.id)).toHaveLength(1);
 });
 
-it('leaves events pending until a real requester has established authority', async () => {
+it('leaves events pending while the gemie’s attention is off', async () => {
   const { candidate, agent } = await setup(false);
   expect(await acceptHeartbeat(db, candidate, now, () => 'work')).toBe(false);
   expect(await countPendingInboxItems(db, agent.id)).toBe(1);
@@ -136,13 +132,12 @@ it('stores a bounded UTF-8 projection, not a character-count approximation', asy
     expect(Buffer.byteLength(JSON.stringify(row.summary))).toBeLessThanOrEqual(2048);
 });
 
-it('a continuation keeps its original requester task and deduplicates a tool replay', async () => {
-  const { agent, owner, taskId } = await setup();
+it('a continuation keeps its original requester and deduplicates a tool replay', async () => {
+  const { agent, owner } = await setup();
   const source = await createAgentSession(db, {
     agentId: agent.id,
     oxyUserId: owner,
     task: 'original',
-    oxyTaskId: taskId,
   });
   const input = {
     agentId: agent.id,
@@ -153,7 +148,7 @@ it('a continuation keeps its original requester task and deduplicates a tool rep
   };
   const [a, b] = await Promise.all([addAgentFollowUp(db, input), addAgentFollowUp(db, input)]);
   expect(a?.id).toBe(b?.id);
-  expect(a?.oxyTaskId).toBe(taskId);
+  expect(a?.ownerAccountId).toBe(owner);
   expect(a?.rootId).toBe(source.id);
   expect(await addAgentFollowUp(db, { ...input, ownerAccountId: 'someone-else' })).toBeNull();
 });

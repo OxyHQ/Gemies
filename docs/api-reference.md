@@ -206,7 +206,7 @@ scheduler. The legacy `/triggers` routes were deleted with their tables.
 | `GET /automations` | List structured definitions |
 | `POST /automations` | Create an observe/execute definition and receipt |
 | `PATCH /automations/:id` | Edit objective, trigger, actor assignment, resources, data flow, autonomy, limits, or enabled state; execution authority is revalidated |
-| `DELETE /automations/:id` | Stop and revoke its execution authorizations |
+| `DELETE /automations/:id` | Stop it |
 | `POST /automations/:id/run` | Run a manual definition with an `Idempotency-Key` |
 | `GET /automations/runs` | List decision and execution history |
 | `GET /automations/runs/:runId/steps` | List correlated steps for an owned run |
@@ -238,9 +238,9 @@ after a short debounce (ADR 0037). Its `personLinked` says whether that person l
 Telegram to it.
 
 **`/agents/:id/telegram-bot/link`** — only for the person who connected the bot (ADR 0037,
-amendment): `POST` mints the Oxy task they grant the gemie for their own turns there and answers
-`{ url, expiresAt }`, a one-time `t.me/<bot>?start=<code>` link (15 minutes) that binds the Telegram
-account that opens it; `DELETE` unlinks it and revokes the task.
+amendment): `POST` answers `{ url, expiresAt }`, a one-time `t.me/<bot>?start=<code>` link
+(15 minutes) that binds the Telegram account that opens it; `DELETE` unlinks it. No Oxy task: the
+link is how the gemie knows the person (Oxy ADR 0066).
 
 **`/channel-bots/telegram`** and **`POST /channel-accounts/session`** — called by the integrations
 workload only: the gemies' bots it speaks as and a bot's turn (`{ reply }`, or `personTurn` when the

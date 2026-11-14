@@ -157,9 +157,6 @@ function linkedBotUser(oxyUserId: string): BotUserRow {
     chatId: 'chat-1',
     oxyUserId,
     isLinked: true,
-    oxyTaskId: null,
-    oxyTaskExpiresAt: null,
-    oxyTaskState: 'reauth_required',
     linkedAt: new Date(),
     username: null,
     displayName: null,
@@ -219,9 +216,6 @@ async function gemieBot(
     ownerPaysAgentTurns: opts.ownerPaysAgentTurns ?? true,
     linkedTelegramUserId: null,
     linkedTelegramName: null,
-    oxyTaskId: null,
-    oxyTaskState: 'reauth_required',
-    oxyTaskExpiresAt: null,
     totalMessages: 0,
     lastMessageAt: null,
     profileSyncError: null,
@@ -511,9 +505,6 @@ describe('a gemie bot’s person sends media: kept at once, and read on the turn
     const bot: GemieBotRow = {
       ...(await gemieBot(ownerId)),
       linkedTelegramUserId: 'tg-1',
-      oxyTaskId: 'bot-task',
-      oxyTaskState: 'active',
-      oxyTaskExpiresAt: new Date(Date.now() + 86_400_000),
     };
     let n = 0;
     vi.mocked(storeChannelMedia).mockImplementation(async () => `kept-${(n += 1)}`);
@@ -566,8 +557,7 @@ describe('a gemie bot’s person sends media: kept at once, and read on the turn
       filePartsOf([{ role: 'user', content: answer.personTurn?.content as never }]),
       {
         personAccountId: ownerId,
-        accessToken: undefined,
-        taskId: 'bot-task',
+        ownSession: false,
         modelAcceptsFiles: false,
         channel: true,
       },

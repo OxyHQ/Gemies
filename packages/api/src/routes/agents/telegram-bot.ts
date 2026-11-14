@@ -27,7 +27,6 @@ import {
   type GemieBotRow,
 } from '../../db/integrations/gemieBotRepository.js';
 import { BOT_GROUP_REPLIES } from '../../db/schema/bots.js';
-import { liveChannelTaskId } from '../../domain/channel-task.js';
 import { loadAgentForActor, refusalMessage, refusalStatus } from '../../lib/agent-account.js';
 import {
   readTelegramBotStatus,
@@ -37,11 +36,9 @@ import {
   TelegramBotSetupError,
   type TelegramBotLiveStatus,
 } from '../../lib/gemie-telegram-bot-setup.js';
-import { oxyActorFor } from '../../lib/gemie-oxy-actor.js';
 import { syncGemieBotProfileNow } from '../../lib/gemie-telegram-bot-profile.js';
 import { log } from '../../lib/logger.js';
 import { publishGemieChanged } from '../../lib/realtime/account.js';
-import { bindOxyTask, revokeReleasedTask } from '../../lib/oxy-task-authority.js';
 import { authenticateToken } from '../../middleware/auth.js';
 
 const router = Router();
@@ -97,21 +94,9 @@ function present(bot: GemieBotRow, caller: Caller, live: TelegramBotLiveStatus |
      * there and their private chat with it is theirs: their tools, memory and authority, as in the
      * app (ADR 0037, amendment). Anybody else on the bot is a third party.
      */
-    personLinked: bot.linkedTelegramUserId !== null && bot.oxyTaskId !== null,
-    /**
-     * Linked, but the authority they granted the gemie there lapsed (Oxy refused it, or it passed
-     * its expiry): their private chat is a stranger's until they reauthorise it, in one tap
-     * (`POST /me/channel-tasks/renew`).
-     */
-    personAuthorityLapsed:
-      bot.linkedTelegramUserId !== null &&
-      bot.oxyTaskId !== null &&
-      liveChannelTaskId(bot) === undefined,
+    personLinked: bot.linkedTelegramUserId !== null,
     /** Who is linked, as their Telegram showed them (`@username`, else their name); null when nobody. */
-    linkedAs:
-      bot.linkedTelegramUserId !== null && bot.oxyTaskId !== null
-        ? (bot.linkedTelegramName ?? null)
-        : null,
+    linkedAs: bot.linkedTelegramUserId !== null ? (bot.linkedTelegramName ?? null) : null,
     totalMessages: bot.totalMessages,
     lastMessageAt: bot.lastMessageAt,
     /**
@@ -181,7 +166,7 @@ router.put('/:id/telegram-bot', authenticateToken, async (req: Request, res: Res
     }
     const previousToken = await findGemieBotToken(db, caller.gemie._id);
     const setup = await setUpTelegramBot(token);
-    const { bot, released } = await saveGemieBot(db, {
+    const { bot } = await saveGemieBot(db, {
       agentId: caller.gemie._id,
       userId: caller.oxyUserId,
       botId: setup.botId,
@@ -191,7 +176,6 @@ router.put('/:id/telegram-bot', authenticateToken, async (req: Request, res: Res
       ownerPaysAgentTurns,
     });
     // A bot it replaced stops answering for the gemie, and its person's link goes with it.
-    await revokeReleasedTask(released);
     if (previousToken && previousToken.split(':')[0] !== setup.botId) {
       await tearDownTelegramBot(previousToken);
     }
@@ -263,8 +247,8 @@ function personOnly(bot: GemieBotRow, caller: Caller, res: Response): boolean {
 }
 
 // POST /agents/:id/telegram-bot/link — a one-time link that tells the bot which Telegram account is
-// the caller's. It also grants the gemie the caller's authority for their own turns there (a durable
-// Oxy task, minted now, while their session is present). Open it in Telegram: `/start <code>`.
+// the caller's: from then on their private chat there is theirs, as in the app (Gemies acts for them
+// on its own first-party authority, oxy ADR 0066). Open it in Telegram: `/start <code>`.
 router.post('/:id/telegram-bot/link', authenticateToken, async (req: Request, res: Response) => {
   try {
     const caller = await callerOf(req, res);
@@ -275,33 +259,21 @@ router.post('/:id/telegram-bot/link', authenticateToken, async (req: Request, re
     if (!personOnly(bot, caller, res)) return;
     const code = randomBytes(24).toString('base64url');
     const expiresAt = new Date(Date.now() + LINK_CODE_TTL_MS);
-    const task = await bindOxyTask(
-      {
-        accessToken: caller.accessToken,
-        effectiveAccountId: caller.oxyUserId,
-        actor: oxyActorFor(caller.gemie, caller.oxyUserId),
-        origin: { kind: 'automation', id: `channel:${bot.id}` },
-      },
-      async (oxyTask) => {
-        const saved = await setGemieBotLinkCode(db, {
-          agentId: caller.gemie._id,
-          userId: caller.oxyUserId,
-          codeHash: hashLinkCode(code),
-          expiresAt,
-          oxyTask,
-        });
-        return saved ? { replaced: saved.replaced } : null;
-      },
-    );
-    if (!task) return res.status(409).json({ error: 'The bot changed; try again' });
+    const saved = await setGemieBotLinkCode(db, {
+      agentId: caller.gemie._id,
+      userId: caller.oxyUserId,
+      codeHash: hashLinkCode(code),
+      expiresAt,
+    });
+    if (!saved) return res.status(409).json({ error: 'The bot changed; try again' });
     res.json({ url: `https://t.me/${bot.username}?start=${code}`, expiresAt });
   } catch (err: unknown) {
     answerFailure(res, err, 'Linking a Telegram account to a gemie bot');
   }
 });
 
-// DELETE /agents/:id/telegram-bot/link — the bot stops recognising the caller's Telegram, and the
-// authority it held is revoked. The bot keeps answering everybody as a third party.
+// DELETE /agents/:id/telegram-bot/link — the bot stops recognising the caller's Telegram (the off
+// switch for their private chat there). The bot keeps answering everybody as a third party.
 router.delete('/:id/telegram-bot/link', authenticateToken, async (req: Request, res: Response) => {
   try {
     const caller = await callerOf(req, res);
@@ -311,9 +283,8 @@ router.delete('/:id/telegram-bot/link', authenticateToken, async (req: Request, 
     if (!bot) return res.status(404).json({ error: 'This gemie has no Telegram bot' });
     if (!personOnly(bot, caller, res)) return;
     const unlinked = await unlinkGemieBotPerson(db, caller.gemie._id, caller.oxyUserId);
-    await revokeReleasedTask(unlinked?.released ?? null);
     void publishGemieChanged(caller.oxyUserId, caller.gemie._id, 'updated').catch(() => undefined);
-    res.json({ bot: present(unlinked?.bot ?? bot, caller, await liveStatus(bot.agentId)) });
+    res.json({ bot: present(unlinked ?? bot, caller, await liveStatus(bot.agentId)) });
   } catch (err: unknown) {
     answerFailure(res, err, 'Unlinking a Telegram account from a gemie bot');
   }

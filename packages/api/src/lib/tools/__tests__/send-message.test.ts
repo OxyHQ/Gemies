@@ -117,8 +117,9 @@ describe('who a gemie may write to', () => {
       userId: 'person-1',
       originConversationId: 'chat-1',
       text: 'Is this lease fair?',
-      accessToken: 'PERSON-TOKEN',
     });
+    // The chain acts for the person on Gemies' own authority (oxy ADR 0066): no bearer travels.
+    expect(H.sent[0]).not.toHaveProperty('accessToken');
   });
 
   it('never writes to itself, nor outside its selection, nor to what the person cannot reach', async () => {
@@ -148,7 +149,7 @@ describe("the recipient's gates over what the turn carries", () => {
   it('checks then spends what the recipient gates, on the person’s lane, before sending', async () => {
     await write('sindi', { attachments: [lease, photo] });
     expect(H.sequence).toEqual(['check', 'spend', 'send']);
-    expect(H.people[0]).toMatchObject({ accountId: 'person-1', accessToken: 'PERSON-TOKEN' });
+    expect(H.people[0]).toEqual({ accountId: 'person-1', runId: expect.any(String) });
   });
 
   it('refuses a locked attachment in words the writer acts on, and sends nothing', async () => {

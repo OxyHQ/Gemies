@@ -167,7 +167,7 @@ describe('private kinds', () => {
     expect(H.copied).not.toHaveBeenCalled();
   });
 
-  it('copies a catalogue skill file as Alia’s and leaves a person’s on legacy storage', async () => {
+  it('copies a catalogue skill file as Alia’s and a person’s as theirs', async () => {
     const bytes = Buffer.from('#!/bin/sh');
     H.skills = [
       {
@@ -189,10 +189,10 @@ describe('private kinds', () => {
     ];
     H.adoptedSkill.mockResolvedValue(true);
     const lines = await collect('skills', true);
-    expect(lines.map((line) => line.outcome)).toEqual(['copied', 'skipped']);
-    expect(lines[1]?.reason).toMatch(/their own requester proof/);
+    expect(lines.map((line) => line.outcome)).toEqual(['copied', 'copied']);
     expect(H.copied.mock.calls.map(([input]) => (input as { owner: unknown }).owner)).toEqual([
       { kind: 'alia' },
+      { kind: 'person', oxyUserId: 'u1' },
     ]);
   });
 });
@@ -214,21 +214,20 @@ describe('library uploads and spoken clips', () => {
     H.adoptedSpeech.mockResolvedValue(true);
   });
 
-  it.each([false, true])(
-    'a library upload is the PERSON’s: never sent to Oxy without their requester proof (apply: %s)',
-    async (apply) => {
-      const lines = await collect('library', apply);
-      expect(lines).toEqual([
-        expect.objectContaining({
-          entityId: 'l1',
-          outcome: 'skipped',
-          reason: expect.stringMatching(/their own requester proof/),
-        }),
-      ]);
-      expect(H.copied).not.toHaveBeenCalled();
-      expect(H.adoptedLibrary).not.toHaveBeenCalled();
-    },
-  );
+  it('a library upload is the PERSON’s: a preview writes nothing', async () => {
+    const lines = await collect('library', false);
+    expect(lines).toEqual([expect.objectContaining({ entityId: 'l1', outcome: 'would_copy' })]);
+    expect(H.copied).not.toHaveBeenCalled();
+    expect(H.adoptedLibrary).not.toHaveBeenCalled();
+  });
+
+  it('apply: a library upload is stored as the PERSON’s own file, acting for them', async () => {
+    const lines = await collect('library', true);
+    expect(lines).toEqual([expect.objectContaining({ entityId: 'l1', outcome: 'copied' })]);
+    expect(H.copied).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'library_file', owner: { kind: 'person', oxyUserId: 'u1' } }),
+    );
+  });
 
   it('apply: copies a spoken clip as ALIA’s audio file', async () => {
     const lines = await collect('speech', true);

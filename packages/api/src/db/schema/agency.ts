@@ -210,39 +210,6 @@ export const automationActions = pgTable(
   ],
 );
 
-/**
- * Durable Oxy authorization references. The bearer that created them is never
- * stored; Oxy remains the authority and re-evaluates every issued ticket.
- */
-export const automationActionAuthorizations = pgTable(
-  'automation_action_authorizations',
-  {
-    id: generatedId(),
-    automationActionId: text()
-      .notNull()
-      .references(() => automationActions.id, { onDelete: 'cascade' }),
-    agentId: text().notNull(),
-    actorAccountId: text().notNull(),
-    oxyAuthorizationId: text().notNull(),
-    expiresAt: timestamptz().notNull(),
-    revokedAt: timestamptz(),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    uniqueIndex('automation_action_authorizations_action_agent_key').on(
-      table.automationActionId,
-      table.agentId,
-    ),
-    uniqueIndex('automation_action_authorizations_oxy_key').on(table.oxyAuthorizationId),
-    index('automation_action_authorizations_agent_live_idx').on(
-      table.agentId,
-      table.expiresAt,
-      table.revokedAt,
-    ),
-  ],
-);
-
 /** Same shape as `CreditReservation` (`lib/credits-manager.ts`). */
 export interface AutomationRunCreditHold {
   userId: string;
@@ -251,53 +218,6 @@ export interface AutomationRunCreditHold {
   initialPaidCredits: number;
   grantKind: CreditFundingSource;
 }
-
-/**
- * Alia's standing Oxy authority for one task she is responsible for.
- *
- * Provisioned while the owner's bearer is present (task creation or edit):
- * every read tool of the owner's Oxy apps at their account root, plus each
- * connected action the task declares (`automationActionId`). Only the opaque
- * Oxy id is kept; Oxy re-evaluates live authority at every ticket. Revoked
- * with the agent path's authorizations when the task is stopped or edited.
- */
-export const aliaTaskAuthorizations = pgTable(
-  'alia_task_authorizations',
-  {
-    id: generatedId(),
-    automationId: text()
-      .notNull()
-      .references(() => automationDefinitions.id, { onDelete: 'cascade' }),
-    /** Set for a declared connected action; NULL for a standing read. */
-    automationActionId: text().references(() => automationActions.id, { onDelete: 'cascade' }),
-    resourceAppId: text().notNull(),
-    effectiveAccountId: text().notNull(),
-    resourceType: text().notNull(),
-    resourceId: text().notNull(),
-    tool: text().notNull(),
-    oxyAuthorizationId: text().notNull(),
-    expiresAt: timestamptz().notNull(),
-    revokedAt: timestamptz(),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    uniqueIndex('alia_task_authorizations_exact_tool_key').on(
-      table.automationId,
-      table.resourceAppId,
-      table.effectiveAccountId,
-      table.resourceType,
-      table.resourceId,
-      table.tool,
-    ),
-    uniqueIndex('alia_task_authorizations_oxy_key').on(table.oxyAuthorizationId),
-    index('alia_task_authorizations_live_idx').on(
-      table.automationId,
-      table.expiresAt,
-      table.revokedAt,
-    ),
-  ],
-);
 
 /**
  * The durable state of a watch task (`inputs.watch`): what the cheap tick saw

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
-  activeAuthorizations: vi.fn(),
   createRun: vi.fn(),
   createSession: vi.fn(),
   disable: vi.fn(),
@@ -16,7 +15,6 @@ const state = vi.hoisted(() => ({
   updateSession: vi.fn(),
   reserve: vi.fn(),
   refund: vi.fn(),
-  aliaAuthorizations: vi.fn(),
   watchState: vi.fn(),
   watchObserve: vi.fn(),
   watchFailure: vi.fn(),
@@ -35,13 +33,9 @@ vi.mock('../../db/index.js', () => ({ getDb: () => database }));
 vi.mock('../../db/automation/automationDefinitionRepository.js', () => ({
   claimAutomationRunPlan: state.createRun,
   createObservedAutomationRun: state.observe,
-  listActiveAutomationAuthorizations: state.activeAuthorizations,
   markAliaAutomationRun: state.markAliaRun,
   markAutomationRunForSession: state.markRun,
   setAutomationEnabled: state.disable,
-}));
-vi.mock('../../db/automation/aliaTaskAuthorityRepository.js', () => ({
-  listActiveAliaTaskAuthorizations: state.aliaAuthorizations,
 }));
 vi.mock('../../db/automation/automationWatchRepository.js', () => ({
   findAutomationWatchState: state.watchState,
@@ -161,9 +155,6 @@ beforeEach(() => {
     { resource: inbox, maximumAutonomy: 'autonomous', limits: [], toolNames: ['searchNotes'] },
     { resource: mention, maximumAutonomy: 'autonomous', limits: [], toolNames: ['publishPost'] },
   ]);
-  state.activeAuthorizations.mockResolvedValue([
-    { automationActionId: 'action-1', agentId: 'agent-a' },
-  ]);
   state.observe.mockResolvedValue(true);
   state.createSession.mockImplementation(async (_db, input) => ({ id: 'session-1', ...input }));
   state.createRun.mockResolvedValue(true);
@@ -282,10 +273,26 @@ describe('normalized automation dispatch', () => {
     expect(result).not.toEqual({ status: 'denied', reason: 'no_eligible_actor_plan' });
   });
 
-  it('queues an execute run only for an actor with live per-action authority', async () => {
-    state.activeAuthorizations.mockResolvedValueOnce([
-      { automationActionId: 'action-1', agentId: 'agent-b' },
-    ]);
+  it('queues an execute run for the first actor, in priority order, that covers every action', async () => {
+    // No stored authority decides it: each call is authorized when the run makes it (oxy ADR 0066).
+    state.oxyMap.mockImplementation(async (context) =>
+      context.actor.accountId === 'bot-agent-b'
+        ? [
+            {
+              resource: inbox,
+              maximumAutonomy: 'autonomous',
+              limits: [],
+              toolNames: ['searchNotes'],
+            },
+            {
+              resource: mention,
+              maximumAutonomy: 'autonomous',
+              limits: [],
+              toolNames: ['publishPost'],
+            },
+          ]
+        : [],
+    );
     await expect(
       dispatchStructuredAutomation(automation({ executionMode: 'execute' }), scheduleTrigger),
     ).resolves.toEqual({ status: 'queued', runId: expect.any(String), sessionId: 'session-1' });
@@ -325,7 +332,6 @@ describe('normalized automation dispatch', () => {
     ).resolves.toEqual({ status: 'queued', runId: expect.any(String), sessionId: 'session-1' });
 
     expect(state.oxyMap).not.toHaveBeenCalled();
-    expect(state.activeAuthorizations).not.toHaveBeenCalled();
     expect(state.createRun).toHaveBeenCalledWith(
       expect.objectContaining({
         stages: [expect.objectContaining({ actions: [] })],
@@ -483,11 +489,6 @@ describe('normalized automation dispatch', () => {
             },
           ],
     );
-    state.activeAuthorizations.mockResolvedValue([
-      { automationActionId: 'read-action', agentId: 'agent-a' },
-      { automationActionId: 'publish-action', agentId: 'agent-b' },
-    ]);
-
     await dispatchStructuredAutomation(
       automation({ executionMode: 'execute', actions: splitActions }),
       scheduleTrigger,
@@ -664,12 +665,7 @@ describe('a task Alia is responsible for', () => {
     expect(state.refund).toHaveBeenCalledWith(RESERVATION, 'automation run could not be queued');
   });
 
-  it('runs declared connected actions herself under her standing authority', async () => {
-    state.aliaAuthorizations.mockResolvedValueOnce([
-      { automationActionId: null, oxyAuthorizationId: 'oxy-read' },
-      { automationActionId: 'action-1', oxyAuthorizationId: 'oxy-publish' },
-    ]);
-
+  it('runs declared connected actions herself, with nothing provisioned beforehand', async () => {
     const result = await dispatchStructuredAutomation(aliaTask({ actions }), scheduleTrigger);
     expect(result).toEqual({ status: 'queued', runId: expect.any(String) });
     expect(state.createRun).toHaveBeenCalledWith(
@@ -684,22 +680,6 @@ describe('a task Alia is responsible for', () => {
         ],
       }),
     );
-  });
-
-  it('runs nothing when a declared action lost its authority', async () => {
-    state.aliaAuthorizations.mockResolvedValueOnce([
-      { automationActionId: null, oxyAuthorizationId: 'oxy-read' },
-    ]);
-
-    await expect(
-      dispatchStructuredAutomation(aliaTask({ actions }), scheduleTrigger),
-    ).resolves.toEqual({
-      status: 'denied',
-      reason: 'alia_action_authority_missing',
-    });
-    expect(state.createRun).not.toHaveBeenCalled();
-    expect(state.reserve).not.toHaveBeenCalled();
-    expect(state.notify).toHaveBeenCalled();
   });
 });
 

@@ -1,0 +1,12 @@
+-- oxy:deploy-phase=pre
+--
+-- Gemies acts for people on its own first-party authority (oxy ADR 0066): background work holds no
+-- Oxy task any more. The new image writes agent work items without `oxy_task_id`, so the column
+-- stops being required before it rolls out; the image being replaced still writes it. 0182 (post)
+-- drops it, with every other task column and table, once that image is gone.
+--
+-- ## LOCKS
+--
+-- DROP NOT NULL is a catalogue change under ACCESS EXCLUSIVE on `agent_work_items` (no scan, no
+-- rewrite), a table no request path holds for long.
+ALTER TABLE "agent_work_items" ALTER COLUMN "oxy_task_id" DROP NOT NULL;

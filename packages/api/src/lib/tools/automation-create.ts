@@ -20,7 +20,6 @@ import { withDelivery } from '../automation-delivery.js';
  */
 export function createAutomationTool(
   userId: string,
-  accessToken: string | undefined,
   gemie: { readonly _id: string; readonly taskAuthority: AgentTaskAuthority },
   /** The conversation the task is asked for in: its results are delivered there. */
   origin: { readonly conversationId?: string } = {},
@@ -54,7 +53,6 @@ export function createAutomationTool(
         if (!validated.success) return { success: false, error: 'invalid_automation_definition' };
         const created = await createStructuredAutomation({
           ownerAccountId: userId,
-          accessToken,
           definition: {
             ...validated.data,
             inputs: withDelivery(validated.data.inputs, origin.conversationId),

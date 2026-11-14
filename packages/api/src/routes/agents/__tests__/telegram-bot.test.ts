@@ -3,8 +3,8 @@
  * (whoever may act as the gemie), that the token reaches only the integrations process and is kept
  * encrypted here, that a bot belongs to one gemie, that only the person who connected it decides
  * whether their credits pay for it, that removing it stops its webhook, and (amendment) that only
- * that person links their Telegram to it, granting the gemie their authority there, and that the
- * authority goes when the link or the bot does.
+ * that person links their Telegram to it — a link, never a task: Gemies acts for them there on its
+ * own first-party authority (oxy ADR 0066) — and that the link goes when they unlink or the bot does.
  */
 import { createHash } from 'node:crypto';
 import type { Server } from 'node:http';
@@ -29,34 +29,8 @@ const state = vi.hoisted(() => ({
   saved: [] as unknown[],
   integrations: [] as Array<{ path: string; body: Record<string, unknown> }>,
   integrationsFail: null as null | { status: number; body: unknown },
-  minted: [] as Array<Record<string, unknown>>,
-  revoked: [] as string[],
   linkCodes: [] as Array<Record<string, unknown>>,
 }));
-
-vi.mock('../../../lib/oxy-task-authority.js', () => {
-  const revokeReleasedTask = async (taskId: string | null) => {
-    if (taskId) state.revoked.push(taskId);
-  };
-  return {
-    revokeReleasedTask,
-    // `bindOxyTask`'s contract (its own suite proves it): mint, write, release after.
-    bindOxyTask: async (
-      input: Record<string, unknown>,
-      write: (task: { id: string; expiresAt: Date }) => Promise<{ replaced: string | null } | null>,
-    ) => {
-      state.minted.push(input);
-      const task = { id: `task-${state.minted.length}`, expiresAt: new Date('2027-11-14') };
-      const written = await write(task);
-      if (!written) {
-        await revokeReleasedTask(task.id);
-        return null;
-      }
-      await revokeReleasedTask(written.replaced);
-      return task;
-    },
-  };
-});
 
 vi.mock('../../../middleware/auth.js', () => ({
   authenticateToken: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
@@ -92,29 +66,15 @@ vi.mock('../../../db/integrations/gemieBotRepository.js', () => ({
       lastMessageAt: null,
     };
     state.token = String(input.botToken);
-    return { bot: state.bot, released: null };
+    return { bot: state.bot };
   }),
   setGemieBotLinkCode: vi.fn(async (_db: unknown, input: Record<string, unknown>) => {
     state.linkCodes.push(input);
-    const replaced = (state.bot?.oxyTaskId as string | null) ?? null;
-    const task = input.oxyTask as { id: string; expiresAt: Date };
-    state.bot = {
-      ...state.bot,
-      oxyTaskId: task.id,
-      oxyTaskState: 'active',
-      oxyTaskExpiresAt: task.expiresAt,
-    };
-    return { bot: state.bot, replaced };
+    return state.bot;
   }),
   unlinkGemieBotPerson: vi.fn(async () => {
-    const released = (state.bot?.oxyTaskId as string | null) ?? null;
-    state.bot = {
-      ...state.bot,
-      oxyTaskId: null,
-      linkedTelegramUserId: null,
-      linkedTelegramName: null,
-    };
-    return { bot: state.bot, released };
+    state.bot = { ...state.bot, linkedTelegramUserId: null, linkedTelegramName: null };
+    return state.bot;
   }),
   setGemieBotSettings: vi.fn(async (_db: unknown, _id: string, patch: object) => {
     state.bot = { ...state.bot, ...patch };
@@ -125,10 +85,8 @@ vi.mock('../../../db/integrations/gemieBotRepository.js', () => ({
     return state.bot;
   }),
   deleteGemieBot: vi.fn(async () => {
-    const released = (state.bot?.oxyTaskId as string | null) ?? null;
     state.bot = null;
     state.token = null;
-    return released;
   }),
 }));
 vi.mock('../../../lib/integrations-client.js', () => ({
@@ -208,8 +166,6 @@ beforeEach(() => {
   state.saved = [];
   state.integrations = [];
   state.integrationsFail = null;
-  state.minted = [];
-  state.revoked = [];
   state.linkCodes = [];
 });
 
@@ -317,37 +273,24 @@ describe('a gemie’s own Telegram bot', () => {
     expect(state.bot).toBeNull();
   });
 
-  it('links only its person’s Telegram, granting the gemie their authority there', async () => {
+  it('links only its person’s Telegram, with a one-time code and no task', async () => {
     await call('PUT', '/agents/gemie-1/telegram-bot', { token: TOKEN, ownerPaysAgentTurns: true });
     const linked = await call('POST', '/agents/gemie-1/telegram-bot/link');
     expect(linked.status).toBe(200);
     const code = new URL(linked.body.url).searchParams.get('start') ?? '';
     expect(linked.body.url).toBe(`https://t.me/viajes_bot?start=${code}`);
     expect(code).toMatch(/^[A-Za-z0-9_-]{32}$/);
-    // The person's authority, acted on by the gemie: minted now, with their session.
-    expect(state.minted).toEqual([
-      {
-        accessToken: 'PERSON-TOKEN',
-        effectiveAccountId: 'person-1',
-        actor: { type: 'agent', accountId: 'gemie-account' },
-        origin: { kind: 'automation', id: expect.stringMatching(/^channel:/) },
-      },
-    ]);
-    // Only the code's hash is kept.
+    // Only the code's hash is kept, and nothing of Oxy's: no task, no bearer.
     expect(state.linkCodes).toEqual([
-      expect.objectContaining({
+      {
         agentId: 'gemie-1',
         userId: 'person-1',
         codeHash: createHash('sha256').update(code).digest('hex'),
-        // With the expiry Oxy gave it, so it is renewed before it lapses.
-        oxyTask: { id: 'task-1', expiresAt: new Date('2027-11-14') },
-      }),
+        expiresAt: expect.any(Date),
+      },
     ]);
     expect(JSON.stringify(state.linkCodes)).not.toContain(code);
-
-    // A new link replaces the task the bot held.
-    await call('POST', '/agents/gemie-1/telegram-bot/link');
-    expect(state.revoked).toEqual(['task-1']);
+    expect(JSON.stringify(state.linkCodes)).not.toContain('PERSON-TOKEN');
   });
 
   it('refuses to link anyone else’s Telegram to the bot', async () => {
@@ -356,7 +299,7 @@ describe('a gemie’s own Telegram bot', () => {
     const refused = await call('POST', '/agents/gemie-1/telegram-bot/link');
     expect(refused.status).toBe(403);
     expect(refused.body.code).toBe('not_bot_person');
-    expect(state.minted).toEqual([]);
+    expect(state.linkCodes).toEqual([]);
   });
 
   it('says who is linked, and tells every open editor when that changes', async () => {
@@ -365,15 +308,9 @@ describe('a gemie’s own Telegram bot', () => {
     // The person opened the link in Telegram: the bot recognises them now.
     state.bot = { ...state.bot, linkedTelegramUserId: '570038640', linkedTelegramName: '@nate' };
     const linked = await call('GET', '/agents/gemie-1/telegram-bot');
-    expect(linked.body.bot).toMatchObject({
-      personLinked: true,
-      linkedAs: '@nate',
-      personAuthorityLapsed: false,
-    });
-    // The authority they granted lapsed (Oxy refused it): the editor says it needs them.
-    state.bot = { ...state.bot, oxyTaskState: 'reauth_required' };
-    const lapsed = await call('GET', '/agents/gemie-1/telegram-bot');
-    expect(lapsed.body.bot).toMatchObject({ personLinked: true, personAuthorityLapsed: true });
+    expect(linked.body.bot).toMatchObject({ personLinked: true, linkedAs: '@nate' });
+    // Nothing lapses: there is no authority of theirs to renew.
+    expect(linked.body.bot).not.toHaveProperty('personAuthorityLapsed');
 
     realtime.gemies.length = 0;
     const unlinked = await call('DELETE', '/agents/gemie-1/telegram-bot/link');
@@ -381,16 +318,14 @@ describe('a gemie’s own Telegram bot', () => {
     expect(realtime.gemies).toEqual([['person-1', 'gemie-1', 'updated']]);
   });
 
-  it('revokes the authority when its person unlinks, or the bot goes', async () => {
+  it('forgets the link when its person unlinks, or the bot goes', async () => {
     await call('PUT', '/agents/gemie-1/telegram-bot', { token: TOKEN, ownerPaysAgentTurns: true });
-    await call('POST', '/agents/gemie-1/telegram-bot/link');
+    state.bot = { ...state.bot, linkedTelegramUserId: '570038640', linkedTelegramName: '@nate' };
     const unlinked = await call('DELETE', '/agents/gemie-1/telegram-bot/link');
     expect(unlinked.status).toBe(200);
     expect(unlinked.body.bot.personLinked).toBe(false);
-    expect(state.revoked).toEqual(['task-1']);
 
-    await call('POST', '/agents/gemie-1/telegram-bot/link');
     await call('DELETE', '/agents/gemie-1/telegram-bot');
-    expect(state.revoked).toEqual(['task-1', 'task-2']);
+    expect(state.bot).toBeNull();
   });
 });

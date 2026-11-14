@@ -14,12 +14,6 @@ vi.mock('../../../db/agents/agentWorkRepository', async (importOriginal) => {
   };
 });
 vi.mock('../../agent-availability', () => ({ agentOpensOn: async () => 'reachable' }));
-vi.mock('../../oxy-task-authority', () => ({
-  createOxyTask: vi.fn(async () => randomUUID()),
-  revokeOxyTask: vi.fn(async () => {}),
-  revokeReleasedTask: vi.fn(async () => {}),
-  revokeSessionTask: vi.fn(async () => {}),
-}));
 /** What the integrations process was asked to send in Telegram. */
 const telegram = vi.hoisted(() => [] as Array<{ path: string; body: Record<string, unknown> }>);
 vi.mock('../../integrations-client', () => ({
@@ -63,12 +57,7 @@ import { getOrCreateUserCredits } from '../../../db/billing/userCreditsRepositor
 import { agents } from '../../../db/schema/agents';
 import { userCredits } from '../../../db/schema/billing';
 import { agentSessions } from '../../../db/schema/agent-sessions';
-import {
-  agentWorkAuthorities,
-  agentWorkRevocations,
-  agentWorkItems,
-} from '../../../db/schema/agent-work';
-import { createOxyTask, revokeOxyTask } from '../../oxy-task-authority';
+import { agentWorkItems } from '../../../db/schema/agent-work';
 import { enqueueAgentSession } from '../../task-queue';
 import { autonomousWorkMayRun, dispatchAgentWork, stopAgentWork } from '../work';
 import { createConversation } from '../../../db/chat/conversationRepository';
@@ -82,8 +71,7 @@ import { deliverAgentWorkResult } from '../work-delivery';
 import * as outreach from '../agent-outreach';
 import { sendNotification } from '../../notification-service';
 import { addAgentFollowUp } from '../../../db/agents/agentWorkRepository';
-import { runtimeGemieAccountId } from '../../gemie-oxy-actor.js';
-import { saveGemieBot, setGemieBotLinkCode } from '../../../db/integrations/gemieBotRepository';
+import { saveGemieBot } from '../../../db/integrations/gemieBotRepository';
 
 let db: ApiDatabase;
 beforeAll(() => {
@@ -114,19 +102,11 @@ async function seed() {
     scheduleInterval: 60,
   });
   const id = randomUUID();
-  const taskId = randomUUID();
-  await db.insert(agentWorkAuthorities).values({
-    agentId: agent.id,
-    ownerAccountId: owner,
-    oxyTaskId: taskId,
-    expiresAt: new Date(Date.now() + 86400000),
-  });
   await db.insert(agentWorkItems).values({
     id,
     rootId: id,
     agentId: agent.id,
     ownerAccountId: owner,
-    oxyTaskId: taskId,
     kind: 'heartbeat',
     objective: 'Review new events',
     dueAt: new Date(),
@@ -138,7 +118,7 @@ async function balance(owner: string) {
   return row.creditsFree;
 }
 
-it('concurrent chat scheduling binds one authority and queues only the unused proof for revocation', async () => {
+it('concurrent chat scheduling creates one continuation, with no Oxy task (oxy ADR 0066)', async () => {
   const { owner, agent, id } = await seed();
   await db.delete(agentWorkItems).where(eq(agentWorkItems.id, id));
   const source = await sessions.createAgentSession(db, {
@@ -149,25 +129,11 @@ it('concurrent chat scheduling binds one authority and queues only the unused pr
     conversationId: randomUUID(),
     chatLeaseExpiresAt: new Date(Date.now() + 120_000),
   });
-  let release!: () => void;
-  const bothMinted = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const candidates: string[] = [];
-  vi.mocked(createOxyTask).mockImplementation(async () => {
-    const task = randomUUID();
-    candidates.push(task);
-    if (candidates.length === 2) release();
-    await bothMinted;
-    return task;
-  });
   const now = new Date();
   const input = {
     agentId: agent.id,
-    agentAccountId: runtimeGemieAccountId(agent),
     ownerAccountId: owner,
     sourceSessionId: source.id,
-    authority: { requesterToken: 'live-requester' },
     now,
     at: new Date(now.getTime() + 300_000),
     note: 'Say hello',
@@ -175,30 +141,20 @@ it('concurrent chat scheduling binds one authority and queues only the unused pr
   try {
     const receipts = await Promise.all([scheduleChatFollowUp(input), scheduleChatFollowUp(input)]);
     expect(receipts[0]).toBe(receipts[1]);
+    expect(receipts[0]).toMatch(/^Scheduled for /);
     const work = await db.select().from(agentWorkItems).where(eq(agentWorkItems.agentId, agent.id));
     expect(work).toHaveLength(1);
-    const unused = candidates.find((id) => id !== work[0].oxyTaskId)!;
-    expect(
-      await db
-        .select()
-        .from(agentWorkRevocations)
-        .where(eq(agentWorkRevocations.oxyTaskId, unused)),
-    ).toHaveLength(1);
-    expect(
-      await db
-        .select()
-        .from(agentWorkRevocations)
-        .where(eq(agentWorkRevocations.oxyTaskId, work[0].oxyTaskId)),
-    ).toHaveLength(0);
+    expect(work[0]).toMatchObject({ deliveryMode: 'requested', sourceSessionId: source.id });
+    expect(Object.keys(work[0]).some((key) => /task/i.test(key))).toBe(false);
   } finally {
-    vi.mocked(createOxyTask).mockImplementation(async () => randomUUID());
     await stopAgentWork(agent.id);
     await sessions.updateAgentSession(db, source.id, { status: 'completed' });
   }
 });
 
-it('rolls back chat authority binding if the dated work insert fails', async () => {
-  const { owner, agent } = await seed();
+it('a dated work insert that fails leaves no continuation behind', async () => {
+  const { owner, agent, id } = await seed();
+  await db.delete(agentWorkItems).where(eq(agentWorkItems.id, id));
   const source = await sessions.createAgentSession(db, {
     agentId: agent.id,
     oxyUserId: owner,
@@ -207,18 +163,20 @@ it('rolls back chat authority binding if the dated work insert fails', async () 
     conversationId: randomUUID(),
     chatLeaseExpiresAt: new Date(Date.now() + 120_000),
   });
-  // Deliberately violate the database NOT NULL constraint after binding the proof.
+  // Deliberately violate the database NOT NULL constraint.
   await expect(
     addAgentFollowUp(db, {
       agentId: agent.id,
       ownerAccountId: owner,
       sourceSessionId: source.id,
-      chatAuthorityTaskId: randomUUID(),
+      fromChat: true,
       at: new Date(Date.now() + 300_000),
       note: null as unknown as string,
     }),
   ).rejects.toThrow();
-  expect((await sessions.findAgentSessionById(db, source.id))?.oxyTaskId).toBeNull();
+  expect(
+    await db.select().from(agentWorkItems).where(eq(agentWorkItems.agentId, agent.id)),
+  ).toHaveLength(0);
   await stopAgentWork(agent.id);
   await sessions.updateAgentSession(db, source.id, { status: 'completed' });
 });
@@ -226,7 +184,6 @@ it('rolls back chat authority binding if the dated work insert fails', async () 
 async function scheduledChat() {
   const { owner, agent, id } = await seed();
   await db.delete(agentWorkItems).where(eq(agentWorkItems.id, id));
-  await db.delete(agentWorkAuthorities).where(eq(agentWorkAuthorities.agentId, agent.id));
   await db.update(agents).set({ scheduleInterval: null }).where(eq(agents.id, agent.id));
   const conversationId = randomUUID();
   await createConversation(db, {
@@ -239,7 +196,6 @@ async function scheduledChat() {
   const turn = await AgentTurnCoordinator.begin({
     agent: await attachAgentIdentity(agent),
     oxyUserId: owner,
-    authority: { requesterToken: 'live-requester-token' },
     conversationId,
     task: 'Salúdame en 5 minutos',
   });
@@ -265,16 +221,6 @@ async function scheduledChat() {
   expect(work.dueAt.getTime()).toBeGreaterThanOrEqual(before + 300_000);
   expect(work.dueAt.getTime()).toBeLessThanOrEqual(Date.now() + 300_000);
   expect(work.rootId).toBe(turn.id);
-  expect(work.oxyTaskId).toBe((await sessions.findAgentSessionById(db, turn.id))?.oxyTaskId);
-  expect(createOxyTask).toHaveBeenCalledWith(
-    expect.objectContaining({
-      accessToken: 'live-requester-token',
-      effectiveAccountId: owner,
-      actorAccountId: runtimeGemieAccountId(agent),
-      origin: { kind: 'goal', id: turn.id },
-    }),
-  );
-  expect(JSON.stringify(work)).not.toContain('live-requester-token');
   await turn.complete('Te saludaré en cinco minutos.');
   return { owner, agent, conversationId, work };
 }
@@ -291,7 +237,6 @@ it('schedules from the actual chat tool, waits five minutes, and delivers once i
   expect(running.status).toBe('running');
   const session = await sessions.findAgentSessionById(db, running.sessionId!);
   expect(session?.conversationId).toBe(conversationId);
-  expect(session?.oxyTaskId).toBe(work.oxyTaskId);
 
   // Another, newer conversation must not steal this requested result.
   await createConversation(db, {
@@ -375,23 +320,19 @@ it('never recreates a deleted originating conversation or sends its reply into a
   ).toMatchObject({ status: 'cancelled', failure: 'conversation_not_found', deliveredAt: null });
 });
 
-it('refuses a scheduling call for a different requester before minting authority', async () => {
+it('refuses a scheduling call for a different requester', async () => {
   const { work, agent } = await scheduledChat();
-  const count = vi.mocked(createOxyTask).mock.calls.length;
   const now = new Date();
   expect(
     await scheduleChatFollowUp({
       agentId: agent.id,
-      agentAccountId: runtimeGemieAccountId(agent),
       ownerAccountId: randomUUID(),
       sourceSessionId: work.sourceSessionId!,
-      authority: { requesterToken: 'other-requester' },
       now,
       at: new Date(now.getTime() + 300_000),
       note: 'Wrong requester',
     }),
   ).toBe('Not scheduled (continuation_unavailable).');
-  expect(vi.mocked(createOxyTask).mock.calls.length).toBe(count);
   await stopAgentWork(agent.id);
 });
 it('two dispatchers reserve once and persist one session, even when queue delivery fails', async () => {
@@ -435,7 +376,6 @@ it('a continuation cannot reset the original work budget', async () => {
     oxyUserId: owner,
     task: 'original',
     status: 'completed',
-    oxyTaskId: randomUUID(),
   });
   await db
     .update(agentSessions)
@@ -446,7 +386,6 @@ it('a continuation cannot reset the original work budget', async () => {
     .set({
       rootId: source.id,
       sourceSessionId: source.id,
-      oxyTaskId: source.oxyTaskId!,
       kind: 'follow_up',
     })
     .where(eq(agentWorkItems.id, id));
@@ -466,32 +405,15 @@ it('pausing stops already queued work before it can call inference', async () =>
   expect(await autonomousWorkMayRun(work.sessionId!)).toBe(false);
 });
 
-it('persists cancellation and retries revocation after an Oxy outage', async () => {
+it('stopping a gemie cancels its pending work, with nothing to revoke at Oxy', async () => {
   const { agent, id } = await seed();
-  const [authority] = await db
-    .select()
-    .from(agentWorkAuthorities)
-    .where(eq(agentWorkAuthorities.agentId, agent.id));
-  const taskId = authority.oxyTaskId;
-  vi.mocked(revokeOxyTask).mockRejectedValueOnce(new Error('Oxy unavailable'));
   await stopAgentWork(agent.id);
   const [work] = await db.select().from(agentWorkItems).where(eq(agentWorkItems.id, id));
-  expect(work.status).toBe('cancelled');
-  expect(
-    await db.select().from(agentWorkAuthorities).where(eq(agentWorkAuthorities.agentId, agent.id)),
-  ).toHaveLength(0);
-  expect(
-    await db.select().from(agentWorkRevocations).where(eq(agentWorkRevocations.oxyTaskId, taskId)),
-  ).toHaveLength(1);
-  await dispatchAgentWork();
-  expect(
-    await db.select().from(agentWorkRevocations).where(eq(agentWorkRevocations.oxyTaskId, taskId)),
-  ).toHaveLength(0);
+  expect(work).toMatchObject({ status: 'cancelled', failure: 'paused' });
 });
 
 it('preserves a hiring requester on continuations instead of substituting the agent owner', async () => {
   const { agent, owner, id } = await seed();
-  const taskId = randomUUID();
   await db
     .update(agents)
     .set({ ownerOxyAccountId: randomUUID(), access: 'public' })
@@ -499,16 +421,13 @@ it('preserves a hiring requester on continuations instead of substituting the ag
   const source = await sessions.createAgentSession(db, {
     agentId: agent.id,
     oxyUserId: owner,
-    oxyTaskId: taskId,
     task: 'Original request',
     status: 'completed',
   });
   await db
     .update(agentWorkItems)
-    .set({ kind: 'follow_up', rootId: source.id, sourceSessionId: source.id, oxyTaskId: taskId })
+    .set({ kind: 'follow_up', rootId: source.id, sourceSessionId: source.id })
     .where(eq(agentWorkItems.id, id));
-  // Remove the unrelated standing root: a hired continuation owns its source task.
-  await db.delete(agentWorkAuthorities).where(eq(agentWorkAuthorities.agentId, agent.id));
   await dispatchAgentWork();
   const [work] = await db.select().from(agentWorkItems).where(eq(agentWorkItems.id, id));
   expect(work.status).toBe('running');
@@ -525,8 +444,8 @@ it('turning off attention preserves an explicitly requested continuation', async
     rootId: explicitId,
     agentId: agent.id,
     ownerAccountId: owner,
-    oxyTaskId: randomUUID(),
     kind: 'follow_up',
+    deliveryMode: 'requested',
     objective: 'Requested task',
     dueAt: new Date(),
   });
@@ -542,8 +461,7 @@ it('a one-minute reminder asked on the gemie’s Telegram bot arrives in that Te
   vi.stubEnv('TOKEN_ENCRYPTION_KEY', 'ab'.repeat(32));
   const { owner, agent, id } = await seed();
   await db.delete(agentWorkItems).where(eq(agentWorkItems.id, id));
-  await db.delete(agentWorkAuthorities).where(eq(agentWorkAuthorities.agentId, agent.id));
-  // The gemie's own bot, with its person linked and the authority they granted it there.
+  // The gemie's own bot, with its person linked.
   const botId = String(8_000_000_000 + Math.floor(Math.random() * 1_000_000_000));
   await saveGemieBot(db, {
     agentId: agent.id,
@@ -554,14 +472,6 @@ it('a one-minute reminder asked on the gemie’s Telegram bot arrives in that Te
     botToken: `${botId}:TOKEN`,
     ownerPaysAgentTurns: true,
   });
-  const botTask = randomUUID();
-  await setGemieBotLinkCode(db, {
-    agentId: agent.id,
-    userId: owner,
-    codeHash: 'h',
-    expiresAt: new Date(Date.now() + 60_000),
-    oxyTask: { id: botTask, expiresAt: new Date(Date.now() + 86_400_000) },
-  });
   const chatId = '570038640';
   const conversationId = `telegram:${botId}:${chatId}`;
   await createConversation(db, {
@@ -571,14 +481,12 @@ it('a one-minute reminder asked on the gemie’s Telegram bot arrives in that Te
     title: 'Telegram · Nate',
     source: 'telegram',
   });
-  vi.mocked(createOxyTask).mockClear();
   telegram.length = 0;
 
-  // The person's turn on Telegram, as the chat route opens it: their standing task, no bearer.
+  // The person's turn on Telegram, as the chat route opens it: no bearer and no Oxy task.
   const turn = await AgentTurnCoordinator.begin({
     agent: await attachAgentIdentity(agent),
     oxyUserId: owner,
-    authority: { oxyTaskId: botTask },
     conversationId,
     task: 'Mándame un mensaje en 1 minuto diciéndome el clima para mañana en Barcelona',
   });
@@ -590,16 +498,15 @@ it('a one-minute reminder asked on the gemie’s Telegram bot arrives in that Te
     ),
   ).toMatch(/^Scheduled for /);
   await turn.complete('Te escribo en un minuto.');
-  // Nothing minted: the work runs under the authority the person granted on the bot.
-  expect(createOxyTask).not.toHaveBeenCalled();
+  // It runs for the person on Gemies' own first-party authority (oxy ADR 0066): no task.
   const [work] = await db.select().from(agentWorkItems).where(eq(agentWorkItems.agentId, agent.id));
-  expect(work).toMatchObject({ oxyTaskId: botTask, deliveryMode: 'requested' });
+  expect(work).toMatchObject({ deliveryMode: 'requested' });
 
   // A minute later, with nobody present.
   await dispatchAgentWork(work.dueAt);
   const [running] = await db.select().from(agentWorkItems).where(eq(agentWorkItems.id, work.id));
   const session = await sessions.findAgentSessionById(db, running.sessionId!);
-  expect(session).toMatchObject({ conversationId, oxyTaskId: botTask });
+  expect(session).toMatchObject({ conversationId, oxyUserId: owner });
   await sessions.updateAgentSession(db, running.sessionId!, {
     status: 'completed',
     result: 'Mañana en Barcelona: 18 °C y sol.',

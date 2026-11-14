@@ -20,10 +20,9 @@ B processes emit the final protocol. C must never deploy directly over A or A2.
 - Integrations-to-API calls require the exact live integrations workload. The API
   resolves the actual bot provider identity or personal connected-session row.
   No raw account header, local channel context or workload creates a user session.
-- Private Oxy tools require the live requester/session or durable task rooted in
-  the original requester. Reconciliation validates existing stored proofs; it
-  never creates authority from an account ID. Missing roots renew during a normal
-  authenticated visit. Keep inspecting the unresolved-link counts.
+- Private Oxy tools act for the person the verified channel identifies, on Gemies'
+  declared first-party authority (Oxy ADR 0066); a local account context or an
+  account ID alone never selects that person.
 - Both HTTP and socket readers reject the former process secrets, including when
   the previous secret value and provider/account metadata are correct.
 - Telegram's own webhook `secret_token` and external OAuth credentials remain

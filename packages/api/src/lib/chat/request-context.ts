@@ -931,10 +931,9 @@ export async function buildChatRequestContext(
           exactHostedModel,
           person: {
             accountId: localAccountId,
-            taskId: req.channelContext?.taskId,
             channel: req.channelContext !== undefined,
-            // The person's own bearer only: a service token is not them.
-            accessToken: isDirectUserSession ? req.accessToken : undefined,
+            // The person's own session only: a service token is not them.
+            ownSession: isDirectUserSession,
             runId: turnRequestId,
           },
           modelAcceptsFiles: resolved.catalogue?.inputModalities.includes('file') === true,
@@ -1244,9 +1243,7 @@ export async function buildChatRequestContext(
       mcpServerId,
       includeUsage,
       isDirectUserSession,
-      personPresent:
-        isDirectUserSession ||
-        (req.channelContext?.kind === 'gemie_bot' && req.channelContext.taskId !== undefined),
+      personPresent: isDirectUserSession || req.channelContext?.kind === 'gemie_bot',
       requestedModel,
       surface,
       isLocalRuntime: localRuntime !== null,

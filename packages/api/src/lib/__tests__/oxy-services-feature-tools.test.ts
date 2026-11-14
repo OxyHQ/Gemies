@@ -128,7 +128,7 @@ async function respond(input: string | URL, init?: RequestInit): Promise<Respons
   }
   if (url.endsWith('/capabilities/capability-map'))
     throw new Error('the owner-grant map must never be asked for a non-owner');
-  if (url.endsWith('/capabilities/foreground-execution-authorizations') && init?.method === 'POST')
+  if (url.endsWith('/capabilities/first-party-execution-authorizations') && init?.method === 'POST')
     return json({ authorization: { id: 'DIRECT-1' } }, 201);
   if (url.endsWith('/capabilities/tickets'))
     return json({ decision: { allowed: true, reason: 'allowed' }, ticket: 'SHORT-TICKET' }, 201);
@@ -152,7 +152,6 @@ const lane = () => {
   const context = presentPersonAgentContext({
     agent: { oxyAccountId: AGENT, ownerOxyAccountId: OWNER },
     personAccountId: PERSON,
-    accessToken: 'PERSON-TOKEN',
     runId: 'run-1',
   });
   if (context === null) throw new Error('expected a lane');
@@ -177,7 +176,6 @@ describe('the lane a feature tool runs on', () => {
       presentPersonAgentContext({
         agent: { oxyAccountId: AGENT, ownerOxyAccountId: OWNER },
         personAccountId: OWNER,
-        accessToken: 'OWNER-TOKEN',
         runId: 'run-1',
       })?.agentIdentity,
     ).toEqual({ forUser: 'owner', self: false });
@@ -186,7 +184,6 @@ describe('the lane a feature tool runs on', () => {
       presentPersonAgentContext({
         agent: { oxyAccountId: AGENT, ownerOxyAccountId: null },
         personAccountId: PERSON,
-        accessToken: 'PERSON-TOKEN',
         runId: 'run-1',
       }),
     ).toMatchObject({
@@ -201,13 +198,13 @@ describe('callOxyFeatureTool', () => {
     const answer = await callOxyFeatureTool(lane(), 'homiio', 'readFileEntitlement');
     expect(answer).toEqual({ status: 'answered', result: { available: true, remaining: 2 } });
     expect(
-      JSON.parse(String(sent('/capabilities/foreground-execution-authorizations').body)),
+      JSON.parse(String(sent('/capabilities/first-party-execution-authorizations').body)),
     ).toMatchObject({
       kind: 'direct_request',
       resource: personRoot,
       tool: 'readFileEntitlement',
       authority: 'first_party',
-      subjectToken: 'PERSON-TOKEN',
+      requesterAccountId: PERSON,
     });
     expect(sent('/readFileEntitlement').headers).toMatchObject({
       authorization: 'Capability SHORT-TICKET',
@@ -241,18 +238,17 @@ describe('callOxyFeatureTool', () => {
 });
 
 describe('a project-owned agent opened by its own project account', () => {
-  it('does not call the product when Oxy rejects requester proof', async () => {
+  it('does not call the product when Oxy refuses the account', async () => {
     // The owner lane is the turn's lane, and Oxy never lets a project account
     // operate itself (only a personal account does): a verdict, not an outage.
     fetchMock.mockImplementation(async (input: string | URL, init?: RequestInit) =>
-      String(input).endsWith('/capabilities/foreground-execution-authorizations')
+      String(input).endsWith('/capabilities/first-party-execution-authorizations')
         ? Response.json({ error: 'requester_lacks_grant_owner_authority' }, { status: 403 })
         : respond(input, init),
     );
     const ownerLane = presentPersonAgentContext({
       agent: { oxyAccountId: AGENT, ownerOxyAccountId: OWNER },
       personAccountId: OWNER,
-      accessToken: 'PROJECT-TOKEN',
       runId: 'run-1',
     });
     if (ownerLane === null) throw new Error('expected a lane');
@@ -264,14 +260,13 @@ describe('a project-owned agent opened by its own project account', () => {
 
   it('is still unavailable when Oxy cannot answer at all', async () => {
     fetchMock.mockImplementation(async (input: string | URL, init?: RequestInit) =>
-      String(input).endsWith('/capabilities/foreground-execution-authorizations')
+      String(input).endsWith('/capabilities/first-party-execution-authorizations')
         ? new Response('down', { status: 503 })
         : respond(input, init),
     );
     const ownerLane = presentPersonAgentContext({
       agent: { oxyAccountId: AGENT, ownerOxyAccountId: OWNER },
       personAccountId: OWNER,
-      accessToken: 'PROJECT-TOKEN',
       runId: 'run-1',
     });
     if (ownerLane === null) throw new Error('expected a lane');

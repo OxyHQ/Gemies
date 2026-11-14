@@ -128,7 +128,7 @@ describe('reaction observation execution (selection is mocked, not a language ev
     const input = vi.mocked(h.room.runTurn).mock.calls[0]![0];
     expect(input.task).toBe('');
     expect(input.observation?.content).toContain('Podemos revisar la propuesta.');
-    expect(input.person.taskId).toBeUndefined();
+    expect(input.person).not.toHaveProperty('taskId');
     expect(input.observation?.instructions).toContain('no tools');
     expect(h.room.select).toHaveBeenCalledTimes(1);
     expect(h.room.storeReply).toHaveBeenCalledWith(

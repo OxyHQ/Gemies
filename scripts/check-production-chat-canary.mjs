@@ -38,41 +38,45 @@ export function checkProductionChatCanary({ workflow, runner, build }) {
   requireText(runner, 'conversationId: null', 'the no-persistence result contract is absent');
   requireText(
     workflow,
-    'QA_TASK_ID: ${{ vars.ALIA_CANARY_OXY_TASK_ID }}',
-    'QA task is not a closed protected variable',
+    'QA_USER_ID: ${{ vars.ALIA_CANARY_OXY_USER_ID }}',
+    'QA account is not a closed protected variable',
   );
   requireText(
     workflow,
     '{name:"ALIA_CANARY_OXY_USER_ID",value:$user}',
     'workflow does not pass the protected QA account',
   );
-  requireText(
-    workflow,
-    '{name:"ALIA_CANARY_OXY_TASK_ID",value:$task}',
-    'workflow does not pass the protected QA task',
-  );
   for (const binding of [
     'const accountId = env.ALIA_CANARY_OXY_USER_ID;',
-    'const taskId = env.ALIA_CANARY_OXY_TASK_ID;',
-    'return { accountId, taskId };',
-    'const requester = canaryRequester(process.env);',
-    "import { oxy } from '../lib/oxy.js';",
+    'const accessToken = env.ALIA_CANARY_SESSION_TOKEN;',
+    'const qa = canarySession(process.env);',
+    'env: apiEnvironment(process.env),',
   ])
-    requireText(runner, binding, `runner lost requester binding: ${binding}`);
-  if (
-    !/createGemieTransportForOxyService\(oxy,\s*\{\s*baseURL: 'http:\/\/127\.0\.0\.1:3001',\s*requester,\s*\}\)/.test(
-      runner,
-    )
-  )
-    failures.push('runner does not bind its shared transport to the validated QA requester');
+    requireText(runner, binding, `runner lost its QA session binding: ${binding}`);
   requireText(
     runner,
-    "await transport.fetch('http://127.0.0.1:3001/alia/chat', {",
-    'runner does not enter real HTTP authentication through the shared transport',
+    "await fetch('http://127.0.0.1:3001/alia/chat', {",
+    'runner does not enter real HTTP authentication',
   );
-  requireText(runner, 'transport.dispose();', 'runner does not release its transport');
-  if (/x-oxy-user-id|authorization:\s*`Bearer/i.test(runner))
-    failures.push('runner constructs authority outside the shared requester transport');
+  requireText(
+    runner,
+    'authorization: `Bearer ${await bearer()}`',
+    'runner does not call as the QA person with the session opened for this run',
+  );
+  if (/x-oxy-user-id|x-oxy-requester|createGemieTransportForOxyService|actingFor/i.test(runner))
+    failures.push('runner acts for someone instead of being the QA person');
+  // The QA session: opened fresh by the workflow, masked, closed when the run ends.
+  for (const [value, message] of [
+    ['QA_KEY: ${{ secrets.ALIA_CANARY_OXY_QA_KEY }}', 'QA key is not a repository secret'],
+    ['bun canary-qa-session.mjs open', 'workflow does not open a fresh QA session'],
+    ['::add-mask::', 'workflow does not mask the QA session'],
+    ['bun canary-qa-session.mjs close', 'workflow does not close the QA session'],
+    [
+      '{name:"ALIA_CANARY_SESSION_TOKEN",value:$session}',
+      'workflow does not hand the run its QA session',
+    ],
+  ])
+    requireText(workflow, value, message);
   if (runner.includes('handleChatCompletions'))
     failures.push('runner bypasses HTTP authentication by importing the handler');
   requireText(runner, 'markerMatched', 'runner accepts arbitrary non-empty model output');

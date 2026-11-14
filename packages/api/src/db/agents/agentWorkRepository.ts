@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, lte, or, sql } from 'drizzle-orm';
 import type { ApiDatabase, Executor } from '../index';
 import { agents } from '../schema/agents';
-import { agentWorkAuthorities, agentWorkItems } from '../schema/agent-work';
+import { agentWorkItems } from '../schema/agent-work';
 import { agentSessions } from '../schema/agent-sessions';
 import {
   claimHeartbeat,
@@ -10,19 +10,6 @@ import {
   type AgentInboxItemRow,
   type HeartbeatCandidate,
 } from './agentInboxRepository';
-
-export async function findWorkAuthority(db: Executor, agentId: string, ownerAccountId: string) {
-  const [row] = await db
-    .select()
-    .from(agentWorkAuthorities)
-    .where(
-      and(
-        eq(agentWorkAuthorities.agentId, agentId),
-        eq(agentWorkAuthorities.ownerAccountId, ownerAccountId),
-      ),
-    );
-  return row ?? null;
-}
 
 /** Serialize admission for this actor, including across replicas. No network calls while held. */
 export async function lockAgentWork(db: Executor, agentId: string) {
@@ -53,15 +40,19 @@ export async function acceptHeartbeat(
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
     await lockAgentWork(tx, candidate.agentId);
-    const authority = await findWorkAuthority(tx, candidate.agentId, candidate.ownerAccountId);
-    if (!authority || authority.expiresAt <= now || (await hasActiveWork(tx, candidate.agentId)))
-      return false;
+    if (await hasActiveWork(tx, candidate.agentId)) return false;
+    // Its attention is on and its owner is still its owner: that is all it needs to work (it acts
+    // for them on Gemies' own first-party authority, oxy ADR 0066).
     const [pending] = await tx
       .select({ id: agents.id })
       .from(agents)
       .where(
         and(
           eq(agents.id, candidate.agentId),
+          eq(agents.status, 'active'),
+          eq(agents.identity, 'oxy'),
+          eq(agents.ownerOxyAccountId, candidate.ownerAccountId),
+          sql`${agents.scheduleInterval} > 0`,
           sql`exists (select 1 from agent_inbox_items where agent_id = ${candidate.agentId} and status = 'pending' and received_at >= ${new Date(now.getTime() - 3 * 86400000).toISOString()}::timestamptz)`,
         ),
       );
@@ -74,7 +65,6 @@ export async function acceptHeartbeat(
       rootId: id,
       agentId: candidate.agentId,
       ownerAccountId: candidate.ownerAccountId,
-      oxyTaskId: authority.oxyTaskId,
       kind: 'heartbeat',
       dueAt: now,
       objective: render(items),
@@ -98,7 +88,7 @@ export async function pendingWork(db: Executor, now: Date) {
     .limit(100);
 }
 
-/** A future continuation remains associated with the original task and bounded history. */
+/** A future continuation remains associated with its source session and bounded history. */
 export async function addAgentFollowUp(
   db: ApiDatabase,
   input: {
@@ -107,8 +97,8 @@ export async function addAgentFollowUp(
     sourceSessionId: string;
     at: Date;
     note: string;
-    /** Created from the live requester's session, never inferred from an owner id. */
-    chatAuthorityTaskId?: string;
+    /** Asked for in a live chat turn (its source session holds a chat lease). */
+    fromChat?: boolean;
     toolCallId?: string;
   },
 ) {
@@ -124,11 +114,8 @@ export async function addAgentFollowUp(
           eq(agentSessions.oxyUserId, input.ownerAccountId),
         ),
       );
-    if (!source || source.oxyTaskRetiredAt) return null;
-    if (input.chatAuthorityTaskId && (source.status !== 'running' || !source.chatLeaseExpiresAt))
-      return null;
-    const taskId = source.oxyTaskId ?? input.chatAuthorityTaskId;
-    if (!taskId) return null;
+    if (!source) return null;
+    if (input.fromChat && (source.status !== 'running' || !source.chatLeaseExpiresAt)) return null;
     const [agent] = await tx.select().from(agents).where(eq(agents.id, input.agentId));
     if (!agent || agent.status !== 'active') return null;
     const [parent] = await tx
@@ -161,12 +148,6 @@ export async function addAgentFollowUp(
         ),
       );
     if (pending.length >= 5) return null;
-    if (!source.oxyTaskId) {
-      await tx
-        .update(agentSessions)
-        .set({ oxyTaskId: taskId })
-        .where(eq(agentSessions.id, source.id));
-    }
     const id = randomUUID();
     const [created] = await tx
       .insert(agentWorkItems)
@@ -175,10 +156,7 @@ export async function addAgentFollowUp(
         rootId: parent?.rootId ?? source.id,
         agentId: input.agentId,
         ownerAccountId: input.ownerAccountId,
-        oxyTaskId: taskId,
-        deliveryMode: input.chatAuthorityTaskId
-          ? 'requested'
-          : (parent?.deliveryMode ?? 'initiative'),
+        deliveryMode: input.fromChat ? 'requested' : (parent?.deliveryMode ?? 'initiative'),
         kind: 'follow_up',
         dueAt: input.at,
         objective: input.note,
@@ -216,11 +194,7 @@ export async function readAgentWorkState(db: Executor, agentId: string) {
   if (pending)
     return { state: 'scheduled' as const, reason: null, nextWakeAt: pending.dueAt.toISOString() };
   if (!agent.scheduleInterval) return { state: 'paused' as const, reason: null };
-  const authority = agent.ownerOxyAccountId
-    ? await findWorkAuthority(db, agentId, agent.ownerOxyAccountId)
-    : null;
-  if (!authority || authority.expiresAt <= new Date())
-    return { state: 'blocked' as const, reason: 'needs_session' };
+  if (agent.identity !== 'oxy') return { state: 'blocked' as const, reason: 'no_background_work' };
   const latest = work[0];
   if (latest?.status === 'failed')
     return { state: 'blocked' as const, reason: latest.reason ?? 'execution_failed' };

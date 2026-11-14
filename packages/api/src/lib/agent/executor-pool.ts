@@ -48,7 +48,6 @@ export interface ExecutorPoolOptions {
      * tools act with the same authority; the parent's owner keeps revoking it,
      * an executor never does.
      */
-    oxyTaskId?: string | null;
     depth: number;
     config: { maxSteps: number; maxTokens: number; maxVMs: number };
   };
@@ -170,7 +169,6 @@ async function executeSubtask(
       agentId,
       oxyUserId: opts.parentSession.userId,
       parentSessionId: opts.parentSession._id,
-      ...(opts.parentSession.oxyTaskId ? { oxyTaskId: opts.parentSession.oxyTaskId } : {}),
       task: taskWithContext,
       status: 'queued',
       depth: opts.parentSession.depth + 1,

@@ -1,4 +1,3 @@
-import { bindOxyTask, revokeOxyTask } from '../lib/oxy-task-authority.js';
 import express from 'express';
 import { resolveModel } from '../lib/chat-core.js';
 import { ModelNotFoundError } from '../lib/models/errors.js';
@@ -22,7 +21,6 @@ import {
 } from '../db/integrations/botRepository.js';
 import type { ChannelId } from '../lib/channels/types.js';
 import { log } from '../lib/logger.js';
-import { personAssistantActor } from '../lib/gemie-oxy-actor.js';
 
 const router = express.Router();
 
@@ -59,7 +57,6 @@ router.get(
         username: botUser.username,
         displayName: botUser.displayName,
         linkedAt: botUser.linkedAt,
-        oxyTaskState: botUser.oxyTaskState,
       });
     } catch (error: unknown) {
       log.channels.error({ err: error }, 'Link status error');
@@ -91,7 +88,7 @@ router.post('/:id/link', authenticateToken, async (req: express.Request<{ id: st
     // `linkBotUser` CLEARS the token to NULL. `undefined` through drizzle is a
     // no-op, and a
     // redeemed one-time token would stay live for its remaining 15 minutes.
-    await linkChannelTask(req, botUser, authToken);
+    await linkChannel(req, botUser, authToken);
 
     res.json({ success: true });
   } catch (error: unknown) {
@@ -115,7 +112,6 @@ router.post('/:id/unlink', authenticateToken, async (req: express.Request<{ id: 
       return res.status(404).json({ error: 'No linked account found' });
     }
 
-    if (botUser.oxyTaskId) await revokeOxyTask(botUser.oxyTaskId);
     await unlinkBotUser(db, botUser.id);
 
     res.json({ success: true });
@@ -149,7 +145,7 @@ router.post(
         return res.status(404).json({ error: 'Auth token not found or expired' });
       }
 
-      await linkChannelTask(req, botUser, authToken);
+      await linkChannel(req, botUser, authToken);
 
       res.json({ success: true });
     } catch (error: unknown) {
@@ -248,7 +244,6 @@ router.get(
         oxyUserId: botUser.oxyUserId,
         conversationId: botUser.conversationId,
         linkedAt: botUser.linkedAt,
-        oxyTaskState: botUser.oxyTaskState,
         preferredModel: botUser.preferredModel,
       });
     } catch (error: unknown) {
@@ -495,7 +490,6 @@ router.post(
         return res.status(404).json({ error: 'Bot user not found' });
       }
 
-      if (botUser.oxyTaskId) await revokeOxyTask(botUser.oxyTaskId);
       await logoutBotUser(db, botUser.id);
 
       res.json({ success: true, message: 'Logged out successfully' });
@@ -509,34 +503,17 @@ router.post(
 export default router;
 
 /**
- * A channel link retains the actual linking person, never the bot owner's account. A relink keeps
- * the task the row held until the new one is written (`bindOxyTask`): a link token that expired
- * mid-request leaves the row as it was, with its task still live.
+ * A channel link retains the actual linking person, never the bot owner's account: the person whose
+ * own session redeems the token. Their turns there act for them on Gemies' own first-party authority
+ * (oxy ADR 0066); unlinking is the off switch.
  */
-async function linkChannelTask(
+async function linkChannel(
   req: express.Request,
-  botUser: { id: string; oxyTaskId: string | null },
+  botUser: { id: string },
   authToken: string,
 ): Promise<void> {
   if (!req.accessToken || !req.user?.id || req.serviceApp)
     throw new Error('A direct Oxy session is required to link a channel');
-  const requesterAccountId = req.user.id;
-  const task = await bindOxyTask(
-    {
-      accessToken: req.accessToken,
-      effectiveAccountId: requesterAccountId,
-      actor: personAssistantActor(requesterAccountId),
-      origin: { kind: 'automation', id: `channel:${botUser.id}` },
-    },
-    async (oxyTask) =>
-      (await linkBotUser(getDb(), botUser.id, {
-        oxyUserId: requesterAccountId,
-        oxyTask,
-        expectedTaskId: botUser.oxyTaskId,
-        authToken,
-      }))
-        ? { replaced: botUser.oxyTaskId }
-        : null,
-  );
-  if (!task) throw new Error('Channel link token was already redeemed');
+  const linked = await linkBotUser(getDb(), botUser.id, { oxyUserId: req.user.id, authToken });
+  if (!linked) throw new Error('Channel link token was already redeemed');
 }

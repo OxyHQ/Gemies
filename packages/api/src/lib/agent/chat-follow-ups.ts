@@ -1,18 +1,13 @@
-/** Bind a requested continuation to the live requester, before that request disappears. */
-import { eq, sql } from 'drizzle-orm';
+/** A continuation a person asked for in a live chat turn, bound to that turn's session. */
+import { eq } from 'drizzle-orm';
 import { getDb } from '../../db/index.js';
 import { agentSessions } from '../../db/schema/agent-sessions.js';
-import { createOxyTask } from '../oxy-task-authority.js';
 import { followUpReceipt, followUpRefusal, scheduleAgentFollowUp } from './follow-ups.js';
-import type { PresentAuthority } from './agent-turn-coordinator.js';
 
 export async function scheduleChatFollowUp(input: {
   agentId: string;
-  agentAccountId: string;
   ownerAccountId: string;
   sourceSessionId: string;
-  /** The present person's: a bearer to mint the task from, or the standing task the turn ran under. */
-  authority: PresentAuthority;
   at: Date;
   note: string;
   now: Date;
@@ -30,43 +25,21 @@ export async function scheduleChatFollowUp(input: {
     source.oxyUserId !== input.ownerAccountId ||
     source.status !== 'running' ||
     !source.chatLeaseExpiresAt ||
-    !source.conversationId ||
-    source.oxyTaskRetiredAt
+    !source.conversationId
   )
     return followUpReceipt({ scheduled: false, reason: 'continuation_unavailable' });
-
-  const taskId =
-    source.oxyTaskId ??
-    ('oxyTaskId' in input.authority
-      ? input.authority.oxyTaskId
-      : await createOxyTask({
-          accessToken: input.authority.requesterToken,
-          effectiveAccountId: input.ownerAccountId,
-          actorAccountId: input.agentAccountId,
-          origin: { kind: 'goal', id: source.id },
-        }));
-  try {
-    return followUpReceipt(
-      await scheduleAgentFollowUp({
-        ownerAccountId: input.ownerAccountId,
-        agentId: input.agentId,
-        sourceSessionId: source.id,
-        chatAuthorityTaskId: taskId,
-        at: input.at,
-        note: input.note,
-        now: input.now,
-        toolCallId: input.toolCallId,
-      }),
-    );
-  } finally {
-    // Concurrent calls may mint two tasks. Binding and scheduling commit together;
-    // only the unused task enters the durable revocation outbox, even after a lost response.
-    if (!source.oxyTaskId && 'requesterToken' in input.authority)
-      await getDb().execute(sql`
-      insert into agent_work_revocations (oxy_task_id)
-      select ${taskId} where not exists
-        (select 1 from agent_sessions where oxy_task_id = ${taskId})
-      on conflict do nothing
-    `);
-  }
+  // It runs with no session and no task: Gemies acts for the person on its own first-party
+  // authority (oxy ADR 0066), and the person stops it by pausing or deleting the gemie.
+  return followUpReceipt(
+    await scheduleAgentFollowUp({
+      ownerAccountId: input.ownerAccountId,
+      agentId: input.agentId,
+      sourceSessionId: source.id,
+      fromChat: true,
+      at: input.at,
+      note: input.note,
+      now: input.now,
+      toolCallId: input.toolCallId,
+    }),
+  );
 }

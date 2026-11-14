@@ -60,14 +60,14 @@ async function agentForOwnerSurface(req: Request, res: Response) {
   return loaded.agent;
 }
 
-/** Establish background provenance from the actual signed-in owner, never from an event. */
+/** The signed-in owner opened their gemie: adopt its legacy wake schedules (`establishAgentWork`). */
 router.post('/:id/work', authenticateToken, async (req: Request, res: Response) => {
   try {
     const agent = await agentForOwnerSurface(req, res);
-    if (!agent || !req.user || !req.accessToken) return;
+    if (!agent || !req.user) return;
     if (agent.ownerOxyAccountId !== req.user.id)
       return res.status(403).json({ error: 'Only the owner may start autonomous work' });
-    await establishAgentWork(agent._id, req.user.id, req.accessToken);
+    await establishAgentWork(agent._id, req.user.id);
     res.status(204).end();
   } catch (err) {
     log.agents.error({ err }, 'Could not establish autonomous work');

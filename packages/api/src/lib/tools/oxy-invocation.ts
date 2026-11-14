@@ -1,13 +1,14 @@
 /**
  * Calling an Oxy app capability: the execution authorization, the short-lived
- * ticket, the HTTP or internal-MCP invocation, its idempotency key and the
- * retirement of transient approvals. Takes a bound tool (`oxy-catalog-defs.ts`)
- * and a context (`oxy-call-context.ts`); never decides which tools exist.
+ * ticket, the HTTP or internal-MCP invocation and its idempotency key. Takes a
+ * bound tool (`oxy-catalog-defs.ts`) and a context (`oxy-call-context.ts`);
+ * never decides which tools exist. Gemies acts for the person on what Oxy's
+ * first-party registry declares for it (Oxy ADR 0066): no session, task or
+ * approval to hold or retire.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import {
   firstPartyExecutionAuthorizationInputSchema,
-  canonicalCapabilityJson,
   type CapabilityCatalogBinding,
   type AppCapabilityCatalog,
   type CatalogTool,
@@ -16,13 +17,11 @@ import { createInternalCatalogMcpClient, InternalMcpRefusedError } from '@oxy.so
 import { z } from 'zod';
 import { getErrorMessage } from '../errors/index.js';
 import { log } from '../logger.js';
-import { revokeOxyExecutionAuthorization } from '../oxy-capability-authority.js';
-import { isTaskAuthorityRefusal, standingTaskRefused } from '../oxy-task-authority.js';
 import { agency, type BoundTool } from './oxy-catalog-defs.js';
 import {
   OxyAuthorityUnavailableError,
   OxyOutcomeUnknownError,
-  oxyExecutionAuthorizationKey,
+  oxyRunScopeKey,
   type OxyToolExecutionContext,
 } from './oxy-call-context.js';
 
@@ -95,47 +94,38 @@ export function idempotencyKey(
     .digest('hex');
 }
 
+/**
+ * A two-minute authorization for one call, on Gemies' declared authority. The
+ * person is the context's requester; the resource names the account acted on
+ * (theirs, or a bot account they operate for `self_*`). A structured run's call
+ * carries its step and the tool's declared limits from the run scope.
+ */
 async function createDirectExecutionAuthorization(
   context: OxyToolExecutionContext,
   binding: BoundTool,
   runId: string,
 ): Promise<string> {
+  const tool = binding.compiled.definition.name;
+  const scoped = context.runScope?.[oxyRunScopeKey(binding.resource, tool)];
+  if (context.runScope !== undefined && context.runIsOpen && !(await context.runIsOpen()))
+    throw new OxyAuthorityUnavailableError('The task was stopped; nothing was done');
   const terms = firstPartyExecutionAuthorizationInputSchema.parse({
     authority: 'first_party' as const,
     kind: 'direct_request' as const,
     actor: context.actor,
     resource: binding.resource,
-    tool: binding.compiled.definition.name,
+    tool,
     expectedCatalog: binding.compiled.catalogBinding,
     runId,
+    ...(scoped?.stepId ? { stepId: scoped.stepId } : {}),
+    limits: (scoped?.limits ?? []).map((limit) => ({ tool, key: limit.key, value: limit.value })),
     expiresAt: new Date(Date.now() + 2 * 60_000).toISOString(),
   });
-  if (context.taskId) {
-    const taskId = context.taskId;
-    try {
-      return (await agency().createTaskExecutionAuthorization(taskId, terms)).id;
-    } catch (error: unknown) {
-      // Oxy refused the task itself: a channel holding it needs its person, told once.
-      if (isTaskAuthorityRefusal(error)) {
-        void standingTaskRefused(taskId).catch((err: unknown) =>
-          log.general.warn({ err }, 'Could not mark a refused channel task'),
-        );
-      }
-      throw error;
-    }
-  }
-  if (!context.userAccessToken)
-    throw new Error('No verified requester authority exists for this operation');
   return (
-    await agency().createForegroundExecutionAuthorization(terms, {
-      requesterToken: context.userAccessToken,
+    await agency().createFirstPartyExecutionAuthorization(terms, {
+      requesterAccountId: context.requesterAccountId,
     })
   ).id;
-}
-
-interface IssuedTicket {
-  ticket: string;
-  transientAuthorizationId?: string;
 }
 
 const auditedResultSchema = z
@@ -151,78 +141,35 @@ function responseAuditEventId(response: Response, result: unknown): string | und
   return parsed.success ? parsed.data.auditEventId : undefined;
 }
 
-export async function revokeTransientAuthorization(
-  context: OxyToolExecutionContext,
-  authorizationId: string,
-  runId: string,
-  toolName: string,
-  sharedAgency = false,
-): Promise<boolean> {
-  if (!context.userAccessToken) return false;
-  try {
-    await revokeOxyExecutionAuthorization(context.userAccessToken, authorizationId);
-    return true;
-  } catch (error: unknown) {
-    log.general.warn(
-      sharedAgency
-        ? { runId, tool: toolName, failure: 'retirement_unavailable' }
-        : { err: error, runId, tool: toolName },
-      'Could not revoke transient Oxy execution authorization; expiry remains active',
-    );
-    return false;
-  }
-}
-
 async function issueTicket(
   context: OxyToolExecutionContext,
   binding: BoundTool,
   runId: string,
   expectedCatalog?: CapabilityCatalogBinding,
-  onPendingRetirement?: (authorizationId: string) => void,
-): Promise<IssuedTicket> {
-  const { resource } = binding;
+): Promise<string> {
   const definition = binding.compiled.definition;
-  const preauthorized =
-    context.executionAuthorizations?.[oxyExecutionAuthorizationKey(resource, definition.name)];
   let executionAuthorizationId: string;
   if (expectedCatalog && !context.runId)
     throw new OxyAuthorityUnavailableError('Internal MCP requires a named run');
   try {
-    executionAuthorizationId =
-      preauthorized?.id ?? (await createDirectExecutionAuthorization(context, binding, runId));
+    executionAuthorizationId = await createDirectExecutionAuthorization(context, binding, runId);
   } catch (error: unknown) {
     if (expectedCatalog)
-      throw new OxyAuthorityUnavailableError('Internal MCP requester approval unavailable');
+      throw new OxyAuthorityUnavailableError('Internal MCP authorization unavailable');
     throw new OxyAuthorityUnavailableError(getErrorMessage(error), { cause: error });
   }
-  // Both a preauthorized step and an agent run are AUTOMATION authority, whose
-  // run is bound when the ticket is issued; a direct request bound its own.
-  const automationScoped = preauthorized !== undefined || context.taskId !== undefined;
   try {
+    // The authorization bound its own run and step; the ticket request names neither.
     const request = {
       executionAuthorizationId,
-      ...(preauthorized ? { runId, stepId: preauthorized.stepId } : {}),
       ...(expectedCatalog ? { expectedCatalog } : {}),
     };
     const parsed = ticketResponseSchema.parse(await agency().issueCapabilityTicket(request));
     if (!parsed.decision.allowed || !parsed.ticket) {
       throw new Error(`Oxy policy denied ${definition.name}: ${parsed.decision.reason}`);
     }
-    return {
-      ticket: parsed.ticket,
-      ...(automationScoped ? {} : { transientAuthorizationId: executionAuthorizationId }),
-    };
+    return parsed.ticket;
   } catch (error: unknown) {
-    if (!automationScoped) {
-      const retired = await revokeTransientAuthorization(
-        context,
-        executionAuthorizationId,
-        runId,
-        definition.name,
-        expectedCatalog !== undefined,
-      );
-      if (!retired) onPendingRetirement?.(executionAuthorizationId);
-    }
     if (expectedCatalog)
       throw new OxyAuthorityUnavailableError('Internal MCP ticket authority unavailable');
     throw new OxyAuthorityUnavailableError(getErrorMessage(error), { cause: error });
@@ -235,39 +182,22 @@ interface InternalOperationOutcome {
   tool: string;
   status: 'succeeded' | 'not_executed' | 'unknown' | 'failed';
   result?: unknown;
-  authorizationId?: string;
-  retired: boolean;
-  inputDigest: string;
 }
 
-// Scoped to one built toolset/run, never global and never containing credentials.
-// A receipt is not authority: retry uses the original context's requester bearer.
-export type InternalRetirements = Map<string, InternalOperationOutcome>;
-export const RETIRE_APPROVAL_TOOL = 'oxy_mention__retireApproval';
-export function internalOutcome(outcome: InternalOperationOutcome) {
+/** What the model reads when an internal-MCP call did not plainly succeed. */
+function internalOutcome(outcome: InternalOperationOutcome) {
   return {
     status: outcome.status,
     ...(outcome.status === 'succeeded'
       ? { result: outcome.result }
       : { error: outcome.status === 'unknown' ? 'oxy_app_result_unknown' : 'oxy_app_unavailable' }),
     operation: { id: outcome.id, runId: outcome.runId, tool: outcome.tool },
-    retirement: {
-      status:
-        outcome.authorizationId === undefined
-          ? 'not_required'
-          : outcome.retired
-            ? 'retired'
-            : 'pending',
-      ...(!outcome.retired ? { retryTool: RETIRE_APPROVAL_TOOL } : {}),
-    },
     message:
-      outcome.status === 'succeeded'
-        ? 'The operation succeeded. Do not execute it again. Only retry pending approval retirement with its operation ID.'
-        : outcome.status === 'unknown'
-          ? 'The operation outcome is unknown. Do not claim success or start a new operation. Only retry pending approval retirement; that does not resolve the operation outcome.'
-          : outcome.status === 'not_executed'
-            ? 'The app refused the call before running it, so nothing happened. Tell the person it is unavailable right now; do not claim it ran.'
-            : 'The operation was not confirmed successful. Retrying approval retirement never executes the operation.',
+      outcome.status === 'unknown'
+        ? 'The operation outcome is unknown. Do not claim success or start the operation again.'
+        : outcome.status === 'not_executed'
+          ? 'The app refused the call before running it, so nothing happened. Tell the person it is unavailable right now; do not claim it ran.'
+          : 'The operation was not confirmed successful.',
   };
 }
 
@@ -276,60 +206,28 @@ async function callInternalBoundTool(
   args: Record<string, unknown>,
   context: OxyToolExecutionContext,
   toolCallId: string | undefined,
-  retirements: InternalRetirements,
   operationKey: string | undefined,
 ): Promise<unknown> {
   const definition = binding.compiled.definition;
   const runId = context.runId ?? '';
   const operationId =
     operationKey ??
-    idempotencyKey(
-      runId,
-      oxyExecutionAuthorizationKey(binding.resource, definition.name),
-      args,
-      toolCallId,
-    );
-  const inputDigest = createHash('sha256').update(canonicalCapabilityJson(args)).digest('hex');
-  const previous = retirements.get(operationId);
-  // A retry of an operation with pending retirement must not issue new authority
-  // or execute the operation, even if the caller repeats its original tool call.
-  if (previous) {
-    if (previous.inputDigest !== inputDigest)
-      return { error: 'oxy_operation_conflict', operationId };
-    return internalOutcome(previous);
-  }
+    idempotencyKey(runId, oxyRunScopeKey(binding.resource, definition.name), args, toolCallId);
   const outcome: InternalOperationOutcome = {
     id: operationId,
     runId,
     tool: definition.name,
     status: 'not_executed',
-    retired: true,
-    inputDigest,
   };
-  const stepId =
-    context.executionAuthorizations?.[
-      oxyExecutionAuthorizationKey(binding.resource, definition.name)
-    ]?.stepId;
+  const stepId = context.runScope?.[oxyRunScopeKey(binding.resource, definition.name)]?.stepId;
   if (stepId) await context.onStepStatus?.(stepId, 'running');
-  let issued: IssuedTicket;
+  let ticket: string;
   try {
-    issued = await issueTicket(
-      context,
-      binding,
-      runId,
-      binding.compiled.internalCatalogBinding,
-      (authorizationId) => {
-        outcome.authorizationId = authorizationId;
-        outcome.retired = false;
-        retirements.set(operationId, outcome);
-      },
-    );
+    ticket = await issueTicket(context, binding, runId, binding.compiled.internalCatalogBinding);
   } catch (error) {
     if (stepId) await context.onStepStatus?.(stepId, 'failed');
-    if (!outcome.retired) return internalOutcome(outcome);
     throw error;
   }
-  outcome.authorizationId = issued.transientAuthorizationId;
   outcome.status = 'unknown';
   try {
     const endpoint = new URL('/_oxy/mcp', binding.compiled.catalog.internalBaseUrl);
@@ -337,7 +235,7 @@ async function callInternalBoundTool(
       endpoint: endpoint.href,
       timeoutMs: TOOL_TIMEOUT_MS,
     });
-    const result = await client.callTool(issued.ticket, definition.name, args, {
+    const result = await client.callTool(ticket, definition.name, args, {
       ...(definition.idempotency === 'required' ? { idempotencyKey: operationId } : {}),
     });
     if ('isError' in result && result.isError === true) {
@@ -361,16 +259,6 @@ async function callInternalBoundTool(
           ? 'failed'
           : 'unknown';
   }
-  if (issued.transientAuthorizationId) {
-    outcome.retired = await revokeTransientAuthorization(
-      context,
-      issued.transientAuthorizationId,
-      runId,
-      definition.name,
-      true,
-    );
-    if (!outcome.retired) retirements.set(operationId, outcome);
-  }
   if (stepId) {
     const audit = auditedResultSchema.safeParse(outcome.result);
     await context.onStepStatus?.(
@@ -380,9 +268,7 @@ async function callInternalBoundTool(
     );
   }
   // Normal successful calls retain the existing domain result shape.
-  return outcome.status === 'succeeded' && outcome.retired
-    ? outcome.result
-    : internalOutcome(outcome);
+  return outcome.status === 'succeeded' ? outcome.result : internalOutcome(outcome);
 }
 
 /**
@@ -395,28 +281,24 @@ export async function callBoundTool(
   args: Record<string, unknown>,
   context: OxyToolExecutionContext,
   toolCallId?: string,
-  retirements: InternalRetirements = new Map(),
   operationKey?: string,
 ): Promise<unknown> {
   if (binding.compiled.internalCatalogBinding) {
-    return callInternalBoundTool(binding, args, context, toolCallId, retirements, operationKey);
+    return callInternalBoundTool(binding, args, context, toolCallId, operationKey);
   }
   const runId = context.runId ?? randomUUID();
   const stepId =
-    context.executionAuthorizations?.[
-      oxyExecutionAuthorizationKey(binding.resource, binding.compiled.definition.name)
-    ]?.stepId;
+    context.runScope?.[oxyRunScopeKey(binding.resource, binding.compiled.definition.name)]?.stepId;
   if (stepId) await context.onStepStatus?.(stepId, 'running');
-  let issued: IssuedTicket | undefined;
   try {
-    issued = await issueTicket(context, binding, runId, binding.compiled.internalCatalogBinding);
+    const ticket = await issueTicket(context, binding, runId);
     const { url, body } = resolveInvocation(
       binding.compiled.catalog,
       binding.compiled.definition,
       args,
     );
     const headers: Record<string, string> = {
-      authorization: `Capability ${issued.ticket}`,
+      authorization: `Capability ${ticket}`,
       accept: 'application/json',
     };
     if (body) headers['content-type'] = 'application/json';
@@ -456,16 +338,6 @@ export async function callBoundTool(
   } catch (error: unknown) {
     if (stepId) await context.onStepStatus?.(stepId, 'failed');
     throw error;
-  } finally {
-    if (issued?.transientAuthorizationId && context.userAccessToken) {
-      await revokeTransientAuthorization(
-        context,
-        issued.transientAuthorizationId,
-        runId,
-        binding.compiled.definition.name,
-        binding.compiled.internalCatalogBinding !== undefined,
-      );
-    }
   }
 }
 

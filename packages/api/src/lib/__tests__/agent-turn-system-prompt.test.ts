@@ -193,7 +193,6 @@ describe('a turn that belongs to an agent', () => {
       ...turn,
       linkedAgent: { ...claudio, capabilityGrants: [] },
       userId: 'person-1',
-      accessToken: 'person-bearer',
       oxyUser: { name: { full: 'Private Person' }, username: 'private-person' },
       userMemory: { preferences: { tone: 'private-tone-zq', responseLength: 'long' } },
       skills: {

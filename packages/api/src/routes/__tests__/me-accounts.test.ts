@@ -2,9 +2,9 @@
  * `/me/accounts` — a person's connected accounts (ADR 0035 as amended). Under test: that every
  * route is scoped to the caller, that an account is connected once and granted to nobody until the
  * person chooses, that a gemie can be granted only by someone who may grant it (`loadGrantableGemie`),
- * that the answering gemie is granted the account and its task names that gemie's actor (Alia's lane
- * is the person's own, a persona acts as its account), that revoking the answering gemie revokes the
- * task, that only the platforms the gateway runs can be connected, and that a list shows each
+ * that the answering gemie is granted the account with no task or grant at Oxy (Gemies acts for the
+ * person on its own first-party authority, oxy ADR 0066; choosing none is the off switch), that only
+ * the platforms the gateway runs can be connected, and that a list shows each
  * account as its session is now, with its grants.
  */
 import type { Server } from 'node:http';
@@ -39,12 +39,9 @@ const state = vi.hoisted(() => ({
   setSession: vi.fn(),
   setSessionState: vi.fn(),
   setReplies: vi.fn(),
-  saveTask: vi.fn(),
   grant: vi.fn(),
   revokeGrant: vi.fn(),
   setAnswering: vi.fn(),
-  createTask: vi.fn(),
-  revokeTask: vi.fn(),
   loadGrantable: vi.fn(),
 }));
 
@@ -85,29 +82,9 @@ vi.mock('../../db/integrations/connectedAccountRepository.js', () => ({
   setConnectedAccountSession: state.setSession,
   setConnectedAccountSessionState: state.setSessionState,
   setConnectedAccountReplies: state.setReplies,
-  setConnectedAccountTask: state.saveTask,
   grantConnectedAccount: state.grant,
   revokeConnectedAccountGrant: state.revokeGrant,
   setAnsweringGemie: state.setAnswering,
-  listAccountsAnsweredBy: vi.fn(async () => []),
-}));
-vi.mock('../../lib/oxy-task-authority.js', () => ({
-  revokeOxyTask: state.revokeTask,
-  // `bindOxyTask`'s contract (its own suite proves it): mint, write, and release the loser or the
-  // replaced task only after the write.
-  bindOxyTask: async (
-    input: unknown,
-    write: (task: { id: string; expiresAt: Date }) => Promise<{ replaced: string | null } | null>,
-  ) => {
-    const task = { id: await state.createTask(input), expiresAt: new Date('2027-11-14T00:00:00Z') };
-    const written = await write(task);
-    if (!written) {
-      await state.revokeTask(task.id);
-      return null;
-    }
-    if (written.replaced) await state.revokeTask(written.replaced);
-    return task;
-  },
 }));
 vi.mock('../../lib/integrations-client.js', () => ({
   integrationsFetch: vi.fn(async (_account: string, path: string, init: RequestInit = {}) => {
@@ -172,8 +149,6 @@ beforeEach(() => {
     platform: 'whatsapp',
     status: 'connected',
     sessionId: 'session-1',
-    oxyTaskId: 'old-task',
-    oxyTaskState: 'active',
   };
   state.grants = [];
   state.answering = null;
@@ -183,8 +158,6 @@ beforeEach(() => {
     id: 'new-account',
     ...input,
     status: 'qr-pending',
-    oxyTaskId: null,
-    oxyTaskState: 'reauth_required',
   }));
   state.setSessionState.mockImplementation(
     async (_db: unknown, id: string, patch: Record<string, unknown>) => ({
@@ -202,9 +175,6 @@ beforeEach(() => {
   );
   state.revokeGrant.mockResolvedValue({ answered: false });
   state.remove.mockResolvedValue(undefined);
-  state.saveTask.mockResolvedValue(true);
-  state.createTask.mockResolvedValue('new-task');
-  state.revokeTask.mockResolvedValue(undefined);
 });
 
 describe('the person’s accounts', () => {
@@ -228,9 +198,9 @@ describe('the person’s accounts', () => {
       gemieIds: ['alia-gemie', 'persona-1'],
       answeringGemieId: 'persona-1',
     });
-    // The provider session and the Oxy task are the server's, never the panel's.
+    // The provider session is the server's, never the panel's; there is no task to show.
     expect(account).not.toHaveProperty('sessionId');
-    expect(account).not.toHaveProperty('oxyTaskId');
+    expect(Object.keys(account).filter((key) => key.startsWith('oxyTask'))).toEqual([]);
   });
 
   it('never reaches an account of somebody else', async () => {
@@ -238,7 +208,6 @@ describe('the person’s accounts', () => {
     expect((await call('DELETE', '/me/accounts/someone-elses')).status).toBe(404);
     expect((await call('PUT', '/me/accounts/someone-elses/gemies/persona-1')).status).toBe(404);
     expect(state.find).toHaveBeenCalledWith({}, 'someone-elses', 'person-1');
-    expect(state.revokeTask).not.toHaveBeenCalled();
     expect(state.remove).not.toHaveBeenCalled();
     expect(state.grant).not.toHaveBeenCalled();
   });
@@ -265,13 +234,12 @@ describe('the person’s accounts', () => {
 });
 
 describe('connecting an account', () => {
-  it('connects WhatsApp for the person, granted to nobody and with no task yet', async () => {
+  it('connects WhatsApp for the person, granted to nobody', async () => {
     const { status, body } = await call('POST', '/me/accounts', { platform: 'whatsapp' });
     expect(status).toBe(201);
     expect(body).toEqual({ accountId: 'new-account', qr: 'QR-1' });
     expect(state.create).toHaveBeenCalledWith({}, { oxyUserId: 'person-1', platform: 'whatsapp' });
     expect(state.setSession).toHaveBeenCalledWith({}, 'new-account', 'wa-session');
-    expect(state.createTask).not.toHaveBeenCalled();
     expect(state.grant).not.toHaveBeenCalled();
   });
 
@@ -327,46 +295,40 @@ describe('which gemies may use it', () => {
     expect(state.grant).not.toHaveBeenCalled();
   });
 
-  it('revokes a grant; the answering gemie’s revocation revokes the account’s task too', async () => {
+  it('revokes a grant, the answering gemie’s too: then nobody answers the account', async () => {
     expect((await call('DELETE', '/me/accounts/account-1/gemies/alia-gemie')).status).toBe(204);
     expect(state.revokeGrant).toHaveBeenCalledWith({}, 'account-1', 'alia-gemie');
-    expect(state.revokeTask).not.toHaveBeenCalled();
-
     state.revokeGrant.mockResolvedValueOnce({ answered: true });
     expect((await call('DELETE', '/me/accounts/account-1/gemies/persona-1')).status).toBe(204);
-    expect(state.revokeTask).toHaveBeenCalledWith('old-task');
+    expect(state.revokeGrant).toHaveBeenLastCalledWith({}, 'account-1', 'persona-1');
   });
 });
 
 describe('who answers it', () => {
-  it('makes a persona answer it, with a task the persona acts on as its account', async () => {
+  it('makes a persona answer it: stored, with nothing to mint or hold at Oxy', async () => {
     const { status } = await call('PATCH', '/me/accounts/account-1', {
       answeringGemieId: 'persona-1',
     });
     expect(status).toBe(200);
-    expect(state.setAnswering).toHaveBeenCalledWith({}, 'account-1', 'persona-1');
-    expect(state.revokeTask).toHaveBeenCalledWith('old-task');
-    expect(state.createTask).toHaveBeenCalledWith({
-      accessToken: 'PERSON-TOKEN',
-      effectiveAccountId: 'person-1',
-      actor: { type: 'agent', accountId: 'bot-1' },
-      origin: { kind: 'automation', id: 'channel:account-1' },
-    });
-  });
-
-  it('makes Alia answer it on the person’s own lane', async () => {
-    state.loaded = { ok: true, agent: ALIA };
-    await call('PATCH', '/me/accounts/account-1', { answeringGemieId: 'alia-gemie' });
-    expect(state.createTask).toHaveBeenCalledWith(
-      expect.objectContaining({ actor: { type: 'alia', ownerAccountId: 'person-1' } }),
+    expect(state.loadGrantable).toHaveBeenCalledWith(
+      {},
+      { agentId: 'persona-1', oxyUserId: 'person-1', accessToken: 'PERSON-TOKEN' },
     );
+    expect(state.setAnswering).toHaveBeenCalledWith({}, 'account-1', 'persona-1');
   });
 
-  it('makes nobody answer it: the task is revoked and none is granted', async () => {
+  it('makes Alia answer it', async () => {
+    state.loaded = { ok: true, agent: ALIA };
+    expect(
+      (await call('PATCH', '/me/accounts/account-1', { answeringGemieId: 'alia-gemie' })).status,
+    ).toBe(200);
+    expect(state.setAnswering).toHaveBeenCalledWith({}, 'account-1', 'alia-gemie');
+  });
+
+  it('makes nobody answer it: the off switch', async () => {
     await call('PATCH', '/me/accounts/account-1', { answeringGemieId: null });
     expect(state.setAnswering).toHaveBeenCalledWith({}, 'account-1', null);
-    expect(state.revokeTask).toHaveBeenCalledWith('old-task');
-    expect(state.createTask).not.toHaveBeenCalled();
+    expect(state.loadGrantable).not.toHaveBeenCalled();
   });
 
   it('refuses a gemie the person may not grant, and changes nothing', async () => {
@@ -376,7 +338,6 @@ describe('who answers it', () => {
     });
     expect(status).toBe(403);
     expect(state.setAnswering).not.toHaveBeenCalled();
-    expect(state.revokeTask).not.toHaveBeenCalled();
   });
 
   it('saves its replies for the caller’s account only', async () => {
@@ -402,49 +363,10 @@ describe('who answers it', () => {
   });
 });
 
-describe('an account’s task', () => {
-  it('renews it for the answering gemie, revoking the old one only once the new one is held', async () => {
-    state.answering = 'persona-1';
-    const { status, body } = await call('POST', '/me/accounts/account-1/reauthorize');
-    expect(status).toBe(200);
-    expect(body).toEqual({ success: true, oxyTaskState: 'active' });
-    expect(state.createTask).toHaveBeenCalledWith(
-      expect.objectContaining({ actor: { type: 'agent', accountId: 'bot-1' } }),
-    );
-    // Swapped in place of the task it held, with Oxy's expiry, then the old one released.
-    expect(state.saveTask).toHaveBeenCalledWith(
-      {},
-      'account-1',
-      { id: 'new-task', expiresAt: new Date('2027-11-14T00:00:00Z') },
-      'old-task',
-    );
-    expect(state.revokeTask).toHaveBeenCalledWith('old-task');
-    expect(state.saveTask.mock.invocationCallOrder[0]).toBeLessThan(
-      state.revokeTask.mock.invocationCallOrder[0] ?? 0,
-    );
-  });
-
-  it('has none to renew when nobody answers the account', async () => {
-    const { status, body } = await call('POST', '/me/accounts/account-1/reauthorize');
-    expect(status).toBe(409);
-    expect(body.code).toBe('no_answering_gemie');
-    expect(state.createTask).not.toHaveBeenCalled();
-  });
-
-  it('revokes a losing concurrent task and keeps the one the account still holds', async () => {
-    state.answering = 'persona-1';
-    state.saveTask.mockResolvedValueOnce(false);
-    expect((await call('POST', '/me/accounts/account-1/reauthorize')).status).toBe(503);
-    expect(state.revokeTask).toHaveBeenCalledWith('new-task');
-    expect(state.revokeTask).not.toHaveBeenCalledWith('old-task');
-  });
-});
-
 describe('removing an account', () => {
-  it('revokes its task, has the gateway forget its session, and deletes it', async () => {
+  it('has the gateway forget its session, and deletes it', async () => {
     answer('DELETE /accounts/whatsapp/sessions/session-1', null, 204);
     expect((await call('DELETE', '/me/accounts/account-1')).status).toBe(200);
-    expect(state.revokeTask).toHaveBeenCalledWith('old-task');
     expect(state.gatewayCalls).toContain('DELETE /accounts/whatsapp/sessions/session-1');
     expect(state.remove).toHaveBeenCalledWith({}, 'account-1');
   });

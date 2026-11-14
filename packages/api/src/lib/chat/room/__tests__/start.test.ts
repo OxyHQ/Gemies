@@ -8,8 +8,6 @@ const h = vi.hoisted(() => ({
   latest: vi.fn(),
   list: vi.fn(),
   space: vi.fn(),
-  mint: vi.fn(),
-  revoke: vi.fn(),
   enqueue: vi.fn(),
 }));
 vi.mock('../../activity.js', () => ({
@@ -29,10 +27,6 @@ vi.mock('../../../agent-identity.js', () => ({
   agentPromptName: (a: { name: string }) => a.name,
 }));
 vi.mock('../../../conversation-saver.js', () => ({ saveConversation: h.save }));
-vi.mock('../../../oxy-task-authority.js', () => ({
-  createOxyTask: h.mint,
-  revokeOxyTask: h.revoke,
-}));
 vi.mock('../queue.js', () => ({ enqueueRoomJob: h.enqueue }));
 vi.mock('../../../logger.js', () => ({
   log: { general: { error: vi.fn() }, agents: { warn: vi.fn() } },
@@ -66,7 +60,6 @@ beforeEach(() => {
   h.latest.mockResolvedValue({ id: 'row-p', clientMessageId: 'client-p' });
   h.list.mockResolvedValue([]);
   h.space.mockResolvedValue(null);
-  h.mint.mockImplementation(async ({ actorAccountId }) => `task-${actorAccountId}`);
 });
 
 describe('room preparation', () => {
@@ -77,9 +70,8 @@ describe('room preparation', () => {
     await expect(room.start()).rejects.toThrow('admission unavailable');
     expect(h.enqueue).not.toHaveBeenCalled();
     await room.abandon();
-    expect(h.revoke).toHaveBeenCalled();
   });
-  it('queues selection, not a roster-wide round, with no bearer in its data', async () => {
+  it('queues selection, not a roster-wide round, with no bearer or task in its data', async () => {
     const room = await prepareRoom(input);
     expect(room.ready).toBe(true);
     await room.start();
@@ -93,12 +85,10 @@ describe('room preparation', () => {
       pending: [],
     });
     expect(JSON.stringify(job)).not.toContain('PRIVATE_BEARER');
-    expect(job.roster[1]).toMatchObject({
-      description: 'e public remit',
-      oxyTaskId: 'task-bot-e',
-      available: true,
-    });
-    expect(h.save.mock.invocationCallOrder[0]).toBeLessThan(h.mint.mock.invocationCallOrder[0]!);
+    expect(job.roster[1]).toMatchObject({ description: 'e public remit', available: true });
+    // Each member acts for the person on Gemies' own first-party authority (oxy ADR 0066).
+    expect(Object.keys(job.roster[1]).sort()).toEqual(['available', 'description', 'info']);
+    expect(h.save.mock.invocationCallOrder[0]).toBeLessThan(h.enqueue.mock.invocationCallOrder[0]!);
   });
 
   it('keeps the person’s personalization off on the chain it starts, and says nothing when on', async () => {
@@ -109,22 +99,19 @@ describe('room preparation', () => {
     expect(h.enqueue.mock.calls[1]?.[0]).toMatchObject({ personalization: false });
   });
 
-  it('keeps unavailable Eusebio identifiable, without task authority or private description', async () => {
+  it('keeps unavailable Eusebio identifiable, without its private description', async () => {
     h.reach.mockImplementation(async (agent) => (agent._id === 'e' ? 'unreachable' : 'reachable'));
     const room = await prepareRoom(input);
     await room.start();
     const e = h.enqueue.mock.calls[0]?.[0].roster[1];
     expect(e).toMatchObject({ info: { id: 'e', name: 'Eusebio' }, available: false });
-    expect(e.oxyTaskId).toBeUndefined();
     expect(e.description).toBeUndefined();
-    expect(h.mint).toHaveBeenCalledTimes(1);
   });
 
   it('does not lose a known unavailable identity when authority lookup fails', async () => {
     h.reach.mockRejectedValue(new Error('Oxy down'));
     const room = await prepareRoom(input);
     expect(room.ready).toBe(false);
-    expect(h.mint).not.toHaveBeenCalled();
     await room.start();
     expect(h.enqueue.mock.calls[0]?.[0].roster[1]).toMatchObject({
       info: { name: 'Eusebio' },
@@ -132,17 +119,10 @@ describe('room preparation', () => {
     });
   });
 
-  it('does not mint authority when space preparation fails', async () => {
+  it('starts nothing when space preparation fails', async () => {
     h.space.mockRejectedValue(new Error('database down'));
     await expect(prepareRoom(input)).rejects.toThrow('database down');
-    expect(h.mint).not.toHaveBeenCalled();
-  });
-
-  it('abandon revokes only the tasks actually minted', async () => {
-    h.mint.mockResolvedValueOnce('task-s').mockRejectedValueOnce(new Error('unavailable'));
-    const room = await prepareRoom(input);
-    await room.abandon();
-    expect(h.revoke).toHaveBeenCalledExactlyOnceWith('task-s');
+    expect(h.enqueue).not.toHaveBeenCalled();
   });
 
   it('binds its own stored trigger even when a newer request wins the latest-message race', async () => {

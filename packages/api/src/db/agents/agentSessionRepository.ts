@@ -116,7 +116,6 @@ export interface AgentSessionRecord {
   workItemId?: string | null;
   generation: number;
   parentSessionId: string | null;
-  oxyTaskId?: string | null;
   automationRunId: string | null;
   automationStage: number | null;
   status: AgentSessionStatus;
@@ -220,7 +219,6 @@ function toAgentSessionRecord(row: AgentSessionRow): AgentSessionRecord {
     workItemId: row.workItemId,
     generation: row.generation,
     parentSessionId: row.parentSessionId,
-    oxyTaskId: row.oxyTaskId,
     automationRunId: row.automationRunId,
     automationStage: row.automationStage,
     status: row.status as AgentSessionStatus,
@@ -653,7 +651,6 @@ export interface CreateAgentSessionInput {
   workItemId?: string;
   generation?: number;
   parentSessionId?: string;
-  oxyTaskId?: string;
   automationRunId?: string;
   automationStage?: number;
   status?: AgentSessionStatus;
@@ -677,7 +674,6 @@ function agentSessionValues(input: CreateAgentSessionInput): typeof agentSession
     workItemId: input.workItemId ?? null,
     ...(input.generation !== undefined && { generation: input.generation }),
     parentSessionId: input.parentSessionId ?? null,
-    oxyTaskId: input.oxyTaskId ?? null,
     automationRunId: input.automationRunId ?? null,
     automationStage: input.automationStage ?? null,
     ...(input.status !== undefined && { status: input.status }),

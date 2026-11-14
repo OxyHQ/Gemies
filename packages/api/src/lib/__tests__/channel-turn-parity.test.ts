@@ -3,8 +3,8 @@
  *
  * The real assembler, called twice with exactly what `routes/v1/chat-completions.ts` passes it: once
  * for the person in the app (their bearer), once for the same person writing to their gemie's bot
- * from the Telegram they linked (a verified `gemie_bot` channel: no bearer, the standing task they
- * granted the gemie). The bulk sources are stubbed (their rows are in a database this test lacks);
+ * from the Telegram they linked (a verified `gemie_bot` channel: no bearer and no task — Gemies acts
+ * for them on its own first-party authority, oxy ADR 0066). The bulk sources are stubbed (their rows are in a database this test lacks);
  * what each was ASKED with is the observation.
  *
  * The only tools allowed to differ are the ones whose precondition is structurally the app's — a
@@ -139,7 +139,6 @@ describe('the person on their gemie’s Telegram bot', () => {
       ...COMMON,
       isDirectSession: false,
       personPresent: true,
-      oxyTaskId: 'bot-task',
       runtime: runtime(),
     });
     const telegramOxy = asked.oxy.at(-1);
@@ -166,15 +165,11 @@ describe('the person on their gemie’s Telegram bot', () => {
       expect(telegramTools).toContain(name);
     }
 
-    // The same person, owner and identity; the authority is the task they granted instead of a
-    // bearer — the lane scheduled work uses.
-    expect(telegramOxy).toMatchObject({
-      requesterAccountId: appOxy?.requesterAccountId,
-      ownerAccountId: appOxy?.ownerAccountId,
-      agentIdentity: appOxy?.agentIdentity,
-      taskId: 'bot-task',
-      userAccessToken: undefined,
-    });
+    // The same person, owner and identity, with no session and no task: the context names the
+    // accounts and nothing else, as in the app.
+    expect(telegramOxy).toEqual(appOxy);
+    expect(telegramOxy).not.toHaveProperty('taskId');
+    expect(telegramOxy).not.toHaveProperty('userAccessToken');
     expect(appOxy).toMatchObject({
       requesterAccountId: 'owner-1',
       agentIdentity: { forUser: 'owner', self: true },
@@ -185,8 +180,35 @@ describe('the person on their gemie’s Telegram bot', () => {
     const contact = await ToolPipeline.forUser({
       ...COMMON,
       isDirectSession: false,
-      oxyTaskId: 'account-task',
     });
     expect(Object.keys(contact.tools)).not.toContain('createAutomation');
+  });
+
+  it('a channel turn with no session still reaches its person’s Oxy apps, as that person', async () => {
+    // What a connected account's or a system bot link's turn passes: no bearer, nobody present,
+    // acting for the channel's person.
+    const turn = await ToolPipeline.forUser({
+      ...COMMON,
+      isDirectSession: false,
+      requesterAccountId: 'owner-1',
+    });
+    expect(Object.keys(turn.tools)).toContain('oxy_inbox__listMessages');
+    expect(asked.oxy.at(-1)).toMatchObject({
+      requesterAccountId: 'owner-1',
+      ownerAccountId: 'owner-1',
+      actor: { type: 'agent' },
+    });
+    expect(asked.oxy.at(-1)).not.toHaveProperty('taskId');
+  });
+
+  it('a stranger’s turn (acting for nobody) reaches no Oxy app at all', async () => {
+    asked.oxy = [];
+    await ToolPipeline.forUser({
+      ...COMMON,
+      actsForPerson: false,
+      requesterAccountId: null,
+      isDirectSession: false,
+    });
+    expect(asked.oxy).toEqual([]);
   });
 });

@@ -1,18 +1,18 @@
 import { oxy } from '../oxy.js';
 import { readLinkedFile } from './oxy-files.js';
 /**
- * The documents a person attaches to a turn, read from Oxy Files with verified
- * requester proof (`{ type: 'file', file: { file_id, filename, mime } }`,
+ * The documents a person attaches to a turn, read from Oxy Files acting for
+ * them (`{ type: 'file', file: { file_id, filename, mime } }`,
  * `docs/agent-embedding.md` §5).
  *
  * ## Read as the person, never as Alia
  *
  * The client uploads the file to the person's own Oxy account through the SDK
- * and sends only its id. Alia opens it with the person's verified bearer, on a
- * workload client's requester facade, so Oxy answers exactly what that person
- * may read and nothing more: another account's private file is a 404 here as it
- * is everywhere. The workload alone cannot read it, and nothing of it
- * is stored — the conversation keeps the reference the client sent.
+ * and sends only its id. Alia opens it acting for that person
+ * (`assets.actingFor`, Gemies' declared `oxy:files` authority, oxy ADR 0066),
+ * so Oxy answers exactly what that person may read and nothing more: another
+ * account's private file is a 404 here as it is everywhere. Nothing of it is
+ * stored — the conversation keeps the reference the client sent.
  *
  * ## What the model receives
  *
@@ -263,8 +263,8 @@ interface FileSource {
   bytes(fileId: string): Promise<Uint8Array>;
 }
 
-/** The person's own files, read as them: their session, or the task they granted. */
-function requesterSource(assets: Pick<OxyServices['assets'], 'get' | 'blob'>): FileSource {
+/** The person's own files, read acting for them. */
+function personSource(assets: Pick<OxyServices['assets'], 'get' | 'blob'>): FileSource {
   return {
     record: async (fileId) => (await assets.get(fileId)).file,
     bytes: async (fileId) => new Uint8Array(await (await assets.blob(fileId)).arrayBuffer()),
@@ -375,8 +375,8 @@ export async function resolveFileParts(
   refs: ReadonlyMap<string, FilePartRef>,
   options: {
     personAccountId: string | undefined;
-    accessToken: string | undefined;
-    taskId?: string;
+    /** The person's own session to Gemies made this request (not a service, not an API key). */
+    ownSession: boolean;
     modelAcceptsFiles: boolean;
     /**
      * A channel turn (a connected account's, a gemie bot's person's): its files are the media this
@@ -388,7 +388,7 @@ export async function resolveFileParts(
   },
 ): Promise<ResolvedFiles> {
   if (refs.size === 0) return new Map();
-  const { personAccountId, accessToken, modelAcceptsFiles } = options;
+  const { personAccountId, modelAcceptsFiles } = options;
   if (options.channel) {
     if (personAccountId === undefined) {
       throw new FilePartError('file_session_required', 'This channel turn has no account.');
@@ -421,17 +421,13 @@ export async function resolveFileParts(
     );
     return new Map(resolved);
   }
-  if (personAccountId === undefined || (!accessToken && !options.taskId)) {
+  if (personAccountId === undefined || !options.ownSession) {
     throw new FilePartError(
       'file_session_required',
       'Files are read with your own Oxy session; this request has none.',
     );
   }
-  const source = requesterSource(
-    oxy.assets.withRequester(
-      options.taskId ? { taskId: options.taskId } : { requesterToken: accessToken! },
-    ),
-  );
+  const source = personSource(oxy.assets.actingFor({ accountId: personAccountId }));
   const resolved = await Promise.all(
     [...refs.values()].map(
       async (ref) =>

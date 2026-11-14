@@ -19,7 +19,7 @@ const files = vi.hoisted(
     >(),
 );
 const seen = vi.hoisted(() => ({
-  tokens: [] as string[],
+  actingFor: [] as string[],
   downloads: [] as string[],
   linked: [] as string[],
 }));
@@ -68,8 +68,9 @@ vi.mock('../../oxy.js', async () => {
                 sha256: '',
               }));
           },
-          withRequester: (proof: { requesterToken?: string; taskId?: string }) => {
-            seen.tokens.push(proof.requesterToken ?? `task:${proof.taskId}`);
+          // The person's own files, read acting for them (oxy ADR 0066).
+          actingFor: (actingFor: { accountId: string; requesterAccountId?: string }) => {
+            seen.actingFor.push(actingFor.accountId);
             return client.assets;
           },
         },
@@ -118,11 +119,11 @@ const message = (...fileIds: string[]): ChatMessage => ({
   ],
 });
 
-const person = { personAccountId: 'person-1', accessToken: 'PERSON-TOKEN' };
+const person = { personAccountId: 'person-1', ownSession: true };
 
 beforeEach(() => {
   files.clear();
-  seen.tokens.length = 0;
+  seen.actingFor.length = 0;
   seen.downloads.length = 0;
   seen.linked.length = 0;
 });
@@ -196,8 +197,7 @@ describe('filePartsOf', () => {
       };
       const resolved = await resolveFileParts(filePartsOf([turn]), {
         personAccountId: 'person-1',
-        accessToken: undefined,
-        taskId: 'channel-task',
+        ownSession: false,
         modelAcceptsFiles: false,
         channel: true,
       });
@@ -212,8 +212,8 @@ describe('filePartsOf', () => {
       expect(resolved.get('gone')).toEqual([
         { type: 'text', text: '[Photo; it could not be opened]' },
       ]);
-      // Never as a requester: no session or task read.
-      expect(seen.tokens).toEqual([]);
+      // Through this application's own links, never a read acting for the person.
+      expect(seen.actingFor).toEqual([]);
       expect(seen.linked.sort()).toEqual(['gone', 'sticker', 'voice']);
     } finally {
       vi.unstubAllGlobals();
@@ -235,10 +235,10 @@ describe('filePartsOf', () => {
 });
 
 describe('resolveFileParts', () => {
-  it("reads the file with the person's own bearer", async () => {
+  it('reads the file acting for the person, with no bearer of theirs', async () => {
     files.set('lease', { mime: 'application/pdf', size: 300, bytes: pdf('Rent is 900 EUR') });
     await resolveFileParts(filePartsOf([message('lease')]), { ...person, modelAcceptsFiles: true });
-    expect(seen.tokens).toEqual(['PERSON-TOKEN']);
+    expect(seen.actingFor).toEqual(['person-1']);
   });
 
   it('hands a model that takes files the PDF itself', async () => {
@@ -345,10 +345,11 @@ describe('resolveFileParts', () => {
     await expect(
       resolveFileParts(filePartsOf([message('lease')]), {
         personAccountId: 'person-1',
-        accessToken: undefined,
+        ownSession: false,
         modelAcceptsFiles: true,
       }),
     ).rejects.toMatchObject({ code: 'file_session_required' });
+    expect(seen.actingFor).toEqual([]);
   });
 
   it('reads an unchanged document once while the history is resent', async () => {

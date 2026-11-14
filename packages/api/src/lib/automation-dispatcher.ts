@@ -6,7 +6,6 @@ import type { AutomationDefinitionRecord } from '../db/automation/automationDefi
 import {
   claimAutomationRunPlan,
   createObservedAutomationRun,
-  listActiveAutomationAuthorizations,
   markAliaAutomationRun,
   markAutomationRunForSession,
   setAutomationEnabled,
@@ -16,7 +15,6 @@ import { createAgentSession, updateAgentSession } from '../db/agents/agentSessio
 import { getDb } from '../db/index.js';
 import type { AutomationResourceRef } from '../db/schema/agency.js';
 import {
-  authorizationPairKey,
   loadAutomationActorCandidates,
   planAutomationStages,
   uniqueAutomationResources,
@@ -28,7 +26,6 @@ import { enqueueAgentSession } from './task-queue.js';
 import { enqueueAliaTask } from './alia-task-queue.js';
 import { mayRunForAutomationOwner } from './automation-actors.js';
 import { safeRefund, type CreditReservation } from './credits-manager.js';
-import { listActiveAliaTaskAuthorizations } from '../db/automation/aliaTaskAuthorityRepository.js';
 import {
   findAutomationWatchState,
   pauseFailingAutomationWatch,
@@ -312,19 +309,10 @@ export async function dispatchStructuredAutomation(
     agents,
     requiredAutonomy,
   );
-  const activeAuthorizationPairs =
-    automation.executionMode === 'execute'
-      ? new Set(
-          (await listActiveAutomationAuthorizations(getDb(), automation.id)).map((authorization) =>
-            authorizationPairKey(authorization.automationActionId, authorization.agentId),
-          ),
-        )
-      : undefined;
   const stages = planAutomationStages({
     candidates,
     sourceResources,
     actions: automation.actions,
-    activeAuthorizationPairs,
     requiredAutonomy,
   });
   if (!stages || stages.length === 0) {
@@ -506,9 +494,9 @@ type StandingGemie = { readonly id: string };
  * the `alia-tasks` queue, whose job runs one turn of that gemie for the owner
  * and posts the answer into the task's conversation.
  *
- * Declared connected actions run under the gemie's standing Oxy authority
- * (`alia_task_authorizations`, provisioned while the owner was present). In
- * execute mode every declared action must still be covered, or nothing runs.
+ * Declared connected actions run in the run's scope, built when it runs
+ * (`aliaRunScope` in `alia-task-run.ts`): each once, authorized per call on
+ * Gemies' own first-party authority (oxy ADR 0066).
  */
 async function dispatchAliaTask(
   automation: AutomationDefinitionRecord,
@@ -516,21 +504,6 @@ async function dispatchAliaTask(
   trigger: AutomationDispatchTrigger,
   sourceResources: readonly AutomationResourceRef[],
 ): Promise<AutomationDispatchResult> {
-  if (automation.actions.length > 0 && automation.executionMode === 'execute') {
-    const covered = new Set(
-      (await listActiveAliaTaskAuthorizations(getDb(), automation.id)).flatMap((authorization) =>
-        authorization.automationActionId ? [authorization.automationActionId] : [],
-      ),
-    );
-    if (!automation.actions.every((action) => covered.has(action.id))) {
-      await notifyNoExecution(
-        automation,
-        trigger,
-        `“${automation.objective}” no longer has access to the apps it acts in. Open the task and save it again to renew it.`,
-      );
-      return { status: 'denied', reason: 'alia_action_authority_missing' };
-    }
-  }
   const requesterAccountId =
     trigger.kind === 'manual' ? trigger.requesterAccountId : automation.ownerAccountId;
   const [taskInput = {}] = automationStageTaskInputs(automation, trigger, [

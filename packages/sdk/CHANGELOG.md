@@ -1,5 +1,20 @@
 # @gemies/sdk
 
+## 9.0.0
+
+Gemies acts for the person with Oxy's first-party authority (oxy ADR 0066): what the Oxy registry
+declares for it, checked live by Oxy on every call. A channel, a linked Telegram or a gemie's
+background work holds no Oxy task any more, so there is nothing to renew or reauthorise.
+
+- **Breaking — channel task renewal is gone.** `useChannelTaskRenewal`, `useReauthorizeChannels`,
+  `renewChannelTasks`, `CHANNEL_TASK_KINDS` and the `ChannelTaskKind`, `ChannelTaskRef` and
+  `ChannelTaskRenewal` types are removed from `@gemies/sdk/accounts`, with the
+  `ACCOUNT_ROUTES.renewChannelTasks` route and the `accounts.channelTaskRenewal` query key. The API
+  no longer serves `POST /me/channel-tasks/renew` or `POST /me/accounts/:accountId/reauthorize`.
+- **Breaking — `ConnectedAccount.oxyTaskState` is removed.** `useConnectedAccounts` only reads the
+  list. The person's off switches stay where they were: which gemie answers an account, whom it
+  answers, and removing the account.
+
 ## 8.0.0
 
 Gemies talk to each other in real conversations (Gemies ADR 0042). A gemie that wants something from

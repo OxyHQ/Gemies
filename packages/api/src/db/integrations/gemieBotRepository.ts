@@ -6,9 +6,8 @@
  * set the bot up or stop it). Every other read leaves it out.
  */
 
-import { and, eq, gt, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import { decrypt } from '../../lib/crypto-utils.js';
-import type { OxyTask } from '../../lib/oxy-task-authority.js';
 import type { ApiDatabase } from '../index';
 import { bots, gemieBotTurns, type BotGroupReplies, type BotStatus } from '../schema/bots';
 
@@ -32,11 +31,6 @@ export interface GemieBotRow {
   linkedTelegramUserId: string | null;
   /** How that account showed itself when it linked: `@username`, else its name. */
   linkedTelegramName: string | null;
-  /** The Oxy task `userId` granted the gemie for their own turns here; `null` before they link. */
-  oxyTaskId: string | null;
-  oxyTaskState: 'active' | 'reauth_required';
-  /** When Oxy said that task lapses; `null` while there is none, or for one never dated. */
-  oxyTaskExpiresAt: Date | null;
   totalMessages: number;
   lastMessageAt: Date | null;
   /** The last failure to give the bot its gemie's profile, while it is still behind; else null. */
@@ -56,9 +50,6 @@ const COLUMNS = {
   ownerPaysAgentTurns: bots.ownerPaysAgentTurns,
   linkedTelegramUserId: bots.linkedTelegramUserId,
   linkedTelegramName: bots.linkedTelegramName,
-  oxyTaskId: bots.oxyTaskId,
-  oxyTaskState: bots.oxyTaskState,
-  oxyTaskExpiresAt: bots.oxyTaskExpiresAt,
   totalMessages: bots.totalMessages,
   lastMessageAt: bots.lastMessageAt,
   profileSyncError: bots.profileSyncError,
@@ -156,8 +147,7 @@ export async function telegramBotTakenByAnother(
 /**
  * Make a Telegram bot the gemie's: its first, or a new one replacing the one it had. The person
  * saving it becomes the one who pays when the gemie cannot, with the consent they gave now. A bot it
- * replaces takes its person's link with it: `released` is the Oxy task that link held, for the
- * caller to revoke.
+ * replaces takes its person's link with it.
  */
 export async function saveGemieBot(
   db: ApiDatabase,
@@ -170,12 +160,9 @@ export async function saveGemieBot(
     botToken: string;
     ownerPaysAgentTurns: boolean;
   },
-): Promise<{ bot: GemieBotRow; released: string | null }> {
+): Promise<{ bot: GemieBotRow }> {
   return db.transaction(async (tx) => {
-    const [previous] = await tx
-      .delete(bots)
-      .where(and(isGemieBot, eq(bots.agentId, input.agentId)))
-      .returning({ oxyTaskId: bots.oxyTaskId });
+    await tx.delete(bots).where(and(isGemieBot, eq(bots.agentId, input.agentId)));
     // A new bot is behind its gemie until the first sync gives it the gemie's profile.
     const [row] = await tx
       .insert(bots)
@@ -188,7 +175,7 @@ export async function saveGemieBot(
       })
       .returning(COLUMNS);
     if (!row) throw new Error('The gemie bot was not saved');
-    return { bot: asGemieBot(row), released: previous?.oxyTaskId ?? null };
+    return { bot: asGemieBot(row) };
   });
 }
 
@@ -220,40 +207,14 @@ export async function setGemieBotOwnerPays(
   return row ? asGemieBot(row) : null;
 }
 
-/** Forget a gemie's bot; the Oxy task its person's link held, for the caller to revoke. */
-export async function deleteGemieBot(db: Executor, agentId: string): Promise<string | null> {
-  const [row] = await db
-    .delete(bots)
-    .where(and(isGemieBot, eq(bots.agentId, agentId)))
-    .returning({ oxyTaskId: bots.oxyTaskId });
-  return row?.oxyTaskId ?? null;
-}
-
-/** A task's columns on the bot: `active`, Oxy's expiry, no notice sent; none is `reauth_required`. */
-function taskColumns(task: OxyTask | null) {
-  return {
-    oxyTaskId: task?.id ?? null,
-    oxyTaskState: task ? ('active' as const) : ('reauth_required' as const),
-    oxyTaskExpiresAt: task?.expiresAt ?? null,
-    oxyTaskNotifiedAt: null,
-  };
-}
-
-/** The person's own gemie bot, while it still holds exactly `taskId` (or none). */
-function personsBotHolding(agentId: string, userId: string, taskId: string | null) {
-  return and(
-    isGemieBot,
-    eq(bots.agentId, agentId),
-    eq(bots.userId, userId),
-    taskId === null ? isNull(bots.oxyTaskId) : eq(bots.oxyTaskId, taskId),
-  );
+/** Forget a gemie's bot, and its person's link with it. */
+export async function deleteGemieBot(db: Executor, agentId: string): Promise<void> {
+  await db.delete(bots).where(and(isGemieBot, eq(bots.agentId, agentId)));
 }
 
 /**
- * A new one-time link for the bot's person (`userId`, and only them), with the Oxy task they grant
- * the gemie for their turns there. `replaced` is a task the bot held before, for the caller to
- * release after this write; `null` when the row is not theirs, or changed meanwhile (nothing is
- * written then).
+ * A new one-time link for the bot's person (`userId`, and only them). Redeeming it tells the bot
+ * which Telegram account is theirs; `null` when the bot is not theirs.
  */
 export async function setGemieBotLinkCode(
   db: Executor,
@@ -262,50 +223,14 @@ export async function setGemieBotLinkCode(
     userId: string;
     codeHash: string;
     expiresAt: Date;
-    oxyTask: OxyTask;
   },
-): Promise<{ bot: GemieBotRow; replaced: string | null } | null> {
-  const [before] = await db
-    .select({ oxyTaskId: bots.oxyTaskId })
-    .from(bots)
-    .where(and(isGemieBot, eq(bots.agentId, input.agentId), eq(bots.userId, input.userId)))
-    .limit(1);
-  if (!before) return null;
+): Promise<GemieBotRow | null> {
   const [row] = await db
     .update(bots)
-    .set({
-      linkCodeHash: input.codeHash,
-      linkCodeExpiresAt: input.expiresAt,
-      ...taskColumns(input.oxyTask),
-    })
-    .where(personsBotHolding(input.agentId, input.userId, before.oxyTaskId))
+    .set({ linkCodeHash: input.codeHash, linkCodeExpiresAt: input.expiresAt })
+    .where(and(isGemieBot, eq(bots.agentId, input.agentId), eq(bots.userId, input.userId)))
     .returning(COLUMNS);
-  if (!row) return null;
-  return {
-    bot: asGemieBot(row),
-    replaced: before.oxyTaskId && before.oxyTaskId !== input.oxyTask.id ? before.oxyTaskId : null,
-  };
-}
-
-/**
- * Renew the task the bot's person granted, keeping their Telegram link: only while the bot still
- * holds `expectedTaskId`. False when it changed meanwhile (nothing is written then).
- */
-export async function replaceGemieBotTask(
-  db: Executor,
-  input: { agentId: string; userId: string; expectedTaskId: string | null; task: OxyTask },
-): Promise<boolean> {
-  const rows = await db
-    .update(bots)
-    .set(taskColumns(input.task))
-    .where(
-      and(
-        personsBotHolding(input.agentId, input.userId, input.expectedTaskId),
-        isNotNull(bots.linkedTelegramUserId),
-      ),
-    )
-    .returning({ id: bots.id });
-  return rows.length === 1;
+  return row ? asGemieBot(row) : null;
 }
 
 /**
@@ -343,18 +268,12 @@ export async function claimGemieBotLinkCode(
   return row ? asGemieBot(row) : null;
 }
 
-/** The bot's person unlinks their Telegram: the task it held, for the caller to revoke. */
+/** The bot's person unlinks their Telegram: the bot treats everybody as a third party again. */
 export async function unlinkGemieBotPerson(
   db: Executor,
   agentId: string,
   userId: string,
-): Promise<{ bot: GemieBotRow; released: string | null } | null> {
-  const [before] = await db
-    .select({ oxyTaskId: bots.oxyTaskId })
-    .from(bots)
-    .where(and(isGemieBot, eq(bots.agentId, agentId), eq(bots.userId, userId)))
-    .limit(1);
-  if (!before) return null;
+): Promise<GemieBotRow | null> {
   const [row] = await db
     .update(bots)
     .set({
@@ -362,11 +281,10 @@ export async function unlinkGemieBotPerson(
       linkedTelegramName: null,
       linkCodeHash: null,
       linkCodeExpiresAt: null,
-      ...taskColumns(null),
     })
     .where(and(isGemieBot, eq(bots.agentId, agentId), eq(bots.userId, userId)))
     .returning(COLUMNS);
-  return row ? { bot: asGemieBot(row), released: before.oxyTaskId } : null;
+  return row ? asGemieBot(row) : null;
 }
 
 /** One more answered message. */

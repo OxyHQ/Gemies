@@ -17,10 +17,10 @@ import { sanitizeOxyToolNamePart as sanitizeName } from './oxy-tool-names.js';
 import {
   OxyAuthorityUnavailableError,
   OxyOutcomeUnknownError,
-  oxyExecutionAuthorizationKey,
-  parseExecutionAuthorizationKey,
+  oxyRunScopeKey,
+  parseRunScopeKey,
   type OxyAgentIdentity,
-  type OxyExecutionAuthorizationRef,
+  type OxyRunScopeEntry,
   type OxyToolAutonomy,
   type OxyToolExecutionContext,
 } from './oxy-call-context.js';
@@ -34,20 +34,14 @@ import {
   type CatalogDef,
   type CompiledTool,
 } from './oxy-catalog-defs.js';
-import {
-  RETIRE_APPROVAL_TOOL,
-  callBoundTool,
-  internalOutcome,
-  revokeTransientAuthorization,
-  type InternalRetirements,
-} from './oxy-invocation.js';
+import { callBoundTool } from './oxy-invocation.js';
 
 export {
   OxyAuthorityUnavailableError,
   OxyOutcomeUnknownError,
-  oxyExecutionAuthorizationKey,
+  oxyRunScopeKey,
   type OxyAgentIdentity,
-  type OxyExecutionAuthorizationRef,
+  type OxyRunScopeEntry,
   type OxyToolAutonomy,
   type OxyToolExecutionContext,
 } from './oxy-call-context.js';
@@ -171,17 +165,17 @@ function agentSelfBindings(
 }
 
 /**
- * Alia acting unattended for a task's owner: exactly the tools her standing
- * authority names, on exactly the resources it names — the account roots of
- * the owner's apps for reads, and whatever resource a declared action targets.
+ * Alia acting unattended for a task's owner: exactly the tools her run scope
+ * names, on exactly the resources it names — the account roots of the owner's
+ * apps for reads, and whatever resource a declared action targets.
  */
-function authorizedAliaBindings(
+function scopedAliaBindings(
   defs: readonly CatalogDef[],
-  authorizations: Readonly<Record<string, OxyExecutionAuthorizationRef>>,
+  scope: Readonly<Record<string, OxyRunScopeEntry>>,
 ): BoundTool[] {
   const candidates: Array<{ compiled: CompiledTool; resource: ResourceRef }> = [];
-  for (const key of Object.keys(authorizations)) {
-    const parsed = parseExecutionAuthorizationKey(key);
+  for (const key of Object.keys(scope)) {
+    const parsed = parseRunScopeKey(key);
     if (!parsed) continue;
     const compiled = defs
       .find((entry) => entry.catalog.appId === parsed.resource.appId)
@@ -212,8 +206,8 @@ function authorizedAliaBindings(
 
 /**
  * Every READ tool of every Oxy app, bound to the account root of `accountId`:
- * what Alia's standing authority for a task covers at minimum, so "summarise
- * my email every morning" can read the inbox with nobody present.
+ * what an Alia task run's scope covers at minimum, so "summarise my email
+ * every morning" can read the inbox with nobody present.
  */
 export async function listOxyAccountReadTools(
   accountId: string,
@@ -289,28 +283,26 @@ export async function buildOxyServiceTools(
     const candidateBindings =
       context.actor.type === 'agent'
         ? [...agentPersonBindings(defs, context), ...agentSelfBindings(defs, context)]
-        : context.executionAuthorizations !== undefined
-          ? authorizedAliaBindings(defs, context.executionAuthorizations)
+        : context.runScope !== undefined
+          ? scopedAliaBindings(defs, context.runScope)
           : regularAliaBindings(defs, context);
     const bindings =
-      context.executionAuthorizations === undefined
+      context.runScope === undefined
         ? candidateBindings
         : candidateBindings.filter((binding) =>
             Object.hasOwn(
-              context.executionAuthorizations ?? {},
-              oxyExecutionAuthorizationKey(binding.resource, binding.compiled.definition.name),
+              context.runScope ?? {},
+              oxyRunScopeKey(binding.resource, binding.compiled.definition.name),
             ),
           );
     const tools: ToolSet = {};
-    const retirements: InternalRetirements = new Map();
     for (const binding of bindings) {
       const baseName = `${binding.self ? 'self' : 'oxy'}_${sanitizeName(binding.compiled.catalog.appId)}__${sanitizeName(binding.compiled.definition.name)}`;
       const toolName = binding.suffix ? `${baseName}__${binding.suffix}` : baseName;
-      let preauthorizedInvocationStarted = false;
+      let scopedInvocationStarted = false;
       const repeatable =
-        context.executionAuthorizations?.[
-          oxyExecutionAuthorizationKey(binding.resource, binding.compiled.definition.name)
-        ]?.repeatable === true;
+        context.runScope?.[oxyRunScopeKey(binding.resource, binding.compiled.definition.name)]
+          ?.repeatable === true;
       const built = tool({
         description: toolDescription(binding, context),
         inputSchema: binding.compiled.inputSchema,
@@ -319,19 +311,19 @@ export async function buildOxyServiceTools(
           { toolCallId }: { toolCallId?: string } = {},
         ) => {
           // Oxy and the product enforce the existing policy for this action
-          // against the original requester/task; no app-wide permission level.
-          if (context.executionAuthorizations !== undefined && !repeatable) {
-            if (preauthorizedInvocationStarted) {
+          // against the person it is for; no app-wide permission level.
+          if (context.runScope !== undefined && !repeatable) {
+            if (scopedInvocationStarted) {
               return {
                 error: `${binding.compiled.definition.name} is authorized once for this automation stage`,
               };
             }
-            preauthorizedInvocationStarted = true;
+            scopedInvocationStarted = true;
           }
           return safeExecute(
             binding.compiled.catalog.appId,
             { tool: binding.compiled.definition.name, argKeys: Object.keys(args ?? {}) },
-            () => callBoundTool(binding, args, context, toolCallId, retirements),
+            () => callBoundTool(binding, args, context, toolCallId),
           );
         },
       });
@@ -341,35 +333,6 @@ export async function buildOxyServiceTools(
       tools[toolName] = declareOxyAppTool(
         binding.compiled.definition.effect === 'read' ? declareReadOnly(built) : built,
       );
-    }
-    if (
-      context.userAccessToken &&
-      bindings.some((binding) => binding.compiled.internalCatalogBinding)
-    ) {
-      if (tools[RETIRE_APPROVAL_TOOL])
-        throw new Error('Internal retirement tool name collides with catalogue');
-      tools[RETIRE_APPROVAL_TOOL] = tool({
-        description:
-          'Retry only retirement of a temporary approval created by this run. Never executes or retries a domain operation. Use the operation ID returned with pending retirement.',
-        inputSchema: z.object({ operationId: z.string().min(1) }).strict(),
-        execute: async ({ operationId }: { operationId: string }) => {
-          const outcome = retirements.get(operationId);
-          if (!outcome?.authorizationId)
-            return { error: 'No pending approval belongs to this operation in this run' };
-          if (
-            !outcome.retired &&
-            (await revokeTransientAuthorization(
-              context,
-              outcome.authorizationId,
-              outcome.runId,
-              outcome.tool,
-              true,
-            ))
-          )
-            outcome.retired = true;
-          return internalOutcome(outcome);
-        },
-      });
     }
     log.general.info(
       { userId: oxyUserId, toolCount: Object.keys(tools).length },
@@ -391,8 +354,6 @@ export async function listOxyAppCatalogs(): Promise<AppCapabilityCatalog[]> {
 export function presentPersonAgentContext(params: {
   agent: { oxyAccountId: string; ownerOxyAccountId: string | null };
   personAccountId: string;
-  accessToken?: string;
-  taskId?: string;
   runId: string;
 }): OxyToolExecutionContext | null {
   const ownerIsPresent = params.agent.ownerOxyAccountId === params.personAccountId;
@@ -402,8 +363,6 @@ export function presentPersonAgentContext(params: {
     actor: { type: 'agent', accountId: params.agent.oxyAccountId },
     agentIdentity: { forUser: ownerIsPresent ? 'owner' : 'requester', self: false },
     runId: params.runId,
-    userAccessToken: params.accessToken,
-    taskId: params.taskId,
   };
 }
 
@@ -468,7 +427,7 @@ export async function callOxyFeatureTool(
     if (!binding) return { status: 'unbound' };
     return {
       status: 'answered',
-      result: await callBoundTool(binding, {}, context, undefined, new Map(), operationKey),
+      result: await callBoundTool(binding, {}, context, undefined, operationKey),
     };
   } catch (error: unknown) {
     log.general.warn({ err: error, appId, tool: toolName }, 'Oxy feature tool unavailable');
@@ -476,13 +435,12 @@ export async function callOxyFeatureTool(
   }
 }
 
-export async function getOxyServiceContext(userId: string, accessToken: string): Promise<string> {
+export async function getOxyServiceContext(userId: string): Promise<string> {
   const context: OxyToolExecutionContext = {
     requesterAccountId: userId,
     ownerAccountId: userId,
     actor: { type: 'alia', ownerAccountId: userId },
     autonomy: 'read_only',
-    userAccessToken: accessToken,
   };
   try {
     const defs = await getCatalogDefs();

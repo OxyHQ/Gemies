@@ -5,9 +5,9 @@
  *
  * - Its media is kept as the person's private Oxy file (`storeChannelMedia`), and the conversation
  *   keeps a `file` part for it, like an attachment made in the app: the app shows it, and a later
- *   turn reads what it was in words (`turnContentText`). It is kept only on the person's own turn,
- *   under the task they granted the gemie on that channel: a third party's media is never stored
- *   as theirs, and the gemie still sees it on the turn it arrived.
+ *   turn reads what it was in words (`turnContentText`). It is kept only on the person's own turn
+ *   (or on their connected account), on Gemies' declared authority for them (oxy ADR 0066): a third
+ *   party's media is never stored as theirs, and the gemie still sees it on the turn it arrived.
  * - A voice note or an audio file is transcribed through the same speech path as dictation; its
  *   transcript travels with its `file` part, so no turn hears it twice.
  * - A sticker is its image with its emoji and set; a video, a round video or a GIF is its first
@@ -238,20 +238,17 @@ async function transcribe(
 }
 
 /**
- * Whose Oxy Files keep a channel message's media, and the task that lets Gemies write there: the
- * durable authority the person granted the gemie on that channel, whose effective account is
- * theirs. A channel message carries no session, so this task is the only requester proof there is.
+ * Whose Oxy Files keep a channel message's media: the person the channel is theirs. Gemies writes
+ * there on its own first-party authority for them (`oxy:files`, oxy ADR 0066), with no session.
  */
 export interface ChannelMediaOwner {
   readonly oxyUserId: string;
-  readonly taskId: string;
 }
 
 /**
  * The turn's user message for a channel message: its media kept in `owner`'s Oxy Files and
  * transcribed for `payerAccountId`, the account whose turn it is. `owner: null` keeps nothing — a
- * third party's turn, or an account whose authority lapsed — and the media is still shown and
- * transcribed. `speaker` names who wrote it in a group. `keep: false` (an edit) keeps nothing and
+ * third party's turn — and the media is still shown and transcribed. `speaker` names who wrote it in a group. `keep: false` (an edit) keeps nothing and
  * transcribes nothing: only its words are new.
  */
 export async function prepareChannelTurn(input: {
@@ -294,7 +291,6 @@ export async function prepareChannelTurn(input: {
       try {
         fileId = await storeChannelMedia({
           oxyUserId: input.owner.oxyUserId,
-          taskId: input.owner.taskId,
           bytes: bytes.data,
           mime: bytes.mime,
           name: bytes.name,

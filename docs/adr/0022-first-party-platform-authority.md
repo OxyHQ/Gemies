@@ -1,6 +1,12 @@
 # 22. Own Oxy apps use platform authority on the requester's account
 
 Status: accepted, 2026-10-23. Source and published dependency adoption prepared; Alia rollout is still gated.
+Amended 2026-11-14 by [Oxy ADR 0066](https://github.com/OxyHQ/oxy/blob/main/docs/adr/0066-first-party-services-act-for-people-without-permissions.md):
+Gemies acts for the person on what Oxy's first-party registry declares for it (`actsForPeople`:
+`oxy:files` and `oxy:tools`, write), checked live per call, with no requester proof. Foreground
+bearers, Oxy tasks, background task ids, task retirement, pre-provisioned execution
+authorizations and channel task renewal below are retired; structured automations keep their exact
+scope as a per-run set authorized call by call ([Requester authority](../requester-authority.md)).
 Supersedes the own-app levels/grants/ceilings of ADR0015 and ADR0020, following
 Oxy ADR0049. External OAuth/MCP connections and domain limits remain separate.
 

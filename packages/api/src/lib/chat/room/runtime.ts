@@ -101,11 +101,6 @@ export function roomRuntime(): RoomRuntime {
         }
       }
     },
-    revokeTasks: async (taskIds) => {
-      if (taskIds.length === 0) return;
-      const { revokeOxyTask } = await import('../../oxy-task-authority.js');
-      await Promise.allSettled(taskIds.map((id) => revokeOxyTask(id)));
-    },
     now: () => Date.now(),
   };
   runtime = {

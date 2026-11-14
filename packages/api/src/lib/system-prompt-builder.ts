@@ -98,8 +98,6 @@ export interface SystemPromptOptions {
   personPresent?: boolean;
   /** User ID (OxyHQ) */
   userId?: string;
-  /** User's access token (for Oxy service context) */
-  accessToken?: string;
   /** User profile from OxyHQ */
   oxyUser?: OxyUserProfile | null;
   /** The person's profile row: only its learned writing style reaches the prompt. Memory proper is in Nilo. */
@@ -197,7 +195,6 @@ export class SystemPromptBuilder {
       isDirectUserSession,
       personPresent = isDirectUserSession,
       userId,
-      accessToken,
       oxyUser,
       userMemory,
       personalization = true,
@@ -279,11 +276,11 @@ export class SystemPromptBuilder {
     // a prompt-safe projection, exposing the person's Inbox context here
     // would be a second, ungoverned authorization path.
     let oxyServiceCtx = '';
-    if (isDirectUserSession && personAssistant && userId && accessToken) {
+    if (isDirectUserSession && personAssistant && userId) {
       try {
         const [oxyServicePrompt, ctx] = await Promise.all([
           getOxyServicePromptFragment(userId),
-          getOxyServiceContext(userId, accessToken),
+          getOxyServiceContext(userId),
         ] as const);
         // A routed turn lists every Oxy app in its Apps section (3) with how
         // to open it. The fragment names their tools as if they were already

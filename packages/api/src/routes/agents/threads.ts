@@ -246,7 +246,6 @@ router.post(
         startAgentSession({
           agent,
           userId: req.user!.id,
-          ...(req.accessToken ? { authority: { requesterToken: req.accessToken } } : {}),
           task: objective.slice(0, 2000),
           origin: 'hire',
           threadId: thread.id,

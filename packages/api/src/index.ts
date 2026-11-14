@@ -47,7 +47,6 @@ import v1Router from './routes/v1.js';
 import botsRouter from './routes/bots.js';
 import channelAccountsRouter from './routes/channel-accounts.js';
 import meAccountsRouter from './routes/me-accounts.js';
-import meChannelTasksRouter from './routes/me-channel-tasks.js';
 import channelBotsRouter from './routes/channel-bots.js';
 import mcpRouter from './routes/mcp.js';
 import externalAgentToolsRouter from './routes/external-agent-tools.js';
@@ -353,7 +352,6 @@ app.use('/v1', v1Router);
 app.use('/bots', botsRouter);
 app.use('/channel-accounts', channelAccountsRouter);
 app.use('/me/accounts', meAccountsRouter);
-app.use('/me/channel-tasks', meChannelTasksRouter);
 app.use('/channel-bots', channelBotsRouter);
 // An external agent's tools (ADR 0039), before the connectors' `/mcp/:id` routes.
 app.use('/mcp/agents', externalAgentToolsRouter);

@@ -17,7 +17,6 @@ const fixture = vi.hoisted(() => ({
   oxy: undefined as any,
   revoked: false,
   linked: true,
-  task: true,
   owner: '0192f3a4-b5c6-7d8e-9f01-23456789abcd',
   lookup: vi.fn(),
 }));
@@ -35,8 +34,6 @@ vi.mock('../../db/integrations/botRepository.js', () => ({
           id: 'linked-row',
           isLinked: true,
           oxyUserId: fixture.owner,
-          oxyTaskState: fixture.task ? 'active' : 'reauth_required',
-          oxyTaskId: fixture.task ? 'durable-task' : null,
         }
       : null;
   },
@@ -48,8 +45,6 @@ vi.mock('../../db/integrations/connectedAccountRepository.js', () => ({
       ? {
           id: 'account-row',
           oxyUserId: fixture.owner,
-          oxyTaskState: fixture.task ? 'active' : 'reauth_required',
-          oxyTaskId: fixture.task ? 'durable-task' : null,
         }
       : null;
   },
@@ -197,7 +192,6 @@ beforeAll(async () => {
 beforeEach(() => {
   fixture.revoked = false;
   fixture.linked = true;
-  fixture.task = true;
   fixture.owner = OWNER;
   fixture.lookup.mockClear();
 });
@@ -265,9 +259,7 @@ describe('workload-only process readers over real HTTP', () => {
         body: { context: { accountId: OWNER }, user: null, bearer: null },
       });
       expect(fixture.lookup).toHaveBeenCalledWith(lookupKey, value);
-      const result = await send('/api/channel', headers);
-      expect(result.body.context).toHaveProperty('taskId', 'durable-task');
-      fixture.task = false;
+      // No task: Gemies acts for the channel's person on its own authority (oxy ADR 0066).
       expect((await send('/api/channel', headers)).body.context).not.toHaveProperty('taskId');
       fixture.linked = false;
       expect((await send('/api/channel', headers)).status).toBe(401);

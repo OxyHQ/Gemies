@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { createOxyTask, revokeOxyTask } from '../oxy-task-authority.js';
-import type { PresentAuthority } from './agent-turn-coordinator.js';
 import { reserveBackgroundProductCredits } from '../product-credit-access';
 /**
  * Handing an agent session to a worker without losing the caller's credits, and
@@ -124,8 +122,8 @@ export type AgentSessionHandoff =
    */
   | { readonly ok: false; readonly reason: 'insufficient_credits'; readonly creditsNeeded: number }
   /**
-   * A gemie with no Oxy account (ADR 0036) has no background work: a run is an Oxy task whose actor
-   * is the gemie's account. Refused before anything is reserved.
+   * A gemie with no Oxy account (ADR 0036) has no background work: a run acts as the gemie's
+   * account. Refused before anything is reserved.
    */
   | { readonly ok: false; readonly reason: 'no_background_work' }
   | { readonly ok: false; readonly reason: 'handoff_failed' };
@@ -142,11 +140,6 @@ export async function startAgentSession(input: {
   readonly agent: HirableAgent;
   readonly userId: string;
   readonly task: string;
-  /**
-   * The present person's authority: their bearer, from which the run's own Oxy task is minted, or
-   * a standing task they granted the gemie (ADR 0037 amendment), which the run borrows as it is.
-   */
-  readonly authority?: PresentAuthority;
   readonly origin: AgentSessionOrigin;
   readonly depth?: number;
   /**
@@ -158,8 +151,7 @@ export async function startAgentSession(input: {
   readonly goalId?: string;
 }): Promise<AgentSessionHandoff> {
   const { agent, userId, task, origin } = input;
-  const actorAccountId = gemieOxyAccountId(agent);
-  if (actorAccountId === null) return { ok: false, reason: 'no_background_work' };
+  if (gemieOxyAccountId(agent) === null) return { ok: false, reason: 'no_background_work' };
   const price = agentHirePrice(agent);
 
   /**
@@ -202,25 +194,12 @@ export async function startAgentSession(input: {
   }
 
   let sessionId: string | null = null;
-  /** A task minted here, and so revoked here if the handoff fails; never a borrowed standing one. */
-  let oxyTaskId: string | null = null;
   try {
-    const authority = input.authority;
-    if (!authority) throw new Error('Starting background work requires its original requester');
-    const newSessionId = randomUUID();
-    if ('requesterToken' in authority) {
-      oxyTaskId = await createOxyTask({
-        accessToken: authority.requesterToken,
-        effectiveAccountId: userId,
-        actorAccountId,
-        origin: { kind: 'goal', id: input.goalId ?? newSessionId },
-      });
-    }
+    // The run acts for `userId` on Gemies' own first-party authority (oxy ADR 0066): no task.
     const session = await createAgentSession(getDb(), {
-      id: newSessionId,
+      id: randomUUID(),
       agentId: agent._id,
       oxyUserId: userId,
-      oxyTaskId: oxyTaskId ?? ('oxyTaskId' in authority ? authority.oxyTaskId : undefined),
       task,
       status: 'queued',
       depth: input.depth ?? 0,
@@ -291,11 +270,6 @@ export async function startAgentSession(input: {
             );
             return false;
           });
-
-    if (oxyTaskId)
-      await revokeOxyTask(oxyTaskId).catch((err: unknown) => {
-        log.agents.error({ err, sessionId }, 'Could not revoke failed task authority');
-      });
 
     if (neutralised) {
       await safeRefund(reservation, 'agent session handoff failed');

@@ -3,25 +3,27 @@ import { createGemieForOxyService, createGemieTransportForOxyService } from '../
 import { GEMIES_SERVICE_AUDIENCE } from '../src/identity.js';
 
 describe('Oxy product transport', () => {
-  it('owns the canonical recipient and forwards requester proof to core', () => {
+  it('owns the canonical recipient and names the account it acts for', () => {
     const transport = { fetch: vi.fn() as unknown as typeof fetch, dispose: vi.fn() };
     const oxy = { createServiceClient: vi.fn(() => transport) };
-    const requester = { accountId: 'account', token: 'proof' };
-    const client = createGemieForOxyService(oxy, { requester });
+    const actingFor = { accountId: 'account' };
+    const client = createGemieForOxyService(oxy, { actingFor });
     expect(oxy.createServiceClient).toHaveBeenCalledWith({
       baseURL: 'https://api.gemies.ai',
       audience: GEMIES_SERVICE_AUDIENCE,
-      requester,
+      actingFor,
     });
     client.dispose();
     expect(transport.dispose).toHaveBeenCalledOnce();
   });
-  it('carries durable task authority without a retained bearer', () => {
+  it('names the person when they operate the account', () => {
     const transport = { fetch: vi.fn() as unknown as typeof fetch, dispose: vi.fn() };
     const oxy = { createServiceClient: vi.fn(() => transport) };
-    createGemieForOxyService(oxy, { requester: { accountId: 'account', taskId: 'task' } });
+    createGemieForOxyService(oxy, {
+      actingFor: { accountId: 'bot', requesterAccountId: 'person' },
+    });
     expect(oxy.createServiceClient).toHaveBeenCalledWith(
-      expect.objectContaining({ requester: { accountId: 'account', taskId: 'task' } }),
+      expect.objectContaining({ actingFor: { accountId: 'bot', requesterAccountId: 'person' } }),
     );
   });
   it('exposes the same core fetch for product-specific REST endpoints', () => {

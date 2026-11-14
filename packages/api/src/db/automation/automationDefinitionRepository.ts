@@ -1,9 +1,8 @@
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { ALIA_GEMIE_ID } from '../../domain/alia-gemie';
 import { uuidv7 } from '@oxy.so/db';
 import type { ApiDatabase, Executor } from '../index';
 import {
-  automationActionAuthorizations,
   automationActions,
   automationActorAssignments,
   automationDefinitions,
@@ -17,10 +16,6 @@ import {
   type AutomationResourceRef,
   type AutomationRunCreditHold,
 } from '../schema/agency';
-import {
-  replaceAliaTaskAuthorizations,
-  type AliaTaskAuthorizationInput,
-} from './aliaTaskAuthorityRepository';
 import { agentSessions } from '../schema/agent-sessions';
 
 type DefinitionRow = typeof automationDefinitions.$inferSelect;
@@ -77,9 +72,6 @@ export interface AutomationDefinitionUpdateInput {
   maximumAutonomy: 'read_only' | 'draft' | 'execute_on_request' | 'autonomous';
   limits: AutomationLimit[];
   enabled: boolean;
-  authorizations: readonly AutomationAuthorizationInput[];
-  /** Alia's standing authority; replaces the current set (empty retires it). */
-  aliaAuthorizations?: readonly AliaTaskAuthorizationInput[];
 }
 
 function toAction(row: ActionRow) {
@@ -375,8 +367,8 @@ export async function setAutomationEnabled(
 
 /**
  * Replace the editable definition fields and actor assignment order together.
- * Exact actions keep their ids so run history and Oxy authorization correlation
- * remain stable. The timestamp predicate prevents a stale editor from silently
+ * Exact actions keep their ids so run history and Oxy audit correlation remain
+ * stable. The timestamp predicate prevents a stale editor from silently
  * overwriting a concurrent change.
  */
 export async function updateAutomationDefinition(
@@ -425,8 +417,6 @@ export async function updateAutomationDefinition(
         .insert(automationActorAssignments)
         .values(assigned.map((agentId, priority) => ({ automationId: row.id, agentId, priority })));
     }
-    await replaceAutomationActionAuthorizations(transaction, row.id, input.authorizations);
-    await replaceAliaTaskAuthorizations(transaction, row.id, input.aliaAuthorizations ?? []);
     const actions = await actionsFor(transaction, [row.id]);
     return toDefinition(row, assigned, actions.get(row.id) ?? []);
   });
@@ -769,145 +759,56 @@ export async function createObservedAutomationRun(input: {
   });
 }
 
-export interface AutomationAuthorizationInput {
-  automationActionId: string;
-  agentId: string;
-  actorAccountId: string;
-  oxyAuthorizationId: string;
-  expiresAt: Date;
-}
-
-/** Replace an expired or revoked remote reference without retaining token history. */
-export async function upsertAutomationActionAuthorizations(
-  db: Executor,
-  authorizations: readonly AutomationAuthorizationInput[],
-): Promise<void> {
-  if (authorizations.length === 0) return;
-  for (const authorization of authorizations) {
-    await db
-      .insert(automationActionAuthorizations)
-      .values(authorization)
-      .onConflictDoUpdate({
-        target: [
-          automationActionAuthorizations.automationActionId,
-          automationActionAuthorizations.agentId,
-        ],
-        set: {
-          actorAccountId: authorization.actorAccountId,
-          oxyAuthorizationId: authorization.oxyAuthorizationId,
-          expiresAt: authorization.expiresAt,
-          revokedAt: null,
-        },
-      });
-  }
-}
-
 /**
- * Retire every locally active reference before installing the freshly
- * revalidated set. Remote ids are revoked by the caller before this transaction;
- * keeping the old rows makes incomplete external cleanup observable.
+ * The declared actions one structured run (or one stage of it, for one agent) may call: the
+ * exact resource and tool of each, its step and its limits. This is the run's scope; each call is
+ * authorized when it is made (`createFirstPartyExecutionAuthorization`, oxy ADR 0066).
  */
-async function replaceAutomationActionAuthorizations(
-  db: Executor,
-  automationId: string,
-  authorizations: readonly AutomationAuthorizationInput[],
-): Promise<void> {
-  const current = await listActiveAutomationAuthorizations(db, automationId);
-  if (current.length > 0) {
-    await markAutomationAuthorizationsRevoked(
-      db,
-      current.map((authorization) => authorization.oxyAuthorizationId),
-    );
-  }
-  await upsertAutomationActionAuthorizations(db, authorizations);
-}
-
-export async function listActiveAutomationAuthorizations(
-  db: Executor,
-  automationId: string,
-  agentId?: string,
-) {
-  const predicates = [
-    eq(automationActions.automationId, automationId),
-    isNull(automationActionAuthorizations.revokedAt),
-    gt(automationActionAuthorizations.expiresAt, new Date()),
-  ];
-  if (agentId) predicates.push(eq(automationActionAuthorizations.agentId, agentId));
-  return db
-    .select({
-      automationActionId: automationActionAuthorizations.automationActionId,
-      agentId: automationActionAuthorizations.agentId,
-      actorAccountId: automationActionAuthorizations.actorAccountId,
-      oxyAuthorizationId: automationActionAuthorizations.oxyAuthorizationId,
-      expiresAt: automationActionAuthorizations.expiresAt,
-    })
-    .from(automationActionAuthorizations)
-    .innerJoin(
-      automationActions,
-      eq(automationActions.id, automationActionAuthorizations.automationActionId),
-    )
-    .where(and(...predicates))
-    .orderBy(asc(automationActions.position), automationActionAuthorizations.agentId);
-}
-
-export async function automationHasActiveAuthorizationCoverage(
-  db: Executor,
-  automationId: string,
-  agentId: string,
-  actionIds: readonly string[],
-): Promise<boolean> {
-  if (actionIds.length === 0) return false;
-  const rows = await listActiveAutomationAuthorizations(db, automationId, agentId);
-  const covered = new Set(rows.map((row) => row.automationActionId));
-  return actionIds.every((actionId) => covered.has(actionId));
-}
-
-export async function markAutomationAuthorizationsRevoked(
-  db: Executor,
-  oxyAuthorizationIds: readonly string[],
-): Promise<void> {
-  if (oxyAuthorizationIds.length === 0) return;
-  await db
-    .update(automationActionAuthorizations)
-    .set({ revokedAt: new Date() })
-    .where(inArray(automationActionAuthorizations.oxyAuthorizationId, [...oxyAuthorizationIds]));
-}
-
-/** Exact Oxy authority and step correlation for one queued structured run. */
-export async function listAutomationExecutionAuthorizationsForRun(
+export async function listAutomationRunActionSteps(
   db: Executor,
   runId: string,
-  agentId: string,
+  agentId?: string,
   stage?: number,
-) {
+): Promise<
+  Array<{
+    stepId: string;
+    automationActionId: string;
+    resource: AutomationResourceRef;
+    tool: string;
+    limits: AutomationActionLimit[];
+  }>
+> {
   const predicates = [eq(automationSteps.runId, runId)];
-  if (stage !== undefined) {
-    predicates.push(eq(automationSteps.stage, stage), eq(automationSteps.agentId, agentId));
-  }
-  return db
+  if (stage !== undefined) predicates.push(eq(automationSteps.stage, stage));
+  if (stage !== undefined && agentId !== undefined)
+    predicates.push(eq(automationSteps.agentId, agentId));
+  const rows = await db
     .select({
       stepId: automationSteps.id,
-      automationActionId: automationSteps.automationActionId,
+      automationActionId: automationActions.id,
       resourceAppId: automationActions.resourceAppId,
       effectiveAccountId: automationActions.effectiveAccountId,
       resourceType: automationActions.resourceType,
       resourceId: automationActions.resourceId,
       tool: automationActions.tool,
-      oxyAuthorizationId: automationActionAuthorizations.oxyAuthorizationId,
+      limits: automationActions.limits,
     })
     .from(automationSteps)
     .innerJoin(automationActions, eq(automationActions.id, automationSteps.automationActionId))
-    .innerJoin(
-      automationActionAuthorizations,
-      and(
-        eq(automationActionAuthorizations.automationActionId, automationActions.id),
-        eq(automationActionAuthorizations.agentId, agentId),
-        isNull(automationActionAuthorizations.revokedAt),
-        gt(automationActionAuthorizations.expiresAt, new Date()),
-      ),
-    )
     .where(and(...predicates))
     .orderBy(automationSteps.position);
+  return rows.map((row) => ({
+    stepId: row.stepId,
+    automationActionId: row.automationActionId,
+    resource: {
+      appId: row.resourceAppId,
+      effectiveAccountId: row.effectiveAccountId,
+      resourceType: row.resourceType,
+      resourceId: row.resourceId,
+    },
+    tool: row.tool,
+    limits: row.limits,
+  }));
 }
 
 export async function markAutomationActionStep(
@@ -925,6 +826,58 @@ export async function markAutomationActionStep(
       ...(status === 'running' ? { startedAt: now } : { completedAt: now }),
     })
     .where(eq(automationSteps.id, stepId));
+}
+
+/**
+ * The owner stopped the task (deleted it, or turned it off): every run of it still open ends now,
+ * `cancelled`, with its open steps. Its calls already in flight are refused at their next
+ * authorization (`automationRunIsOpen`), since each one is authorized as it is made.
+ */
+export async function cancelOpenAutomationRuns(
+  db: ApiDatabase,
+  automationId: string,
+): Promise<string[]> {
+  return db.transaction(async (transaction) => {
+    const now = new Date();
+    const runs = await transaction
+      .update(automationRuns)
+      .set({ status: 'cancelled', completedAt: now, leaseExpiresAt: null })
+      .where(
+        and(
+          eq(automationRuns.automationId, automationId),
+          inArray(automationRuns.status, ['planned', 'running']),
+        ),
+      )
+      .returning({ id: automationRuns.id });
+    const ids = runs.map((run) => run.id);
+    if (ids.length > 0) {
+      await transaction
+        .update(automationSteps)
+        .set({ status: 'cancelled', completedAt: now })
+        .where(
+          and(
+            inArray(automationSteps.runId, ids),
+            inArray(automationSteps.status, ['planned', 'running']),
+          ),
+        );
+    }
+    return ids;
+  });
+}
+
+/** Whether a run may still act: neither finished nor stopped by its owner. */
+export async function automationRunIsOpen(db: Executor, runId: string): Promise<boolean> {
+  const [run] = await db
+    .select({ status: automationRuns.status })
+    .from(automationRuns)
+    .where(eq(automationRuns.id, runId))
+    .limit(1);
+  return run?.status === 'planned' || run?.status === 'running';
+}
+
+/** A run its owner has not stopped: a stopped run is never moved on, or back, by its sessions. */
+function runNotCancelled(runId: string) {
+  return and(eq(automationRuns.id, runId), ne(automationRuns.status, 'cancelled'));
 }
 
 export async function markAutomationRunForSession(
@@ -958,7 +911,7 @@ export async function markAutomationRunForSession(
         await transaction
           .update(automationRuns)
           .set({ status: 'running' })
-          .where(eq(automationRuns.id, runId));
+          .where(runNotCancelled(runId));
         await transaction
           .update(automationSteps)
           .set({ status: 'running', startedAt: now })
@@ -970,7 +923,7 @@ export async function markAutomationRunForSession(
         await transaction
           .update(automationRuns)
           .set({ status, completedAt: now })
-          .where(eq(automationRuns.id, runId));
+          .where(runNotCancelled(runId));
         await transaction
           .update(automationSteps)
           .set({ status, completedAt: now })
@@ -998,7 +951,7 @@ export async function markAutomationRunForSession(
         await transaction
           .update(automationRuns)
           .set({ status: 'failed', completedAt: now })
-          .where(eq(automationRuns.id, runId));
+          .where(runNotCancelled(runId));
         await transaction
           .update(automationSteps)
           .set({ status: 'failed', completedAt: now })
@@ -1036,7 +989,7 @@ export async function markAutomationRunForSession(
       await transaction
         .update(automationRuns)
         .set(nextStage ? { status: 'running' } : { status: 'succeeded', completedAt: now })
-        .where(eq(automationRuns.id, runId));
+        .where(runNotCancelled(runId));
     });
     return;
   }
