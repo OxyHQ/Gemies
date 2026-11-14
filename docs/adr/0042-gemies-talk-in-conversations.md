@@ -86,6 +86,14 @@ tool lane. When the answer comes back to an external agent, its continuation run
 too and tells the person; it holds no `sendMessage` bound to the chain (the relay carries text, not
 tools), so a follow-up is its next message from the chat, a new chain.
 
+Hosted participants can also react to a peer message when it is useful (ADR 0025). This local
+conversation capability uses the peer's exact stored message and the owned pair as its admission,
+never user authority inferred from its text. The person still cannot react in this conversation.
+A quiet reaction completion is durable, counts toward the chain and room limits, and needs no
+empty answer row. The already admitted continuation reads attributed feedback; a reaction never
+starts another chain or grants product tools. An initiator can acknowledge a textual reply and
+finish quietly, but receiving only an emoji does not grant a reciprocal-reaction turn.
+
 ### 3. The safety properties belong to the messaging layer
 
 - **Bounds per chain.** Every message of a chain (both ways) and every token of every turn of it
@@ -102,9 +110,10 @@ tools), so a follow-up is its next message from the chat, a new chain.
   they are in), narrowed by the writer's `agent` grant, and for a space member exactly its peers and
   Alia (ADR 0028 §6's cut, unchanged). The recipient's feature gates are checked and spent against
   the turn's attachments before anything is sent (ADR 0020 §6).
-- **Authority and billing.** Each gemie's unattended turns act under an Oxy task minted when the
-  chain starts, while the person's bearer is present (as a room member's, ADR 0025 §7); every exit
-  revokes them. The person pays for every turn, as for every room turn.
+- **Authority and billing.** Each gemie's unattended turns act for the person under the live Oxy
+  registry's `actsForPeople` declaration (Oxy ADR 0066), preserving the admitted owner, actor and
+  surface checks (ADR 0025 §7). No Oxy task is minted or renewed; each exit clears chain activity.
+  The person pays for every turn, as for every room turn.
 - **Alia's memory.** When Alia is either side, her turns hold her reading tools only — never her
   memory (Nilo), never anything that sends, writes or acts — and her Oxy apps at `read_only`. Her
   memory never reaches another gemie (ADR 0034). This is stricter than `askAlia`, which let her read

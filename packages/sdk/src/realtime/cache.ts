@@ -184,8 +184,12 @@ export function applyRealtimeToCache(client: QueryClient, frame: RealtimeFrame):
       return;
     case 'message.reaction':
       {
-        const update = frame.data as RealtimeData['message.reaction'];
-        updateReactionCaches(client, { ...update, reactions: [...update.reactions] });
+        const { reactionEntries, ...update } = frame.data as RealtimeData['message.reaction'];
+        updateReactionCaches(client, {
+          ...update,
+          reactions: [...update.reactions],
+          ...(reactionEntries === undefined ? {} : { reactionEntries: [...reactionEntries] }),
+        });
       }
       return;
     case 'collections':

@@ -11,6 +11,7 @@ import type { RoomEvent } from '../../room/bus.js';
 import type { RoomEngineDeps, TranscriptRow } from '../../room/engine.js';
 import { type GemieStepData, abandonGemieChain, processGemieStep } from '../engine.js';
 import { DEFAULT_GEMIE_CHAIN_BOUNDS, gemieMessageIdOf } from '../policy.js';
+import { createLocalRoomLock } from '../../room/lock.js';
 
 vi.mock('../../../logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -28,9 +29,13 @@ const LUMEN: AgentInfo = {
 
 type Turn = Parameters<RoomEngineDeps['runTurn']>[0];
 /** What each gemie does on its turn: its words, and whether (and what) it writes on. */
-type Script = (
-  turn: Turn,
-) => Promise<{ text: string; write?: string; error?: string; canvas?: ToolInvocation[] }>;
+type Script = (turn: Turn) => Promise<{
+  text: string;
+  write?: string;
+  error?: string;
+  canvas?: ToolInvocation[];
+  reactionOnly?: true;
+}>;
 
 function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUNDS) {
   const store = new Map<string, TranscriptRow[]>();
@@ -68,6 +73,7 @@ function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUN
         response: done.text,
         tokensUsed: 100,
         creditsCharged: 1,
+        ...(done.reactionOnly ? { reactionOnly: true } : {}),
         ...(done.error ? { error: done.error } : {}),
         ...(done.canvas ? { canvas: done.canvas } : {}),
       } as AgentTurnResult;
@@ -218,8 +224,8 @@ describe('a conversation between two gemies', () => {
     expect(pepe.person).toMatchObject({ oxyUserId: 'person', isDirectSession: false });
     expect(pepe.person).not.toHaveProperty('taskId');
     expect(JSON.parse(pepe.task.slice(pepe.task.indexOf('['))) as unknown).toEqual([
-      { from: 'you', text: 'Hello?' },
-      { from: 'Lumen', text: 'Fine.' },
+      { from: 'you', text: 'Hello?', reactions: [] },
+      { from: 'Lumen', text: 'Fine.', reactions: [] },
     ]);
   });
 
@@ -389,4 +395,281 @@ describe('failures and retries', () => {
       ],
     );
   });
+});
+
+describe('peer reactions within an already admitted chain', () => {
+  it('continues once with attributed feedback and counts a quiet recipient contribution without an empty row', async () => {
+    const w = world({
+      lumen: async () => {
+        const row = w.rowsOf('between')[0]!;
+        w.rowsOf('between')[0] = {
+          ...row,
+          reactionEntries: [
+            { emoji: '❤️', author: { kind: 'agent', id: LUMEN.id, name: LUMEN.name } },
+          ],
+        };
+        return { text: '', reactionOnly: true };
+      },
+      pepe: async (turn) => {
+        expect(turn.task).toContain('"emoji":"❤️"');
+        expect(turn.task).toContain('"kind":"agent"');
+        // Receiving only a reaction does not grant a capability to react back.
+        expect(turn.conversationReaction).toBeUndefined();
+        return { text: '' };
+      },
+    });
+    const prepare = vi.fn<NonNullable<RoomEngineDeps['prepareReaction']>>(async () => undefined);
+    const deps = { ...w.deps, room: { ...w.deps.room, prepareReaction: prepare } };
+    await w.start('Gracias por comprobarlo.');
+    expect(await processGemieStep(w.queue.shift()!, deps)).toBe('continued');
+    expect(prepare.mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'between',
+      allowedActorIds: ['lumen'],
+      trigger: {
+        kind: 'peer',
+        chainId: 'chain',
+        message: {
+          id: 'gemie-message-chain-0',
+          content: 'Gracias por comprobarlo.',
+          actorId: 'pepe',
+        },
+      },
+    });
+    expect(w.queue[0]?.messages).toBe(2);
+    expect(await processGemieStep(w.queue.shift()!, deps)).toBe('ended');
+    expect(w.queue).toEqual([]);
+    expect(w.said('between')).toHaveLength(1);
+    expect(w.said('chat')).toEqual([]);
+    expect(w.events).toContainEqual(
+      expect.objectContaining({
+        conversationId: 'between',
+        event: 'alia.agent_end',
+        data: expect.objectContaining({ status: 'completed', reactionOnly: true }),
+      }),
+    );
+  });
+
+  it('replays a durable recipient reaction after lost enqueue without another inference or double count', async () => {
+    let completed = false;
+    const w = world(
+      {
+        lumen: async () => {
+          completed = true;
+          return { text: '', reactionOnly: true };
+        },
+        pepe: async (turn) => {
+          expect(turn.conversationReaction).toBeUndefined();
+          expect(turn.gemieChain).toBeUndefined();
+          return { text: 'Hecho.' };
+        },
+      },
+      { maxMessages: 8, maxTokens: 107 },
+    );
+    await w.start('Gracias.');
+    const job = { ...w.queue.shift()!, tokens: 7 };
+    const replay = vi.fn(async () => undefined);
+    const prepare = vi.fn<NonNullable<RoomEngineDeps['prepareReaction']>>(async () => undefined);
+    const enqueue = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Queue unavailable'))
+      .mockImplementation(w.deps.enqueue);
+    const deps = {
+      ...w.deps,
+      enqueue,
+      room: {
+        ...w.deps.room,
+        // Release A can read a release B receipt with new authoring unavailable.
+        prepareReaction: prepare,
+        reactionCompletion: async () => (completed ? { tokensUsed: 100 } : null),
+        replayReactions: replay,
+      },
+    };
+    await expect(processGemieStep(job, deps)).rejects.toThrow('Queue unavailable');
+    prepare.mockClear();
+    expect(await processGemieStep(job, deps)).toBe('continued');
+    expect(w.turns).toHaveLength(1);
+    expect(replay).toHaveBeenCalledOnce();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(w.queue).toHaveLength(1);
+    expect(w.queue[0]).toMatchObject({ phase: 'continue', messages: 2, tokens: 107 });
+    expect(w.said('between')).toHaveLength(1);
+    expect(await processGemieStep(w.queue.shift()!, deps)).toBe('ended');
+    expect(w.queue).toHaveLength(0);
+  });
+
+  it('lets the initiator react to a textual peer reply in the pair, then ends without another message', async () => {
+    const w = world({
+      lumen: async () => ({ text: 'Hecho.' }),
+      pepe: async () => ({ text: '', reactionOnly: true }),
+    });
+    const prepare = vi.fn<NonNullable<RoomEngineDeps['prepareReaction']>>(async () => undefined);
+    const deps = { ...w.deps, room: { ...w.deps.room, prepareReaction: prepare } };
+    await w.start('Comprueba el enlace.');
+    await processGemieStep(w.queue.shift()!, deps);
+    const continuation = w.queue.shift()!;
+    expect(await processGemieStep(continuation, deps)).toBe('ended');
+    expect(prepare.mock.calls[1]?.[0]).toMatchObject({
+      conversationId: 'between',
+      allowedActorIds: ['pepe'],
+      trigger: { kind: 'peer', message: { actorId: 'lumen', content: 'Hecho.' } },
+    });
+    expect(w.said('between')).toHaveLength(2);
+    expect(w.said('chat')).toEqual([]);
+    expect(w.queue).toEqual([]);
+    const replay = vi.fn(async () => undefined);
+    await processGemieStep(continuation, {
+      ...deps,
+      room: {
+        ...deps.room,
+        reactionCompletion: async () => ({ tokensUsed: 100 }),
+        replayReactions: replay,
+      },
+    });
+    expect(replay).toHaveBeenCalledOnce();
+    expect(w.turns).toHaveLength(2);
+    expect(w.events).toContainEqual(
+      expect.objectContaining({
+        conversationId: 'chat',
+        event: 'alia.agent_end',
+        data: expect.objectContaining({ reactionOnly: true }),
+      }),
+    );
+  });
+});
+
+describe('peer reaction contribution bounds', () => {
+  it.each(['rate', 'messages', 'tokens'] as const)(
+    'withholds a new continuation reaction when the reply fills the %s budget',
+    async (boundary) => {
+      const bounds = {
+        maxMessages: boundary === 'messages' ? 2 : 8,
+        maxTokens: boundary === 'tokens' ? 100 : 120_000,
+      };
+      const w = world(
+        {
+          lumen: async () => ({ text: 'Hecho.' }),
+          pepe: async () => ({ text: 'Ya está comprobado.' }),
+        },
+        bounds,
+      );
+      const prepare = vi.fn<NonNullable<RoomEngineDeps['prepareReaction']>>(async () => undefined);
+      let recent = boundary === 'rate' ? 59 : 0;
+      const keys: string[] = [];
+      const deps = {
+        ...w.deps,
+        room: {
+          ...w.deps.room,
+          prepareReaction: prepare,
+          repliesSince: async () => recent,
+          lock: {
+            run: <T>(key: string, work: () => Promise<T>) => {
+              keys.push(key);
+              return work();
+            },
+          },
+        },
+      };
+      await w.start('Comprueba el enlace.');
+      await processGemieStep(w.queue.shift()!, deps);
+      if (boundary === 'rate') recent = 60;
+      const continuation = w.queue.shift()!;
+      expect(await processGemieStep(continuation, deps)).toBe('ended');
+      expect(prepare).toHaveBeenCalledTimes(1); // Recipient had the final slot; continuation has none.
+      expect(w.said('chat')).toEqual(['Pepe: Ya está comprobado.']);
+      expect(keys.slice(-2)).toEqual(['person:between', 'person:chat']);
+      // A completed contribution is historical delivery, so replay remains possible at the limit.
+      const replay = vi.fn(async () => undefined);
+      w.rowsOf('chat').length = 0;
+      const turns = w.turns.length;
+      expect(
+        await processGemieStep(continuation, {
+          ...deps,
+          room: {
+            ...deps.room,
+            reactionCompletion: async () => ({ tokensUsed: 100 }),
+            replayReactions: replay,
+          },
+        }),
+      ).toBe('ended');
+      expect(replay).toHaveBeenCalledOnce();
+      expect(w.turns).toHaveLength(turns);
+    },
+  );
+
+  it('deduplicates equal lock scopes and admits no reply when the chain is already full', async () => {
+    const w = world(
+      { lumen: async () => ({ text: 'Never runs' }), pepe: async () => ({ text: '' }) },
+      { maxMessages: 1, maxTokens: 100 },
+    );
+    const keys: string[] = [];
+    const deps = {
+      ...w.deps,
+      room: {
+        ...w.deps.room,
+        lock: {
+          run: <T>(key: string, work: () => Promise<T>) => {
+            keys.push(key);
+            return work();
+          },
+        },
+      },
+    };
+    await w.start('Gracias.');
+    await processGemieStep(w.queue.shift()!, deps);
+    expect(w.turns).toHaveLength(0);
+    const continuation = { ...w.queue.shift()!, originConversationId: 'between' };
+    await processGemieStep(continuation, deps);
+    expect(keys).toEqual(['person:between', 'person:between']);
+    expect(w.said('between')).toHaveLength(1);
+  });
+});
+
+it('serializes continuations from different origins before testing the last peer reaction slot', async () => {
+  let recent = 59,
+    entered!: () => void,
+    release!: () => void,
+    runs = 0;
+  const ready = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const w = world({
+    lumen: async () => ({ text: 'Hecho.' }),
+    pepe: async () => {
+      runs++;
+      if (runs === 1) {
+        entered();
+        await gate;
+        recent++;
+        return { text: '', reactionOnly: true };
+      }
+      return { text: 'He recibido la respuesta.' };
+    },
+  });
+  await w.start('Comprueba el enlace.');
+  await processGemieStep(w.queue.shift()!, w.deps);
+  const continuation = w.queue.shift()!;
+  const prepare = vi.fn<NonNullable<RoomEngineDeps['prepareReaction']>>(async () => undefined);
+  const deps = {
+    ...w.deps,
+    room: {
+      ...w.deps.room,
+      lock: createLocalRoomLock(),
+      prepareReaction: prepare,
+      repliesSince: async () => recent,
+    },
+  };
+  const first = processGemieStep(continuation, deps);
+  await ready;
+  const second = processGemieStep(
+    { ...continuation, originConversationId: 'another-chat', turn: continuation.turn + 1 },
+    deps,
+  );
+  release();
+  expect(await Promise.all([first, second])).toEqual(['ended', 'ended']);
+  expect(prepare).toHaveBeenCalledOnce();
+  expect(runs).toBe(2);
+  expect(recent).toBe(60);
 });

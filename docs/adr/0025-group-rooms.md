@@ -49,8 +49,14 @@ claim that Alia reproduces Grok Bot's internal implementation.
 3. **Selection precedes activity.** A structured `RoomDecision` chooses a speaker, requests one
    clarification, ends the chain deliberately, or reports an unavailable addressee. It sees only
    participant identities, descriptions and attributed conversation data. It has no tools, private
-   memory or authority to act. Validate its output against the roster. Run inference through Oxy's
-   utility resolver, with bounded time/output and the existing reservation, settlement and refund
+   memory or authority to act. General selection separates the original `personRequest`, earlier
+   `context` and `memberContributions`, and returns one `{ choice }` from server-enumerated legal
+   choices anchored to that request or the current speaker's latest substantive contribution.
+   Map this source-bound choice to the existing decision and validate it against the roster.
+   A follow-up question to the person does not invent a new request; preserve original outstanding
+   recipients and genuine peer handoffs. General planning uses Kaana's capability-aware `auto`;
+   binary reaction observation uses the utility level. Both retain bounded time/output and the
+   existing reservation, settlement and refund
    lifecycle; record consumption and decision metadata without transcript text. A returned generation
    settles its measured usage before semantic roster validation, so rejecting its actor ID does not
    refund inference that completed. An inference call that throws releases its reservation.
@@ -71,10 +77,11 @@ claim that Alia reproduces Grok Bot's internal implementation.
    actor's identity, remit, memory and tools; it describes capabilities from what is actually
    available. External agents receive this context through their existing task/history interface.
 7. **Authority stays at the edge.** `room/start.ts` checks `canReachAgent` including the surface
-   (ADR 0021), then mints each reachable member's Oxy task while the person's bearer is present.
-   Jobs carry task IDs, never bearers. A selected member runs through `runAgentTurn` as a task turn
-   (`isDirectSession: false`, `taskId`) with its own memory and tools, never Alia's. Failure to mint
-   a task gives that member no Oxy apps. Every chain exit revokes its tasks.
+   (ADR 0021) before admitting the roster. Jobs carry the owner, actor and surface identities, never
+   bearers. A selected member runs through `runAgentTurn` (`isDirectSession: false`) with its own
+   memory and tools, never Alia's. First-party Oxy calls act for the person under the live registry's
+   `actsForPeople` declaration (Oxy ADR 0066); no task grant is minted or retained. Every chain exit
+   clears its conversation activity.
 8. **Real time remains the existing event bus.** The bus publishes `alia.agent_start`,
    `agent_delta`, `agent_tool`, `agent_end`, `group.message` and `group.idle`. It uses Redis pub/sub
    or the local emitter and also sends `group:event` on the existing Socket.IO connection. Selection
@@ -128,10 +135,116 @@ target replacement or deletion clears it and cancels pending work; conversation 
 the feedback and receipts. Minimal rolling-compatibility triggers mirror old reaction updates and
 restore old writers' inserted caches without creating response authority. Existing feedback is
 seeded in the same transaction as these triggers, without retroactive observations. The response and existing
-`conversation:reaction` socket event carry stable message ID, emoji set, revision and mutation ID;
+`message.reaction` durable account event carry stable message ID, emoji set, revision and mutation ID;
 history carries `reactionRevision`. This is an event on the existing connection, not a new
 WebSocket route. [The runtime contract](../chat-runtime.mdx#reactions-are-conversation-feedback)
 defines the fields and recovery behavior.
+
+### Agent-authored feedback
+
+A normally admitted hosted actor may use the scoped `react_to_message` tool for the person's
+message or an identifiable peer's historical message. Bind the sender at the server; validate
+its current membership and the exact stored target under the thread lock. Never let the client
+choose an author. Independent author sets share a revision while the legacy emoji array remains
+the person's own selection. Store agent mutations without wake eligibility, so they cannot create
+autonomous reaction loops. Removing or replacing the target clears both author sets.
+
+ADR 0042 peer conversations retain the person's read-only boundary. Hosted peer turns use an
+explicit peer-message admission, checked against the owned pair and current attributed message;
+never a missing person trigger. Their existing bounded chain may consume that feedback, but the
+reaction itself cannot enqueue a new chain. Clean completions and retries use the same durable
+receipts and contribution limits as other hosted turns.
+
+Persist a reaction-only turn completion separately from its mutation receipts, only after a clean
+model finish. Queued room retries replay that completion and current snapshots for its touched
+targets before continuing selection; direct retries retain existing turn admission semantics.
+The clean completion also stores its exact nonnegative token usage. A peer-chain retry after a
+lost enqueue adds that immutable usage to the original job's prior total, without another
+inference or charge; repeated delivery cannot overwrite the receipt with different usage.
+This closes the new reaction-only path's budget gap. The older text-message replay path does
+not persist token usage on messages and still resumes with the job's prior total; correcting
+that existing limitation requires a separate durable text-usage design, not an estimated amount.
+The versioned `alia.turn_state` event reports durable admission/completion without inventing an
+agent session or empty assistant message. See the [runtime contract](../chat-runtime.mdx#gemies-can-author-reactions-during-a-turn)
+for wire fields and the clean-terminal requirement. These completions count against the room's
+existing contribution rate limit. Reaction observation turns retain their no-tools restriction.
+
+### Original assignments survive selection steps
+
+After the separately gated producer activation, new admissions use `group-rooms-v3`. The selector's same structured inference returns the next
+choice and a bounded inventory of explicit assignments from the person's request. Each assignment
+has a stable recipient, task, dependencies, state and evidence IDs. Open questions need not assign
+every member. The initial extraction remains semantic: validation cannot prove that the model
+identified every assignment correctly, so real-inference evaluation must test extraction as well
+as continuation with the carried plan. There is no extra model call, retry-until-success, keyword
+routing or deterministic substitute speaker.
+
+The selected job persists this inventory before any actor runs. Subsequent selections preserve its
+assignments and dependencies while reevaluating their satisfaction against current stored content.
+A completed or waiting assignment requires evidence from its own recipient. Text evidence must
+follow the human trigger; a reaction contribution must have a clean durable completion for a
+server-derived turn of this exact request, even when its target is an older message. Existing emoji
+snapshots and other actors' replies cannot discharge a recipient's task. An optional question after
+a sufficient answer does not cancel a later assignment. Independent ready work continues while an
+unrelated assignment waits for the person. A valid idle with waiting assignments is `waiting_person`,
+not a claim that all assignments completed; contradictory selection is a typed failure.
+
+The plan binds the human row ID, exact content digest and admitted roster IDs. New human messages
+or edits to that same row supersede it. The worker rechecks after inference and before continuing;
+text persistence also compares the original snapshot under the message-thread database lock.
+Workers intersect admitted members with current membership, active status and surface confinement;
+this does not repeat the full private-standing authorization performed at admission, does not
+expand its roster, and grants no additional first-party or external authority. Already committed replies or reaction
+completions can replay without a fresh actor execution or contribution slot after membership loss.
+
+The JSON plan is limited to 16 assignments with bounded text and evidence, carried only in the
+existing durable jobs. No SQL migration, bearer, transcript copy or public SDK schema is added.
+Keep workers for `group-rooms-v2` and `group-rooms` during rolling deployment: old processes produce
+and consume their old queues; after release B activates the producer, new processes produce v3
+and also drain old jobs with the original
+choice-only/legacy contract. A v2 successor stays v2. Never let an old worker consume a v3 job or
+reinterpret a queued v2 job as a newly extracted plan. Retire each old worker only after its
+waiting, active, delayed and retryable jobs have drained.
+
+**Two releases make the rollback consumer concrete.** Release A installs all three workers but
+`prepareRoom` still creates version 2 jobs and the shared hosted reaction factory offers no
+`react_to_message` capability. This includes direct streaming/non-streaming, room and peer turns:
+A cannot create a new authored mutation or clean quiet completion whose lost ACK an old worker
+would mistake for an unfinished turn. A retains all receipt readers/replay paths independently
+of capability creation, so it can finish B's committed work after rollback without re-inference.
+`CONVERSATION_WRITE_VERSION` is the single source release decision for both room job production
+and authored-reaction availability; it is not a request-controlled or environment toggle.
+Release B changes that decision to version 3 only after
+A is the sole completed deployment and its v3 Redis worker is verified. The existing ECS circuit
+breaker and `deploy-ecs-image.sh` rollback restore the entire previous service revision; therefore
+B must have A (not a v2-only image) as its actual rollback baseline. A continues consuming v3 even
+when serving after B rolls back. It creates no new v3 human admissions; existing v3 continuations
+still use v3. This uses the normal maintained API service, not an auxiliary API process starting
+unrelated schedulers, and needs no new runtime flag, role or service.
+
+Before A, prove that no v3 producer or outstanding v3 jobs already exist and no producer has
+written authored quiet completions into the old room or peer queues. A's reader-first boundary
+is required for those queues too: merely retaining a v3 worker would not protect an old worker
+redelivering a quiet completion written by a new process. Before B, verify A's exact
+image/source, positive steady fleet, queue-specific v3 worker presence and unpaused Redis state;
+HTTP readiness alone does not establish worker readiness. Preserve that source/image as the oldest
+permitted rollback revision while v3 producers or work remain. A forced process exit or a graceful
+shutdown timeout is not a drain proof. A rollback never deletes/relabels jobs, restores an earlier
+Oxy authority path, or changes the existing first-party/Kaana authority.
+
+If a later release removes the v3 worker, first eliminate all v3 producers (including old draining
+API tasks), keep A running, and verify no waiting, active, delayed, prioritized, paused,
+waiting-children or stalled-recovery work remains. Review terminal failed jobs' chain-end and conversation-activity
+cleanup separately: a zero waiting count, expired lease, or failed-state count is not completion.
+Use a narrow read-only Redis inspector; this repository does not yet ship one for room queues.
+The installed BullMQ count helper can remove deprecated wait-list markers, so it must not be called
+a read-only probe. Retirement is a separate reviewed operation; automatic rollback B→A does not
+retire the worker.
+
+Real selector and native-tool evaluation exercises the final v3 plan/tool contract during A; its source pin does not
+claim A already admits v3 or offers authored reactions. Native-tool fixtures exercise the
+capability factory directly; production capability admission remains disabled in A. Activation evidence additionally checks B's actual producer version.
+No model call is used as a production queue health check.
 
 ### Bounds
 
@@ -141,11 +254,11 @@ defines the fields and recovery behavior.
 | Operations per person message | 24 | Both a selection phase and an actor execution increment the turn counter; failed attempts also consume work. |
 | Handoffs per chain | 3 | Bound agent-to-agent exchanges. |
 | Consecutive substantive replies | Different member | Prevent an actor from answering itself; a one-off clarification may use the last interlocutor. |
-| Selector generation deadline | 10 seconds | Bound the inference call including its retry; credential/credit setup is separate. |
+| Selector generation deadline | General 30 seconds; binary feedback 10 seconds | Bounded planning and observation; parent cancellation can end earlier. Credential/credit setup is separate. |
 | Selector retries | 1 | One bounded recovery, never a fallback to all members. |
-| Selector output | `utilityOutputTokens(512)` | Reserve enough for the decision and Oxy-selected model reasoning. |
-| Supersede | Newest person message | An old chain cannot start another actor's work. |
-| Rate | 60 replies per room per 10 minutes | Bound repeated requests across chains. |
+| Selector output | General 8192; binary feedback `utilityOutputTokens(512)` | Allow planning and structured output within Kaana's reviewed policy. |
+| Supersede | Newest person message and exact request content | An old chain cannot start another actor's work. |
+| Rate | 60 contributions per room per 10 minutes | Count stored replies plus durable reaction-only completions. |
 | Credits | Per inference operation | Selection and actor execution both account for their actual usage. |
 
 ## Consequences
@@ -156,7 +269,7 @@ defines the fields and recovery behavior.
   because it belongs to the room, and a completed exchange can stay quiet.
 - Selection adds a bounded inference call before an actor runs. Schema/roster validation makes
   control flow testable, but understanding a request still requires real-inference evaluation.
-- Jobs contain roster metadata, counters, task IDs and a selected decision, not the transcript or
+- Jobs contain roster metadata, counters, bounded assignments and a selected decision, not the transcript or
   bearer. Workers load conversation data from Postgres when needed.
 - Infrastructure retries and at-most-once event delivery retain their existing limits. The stored
   message is the record after reconnection; the in-process queue fallback is not durable across a
@@ -180,8 +293,8 @@ defines the fields and recovery behavior.
   already the truth and needs no second store.
 - **Reusing `agent-push-` ids for room replies.** Rejected: that prefix counts against an agent's
   check-in budget (`outreach-budget.ts`); a room reply is not a check-in.
-- **Carrying the person's bearer in the job.** Rejected: bearers do not belong in Redis; the Oxy task
-  is the sanctioned delegation (ADR 0022).
+- **Carrying the person's bearer in the job.** Rejected: bearers do not belong in Redis. First-party
+  calls use the admitted person's account and live registry authority (ADR 0022, Oxy ADR 0066).
 
 ## Enforcement
 

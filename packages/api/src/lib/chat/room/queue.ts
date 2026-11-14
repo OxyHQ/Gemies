@@ -1,6 +1,6 @@
 /**
  * Group room queue — one job per step of a room's chain (ADR 0025), on the shared conversation step
- * queue (`step-queue.ts`). New chains use `group-rooms-v2`; `group-rooms` only drains legacy jobs
+ * queue (`step-queue.ts`). The v3 consumer is installed before producer activation; v2 and v1 retain workers to drain admitted jobs
  * with their original policy.
  */
 
@@ -12,7 +12,7 @@ export const jobIdOf = (
   data: Pick<RoomJobData, 'conversationId' | 'triggerId' | 'turns' | 'version' | 'phase'>,
 ) =>
   // BullMQ refuses ':' in a custom id.
-  `room-${data.conversationId}-${data.triggerId}-${data.turns}${data.version === 2 ? `-${data.phase}` : ''}`.replace(
+  `room-${data.conversationId}-${data.triggerId}-${data.turns}${data.version !== undefined ? `-${data.phase}` : ''}`.replace(
     /:/g,
     '_',
   );
@@ -37,29 +37,31 @@ const queueOf = (name: string) =>
     abandon,
     // A lost Redis acknowledgement may have queued the selected turn already. Running it locally
     // would create a second execution with a possibly different selection: retry the durable job.
-    directOnEnqueueFailure: (data) => data.version !== 2,
+    directOnEnqueueFailure: (data) => data.version === undefined,
   });
 
-const current = queueOf('group-rooms-v2');
+const current = queueOf('group-rooms-v3');
+const previous = queueOf('group-rooms-v2');
 const legacy = queueOf('group-rooms');
 
 /** Initialize the queues. Without Redis they stay off and {@link enqueueRoomJob} runs steps directly. */
 export async function initRoomQueue(): Promise<void> {
-  await Promise.all([current.init(), legacy.init()]);
+  await Promise.all([current.init(), previous.init(), legacy.init()]);
 }
 
-/** Start the workers (v2 and the legacy drain). Call once at startup, after {@link initRoomQueue}. */
+/** Start v3 workers and the v2/v1 drains. Call once at startup, after {@link initRoomQueue}. */
 export async function startRoomWorker(): Promise<void> {
   await current.startWorker();
+  await previous.startWorker();
   await legacy.startWorker();
 }
 
 /** Queue one step. Deduplicated by chain and turn. */
 export async function enqueueRoomJob(data: RoomJobData): Promise<void> {
-  await (data.version === 2 ? current : legacy).enqueue(data);
+  await (data.version === 3 ? current : data.version === 2 ? previous : legacy).enqueue(data);
 }
 
 /** Graceful shutdown. Call before process exit. */
 export async function shutdownRoomQueue(): Promise<void> {
-  await Promise.all([current.shutdown(), legacy.shutdown()]);
+  await Promise.all([current.shutdown(), previous.shutdown(), legacy.shutdown()]);
 }

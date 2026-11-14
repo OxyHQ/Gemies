@@ -38,8 +38,14 @@ import { emptyResponseError, toOpenAIFinishReason } from './finish-reason.js';
 import { servedModelId } from '../models/power-levels.js';
 import { withoutToolMarkup } from './tool-markup.js';
 import { clientToolResult } from '../tools/result-truncation.js';
+import {
+  AGENT_REACTION_TOOL,
+  reactionStepCalls,
+  type AgentReactionTurn,
+} from './reactions/agent-tool.js';
 
 export interface NonStreamingParams {
+  conversationReaction?: AgentReactionTurn;
   req: Request;
   res: Response;
   requestId: string;
@@ -119,7 +125,13 @@ export async function runNonStreaming(params: NonStreamingParams): Promise<void>
 
   log.v1.info('Non-streaming request, using generateText');
 
-  const { result, text, finishReason, usage } = await generateAnswered(baseConfig);
+  const { result, text, finishReason, usage } = await generateAnswered(
+    baseConfig,
+    (call) =>
+      !call.text.trim() &&
+      (call.finishReason === 'stop' || call.finishReason === 'tool-calls') &&
+      !!params.conversationReaction?.canFinish(reactionStepCalls(call.steps)),
+  );
   clearFirstByteTimer();
   assertLive?.();
 
@@ -135,6 +147,18 @@ export async function runNonStreaming(params: NonStreamingParams): Promise<void>
 
   // A call the model wrote as text is not an answer, and is never stored or returned.
   const assistantResponse = withoutToolMarkup(text || '');
+  const allCalls = reactionStepCalls(result.steps);
+  const reactionFinished =
+    !assistantResponse.trim() &&
+    (finishReason === 'stop' || finishReason === 'tool-calls') &&
+    !!params.conversationReaction?.canFinish(allCalls);
+  if (
+    !assistantResponse.trim() &&
+    allCalls.length > 0 &&
+    allCalls.every((call) => call.toolName === AGENT_REACTION_TOOL) &&
+    !reactionFinished
+  )
+    throw emptyResponseError(finishReason);
 
   const nonStreamToolInvocations = result.toolCalls
     .filter((tc) => !isInvalidToolCall(tc))
@@ -181,7 +205,15 @@ export async function runNonStreaming(params: NonStreamingParams): Promise<void>
 
   // Save conversation + generate title
   await beforeFinish?.();
-  await saveConversationResult(lifecycleCtx, assistantResponse, nonStreamToolInvocations);
+  if (reactionFinished && params.conversationReaction) {
+    lifecycleCtx.omitLeadReply = await params.conversationReaction.complete(
+      assistantResponse,
+      allCalls,
+      tokenUsage.totalTokens,
+    );
+  }
+  if (!lifecycleCtx.omitLeadReply)
+    await saveConversationResult(lifecycleCtx, assistantResponse, nonStreamToolInvocations);
   if (conversationId && req.user?.id && assistantResponse) {
     generateTitleAsync(req.user.id, conversationId, messages);
   }
@@ -217,7 +249,7 @@ export async function runNonStreaming(params: NonStreamingParams): Promise<void>
       // one Oxy chose (ADR 0014); the request's own id when none was reported.
       model: servedModelId(modelId, observation.resolvedModelReference),
       content: assistantResponse,
-      finishReason: toOpenAIFinishReason(finishReason),
+      finishReason: lifecycleCtx.omitLeadReply ? 'stop' : toOpenAIFinishReason(finishReason),
       toolCalls,
       usage: tokenUsage,
       aliaUsage: {
@@ -227,6 +259,16 @@ export async function runNonStreaming(params: NonStreamingParams): Promise<void>
         credits_remaining: creditsRemaining,
         credit_warning: creditWarning,
       },
+      ...(lifecycleCtx.omitLeadReply && params.conversationReaction
+        ? {
+            aliaMeta: {
+              reactionOnly: true,
+              conversationStored: true,
+              conversationId: params.conversationReaction.conversationId,
+              agentId: params.conversationReaction.actor.id,
+            },
+          }
+        : {}),
     }),
   );
   clearTimeout(globalTimer);

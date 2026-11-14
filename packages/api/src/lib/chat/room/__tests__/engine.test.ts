@@ -1,3 +1,8 @@
+import {
+  roomRequestDigest,
+  validateObligationSelection,
+  type RoomObligation,
+} from '../obligations.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { HydratedAgent } from '../../../agent-identity.js';
 import type { AgentInfo } from '../../../../domain/conversation.js';
@@ -550,6 +555,103 @@ const idle: RoomDecision = { action: 'idle', agentId: null, reason: 'complete' }
 const v2 = { version: 2, phase: 'select', speakerId: '', pending: [] } as const;
 
 describe('v2 room participation: selection before execution', () => {
+  it('preserves both explicitly requested reaction contributions without empty replies or unrelated actors', async () => {
+    const h = harness({
+      script: () => 'unused',
+      rows: [
+        {
+          id: 'p1',
+          clientMessageId: 'c1',
+          role: 'user',
+          content: 'Nadia y Bruno, confirmad con 👍',
+          agentName: null,
+        },
+      ],
+      select: async (input) => {
+        const reacted = new Set(input.rows[0]?.reactionEntries?.map((entry) => entry.author.id));
+        const next = ['a', 'b'].find((id) => !reacted.has(id));
+        return next ? selection(next) : idle;
+      },
+    });
+    vi.mocked(h.deps.runTurn).mockImplementation(async (input) => {
+      const agentId = input.agent!._id;
+      h.rows[0] = {
+        ...h.rows[0]!,
+        reactionEntries: [
+          ...(h.rows[0]!.reactionEntries ?? []),
+          { emoji: '👍', author: { kind: 'agent', id: agentId, name: agentId } },
+        ],
+      };
+      return { response: '', reactionOnly: true, tokensUsed: 10, creditsCharged: 1 };
+    });
+    await h.drain(h.first(v2));
+    expect(vi.mocked(h.deps.runTurn).mock.calls.map(([input]) => input.agent!._id)).toEqual([
+      'a',
+      'b',
+    ]);
+    expect(h.rows).toHaveLength(1);
+    expect(h.events.filter((event) => event.event === 'group.message')).toEqual([]);
+    expect(
+      h.events.filter((event) => event.event === 'alia.agent_end').map((event) => event.data),
+    ).toEqual([
+      expect.objectContaining({ status: 'completed', reactionOnly: true }),
+      expect.objectContaining({ status: 'completed', reactionOnly: true }),
+    ]);
+    expect(h.events.at(-1)?.data.reason).toBe('done');
+  });
+
+  it.each([2, 3] as const)(
+    'release A replays a committed v%s quiet turn with authoring unavailable and preserves its queue',
+    async (version) => {
+      const h = harness({
+        script: () => 'must not run',
+        select: async () => idle,
+        agentsGone: true,
+      });
+      const replay = vi.fn(async () => undefined);
+      const prepare = vi.fn<NonNullable<RoomEngineDeps['prepareReaction']>>(async () => undefined);
+      Object.assign(h.deps, {
+        prepareReaction: prepare,
+        reactionCompletion: vi.fn(async () => ({ tokensUsed: 10 })),
+        replayReactions: replay,
+      });
+      await processRoomStep(
+        h.first({
+          ...v2,
+          version,
+          requestDigest: roomRequestDigest('hello all'),
+          phase: 'speak',
+          speakerId: 'a',
+          decision: { action: 'speak', agentId: 'a', reason: 'directed' },
+        }),
+        h.deps,
+      );
+      expect(h.deps.runTurn).not.toHaveBeenCalled();
+      expect(prepare).not.toHaveBeenCalled();
+      expect(h.queued).toHaveLength(1);
+      expect(h.queued[0]).toMatchObject({ version, phase: 'select' });
+      expect(replay).toHaveBeenCalledOnce();
+      expect(h.events.find((event) => event.event === 'alia.agent_end')?.data).toMatchObject({
+        status: 'completed',
+        reactionOnly: true,
+      });
+      expect(h.rows).toHaveLength(1);
+    },
+  );
+
+  it('does not hide a real failure behind an earlier reaction side effect', async () => {
+    const h = harness({ script: () => 'unused', select: async () => selection('a') });
+    vi.mocked(h.deps.runTurn).mockResolvedValue({
+      response: '',
+      reactionOnly: true,
+      error: 'provider failed',
+      tokensUsed: 0,
+      creditsCharged: 0,
+    });
+    await h.drain(h.first(v2));
+    expect(h.events.find((event) => event.event === 'alia.agent_end')?.data.status).toBe('failed');
+    expect(h.events.at(-1)?.data.reason).toBe('error');
+  });
   it('runs only Eusebio for the reported request and preserves the exact user task', async () => {
     const request = 'Hola! Eusebio que puedes hacer?';
     const select = vi.fn(async (input: RoomSelectionInput) =>
@@ -767,5 +869,139 @@ describe('v2 stored reply recovery', () => {
       event: 'group.message',
       data: { message: { id: firstEnd.data.messageId, content: 'durable answer' } },
     });
+  });
+});
+
+describe('v3 durable original assignments', () => {
+  const task = 'Nadia summarizes; then Bruno titles the summary.';
+  const obligations: RoomObligation[] = [
+    {
+      id: 'summary',
+      recipientId: 'a',
+      task: 'Summarize',
+      dependsOn: [],
+      state: 'pending',
+      evidence: [],
+    },
+    {
+      id: 'title',
+      recipientId: 'b',
+      task: 'Title the summary',
+      dependsOn: ['summary'],
+      state: 'pending',
+      evidence: [],
+    },
+  ];
+  const rows: TranscriptRow[] = [
+    { id: 'p1', clientMessageId: 'c1', role: 'user', agentName: null, content: task },
+  ];
+  const admission = {
+    version: 3,
+    phase: 'select',
+    speakerId: '',
+    pending: [],
+    requestDigest: roomRequestDigest(task),
+  } as const;
+  it('persists the plan before execution and carries it across replies and delivery retry', async () => {
+    const calls: RoomSelectionInput[] = [];
+    const h = harness({
+      rows: [...rows],
+      script: (id) =>
+        id === 'a' ? 'Sales were stable. Want more detail?' : 'Stable sales, wider reach',
+      select: async (input) => {
+        calls.push(input);
+        const updates = (input.obligationPlan?.obligations ?? obligations).map((o) => {
+          const row = input.rows.find((r) => r.role === 'assistant' && r.agentId === o.recipientId);
+          return row ? { ...o, state: 'completed' as const, evidence: [row.id] } : o;
+        });
+        const next = updates.find((o) => o.state === 'pending');
+        return validateObligationSelection(
+          updates,
+          next ? selection(next.recipientId) : idle,
+          input,
+        );
+      },
+    });
+    await processRoomStep(h.first(admission), h.deps);
+    const selected = JSON.parse(JSON.stringify(h.queued.shift()!)) as RoomJobData;
+    expect(selected.obligationPlan?.obligations).toHaveLength(2);
+    await processRoomStep(selected, h.deps);
+    // Stored reply precedes a lost enqueue acknowledgement. Retry delivers it, no new inference.
+    const runs = h.runs.length;
+    h.queued.length = 0;
+    await processRoomStep(selected, h.deps);
+    expect(h.runs).toHaveLength(runs);
+    await h.drain(h.queued.shift()!);
+    expect(h.runs.map((r) => r.agentId)).toEqual(['a', 'b']);
+    expect(calls[1]?.obligationPlan?.obligations).toHaveLength(2);
+    expect(h.events.at(-1)?.data).toMatchObject({ reason: 'done' });
+  });
+  it('refuses idle that drops the carried second recipient without executing a substitute', async () => {
+    const h = harness({
+      rows: [...rows],
+      script: () => '',
+      select: async (input) => ({
+        ...idle,
+        obligationPlan: { ...input.obligationPlan!, obligations: [] },
+      }),
+    });
+    const bound = validateObligationSelection(obligations, selection('a'), {
+      ...h.first(),
+      rows: h.rows,
+    }).obligationPlan;
+    await processRoomStep(h.first({ ...admission, obligationPlan: bound }), h.deps);
+    expect(h.runs).toHaveLength(0);
+    expect(h.events.at(-1)?.data).toMatchObject({ reason: 'error' });
+  });
+  it('an edit reusing the same human id during selection prevents enqueue', async () => {
+    const h = harness({
+      rows: [...rows],
+      script: () => '',
+      select: async (input) => {
+        const result = validateObligationSelection(obligations, selection('a'), input);
+        h.rows[0] = { ...h.rows[0]!, content: 'Changed request' };
+        return result;
+      },
+    });
+    expect(await processRoomStep(h.first(admission), h.deps)).toBe('skipped');
+    expect(h.queued).toHaveLength(0);
+    expect(h.runs).toHaveLength(0);
+  });
+  it('an edit during inference prevents persistence and continuation', async () => {
+    const h = harness({
+      rows: [...rows],
+      script: () => {
+        h.rows[0] = { ...h.rows[0]!, content: 'Changed request' };
+        return 'Stale answer';
+      },
+      select: async (input) => validateObligationSelection(obligations, selection('a'), input),
+    });
+    await processRoomStep(h.first(admission), h.deps);
+    expect(await processRoomStep(h.queued.shift()!, h.deps)).toBe('skipped');
+    expect(h.rows).toHaveLength(1);
+    expect(h.queued).toHaveLength(0);
+  });
+  it('replays an already stored turn after current membership is lost, but never generates another', async () => {
+    const h = harness({
+      rows: [...rows],
+      script: () => 'Stored answer',
+      select: async (input) => validateObligationSelection(obligations, selection('a'), input),
+    });
+    await processRoomStep(h.first(admission), h.deps);
+    const job = h.queued.shift()!;
+    await processRoomStep(job, h.deps);
+    h.queued.length = 0;
+    const deps = {
+      ...h.deps,
+      repliesSince: async () => 60,
+      currentRoster: async (data: RoomJobData) =>
+        data.roster.map((m) => ({ ...m, available: false })),
+    };
+    await processRoomStep(job, deps);
+    expect(h.runs).toHaveLength(1);
+    expect(h.queued).toHaveLength(1);
+    const newJob = { ...job, turns: job.turns + 2 };
+    await processRoomStep(newJob, deps);
+    expect(h.runs).toHaveLength(1);
   });
 });

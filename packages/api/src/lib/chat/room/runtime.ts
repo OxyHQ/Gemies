@@ -1,5 +1,7 @@
+import { isDeepStrictEqual } from 'node:util';
+import { RoomRequestSupersededError } from './obligations.js';
 /**
- * The room engine wired to the real world: Postgres, Oxy tasks, the agent turn, the queue, the bus
+ * The room engine wired to the real world: Postgres, the agent turn, the queue, the bus
  * and the room lock. `engine.ts` takes all of these as parameters; this is the one place that
  * names the real ones. Resolved lazily so importing the queue does not load the database.
  */
@@ -26,6 +28,37 @@ let runtime: RoomRuntime | null = null;
 export function roomRuntime(): RoomRuntime {
   if (runtime) return runtime;
   const deps: RoomEngineDeps = {
+    prepareReaction: async (input) =>
+      (await import('../reactions/agent-runtime.js')).prepareAgentReactionTurn(input),
+    reactionCompletion: async (userId, conversationId, actorId, turnId) => {
+      const { getDb } = await import('../../../db/index.js');
+      const { findAgentReactionTurnComplete } = await import(
+        '../../../db/chat/reactionRepository.js'
+      );
+      const completion = await findAgentReactionTurnComplete(
+        getDb(),
+        userId,
+        conversationId,
+        actorId,
+        turnId,
+      );
+      return completion ? { tokensUsed: completion.tokensUsed } : null;
+    },
+    replayReactions: async (userId, conversationId, actorId, turnId) => {
+      const { getDb } = await import('../../../db/index.js');
+      const { listAgentReactionTurnSnapshots } = await import(
+        '../../../db/chat/reactionRepository.js'
+      );
+      const { publishConversationReaction } = await import('../reactions/bus.js');
+      for (const snapshot of await listAgentReactionTurnSnapshots(
+        getDb(),
+        userId,
+        conversationId,
+        actorId,
+        turnId,
+      ))
+        await publishConversationReaction(userId, { conversationId, ...snapshot });
+    },
     // A getter: the Redis client behind the lock is created on first use, not at import.
     get lock() {
       return getRoomLock();
@@ -62,6 +95,7 @@ export function roomRuntime(): RoomRuntime {
         seq: row.seq,
         createdAt: row.createdAt,
         reactions: Array.isArray(row.reactions) ? (row.reactions as string[]) : [],
+        reactionEntries: row.reactionEntries,
         agentName: row.agentInfoId === null ? null : (row.agentInfoName ?? ''),
         agentInfo: toStoredMessage(row).agentInfo,
       }));
@@ -69,7 +103,14 @@ export function roomRuntime(): RoomRuntime {
     repliesSince: async (userId, conversationId, since) => {
       const { getDb } = await import('../../../db/index.js');
       const { countGroupRepliesSince } = await import('../../../db/chat/messageRepository.js');
-      return countGroupRepliesSince(getDb(), userId, conversationId, since);
+      const { countAgentReactionTurnsSince } = await import(
+        '../../../db/chat/reactionRepository.js'
+      );
+      const counts = await Promise.all([
+        countGroupRepliesSince(getDb(), userId, conversationId, since),
+        countAgentReactionTurnsSince(getDb(), userId, conversationId, since),
+      ]);
+      return counts.reduce((total, count) => total + count, 0);
     },
     loadAgent: async (agentId) => {
       const { getDb } = await import('../../../db/index.js');
@@ -77,6 +118,34 @@ export function roomRuntime(): RoomRuntime {
       const { attachAgentIdentity } = await import('../../agent-identity.js');
       const found = await findAgentById(getDb(), agentId);
       return found === null ? null : attachAgentIdentity(found);
+    },
+    reactionContributions: async (userId, conversationId, turnIds) => {
+      const { getDb } = await import('../../../db/index.js');
+      const { listAgentReactionContributions } = await import(
+        '../../../db/chat/reactionRepository.js'
+      );
+      return listAgentReactionContributions(getDb(), userId, conversationId, turnIds);
+    },
+    currentRoster: async (data) => {
+      const { getDb } = await import('../../../db/index.js');
+      const { listGroupMembers } = await import('../../../db/chat/conversationMemberRepository.js');
+      const { findAgentById } = await import('../../../db/agents/agentRepository.js');
+      const { agentOpensOn } = await import('../../agent-availability.js');
+      const members = new Set(await listGroupMembers(getDb(), data.userId, data.conversationId));
+      return Promise.all(
+        data.roster.map(async (member) => {
+          const found = members.has(member.info.id)
+            ? await findAgentById(getDb(), member.info.id)
+            : null;
+          // Retain the originally authorized roster. This refresh is not a new private-standing grant.
+          const reachable =
+            member.available !== false &&
+            found !== null &&
+            found.status === 'active' &&
+            (await agentOpensOn(found, data.surfaceApplicationId)) === 'reachable';
+          return { ...member, available: reachable };
+        }),
+      );
     },
     select: async (input) => {
       const { selectRoomDecision } = await import('./selector.js');
@@ -119,6 +188,8 @@ export function roomRuntime(): RoomRuntime {
         await processRoomStep(data, {
           ...deps,
           select: (input) => deps.select!({ ...input, signal: controller.signal }),
+          prepareReaction: (input) =>
+            deps.prepareReaction!({ ...input, signal: controller.signal }),
           runTurn: (input) => deps.runTurn({ ...input, signal: controller.signal }),
           publish: async (event) => {
             // Drain an in-flight renewal before clearing: it must not resurrect an idle chain.
@@ -145,6 +216,20 @@ export async function appendRoomReply(
   const { lockMessageThread } = await import('../../../db/chat/messageLock.js');
   return db.transaction(async (tx) => {
     await lockMessageThread(tx, input.userId, input.conversationId);
+    if (input.expectedPersonRequest) {
+      const { findLatestUserMessage, listMessages } = await import(
+        '../../../db/chat/messageRepository.js'
+      );
+      const latest = await findLatestUserMessage(tx, input.userId, input.conversationId);
+      const row =
+        latest?.id === input.expectedPersonRequest.id
+          ? (await listMessages(tx, input.userId, input.conversationId)).find(
+              (r) => r.id === latest.id,
+            )
+          : undefined;
+      if (!row || !isDeepStrictEqual(row.content, input.expectedPersonRequest.content))
+        throw new RoomRequestSupersededError();
+    }
     const last = await findLastMessage(tx, input.userId, input.conversationId);
     const seq = last?.seq == null ? 0 : last.seq + 1;
     const createdAt = new Date();

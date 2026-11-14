@@ -204,7 +204,7 @@ function watchRoom(input: {
           ? 'failed'
           : !settled
             ? 'continuing'
-            : reason !== 'done' && reason !== 'superseded'
+            : reason !== 'done' && reason !== 'waiting_person' && reason !== 'superseded'
               ? 'failed'
               : completed > 0
                 ? 'completed'

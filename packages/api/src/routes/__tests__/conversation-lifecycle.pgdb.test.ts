@@ -65,7 +65,7 @@ vi.mock('../../lib/s3.js', () => ({
 }));
 
 import { closePostgres, connectPostgres, type ApiDatabase } from '../../db/index.js';
-import { conversations, messages } from '../../db/schema/chat.js';
+import { conversations, gemieConversations, messages } from '../../db/schema/chat.js';
 import { speechClips } from '../../db/schema/speech.js';
 import conversationsRouter from '../conversations.js';
 import { mutateMessageReaction } from '../../db/chat/reactionRepository.js';
@@ -623,6 +623,25 @@ describe('every stage of the lifecycle is scoped to the owner (#139 ws6)', () =>
     expect((await storedMessages(ALICE.id))[0].vote).toBe('up');
   });
 
+  it('keeps reactions read-only for the person in a conversation between gemies', async () => {
+    const conversationId = await seed();
+    await db.insert(gemieConversations).values({
+      oxyUserId: ALICE.id,
+      conversationId,
+      firstAgentId: 'peer-a',
+      secondAgentId: 'peer-b',
+    });
+    const response = await call('post', '/:id/messages/:messageId/reactions', {
+      user: ALICE,
+      params: { id: conversationId, messageId: 'msg-1' },
+      body: { emoji: '❤️', active: true, mutationId: randomUUID() },
+    });
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({ error: { code: 'conversation_between_gemies' } });
+    expect((await storedMessages(ALICE.id))[0].reactions).toBeNull();
+    expect(reactionNotifications()).toEqual([]);
+  });
+
   it('returns an idempotent reaction revision and scopes live feedback to the person who owns the message', async () => {
     const conversationId = await seed();
     const mutationId = randomUUID();
@@ -634,7 +653,13 @@ describe('every stage of the lifecycle is scoped to the owner (#139 ws6)', () =>
     const first = await call('post', '/:id/messages/:messageId/reactions', request);
     const retry = await call('post', '/:id/messages/:messageId/reactions', request);
     expect(first.status).toBe(200);
-    expect(first.body).toEqual({ messageId: 'msg-1', reactions: ['❤️'], revision: 1, mutationId });
+    expect(first.body).toEqual({
+      messageId: 'msg-1',
+      reactions: ['❤️'],
+      reactionEntries: [{ emoji: '❤️', author: { kind: 'user', id: ALICE.id } }],
+      revision: 1,
+      mutationId,
+    });
     expect(retry.body).toEqual(first.body);
     expect(reactionNotifications()).toEqual(
       Array.from({ length: 2 }, () => ({
