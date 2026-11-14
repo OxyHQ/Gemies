@@ -5,6 +5,7 @@ import {
   ProductCreditAuthorityUnavailableError,
   productCreditSnapshotOrNone,
   readConfiguredProductCreditSnapshot,
+  readConfiguredProductCreditSnapshotForService,
 } from '../product-credit-access';
 /**
  * Pre-flight assembly for /v1/chat/completions: body validation, the parallel
@@ -952,12 +953,19 @@ export async function buildChatRequestContext(
           // the balance still bounds it.
           // An account Oxy says holds no grant keeps legacy funding; an Oxy that
           // cannot answer is NOT that, and refuses the turn below (503).
-          const productCreditSnapshot =
+          // The person's own session reads their grants with their bearer; a channel turn has
+          // none (the integrations workload carries it), so its account's grants are read as a
+          // service, as background work reads them. Without them it could spend only the legacy
+          // balance, and was refused with a subscription allowance left.
+          const readSnapshot =
             req.user?.id === creditAccountId && req.accessToken
-              ? await productCreditSnapshotOrNone(() =>
-                  readConfiguredProductCreditSnapshot(creditAccountId, req.accessToken),
-                )
-              : undefined;
+              ? () => readConfiguredProductCreditSnapshot(creditAccountId, req.accessToken)
+              : req.channelContext !== undefined
+                ? () => readConfiguredProductCreditSnapshotForService(creditAccountId)
+                : undefined;
+          const productCreditSnapshot = readSnapshot
+            ? await productCreditSnapshotOrNone(readSnapshot)
+            : undefined;
           const window = await usageWindowFor(
             creditAccountId,
             productCreditPlanId(productCreditSnapshot, creditAccountId),
@@ -978,9 +986,8 @@ export async function buildChatRequestContext(
             aliaRequestId,
             productCreditSnapshot,
           });
-          if (reservation?.productAllocationId)
-            reservation.refreshProductCreditSnapshot = () =>
-              readConfiguredProductCreditSnapshot(creditAccountId, req.accessToken);
+          if (reservation?.productAllocationId && readSnapshot)
+            reservation.refreshProductCreditSnapshot = readSnapshot;
           return { reservation, error: false as const, window: null, authorityUnavailable: false };
         })().catch((error) => {
           if (error instanceof ProductCreditAuthorityUnavailableError) {

@@ -112,6 +112,16 @@ vi.mock('../../credits-manager.js', () => ({
   safeRefund: async () => undefined,
 }));
 vi.mock('../../plan-access.js', () => ({ getUserEntitlements: async () => null }));
+const grants = vi.hoisted(() => ({
+  person: vi.fn(async () => undefined),
+  service: vi.fn(async () => undefined),
+}));
+vi.mock('../../product-credit-access', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  readConfiguredProductCreditSnapshot: grants.person,
+  readConfiguredProductCreditSnapshotForService: grants.service,
+  productCreditSnapshotOrNone: async (read: () => Promise<unknown>) => read(),
+}));
 vi.mock('../../oxy.js', async () => {
   const { OxyServices } = await import('@oxy.so/core');
   const { fakeWithUser } = await import('../../../__tests__/mocks/oxy-user-client.js');
@@ -299,6 +309,12 @@ describe('a verified channel turn', () => {
     expect(captured.status).toBeNull();
     expect(reserveCredits).toHaveBeenCalledWith('owner-1', undefined, expect.anything());
     expect(ctx?.creditReservation).toEqual({ reservationId: 'reservation-1' });
+  });
+
+  it('reads that account’s product grants as a service: it has no bearer of its own', async () => {
+    await run(KNOWN, channel);
+    expect(grants.service).toHaveBeenCalledWith('owner-1');
+    expect(grants.person).not.toHaveBeenCalled();
   });
 
   it('is refused when that account is out of credits', async () => {

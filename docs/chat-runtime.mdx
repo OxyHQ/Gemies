@@ -37,7 +37,8 @@ credential never join Kaana's hosted credential pool.
    verified channel turn (a gemie bot's person, a connected account, a linked
    system bot) is paid from that channel's account like the person's own session,
    and refused `402` when it is out of credits, although the integrations workload
-   carries it.
+   carries it. Having no bearer of its own, its account's product grants are read
+   as a service, as background work reads them.
 3. Alia assembles conversation context, memory, agent instructions and tools.
 4. The inference seam calls the published Kaana SDK directly at
    `https://kaana.ai/v1`, with the requested model or level and reasoning effort.
