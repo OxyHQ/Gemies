@@ -292,8 +292,8 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
 }
 
 /**
- * One message the server appends: a voice call's (ADR 0017 §3), text; a gemie bot's third-party
- * turn's, whose user message may be a channel message's parts (its words and its kept media).
+ * One message the server appends: a gemie bot's third-party turn's, whose user message may be a
+ * channel message's parts (its words and its kept media).
  */
 export interface AppendedMessage<Content extends MessageContent = string> {
   /** The client id the message is stored under. */
@@ -301,8 +301,6 @@ export interface AppendedMessage<Content extends MessageContent = string> {
   readonly role: 'user' | 'assistant';
   readonly content: Content;
   readonly toolInvocations?: ToolInvocation[];
-  /** A spoken answer the person talked over: how much of it they heard. */
-  readonly interruptedAfterMs?: number;
 }
 
 /** Retries on the one conflict a concurrent append produces. */
@@ -312,21 +310,20 @@ const MAX_APPEND_ATTEMPTS = 4;
  * Append messages at the END of a conversation, without the client's history.
  *
  * `saveConversation` reconciles the CLIENT's view of a thread with what is
- * stored, which is the right writer for a turn the client sent. A voice call
- * has no such view: the server is the only one that saw the exchange, so it
- * appends — the next `seq` after the last stored message, retried on exactly
- * the conflict a concurrent append claiming the same `seq` produces (the
- * `postAgentMessage` and Alia-outreach precedent). Each exchange is appended
- * as it completes, so the thread survives a dropped call.
+ * stored, which is the right writer for a turn the client sent. A third
+ * party's turn on a gemie's bot has no such view: the server is the only one
+ * that saw the exchange, so it appends — the next `seq` after the last stored
+ * message, retried on exactly the conflict a concurrent append claiming the
+ * same `seq` produces (the `postAgentMessage` and Alia-outreach precedent).
  *
- * The conversation row is upserted first, so a call opened in a conversation
+ * The conversation row is upserted first, so an exchange in a conversation
  * that did not exist yet creates it, owned by the person.
  */
 export async function appendConversationMessages<Content extends MessageContent = string>(params: {
   readonly userId: string;
   readonly conversationId: string;
   readonly messages: readonly AppendedMessage<Content>[];
-  /** The gemie of the call, which a conversation it creates belongs to. */
+  /** The gemie of the exchange, which a conversation it creates belongs to. */
   readonly agentId: string;
   readonly titleOnInsert: string;
   /** Where a conversation it creates comes from; `app` unless said. */
@@ -358,9 +355,6 @@ export async function appendConversationMessages<Content extends MessageContent 
       ...(message.toolInvocations && message.toolInvocations.length > 0
         ? { toolInvocations: message.toolInvocations }
         : {}),
-      ...(message.interruptedAfterMs === undefined
-        ? {}
-        : { interruptedAfterMs: Math.round(message.interruptedAfterMs) }),
     })),
   );
   void publishConversation(userId, conversationId, { appendedFromSeq: next });

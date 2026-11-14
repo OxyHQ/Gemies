@@ -96,7 +96,6 @@ export type VoiceClientEvent =
       locale: string;
     }
   | { type: 'session.resume'; protocol: number; voiceSessionId: string; afterSeq: number }
-  | { type: 'playback.interrupted'; itemId: string; playedMs: number }
   | { type: 'session.end' };
 
 export type VoiceServerEvent =
@@ -118,7 +117,6 @@ export type VoiceServerEvent =
    */
   | { type: 'transcript.delta'; role: VoiceRole; messageId: string; itemId: string; text: string }
   | { type: 'transcript.done'; role: VoiceRole; messageId: string; itemId: string; text: string }
-  | { type: 'assistant.audio_done'; itemId: string }
   | {
       type: 'assistant.done';
       itemId: string | null;
@@ -199,7 +197,6 @@ export function parseVoiceServerEvent(raw: string): ReceivedVoiceEvent | null {
     }
     case 'user.speech_started':
     case 'user.speech_stopped':
-    case 'assistant.audio_done':
       return isString(event.itemId) ? { type: event.type, itemId: event.itemId, ...seq } : null;
     case 'transcript.delta':
     case 'transcript.done':

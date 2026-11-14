@@ -88,6 +88,7 @@ import {
 // Streaming dictation: `GET /v1/audio/transcriptions/stream` (ADR 0024)
 import { dictationStreamRoute, shutdownDictations } from './lib/dictation/socket.js';
 import { routeWebSocketUpgrades } from './lib/websocket-upgrades.js';
+import { API_PORT } from './lib/api-port.js';
 
 // Bun loads `.env` from the working directory before any module runs; the
 // package scripts (`bun run dev`, `bun run start`) run from packages/api, so
@@ -101,11 +102,7 @@ const app = express();
 // hostname, behind Cloudflare too; a forged X-Forwarded-For is never believed.
 // Set before any middleware so everything after it sees the same address.
 app.set('trust proxy', oxyTrustProxy);
-// Local dev default only — ECS injects PORT explicitly (oxy-infra
-// terraform-uswest2/app-services-realtime.tf sets it to 3001). 4150 is the main
-// API's slot in Alia's 4150-4159 block of the per-app port map, so several Oxy
-// backends can run side by side on one machine.
-const PORT = parseInt(process.env.PORT || '4150', 10);
+const PORT = API_PORT;
 
 // Create HTTP server with optimized settings for streaming
 const server = http.createServer(

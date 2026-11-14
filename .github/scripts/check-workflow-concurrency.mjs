@@ -58,6 +58,8 @@ const EXPECTED = {
   'publish-update.yml': 'serialised',
   // One live Kaana transcription session at a time, billed to the QA account.
   'production-dictation-canary.yml': 'serialised',
+  // One live voice call at a time, billed to the QA account, which one call per person holds.
+  'production-voice-canary.yml': 'serialised',
   // One instance restarted over SSM: two overlapping restarts could leave the
   // unit on the older digest pair.
   'deploy-gemies-os.yml': 'serialised',

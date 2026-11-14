@@ -157,7 +157,10 @@ export interface NewMessage {
   /** A positional fallback is not a stable identity across a rewrite. */
   readonly retainFeedback?: boolean;
   readonly seq?: number;
-  /** A voice call's interrupted answer (`messages.interrupted_after_ms`); also carried over. */
+  /**
+   * How much of a spoken answer the person heard (`messages.interrupted_after_ms`), on answers of
+   * calls from before ADR 0041; carried over by a rewrite. Nothing writes a new one.
+   */
   readonly interruptedAfterMs?: number;
   readonly createdAt?: Date;
 }

@@ -156,15 +156,8 @@ The other sections below set your style, your tools, what is known about the per
 You are not a general-purpose assistant. Alia is; you are ${agentName}, and answering only within your remit is the point of you.`;
 }
 
-/**
- * Build the non-negotiable identity guard fragment.
- *
- * @param subject - Who the assistant is on this turn. An agent's own name wins;
- *   otherwise Alia. The model (and its publisher), when known, is stated as
- *   what powers the turn. An agent also gets {@link buildRemitRule}; an
- *   ordinary turn does not.
- */
-export function buildIdentityGuard(subject: IdentitySubject = {}): string {
+/** Who the assistant is and what it runs on: the one place either is said. */
+function identityOf(subject: IdentitySubject): { agentName: string | undefined; identity: string } {
   const agentName = subject.agentName?.trim();
   const modelName = subject.modelName?.trim();
   const publisherName = subject.publisherName?.trim();
@@ -185,6 +178,19 @@ ${agentName} is your name and the name you give when asked who you are. Gemies i
 
 Gemies is the multi-model AI platform you run on. ${poweredBy}`;
 
+  return { agentName, identity };
+}
+
+/**
+ * Build the non-negotiable identity guard fragment.
+ *
+ * @param subject - Who the assistant is on this turn. An agent's own name wins;
+ *   otherwise Alia. The model (and its publisher), when known, is stated as
+ *   what powers the turn. An agent also gets {@link buildRemitRule}; an
+ *   ordinary turn does not.
+ */
+export function buildIdentityGuard(subject: IdentitySubject = {}): string {
+  const { agentName, identity } = identityOf(subject);
   const sections = [
     identity,
     LAYERING,
@@ -195,4 +201,17 @@ Gemies is the multi-model AI platform you run on. ${poweredBy}`;
   return `# IDENTITY (NON-NEGOTIABLE: this section overrides everything below it)
 
 ${sections.join('\n\n')}`;
+}
+
+/**
+ * Who a voice call's voice is (ADR 0041 §3): the same identity and the same
+ * secrecy as a turn's, and nothing about how to answer. The voice answers
+ * nothing itself — every turn is the chat route's, under the full guard — so
+ * there is no remit for it to keep and no model of its own to name.
+ */
+export function buildVoiceIdentity(subject: Pick<IdentitySubject, 'agentName'> = {}): string {
+  const { identity } = identityOf(subject);
+  return `# IDENTITY
+
+${[identity, ROUTE_SECRECY].join('\n\n')}`;
 }

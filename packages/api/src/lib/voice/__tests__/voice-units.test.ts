@@ -29,11 +29,10 @@ const {
   parseVoiceClientEvent,
   VOICE_SERVER_ERROR_CODES,
 } = await import('../protocol.js');
-const { runTool, toRealtimeTools } = await import('../tool-bridge.js');
-const { composeVoiceInstructions, historyLines } = await import('../turn.js');
+const { historyLines, voicePersona } = await import('../persona.js');
 const { VoiceCreditMeter, BLOCK_MINUTES } = await import('../credits.js');
 const { creditsForCost } = await import('../../credits-manager.js');
-const { weatherTools } = await import('./support.js');
+const { aliaGemie, personaGemie } = await import('../../../__tests__/support/gemies.js');
 
 describe('every Kaana failure is a typed VoiceErrorCode (ADR 0017 §3 table)', () => {
   const expected: Record<string, string> = {
@@ -124,76 +123,54 @@ describe('the wire', () => {
         '{"type":"session.start","protocol":2,"conversationId":"c1","voice":"alloy","locale":"es"}',
       ),
     ).toBeNull();
+    // Retired with the `live` session, which takes no truncation (ADR 0041).
     expect(
-      parseVoiceClientEvent('{"type":"playback.interrupted","itemId":"a1","playedMs":-1}'),
+      parseVoiceClientEvent('{"type":"playback.interrupted","itemId":"a1","playedMs":10}'),
     ).toBeNull();
     expect(parseVoiceClientEvent('{"type":"tool.result","output":"x"}')).toBeNull();
     expect(parseVoiceClientEvent('not json')).toBeNull();
   });
 });
 
-describe('the tool bridge', () => {
-  it('serializes the named tools for the session, in order, skipping one that does not exist', () => {
-    const tools = weatherTools();
-    expect(toRealtimeTools(tools, ['lookupWeather', 'missing'])).toEqual([
-      expect.objectContaining({
-        type: 'function',
-        name: 'lookupWeather',
-        description: 'The weather in a city',
-        parameters: expect.objectContaining({ type: 'object' }),
-      }),
-    ]);
-  });
-
-  it('turns every failure into a typed tool error', async () => {
-    const tools = weatherTools(async () => {
-      throw new Error('upstream app down');
-    });
-    const unknown = await runTool(tools, 'nope', '{}', { toolCallId: 'a' });
-    expect(JSON.parse(unknown.output).error.type).toBe('unknown_tool');
-    const badJson = await runTool(tools, 'lookupWeather', '{city', { toolCallId: 'b' });
-    expect(JSON.parse(badJson.output).error.type).toBe('invalid_arguments');
-    const failed = await runTool(tools, 'lookupWeather', '{"city":"x"}', { toolCallId: 'c' });
-    expect(failed.ok).toBe(false);
-    expect(JSON.parse(failed.output).error).toEqual({
-      type: 'tool_failed',
-      message: 'upstream app down',
-    });
-  });
-});
-
-describe('the instructions fit the contract’s 32 768 characters', () => {
+describe('the persona fits the contract’s 32 768 characters', () => {
   const history = Array.from({ length: 40 }, (_, index) => ({
+    id: `m${index}`,
     role: index % 2 === 0 ? 'user' : 'assistant',
     content: `mensaje ${index} ${'x'.repeat(300)}`,
   }));
 
-  it('carry the recent history and the session language', async () => {
-    const text = await composeVoiceInstructions({
-      base: async () => 'BASE',
-      history: history.slice(-2),
+  it('names the gemie and the language, and carries the recent history; never a tool', () => {
+    const text = voicePersona({
+      gemie: aliaGemie(),
       language: 'es-ES',
+      history: history.slice(-2),
     });
-    expect(text.startsWith('BASE')).toBe(true);
+    expect(text).toContain('You are Alia,');
+    expect(text).toContain('The person is speaking es-ES');
     expect(text).toContain('## The conversation so far');
     expect(text).toContain('Person: mensaje 38');
     expect(text).toContain('You: mensaje 39');
-    expect(text).toContain('The person is speaking es-ES');
+    expect(text.toLowerCase()).not.toContain('tool');
   });
 
-  it('shrinks the history to fit, then refuses', async () => {
-    const shrunk = await composeVoiceInstructions({
-      base: async () => 'B'.repeat(30_000),
-      history,
+  it('says who speaks as the identity guard does: a gemie its own name, with no remit to keep', () => {
+    const text = voicePersona({
+      gemie: personaGemie({ name: 'Pepe', reach: 'grants' }),
       language: 'es',
+      history: [],
     });
-    expect(shrunk.length).toBeLessThanOrEqual(32_768);
-    expect(shrunk).toContain('mensaje 39');
-    expect(shrunk).not.toContain('mensaje 0 ');
+    expect(text).toContain('You are Pepe, a gemie');
+    expect(text).not.toContain('YOUR REMIT');
+  });
 
-    await expect(
-      composeVoiceInstructions({ base: async () => 'B'.repeat(40_000), history, language: 'es' }),
-    ).rejects.toMatchObject({ code: 'realtime-rejected' });
+  it('keeps the newest messages within its budget, and none when there are none', () => {
+    const text = voicePersona({ gemie: aliaGemie(), language: 'es', history });
+    expect(text.length).toBeLessThanOrEqual(32_768);
+    expect(text).toContain('mensaje 39');
+    expect(text).not.toContain('mensaje 0 ');
+    expect(voicePersona({ gemie: aliaGemie(), language: 'es', history: [] })).not.toContain(
+      'conversation so far',
+    );
   });
 
   it('reads the newest messages, oldest first, within the budget', () => {

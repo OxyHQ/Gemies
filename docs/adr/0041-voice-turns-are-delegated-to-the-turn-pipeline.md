@@ -3,8 +3,9 @@
 *Cada turno de voz lo responde el mismo pipeline que el chat escrito; qué voz suena lo decide el catálogo de Kaana.*
 
 **Status:** Accepted by the owner on 2026-11-14, with the answers recorded in Kaana ADR 0012 §9 (one
-OpenAI project, verbatim spans, `marin`/`cedar`, Grok kept as the fallback). Being built as phase G1.
-Production voice stays on the ADR 0017 path until G1 ships and its canary passes.
+OpenAI project, verbatim spans, `marin`/`cedar`, Grok kept as the fallback). Built as phase G1
+([`docs/voice.mdx`](../voice.mdx)); it reaches production once Kaana serves a `live` line there (Kaana
+ADR 0012, K2–K5) and the production voice canary (`production-voice-canary.yml`) passes.
 
 **Date:** 2026-11-14
 

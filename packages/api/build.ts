@@ -133,6 +133,22 @@ await esbuild.build({
   logLevel: 'info',
 });
 
+// The voice canary is an ECS one-shot like the chat canary (production-voice-canary.yml); its
+// recorded request is data it reads by path beside the bundle, copied below.
+await esbuild.build({
+  entryPoints: ['src/scripts/production-voice-canary.ts'],
+  bundle: true,
+  platform: 'node',
+  target: 'node20',
+  format: 'esm',
+  outfile: 'dist/scripts/production-voice-canary.js',
+  plugins: [externalizeNodeModules],
+  sourcemap: false,
+  minify: false,
+  logLevel: 'info',
+});
+await cp('src/scripts/fixtures', 'dist/scripts/fixtures', { recursive: true });
+
 // Reviewed organization mapping is an ECS one-shot; the runtime image has no src/ directory.
 await esbuild.build({
   entryPoints: ['src/scripts/backfill-workspace-organizations.ts'],

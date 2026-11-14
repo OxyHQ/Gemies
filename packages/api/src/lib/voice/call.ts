@@ -1,67 +1,56 @@
 /**
- * One voice call: Alia between the person's socket and a Kaana realtime
- * session (ADR 0017 §3).
+ * One voice call: Gemies between the person's socket and a Kaana `live`
+ * session (ADR 0017 §3 as amended by ADR 0041).
  *
- *   socket ──audio──▶ VoiceCall ──appendAudio──▶ Kaana session ──▶ provider
+ *   socket ──audio──▶ VoiceCall ──appendAudio──▶ Kaana live session ──▶ voice
  *          ◀─audio + events── │ ◀──server events──┘
- *                             ├─ tools run HERE (`tool-bridge.ts`)
- *                             ├─ transcripts → messages (`appendConversationMessages`)
+ *                             ├─ delegation.requested → one chat turn (`delegated-turn.ts`)
+ *                             │    └─ its answer → delegation.reply, sentence by sentence
  *                             ├─ credits per minute (`credits.ts`)
  *                             └─ one call per person (`call-registry.ts`)
  *
+ * The voice is a front end: it listens, decides when the person finished, and
+ * speaks what it is given. Every turn it hands over is answered by the chat
+ * route with the same gemie, tools, memory, model and credits as a typed turn,
+ * and stored there. The voice holds only a persona and the recent
+ * conversation (`persona.ts`).
+ *
  * The device gets audio, transcripts and a few UI events; never an
- * instruction, a tool schema, tool arguments or a result.
+ * instruction, a tool's arguments or its result.
  *
  * ## Opening, in the ADR's order
  *
- * Plan (`voice-mode`, enforced HERE, not only by the app) → the agent → the
- * realtime model, computed from Kaana's catalogue → the first credit block →
- * the one-call rule (this call takes over any other) → the turn's inputs and
- * tools → Kaana. The client stays `connecting` until Kaana's
+ * Plan (`voice-mode`, enforced HERE, not only by the app) → the gemie → the
+ * catalogue's default `live` line and its voice for the person's gender → the
+ * first credit block → the one-call rule (this call takes over any other) →
+ * the persona → Kaana. Another `live` line is tried only when the model itself
+ * refused the open. The client stays `connecting` until Kaana's
  * `session.created` (→ `session.ready`).
  *
- * ## Turns and barge-in are the provider's
+ * ## Turns
  *
- * `server_vad` with `createResponse` and `interruptResponse`. On
- * `input_audio.speech_started` Alia forwards `user.speech_started`; the client
- * flushes its playback and reports how much of the item it played
- * (`playback.interrupted`), and Alia truncates the item there, so the model
- * remembers what was heard.
- *
- * ## Transcripts become messages
- *
- * Each exchange is appended as it completes — the person's words (the
- * session's own input transcription) and the answer (its output transcript,
- * with the tool round trips) — so the thread survives a dropped call. An
- * interrupted answer is stored whole with the milliseconds that were heard. A
- * response with no output stores nothing.
+ * `delegation.requested` carries the person's words since the last turn. They
+ * become the person's message and the chat route's answer the gemie's, under
+ * the ids every transcript and tool event of the turn names, so the device's
+ * bubbles are the stored messages. `delegation.superseded` stops the turn the
+ * way the app's Stop does; words the stop kept from being stored open the
+ * next turn. A turn that fails is a typed failure: the voice is told so in
+ * silent context and the delegation is dropped, never answered with filler.
  */
 
 import { randomUUID } from 'node:crypto';
-import type { HydratedAgent } from '../agent-identity.js';
-import type { AppendedMessage } from '../conversation-saver.js';
 import type { RealtimeServerEvent } from '@kaana.ai/contracts';
 import type { RealtimeClientEventInput, RealtimeSession } from '@kaana.ai/sdk';
+import type { HydratedAgent } from '../agent-identity.js';
 import { log } from '../logger.js';
-import { rankRealtimeCandidates, type RealtimeCandidate } from '../models/voice-models.js';
-import { VoiceCreditMeter } from './credits.js';
-import {
-  isModelRefusal,
-  VoiceFailure,
-  voiceFailureFromKaana,
-  upstreamOfFailure,
-  VOICE_ERROR_TEXT,
-} from './errors.js';
-import {
-  encodeAssistantAudioFrame,
-  MAX_CLIENT_AUDIO_FRAME_BYTES,
-  type SequencedVoiceEvent,
-  VOICE_BYTES_PER_MS,
-  type VoiceCloseReason,
-  type VoiceSessionEvent,
-} from './protocol.js';
-import { runTool, toRealtimeTools } from './tool-bridge.js';
-import type { HistoryMessage, VoiceTurnContext } from './turn.js';
+import { liveVoiceLines, type LiveVoiceLine } from '../models/voice-models.js';
+import type {
+  CallState,
+  CarriedWords,
+  DelegationOutcome,
+  DelegationState,
+  UpstreamState,
+} from './call-state.js';
 import {
   END_REASON,
   sessionLimits,
@@ -71,15 +60,24 @@ import {
   type VoiceCallStart,
   type VoiceClientSink,
 } from './call-contract.js';
-import type {
-  CallState,
-  LedgerEntry,
-  ResponseState,
-  ToolCallState,
-  TurnEntry,
-  UpstreamState,
-  UserEntry,
-} from './call-state.js';
+import { VoiceCreditMeter } from './credits.js';
+import { DelegatedTurnFailure, newTurnId } from './delegated-turn.js';
+import {
+  isModelRefusal,
+  upstreamOfFailure,
+  VOICE_ERROR_TEXT,
+  VoiceFailure,
+  voiceFailureFromKaana,
+} from './errors.js';
+import { voicePersona } from './persona.js';
+import {
+  encodeAssistantAudioFrame,
+  MAX_CLIENT_AUDIO_FRAME_BYTES,
+  type SequencedVoiceEvent,
+  type VoiceCloseReason,
+  type VoiceSessionEvent,
+} from './protocol.js';
+import { SentenceChunker, verbatimSpans } from './speech-chunks.js';
 
 export {
   VOICE_CALL_LIMITS,
@@ -90,10 +88,12 @@ export {
 } from './call-contract.js';
 
 /**
- * What a failed `close()` leaves Alia to do: nothing. Kaana settles every
+ * What a failed `close()` leaves Gemies to do: nothing. Kaana settles every
  * session it ends, including one closed here that it had already ended.
  */
 function settledByKaana(): void {}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref?.());
 
 /* -------------------------------------------------------------------------- */
 /*  The call                                                                   */
@@ -110,16 +110,15 @@ export class VoiceCall {
   private seq = 0;
   private readonly replay: SequencedVoiceEvent[] = [];
   private accessToken: string;
+  /** The verified app assertion of the call's socket, which the turns carry (ADR 0021). */
+  private appAssertion: string | null = null;
 
   private start: VoiceCallStart | null = null;
   /** The call's gemie (Alia's when the start named none), set once the call starts. */
-  private linkedAgent: HydratedAgent | null = null;
-  private candidate: RealtimeCandidate | null = null;
+  private gemie: HydratedAgent | null = null;
+  private line: LiveVoiceLine | null = null;
   private meter: VoiceCreditMeter | null = null;
-  private turn: VoiceTurnContext | null = null;
   private registered = false;
-  private historyWasEmpty = false;
-  private firstPersist = true;
 
   private upstream: UpstreamState | null = null;
   private pastUsd = 0;
@@ -128,30 +127,31 @@ export class VoiceCall {
   private openedAt: number | null = null;
   private reopens = 0;
   private inputAcknowledged = false;
-  private sentToolNames: string[] = [];
 
-  private readonly ledger: LedgerEntry[] = [];
-  private currentTurn: TurnEntry | null = null;
-  private readonly responses = new Map<string, ResponseState>();
-  private readonly toolCalls = new Map<string, ToolCallState>();
-  private readonly audioBytes = new Map<string, number>();
-  private readonly interrupted = new Map<string, number>();
-  private responsesInFlight = 0;
-  private endAfterResponse = false;
-  private persisting: Promise<void> = Promise.resolve();
-  private readonly toolAbort = new AbortController();
+  /** The turns the voice handed over that are still running, by delegation id. */
+  private readonly delegations = new Map<string, DelegationState>();
+  /** Settles when the latest turn has: the next one reads the conversation after it. */
+  private lastTurn: Promise<unknown> = Promise.resolve();
+  /** The person's words the voice has not handed over yet are stored under this id. */
+  private pendingUserMessageId: string | null = null;
+  /** Each input item's message, so a late transcript stays on the message it belongs to. */
+  private readonly inputMessages = new Map<string, string>();
+  /** What the voice says now belongs to this message: the latest turn's answer. */
+  private speakingMessageId: string | null = null;
+  private current: DelegationState | null = null;
+  private carried: CarriedWords[] = [];
+  private endAfterTurn = false;
 
   private durationTimer: NodeJS.Timeout | null = null;
   private warningTimer: NodeJS.Timeout | null = null;
   private idleTimer: NodeJS.Timeout | null = null;
   private creditTimer: NodeJS.Timeout | null = null;
   private graceTimer: NodeJS.Timeout | null = null;
-  private ledgerTimer: NodeJS.Timeout | null = null;
   private ending: Promise<void> | null = null;
   private failure: VoiceFailure | null = null;
   private closeReason: VoiceCloseReason | null = null;
   private resolveEnded: () => void = () => undefined;
-  /** Resolves once the call has fully ended (stored, settled, told). */
+  /** Resolves once the call has fully ended (settled, told). */
   readonly ended = new Promise<void>((resolve) => {
     this.resolveEnded = resolve;
   });
@@ -170,9 +170,13 @@ export class VoiceCall {
     return this.state === 'closing' || this.state === 'closed';
   }
 
-  /** A fresher token for the same person: the tools act with it from now on. */
-  setAccessToken(token: string): void {
+  /**
+   * Fresher credentials for the same person: the turns run with them from now
+   * on. An `auth` without a verified assertion keeps the one the call has.
+   */
+  setAccessToken(token: string, appAssertion?: string | null): void {
     this.accessToken = token;
+    if (appAssertion) this.appAssertion = appAssertion;
   }
 
   /* ------------------------------ the client ------------------------------ */
@@ -241,25 +245,6 @@ export class VoiceCall {
     }
   }
 
-  /** The client flushed its playback after `user.speech_started`. */
-  onPlaybackInterrupted(itemId: string, playedMs: number): void {
-    const sentMs = (this.audioBytes.get(itemId) ?? 0) / VOICE_BYTES_PER_MS;
-    if (sentMs === 0) return;
-    const heard = Math.max(0, Math.min(Math.floor(playedMs), Math.floor(sentMs)));
-    this.interrupted.set(itemId, heard);
-    if (heard < Math.floor(sentMs) && this.state === 'live')
-      this.command({
-        type: 'conversation.item.truncate',
-        itemId,
-        contentIndex: 0,
-        audioEndMs: heard,
-      });
-    for (const entry of this.ledger)
-      if (entry.kind === 'assistant' && entry.audioItems.has(itemId))
-        entry.interruptedAfterMs = heard;
-    this.flushLedger(false);
-  }
-
   /* -------------------------------- opening ------------------------------- */
 
   async open(start: VoiceCallStart): Promise<void> {
@@ -301,7 +286,7 @@ export class VoiceCall {
         );
       }
       const gemie = agent.agent;
-      this.linkedAgent = gemie;
+      this.gemie = gemie;
 
       const kaana = this.env.kaana;
       if (!kaana) throw new VoiceFailure('realtime-unavailable');
@@ -310,12 +295,12 @@ export class VoiceCall {
         .catch((error: unknown) => {
           throw voiceFailureFromKaana(error);
         });
-      // At most two candidates, and only on the model's own refusal (ADR 0017 §2).
-      const candidates = rankRealtimeCandidates(models, start).slice(0, 2);
-      if (candidates.length === 0) throw new VoiceFailure('realtime-unavailable');
+      // The catalogue's default first; the others only on the model's own refusal (ADR 0041 §1).
+      const lines = liveVoiceLines(models, start);
+      if (lines.length === 0) throw new VoiceFailure('realtime-unavailable');
 
       this.meter = new VoiceCreditMeter(this.oxyUserId, this.env.credits);
-      if (!(await this.meter.open(candidates[0]!.usdPerMinute)))
+      if (!(await this.meter.open(lines[0]!.usdPerMinute)))
         throw new VoiceFailure('credits-exhausted');
       if (this.isClosed) return;
 
@@ -333,23 +318,7 @@ export class VoiceCall {
         await this.env.finishCall(this.callId, END_REASON[this.closeReason ?? 'hangup']);
         return;
       }
-
-      const history = await this.env.loadHistory(this.oxyUserId, start.conversationId);
-      this.historyWasEmpty = history.length === 0;
-      this.turn = await this.env.buildTurn({
-        oxyUserId: this.oxyUserId,
-        accessToken: () => this.accessToken,
-        conversationId: start.conversationId,
-        requestId: this.callId,
-        linkedAgent: gemie,
-        surfaceApplicationId: start.surfaceApplicationId,
-        userMemory: inputs.userMemory,
-        oxyUser: inputs.oxyUser,
-        language: start.locale,
-        history,
-      });
-      if (this.isClosed) return;
-      await this.connect(candidates, history);
+      await this.connect(lines);
     } catch (error) {
       await this.end('error', error instanceof VoiceFailure ? error : voiceFailureFromKaana(error));
     }
@@ -368,42 +337,37 @@ export class VoiceCall {
     }
   }
 
-  /** Open the upstream session on the first candidate that does not refuse it. */
-  private async connect(
-    candidates: readonly RealtimeCandidate[],
-    history: readonly HistoryMessage[],
-  ): Promise<void> {
+  /** Open the upstream `live` session on the first line that does not refuse it. */
+  private async connect(lines: readonly LiveVoiceLine[]): Promise<void> {
     const kaana = this.env.kaana;
-    const turn = this.turn;
     const start = this.start;
-    if (!kaana || !turn || !start) throw new VoiceFailure('realtime-unavailable');
-    const instructions = await turn.instructions(history);
-    this.sentToolNames = turn.activeToolNames();
-    const tools = toRealtimeTools(turn.tools, this.sentToolNames);
+    const gemie = this.gemie;
+    if (!kaana || !start || !gemie) throw new VoiceFailure('realtime-unavailable');
+    const history = await this.env.loadHistory(this.oxyUserId, start.conversationId);
+    const instructions = voicePersona({ gemie, language: start.locale, history });
     const elapsed = this.openedAt === null ? 0 : this.now() - this.openedAt;
     const remaining = Math.max(1_000, this.limits.maxDurationMs - elapsed);
 
     let session: RealtimeSession | null = null;
-    for (const [index, candidate] of candidates.entries()) {
+    for (const [index, line] of lines.entries()) {
       try {
         session = await kaana.realtime.connect(
           {
-            model: candidate.model.modelId,
+            model: line.model.modelId,
             type: 'session.open',
-            kind: 'conversation',
+            kind: 'live',
             transport: 'websocket',
             config: {
               instructions,
-              outputModalities: ['audio'],
-              voice: candidate.voiceId,
+              voice: line.voiceId,
               inputAudioFormat: 'pcm16_24khz',
               outputAudioFormat: 'pcm16_24khz',
-              // Barge-in is the session's; the silence that ends a turn is Kaana's default.
+              // The voice decides when the person finished and when it may be interrupted.
               turnDetection: { type: 'server_vad', createResponse: true, interruptResponse: true },
-              // The person's words become messages, transcribed inside the session
-              // in the person's own BCP 47 locale.
+              // The person's words, transcribed in their own BCP 47 locale.
               inputAudioTranscription: { language: start.locale },
-              ...(tools.length > 0 ? { tools } : {}),
+              // A short "one moment" while the turn is answered.
+              delegation: { acknowledgement: 'auto' },
             },
             limits: sessionLimits(remaining, this.limits.idleTimeoutMs),
             clientSessionId: this.callId,
@@ -411,21 +375,21 @@ export class VoiceCall {
           },
           { onBehalfOfUserId: this.oxyUserId },
         );
-        this.candidate = candidate;
+        this.line = line;
         break;
       } catch (error) {
-        if (index < candidates.length - 1 && isModelRefusal(error)) {
+        if (index < lines.length - 1 && isModelRefusal(error)) {
           log.voice.warn(
-            { model: candidate.model.modelId, callId: this.callId },
-            'Realtime model refused the call; trying the next candidate',
+            { model: line.model.modelId, callId: this.callId },
+            'Live model refused the call; trying the next line',
           );
           continue;
         }
         throw voiceFailureFromKaana(error);
       }
     }
-    if (!session || !this.candidate) throw new VoiceFailure('realtime-unavailable');
-    this.meter?.reprice(this.candidate.usdPerMinute);
+    if (!session || !this.line) throw new VoiceFailure('realtime-unavailable');
+    this.meter?.reprice(this.line.usdPerMinute);
     if (this.isClosed) {
       await session.close().catch(settledByKaana);
       return;
@@ -450,7 +414,7 @@ export class VoiceCall {
           if (event.type === 'session.closed') upstream.endedAt ??= this.now();
           continue;
         }
-        this.handle(upstream, event);
+        this.handle(event);
         if (event.type === 'session.closed') return;
       }
     } catch (error) {
@@ -460,7 +424,7 @@ export class VoiceCall {
     }
   }
 
-  /** Alia ↔ Kaana dropped: resume within Kaana's window, else a new session under the same call. */
+  /** Gemies ↔ Kaana dropped: resume within Kaana's window, else a new session under the same call. */
   private async recover(upstream: UpstreamState): Promise<void> {
     this.state = 'reconnecting';
     this.emit({ type: 'session.reconnecting' });
@@ -478,7 +442,7 @@ export class VoiceCall {
   private async reopen(): Promise<void> {
     if (this.isClosed) return;
     this.reopens += 1;
-    if (this.reopens > this.limits.maxReopens || !this.candidate || !this.turn || !this.start) {
+    if (this.reopens > this.limits.maxReopens || !this.line || !this.start) {
       await this.end('error', new VoiceFailure('realtime-failed', { retryable: true }));
       return;
     }
@@ -491,111 +455,64 @@ export class VoiceCall {
       this.upstream = null;
       void previous.session.close().catch(settledByKaana);
     }
-    // What the old session said is in the new one's instructions.
-    this.closeOpenTurn('cancelled');
-    this.flushLedger(true);
-    await this.persisting;
+    // The old session's delegations died with it; what was stored is in the new persona.
+    for (const delegation of this.delegations.values()) this.stopTurn(delegation, 'superseded');
+    await Promise.race([this.lastTurn, sleep(this.limits.settleWaitMs)]);
     try {
-      const history = await this.env.loadHistory(this.oxyUserId, this.start.conversationId);
-      await this.connect([this.candidate], history);
+      await this.connect([this.line]);
     } catch (error) {
       await this.end('error', error instanceof VoiceFailure ? error : voiceFailureFromKaana(error));
     }
   }
 
-  private handle(upstream: UpstreamState, event: RealtimeServerEvent): void {
+  private handle(event: RealtimeServerEvent): void {
     if (event.type === 'session.closed') {
-      upstream.endedAt ??= this.now();
+      if (this.upstream) this.upstream.endedAt ??= this.now();
       this.onUpstreamClosed(event.reason);
       return;
     }
     if (this.isClosed) return;
     switch (event.type) {
       case 'session.created':
-        this.onCreated(upstream, event);
+        this.onCreated(event);
         return;
       case 'input_audio.speech_started':
         this.activity();
-        this.userEntry(event.itemId);
         this.emit({ type: 'user.speech_started', itemId: event.itemId });
         return;
       case 'input_audio.speech_stopped':
         this.activity();
-        this.userEntry(event.itemId);
         this.emit({ type: 'user.speech_stopped', itemId: event.itemId });
         return;
-      case 'input_audio.committed':
-        this.userEntry(event.itemId);
-        return;
-      case 'transcript.delta': {
-        if (event.source === 'input_audio') {
-          this.emit({
-            type: 'transcript.delta',
-            role: 'user',
-            messageId: this.userEntry(event.itemId).messageId,
-            itemId: event.itemId,
-            text: event.text,
-          });
-          return;
-        }
-        const turn = this.openTurn();
-        turn.texts.set(event.itemId, (turn.texts.get(event.itemId) ?? '') + event.text);
-        this.emit({
-          type: 'transcript.delta',
-          role: 'assistant',
-          messageId: turn.messageId,
-          itemId: event.itemId,
-          text: event.text,
-        });
-        return;
-      }
+      case 'transcript.delta':
       case 'transcript.done': {
+        this.activity();
+        const text = event.type === 'transcript.delta' ? event.text : event.transcript;
         if (event.source === 'input_audio') {
-          const entry = this.userEntry(event.itemId);
-          entry.text = event.transcript;
           this.emit({
-            type: 'transcript.done',
+            type: event.type,
             role: 'user',
-            messageId: entry.messageId,
+            messageId: this.userMessageOf(event.itemId),
             itemId: event.itemId,
-            text: event.transcript,
+            text,
           });
-          this.flushLedger(false);
           return;
         }
-        const turn = this.openTurn();
-        turn.texts.set(event.itemId, event.transcript);
+        this.speakingMessageId ??= `voice-${randomUUID()}`;
+        if (this.current) this.current.lastAudioItem = event.itemId;
         this.emit({
-          type: 'transcript.done',
+          type: event.type,
           role: 'assistant',
-          messageId: turn.messageId,
+          messageId: this.speakingMessageId,
           itemId: event.itemId,
-          text: event.transcript,
-        });
-        return;
-      }
-      case 'response.created': {
-        this.activity();
-        this.responsesInFlight += 1;
-        this.responses.set(event.responseId, {
-          turn: this.openTurn(),
-          toolCalls: 0,
-          pending: [],
-          audioItem: null,
+          text,
         });
         return;
       }
       case 'output_audio.delta': {
-        const response = this.responses.get(event.responseId);
-        if (response) {
-          response.audioItem = event.itemId;
-          response.turn.audioItems.add(event.itemId);
-        }
+        this.activity();
+        if (this.current) this.current.lastAudioItem = event.itemId;
         const pcm = Buffer.from(event.data, 'base64');
-        this.audioBytes.set(
-          event.itemId,
-          (this.audioBytes.get(event.itemId) ?? 0) + pcm.byteLength,
-        );
         try {
           this.sink?.sendAudio(encodeAssistantAudioFrame(event.itemId, pcm));
         } catch (error) {
@@ -603,20 +520,20 @@ export class VoiceCall {
         }
         return;
       }
-      case 'output_audio.done':
-        this.emit({ type: 'assistant.audio_done', itemId: event.itemId });
+      case 'delegation.requested':
+        this.activity();
+        this.delegate(event.delegationId, event.text);
         return;
-      case 'tool_call':
-        this.onToolCall(upstream, event);
+      case 'delegation.superseded': {
+        const delegation = this.delegations.get(event.delegationId);
+        if (delegation) this.stopTurn(delegation, 'superseded');
         return;
-      case 'response.done':
-        this.onResponseDone(upstream, event);
-        return;
+      }
       case 'error':
         if (event.fatal) void this.end('error', voiceFailureFromKaana(event.error));
         else
           log.voice.warn(
-            { code: event.error.code, callId: this.callId },
+            { code: event.error.code, param: event.error.param, callId: this.callId },
             'Upstream refused a command; the call goes on',
           );
         return;
@@ -625,10 +542,9 @@ export class VoiceCall {
     }
   }
 
-  private onCreated(
-    upstream: UpstreamState,
-    event: Extract<RealtimeServerEvent, { type: 'session.created' }>,
-  ): void {
+  private onCreated(event: Extract<RealtimeServerEvent, { type: 'session.created' }>): void {
+    const upstream = this.upstream;
+    if (!upstream) return;
     const firstCreated = upstream.requestId === null;
     upstream.requestId = event.requestId;
     if (firstCreated) {
@@ -643,14 +559,14 @@ export class VoiceCall {
     const first = this.openedAt === null;
     if (first) this.openedAt = this.now();
     this.state = 'live';
-    const candidate = this.candidate;
+    const line = this.line;
     const elapsed = this.now() - (this.openedAt ?? this.now());
     this.emit({
       type: 'session.ready',
       model: {
         id: event.model,
-        displayName: candidate?.model.displayName ?? event.model,
-        publisher: candidate?.model.publisher.displayName ?? '',
+        displayName: line?.model.displayName ?? event.model,
+        publisher: line?.model.publisher.displayName ?? '',
       },
       maxDurationMs: Math.max(0, this.limits.maxDurationMs - elapsed),
       idleTimeoutMs: this.limits.idleTimeoutMs,
@@ -688,258 +604,219 @@ export class VoiceCall {
     }
   }
 
-  /* --------------------------------- tools -------------------------------- */
+  /* --------------------------------- turns -------------------------------- */
 
-  private onToolCall(
-    upstream: UpstreamState,
-    event: Extract<RealtimeServerEvent, { type: 'tool_call' }>,
-  ): void {
-    const state = this.toolCalls.get(event.toolCallId) ?? {
-      name: '',
-      args: '',
-      responseId: event.responseId,
-    };
-    if (event.name) state.name = event.name;
-    if (event.argumentsDelta) state.args += event.argumentsDelta;
-    this.toolCalls.set(event.toolCallId, state);
-    if (!event.complete) return;
-    this.toolCalls.delete(event.toolCallId);
-
-    const response = this.responses.get(state.responseId) ?? {
-      turn: this.openTurn(),
-      toolCalls: 0,
-      pending: [],
-      audioItem: null,
-    };
-    this.responses.set(state.responseId, response);
-    response.toolCalls += 1;
-    const tools = this.turn?.tools ?? {};
-    const name = state.name;
-    this.activity();
-    const messageId = response.turn.messageId;
-    this.emit({ type: 'tool.started', messageId, callId: event.toolCallId, name });
-    const running = runTool(tools, name, state.args, {
-      toolCallId: event.toolCallId,
-      signal: this.toolAbort.signal,
-    }).then((result) => {
-      let args: unknown = {};
-      try {
-        args = state.args.trim() === '' ? {} : JSON.parse(state.args);
-      } catch {
-        args = state.args;
-      }
-      response.turn.toolInvocations.push({
-        toolCallId: event.toolCallId,
-        toolName: name,
-        state: 'result',
-        args,
-        result: result.result,
-      });
-      if (this.upstream === upstream && !this.isClosed)
-        this.command({
-          type: 'conversation.item.create',
-          item: { type: 'function_call_output', callId: event.toolCallId, output: result.output },
-        });
-      this.emit({
-        type: 'tool.finished',
-        messageId,
-        callId: event.toolCallId,
-        name,
-        ok: result.ok,
-      });
-      this.activity();
-    });
-    response.pending.push(running);
+  /** The message an input item's words belong to: the turn the voice has not handed over yet. */
+  private userMessageOf(itemId: string): string {
+    const known = this.inputMessages.get(itemId);
+    if (known) return known;
+    this.pendingUserMessageId ??= `voice-${randomUUID()}`;
+    this.inputMessages.set(itemId, this.pendingUserMessageId);
+    return this.pendingUserMessageId;
   }
 
-  private onResponseDone(
-    upstream: UpstreamState,
-    event: Extract<RealtimeServerEvent, { type: 'response.done' }>,
-  ): void {
-    this.activity();
-    this.responsesInFlight = Math.max(0, this.responsesInFlight - 1);
-    const response = this.responses.get(event.responseId);
-    this.responses.delete(event.responseId);
-    this.emit({
-      type: 'assistant.done',
-      itemId: response?.audioItem ?? null,
-      status: event.status,
+  /** One `delegation.requested`: one chat turn, started now, answered as it streams. */
+  private delegate(delegationId: string, text: string): void {
+    if (this.delegations.has(delegationId)) return;
+    const delegation: DelegationState = {
+      delegationId,
+      turnId: newTurnId(),
+      userMessageId: this.pendingUserMessageId ?? `voice-${randomUUID()}`,
+      assistantMessageId: `voice-${randomUUID()}`,
+      controller: new AbortController(),
+      superseded: false,
+      lastAudioItem: null,
+    };
+    // Later words open the next message; what the voice says now is this answer.
+    this.pendingUserMessageId = null;
+    this.speakingMessageId = delegation.assistantMessageId;
+    this.current = delegation;
+    this.delegations.set(delegationId, delegation);
+    const previous = this.lastTurn;
+    const answered = this.answer(delegation, text, previous);
+    this.lastTurn = answered;
+    void answered.then((outcome) => this.afterTurn(delegation, outcome));
+  }
+
+  /** Stop a running turn: superseded (the app's Stop), or because the call no longer needs it. */
+  private stopTurn(delegation: DelegationState, why: 'superseded' | 'call-ended'): void {
+    if (delegation.controller.signal.aborted) return;
+    delegation.superseded = true;
+    delegation.controller.abort();
+    // A hung-up call leaves its last answer to finish and be stored, as a typed turn does.
+    if (why === 'call-ended' || !this.start) return;
+    void this.env.turns
+      .cancel({
+        accessToken: this.accessToken,
+        appAssertion: this.appAssertion,
+        turnId: delegation.turnId,
+        conversationId: this.start.conversationId,
+      })
+      .catch((error: unknown) =>
+        log.voice.warn({ err: error, callId: this.callId }, 'Superseded turn not cancelled'),
+      );
+  }
+
+  private reply(delegation: DelegationState, text: string, final: boolean): void {
+    if (delegation.superseded || this.isClosed) return;
+    const verbatim = verbatimSpans(text);
+    this.command({
+      type: 'delegation.reply',
+      delegationId: delegation.delegationId,
+      text,
+      ...(verbatim.length > 0 ? { verbatim } : {}),
+      final,
     });
-    // Decided now, not after the tools: the next response may already be on its way.
-    const continues =
-      response !== undefined && response.toolCalls > 0 && event.status === 'completed';
-    if (!continues) this.closeOpenTurn(event.status);
-    void (async () => {
-      if (continues && response) {
-        await Promise.all(response.pending);
-        if (this.isClosed || this.upstream !== upstream) return;
-        // Tools loaded by `loadTools` join the session before the model goes on.
-        const active = this.turn?.activeToolNames() ?? [];
-        if (this.turn && active.join('\n') !== this.sentToolNames.join('\n')) {
-          this.sentToolNames = active;
-          this.command({
-            type: 'session.update',
-            config: { tools: toRealtimeTools(this.turn.tools, active) },
+  }
+
+  /** Answer one delegation through the chat route, streaming each sentence to the voice. */
+  private async answer(
+    delegation: DelegationState,
+    text: string,
+    previous: Promise<unknown>,
+  ): Promise<DelegationOutcome> {
+    const start = this.start;
+    if (!start) return 'dropped';
+    const { signal } = delegation.controller;
+    // The turn it superseded settles first, so the history sent is the history stored.
+    await Promise.race([previous, sleep(this.limits.settleWaitMs)]);
+    const words = text.trim();
+    let history: Awaited<ReturnType<VoiceCallEnvironment['loadHistory']>>;
+    try {
+      history = await this.env.loadHistory(this.oxyUserId, start.conversationId);
+    } catch (error) {
+      log.voice.warn({ err: error, callId: this.callId }, 'Conversation not read for a turn');
+      this.dropDelegation(delegation, 'failed');
+      return 'failed';
+    }
+    const stored = new Set(history.map((message) => message.id));
+    const carried = this.carried.filter((entry) => !stored.has(entry.messageId));
+    this.carried = [];
+    const said = [...carried.map((entry) => entry.text), words].filter(Boolean).join(' ');
+    if (signal.aborted) {
+      if (said !== '') this.carried = [{ messageId: delegation.userMessageId, text: said }];
+      return 'superseded';
+    }
+    if (said === '') {
+      this.dropDelegation(delegation, 'dropped');
+      return 'dropped';
+    }
+
+    const chunker = new SentenceChunker();
+    const { assistantMessageId } = delegation;
+    try {
+      const events = this.env.turns.run({
+        accessToken: this.accessToken,
+        appAssertion: this.appAssertion,
+        conversationId: start.conversationId,
+        ...(start.agentId === undefined ? {} : { agentId: start.agentId }),
+        messages: [...history, { id: delegation.userMessageId, role: 'user', content: said }],
+        assistantMessageId,
+        turnId: delegation.turnId,
+        signal,
+      });
+      for await (const event of events) {
+        this.activity();
+        if (event.type === 'text') {
+          for (const sentence of chunker.push(event.text)) this.reply(delegation, sentence, false);
+        } else if (event.type === 'tool.started') {
+          this.emit({
+            type: 'tool.started',
+            messageId: assistantMessageId,
+            callId: event.callId,
+            name: event.name,
+          });
+          if (!delegation.superseded)
+            this.command({
+              type: 'delegation.context',
+              delegationId: delegation.delegationId,
+              text: `Still working on it: running ${event.name}.`,
+            });
+        } else {
+          this.emit({
+            type: 'tool.finished',
+            messageId: assistantMessageId,
+            callId: event.callId,
+            name: event.name,
+            ok: event.ok,
           });
         }
-        // Providers wait for a new response after a function output.
-        this.command({ type: 'response.create' });
       }
-      void this.checkCredits();
-      if (this.endAfterResponse && this.responsesInFlight === 0 && !this.isClosed)
-        await this.end('credits-exhausted', new VoiceFailure('credits-exhausted'));
-    })();
-  }
-
-  /* -------------------------------- ledger -------------------------------- */
-
-  /** The ledger entry of an input item, its deadline refreshed; created on its first event. */
-  private userEntry(itemId: string): UserEntry {
-    const deadline = this.now() + this.limits.userTranscriptWaitMs;
-    const existing = this.ledger.find(
-      (entry): entry is UserEntry => entry.kind === 'user' && entry.itemId === itemId,
-    );
-    if (existing) {
-      existing.deadline = deadline;
-      return existing;
-    }
-    const entry: UserEntry = {
-      kind: 'user',
-      messageId: `voice-${randomUUID()}`,
-      itemId,
-      text: null,
-      deadline,
-    };
-    this.ledger.push(entry);
-    this.scheduleLedger();
-    return entry;
-  }
-
-  /** The answer being built: chained responses (tool round trips) are one turn. */
-  private openTurn(): TurnEntry {
-    if (this.currentTurn && !this.currentTurn.done) return this.currentTurn;
-    const turn: TurnEntry = {
-      kind: 'assistant',
-      messageId: `voice-${randomUUID()}`,
-      texts: new Map(),
-      toolInvocations: [],
-      audioItems: new Set(),
-      done: false,
-    };
-    this.currentTurn = turn;
-    this.ledger.push(turn);
-    return turn;
-  }
-
-  private closeOpenTurn(status: string): void {
-    const turn = this.currentTurn;
-    if (!turn || turn.done) return;
-    turn.done = true;
-    this.currentTurn = null;
-    if (
-      status === 'cancelled' &&
-      turn.audioItems.size > 0 &&
-      turn.interruptedAfterMs === undefined
-    ) {
-      const heard = [...turn.audioItems]
-        .map((item) => this.interrupted.get(item))
-        .find((ms) => ms !== undefined);
-      if (heard !== undefined) turn.interruptedAfterMs = heard;
-      else turn.interruptDeadline = this.now() + this.limits.interruptWaitMs;
-    }
-    this.flushLedger(false);
-  }
-
-  private ready(entry: LedgerEntry, force: boolean): boolean {
-    if (force) return true;
-    if (entry.kind === 'user') return entry.text !== null || this.now() >= entry.deadline;
-    if (!entry.done) return false;
-    return (
-      entry.interruptDeadline === undefined ||
-      entry.interruptedAfterMs !== undefined ||
-      this.now() >= entry.interruptDeadline
-    );
-  }
-
-  private scheduleLedger(): void {
-    if (this.ledgerTimer || this.isClosed) return;
-    const deadlines = this.ledger.flatMap((entry) =>
-      entry.kind === 'user'
-        ? entry.text === null
-          ? [entry.deadline]
-          : []
-        : entry.done &&
-            entry.interruptDeadline !== undefined &&
-            entry.interruptedAfterMs === undefined
-          ? [entry.interruptDeadline]
-          : [],
-    );
-    if (deadlines.length === 0) return;
-    const wait = Math.max(0, Math.min(...deadlines) - this.now());
-    this.ledgerTimer = setTimeout(() => {
-      this.ledgerTimer = null;
-      this.flushLedger(false);
-    }, wait + 5);
-    this.ledgerTimer.unref?.();
-  }
-
-  /** Store every exchange that is complete, in order; `force` stores what is left. */
-  private flushLedger(force: boolean): void {
-    const batch: AppendedMessage[] = [];
-    while (this.ledger.length > 0 && this.ready(this.ledger[0]!, force)) {
-      const entry = this.ledger.shift()!;
-      if (entry.kind === 'user') {
-        const text = entry.text?.trim() ?? '';
-        if (text !== '') batch.push({ id: entry.messageId, role: 'user', content: text });
-        continue;
-      }
-      if (entry === this.currentTurn) this.currentTurn = null;
-      const text = [...entry.texts.values()].join(' ').replace(/\s+/g, ' ').trim();
-      if (text === '' && entry.toolInvocations.length === 0) continue;
-      batch.push({
-        id: entry.messageId,
-        role: 'assistant',
-        content: text,
-        ...(entry.toolInvocations.length > 0 ? { toolInvocations: entry.toolInvocations } : {}),
-        ...(entry.interruptedAfterMs === undefined
-          ? {}
-          : { interruptedAfterMs: entry.interruptedAfterMs }),
-      });
-    }
-    if (batch.length > 0) this.persist(batch);
-    if (this.ledgerTimer) {
-      clearTimeout(this.ledgerTimer);
-      this.ledgerTimer = null;
-    }
-    if (!force) this.scheduleLedger();
-  }
-
-  private persist(batch: AppendedMessage[]): void {
-    const start = this.start;
-    const gemie = this.linkedAgent;
-    if (!start || !gemie) return;
-    const firstUser = batch.find((message) => message.role === 'user')?.content ?? '';
-    const titleNow = this.firstPersist && this.historyWasEmpty && firstUser !== '';
-    if (firstUser !== '') this.firstPersist = false;
-    this.persisting = this.persisting
-      .then(async () => {
-        await this.env.persist({
-          userId: this.oxyUserId,
-          conversationId: start.conversationId,
-          messages: batch,
-          agentId: gemie._id,
-          titleOnInsert: firstUser.slice(0, 60) || 'Voice call',
-        });
+      const tail = chunker.end();
+      if (tail.length === 0) {
+        this.dropDelegation(delegation, 'answered');
+      } else {
+        for (const [index, part] of tail.entries())
+          this.reply(delegation, part, index === tail.length - 1);
         this.emit({
-          type: 'messages.saved',
-          conversationId: start.conversationId,
-          messageIds: batch.map((message) => message.id),
+          type: 'assistant.done',
+          itemId: delegation.lastAudioItem,
+          status: 'completed',
         });
-        if (titleNow) this.env.titleConversation(this.oxyUserId, start.conversationId, firstUser);
-      })
-      .catch((error: unknown) => {
-        log.voice.error({ err: error, callId: this.callId }, 'Voice messages not stored');
+      }
+      // The chat route stored both before it ended the stream.
+      this.emit({
+        type: 'messages.saved',
+        conversationId: start.conversationId,
+        messageIds: [delegation.userMessageId, assistantMessageId],
       });
+      return 'answered';
+    } catch (error) {
+      if (signal.aborted) {
+        // Stopped before the chat route stored it: the words open the next turn.
+        this.carried = [{ messageId: delegation.userMessageId, text: said }];
+        this.emit({
+          type: 'assistant.done',
+          itemId: delegation.lastAudioItem,
+          status: 'cancelled',
+        });
+        return 'superseded';
+      }
+      log.voice.warn(
+        {
+          err: error instanceof DelegatedTurnFailure ? undefined : error,
+          code: error instanceof DelegatedTurnFailure ? error.code : undefined,
+          callId: this.callId,
+          turnId: delegation.turnId,
+        },
+        'Delegated turn failed',
+      );
+      this.dropDelegation(delegation, 'failed');
+      return 'failed';
+    }
+  }
+
+  /**
+   * End a delegation that gets no (more) spoken answer. A failed one tells the
+   * voice in silent context first, so it can say so in its own words: the
+   * failure is never dressed up as an answer.
+   */
+  private dropDelegation(delegation: DelegationState, outcome: 'answered' | 'failed' | 'dropped') {
+    if (!delegation.superseded && outcome === 'failed')
+      this.command({
+        type: 'delegation.context',
+        delegationId: delegation.delegationId,
+        text: 'This request could not be answered. Tell the person briefly, and that they can ask again.',
+      });
+    if (!delegation.superseded)
+      this.command({ type: 'delegation.cancel', delegationId: delegation.delegationId });
+    this.emit({
+      type: 'assistant.done',
+      itemId: delegation.lastAudioItem,
+      status: outcome === 'failed' ? 'failed' : 'completed',
+    });
+  }
+
+  private afterTurn(delegation: DelegationState, outcome: DelegationOutcome): void {
+    this.delegations.delete(delegation.delegationId);
+    if (this.current === delegation) this.current = null;
+    log.voice.info(
+      { callId: this.callId, turnId: delegation.turnId, outcome },
+      'Delegated turn settled',
+    );
+    void this.checkCredits();
+    if (this.endAfterTurn && this.delegations.size === 0 && !this.isClosed)
+      void this.end('credits-exhausted', new VoiceFailure('credits-exhausted'));
   }
 
   /* --------------------------- timers and credits -------------------------- */
@@ -966,10 +843,11 @@ export class VoiceCall {
 
   /**
    * What an upstream session has cost so far, in USD: its minutes, silence
-   * included, at the served model's published price per minute.
+   * included, at the line's published price per minute. The turns are typed
+   * turns, each charged by the chat route.
    */
   private usdOf(upstream: UpstreamState): number {
-    const perMinute = this.candidate?.usdPerMinute ?? null;
+    const perMinute = this.line?.usdPerMinute ?? null;
     if (perMinute === null || upstream.createdAt === null) return 0;
     const minutes = ((upstream.endedAt ?? this.now()) - upstream.createdAt) / 60_000;
     return Math.max(0, minutes) * perMinute;
@@ -983,9 +861,9 @@ export class VoiceCall {
     if (this.state !== 'live' || !this.meter) return;
     const covered = await this.meter.cover(this.runningUsd());
     if (covered || this.isClosed) return;
-    // Never mid-word: the answer being spoken finishes first.
-    if (this.responsesInFlight > 0) {
-      this.endAfterResponse = true;
+    // Never mid-answer: the turn being answered finishes first.
+    if (this.delegations.size > 0) {
+      this.endAfterTurn = true;
       return;
     }
     await this.end('credits-exhausted', new VoiceFailure('credits-exhausted'));
@@ -1003,7 +881,7 @@ export class VoiceCall {
       for (const timer of [this.durationTimer, this.warningTimer, this.idleTimer, this.graceTimer])
         if (timer) clearTimeout(timer);
       if (this.creditTimer) clearInterval(this.creditTimer);
-      this.toolAbort.abort();
+      for (const delegation of this.delegations.values()) this.stopTurn(delegation, 'call-ended');
 
       if (failure) {
         log.voice.warn(
@@ -1023,15 +901,8 @@ export class VoiceCall {
       if (upstream) {
         upstream.endedAt ??= this.now();
         // Settles exactly once upstream; bounded so a hung close never holds the call.
-        await Promise.race([
-          upstream.session.close().catch(settledByKaana),
-          new Promise((resolve) => setTimeout(resolve, 5_000).unref?.()),
-        ]);
+        await Promise.race([upstream.session.close().catch(settledByKaana), sleep(5_000)]);
       }
-
-      this.closeOpenTurn('cancelled');
-      this.flushLedger(true);
-      await this.persisting;
 
       if (this.meter) {
         if (this.servedEver) {
@@ -1071,6 +942,4 @@ export class VoiceCall {
     })().finally(() => this.env.kaana?.dispose?.());
     return this.ending;
   }
-
-  /* --------------------------------- tests -------------------------------- */
 }
