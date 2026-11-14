@@ -48,6 +48,8 @@ interface PrepareRoomInput {
   readonly messages: readonly GroupInputMessage[];
   readonly accessToken: string | undefined;
   readonly surfaceApplicationId: string | null;
+  /** `false`: the person turned personalization off for this turn; kept on the chain it starts. */
+  readonly personalization: boolean;
 }
 
 export type PrepareRoom = (input: PrepareRoomInput) => Promise<PreparedRoom>;
@@ -173,6 +175,7 @@ export const prepareRoom: PrepareRoom = async (input) => {
           lastSpeakerId: null,
           surfaceApplicationId: input.surfaceApplicationId,
           space: spaceBrief,
+          ...(input.personalization ? {} : { personalization: false as const }),
         } satisfies RoomJobData);
       } catch (error) {
         await clearConversationActive(userId, conversationId, trigger.id);
