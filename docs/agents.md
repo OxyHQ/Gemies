@@ -866,8 +866,10 @@ its MEMORY.md is in the prompt of every chat turn and background run
 (`agentMemoryPromptSection`), and the `memory` tool lists, reads, appends,
 replaces and forgets its files. Writes carry the hash the tool just read, so the
 agent and the person editing the same file never overwrite each other, and every
-write is journaled with origin `agent`. Reads are R0, writes R1 (journaled),
-`forget` R1 without rollback.
+write is journaled with origin `agent`. A turn never writes once the person has
+forgotten a file of it while it ran: the turn still holds the old text, and the
+hash check alone let it put that back as a new file. Reads are R0, writes R1
+(journaled), `forget` R1 without rollback.
 
 The saver keeps an agent-written message the client has not seen yet
 (`keepAgentOutreach`): storage converges on the client's copy for what the

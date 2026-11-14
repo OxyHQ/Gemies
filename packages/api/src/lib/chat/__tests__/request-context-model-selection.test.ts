@@ -119,7 +119,8 @@ vi.mock('../../oxy.js', async () => {
   return { oxy: { withUser: fakeWithUser(userClient), users: { get: async () => null } } };
 });
 vi.mock('../../hooks/index.js', () => ({ runBeforeChatHooks: () => memory.runBeforeChatHooks() }));
-vi.mock('../../autonomy/runtime.js', () => ({ runAutonomyBeforeChat: async () => null }));
+const autonomy = vi.hoisted(() => ({ before: vi.fn(async () => null) }));
+vi.mock('../../autonomy/runtime.js', () => ({ runAutonomyBeforeChat: autonomy.before }));
 vi.mock('../../logger.js', () => {
   const channel = () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() });
   return { log: new Proxy({}, { get: channel }) };
@@ -188,6 +189,8 @@ async function run(
     /** Any other body fields. */
     body?: Record<string, unknown>;
     machine?: boolean;
+    /** A verified channel turn, carried by the integrations workload (`middleware/channel-auth.ts`). */
+    channel?: { kind: 'gemie_bot' | 'account' | 'bot'; accountId: string; platform: string };
   } = {},
 ) {
   const captured: Captured = { status: null, body: null };
@@ -229,7 +232,11 @@ async function run(
       ? {}
       : { serviceActingAs: { userId: options.directUserId, scopes: options.delegatedScopes } }),
     accessToken: options.accessToken ?? 'token-1',
+    ...(options.channel === undefined
+      ? {}
+      : { channelContext: { ...options.channel, identityId: 'identity-1' } }),
   };
+  if (options.channel !== undefined) Reflect.deleteProperty(req, 'accessToken');
   if (options.agentId !== undefined) {
     (req.body as Record<string, unknown>).agentId = options.agentId;
   }
@@ -278,6 +285,29 @@ beforeEach(() => {
   findAgentById.mockResolvedValue(null);
   oxy.mode = 'denies';
   clearAgentAccountVerdicts();
+});
+
+describe('a verified channel turn', () => {
+  const channel = {
+    serviceApp: { appId: 'gemies-integrations', scopes: [] },
+    // A person linked to the system bot: their turns go to the default gemie, Alia.
+    channel: { kind: 'bot' as const, accountId: 'owner-1', platform: 'discord' },
+  };
+
+  it('is paid from the channel account’s credits, never run unmetered', async () => {
+    const { ctx, captured } = await run(KNOWN, channel);
+    expect(captured.status).toBeNull();
+    expect(reserveCredits).toHaveBeenCalledWith('owner-1', undefined, expect.anything());
+    expect(ctx?.creditReservation).toEqual({ reservationId: 'reservation-1' });
+  });
+
+  it('is refused when that account is out of credits', async () => {
+    reserveCredits.mockResolvedValueOnce(null);
+    const { ctx, captured } = await run(KNOWN, channel);
+    expect(ctx).toBeNull();
+    expect(captured.status).toBe(402);
+    expect(captured.body?.error).toMatchObject({ code: 'INSUFFICIENT_CREDITS' });
+  });
 });
 
 describe('app-only machine turn boundary and payer', () => {
@@ -850,13 +880,16 @@ describe('the reply is stored under the id the client drew it with', () => {
  * prompt read `ctx.personalization` (`tool-pipeline.test.ts`, `system-prompt-builder` tests).
  */
 describe('personalization', () => {
-  it('is on when absent, and reads the person’s profile', async () => {
+  it('is on when absent, and reads the person’s profile and what was learned about them', async () => {
+    autonomy.before.mockClear();
     const { ctx } = await run(undefined, { directUserId: 'user-1' });
     expect(ctx?.personalization).toBe(true);
     expect(memory.findUserMemory).toHaveBeenCalled();
+    expect(autonomy.before).toHaveBeenCalled();
   });
 
-  it('`false` reads no memory profile', async () => {
+  it('`false` reads no memory profile, and none of what was learned about them', async () => {
+    autonomy.before.mockClear();
     const { ctx } = await run(undefined, {
       directUserId: 'user-1',
       body: { personalization: false },
@@ -864,6 +897,7 @@ describe('personalization', () => {
     expect(ctx?.personalization).toBe(false);
     expect(ctx?.userMemory).toBeNull();
     expect(memory.findUserMemory).not.toHaveBeenCalled();
+    expect(autonomy.before).not.toHaveBeenCalled();
   });
 
   it.each([['false'], [0], [null], [{}]])(

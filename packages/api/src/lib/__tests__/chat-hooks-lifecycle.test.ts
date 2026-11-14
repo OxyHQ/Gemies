@@ -509,11 +509,24 @@ describe('Alia only learns from Alia’s answered turns', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     H.state.classification = suggestion;
 
-    runPostChatHooks(lifecycleContext({ personalization: false }), 'answer', OBSERVED, null);
+    const runtime = await runAutonomyBeforeChat({
+      userId: 'user-ws13',
+      messages: [{ role: 'user', content: RESEARCH_ASK }],
+    });
+    H.timeline.length = 0;
+
+    runPostChatHooks(
+      lifecycleContext({ personalization: false, autonomyRuntime: runtime }),
+      'answer',
+      OBSERVED,
+      null,
+    );
     await settle();
 
     expect(H.timeline).toContain('learn:analytics(acme/chat-1,60)');
     expect(H.timeline).not.toContain('learn:writingStyle(mem-ws13)');
+    // Nor its run scoring and the corrections it captures.
+    expect(H.timeline.filter((entry) => entry.startsWith('learn:autonomy'))).toEqual([]);
     expect(H.timeline).not.toContain('proactive:classify');
     vi.restoreAllMocks();
   });

@@ -440,7 +440,9 @@ export async function buildChatRequestContext(
   // Verified channel binding supplies local identity, never a direct session.
   const localAccountId = req.user?.id ?? req.channelContext?.accountId;
   let autonomyRuntime: AutonomyRuntimeContext | null = null;
-  if (localAccountId) {
+  // What was learned about the person ("Priority learnings") is about them: a turn with
+  // personalization off reads none of it, as it reads no memory.
+  if (localAccountId && personalization) {
     autonomyRuntime = await runAutonomyBeforeChat({
       userId: localAccountId,
       messages,
@@ -862,6 +864,15 @@ export async function buildChatRequestContext(
 
   const creditAccountId = localAccountId;
   /**
+   * Whether this turn is paid from a local account's credits: a person's own session, or a
+   * verified channel turn (a gemie bot's person, a connected account, a linked system bot), whose
+   * request the integrations workload carries. A channel turn used to be read as a service call,
+   * reserving nothing and refused nothing, so it ran hosted inference unmetered whatever the
+   * balance. A delegated service request is paid where its delegation is.
+   */
+  const paidHere =
+    creditAccountId !== undefined && (!req.serviceApp || req.channelContext !== undefined);
+  /**
    * The person's memory, profile, entitlements and the turn's agent are the
    * turn's INPUTS, read from an identity by `lib/chat/turn-inputs.ts` — the
    * same reads a voice call makes (ADR 0017 §3). The agent is the one this
@@ -931,7 +942,7 @@ export async function buildChatRequestContext(
    * rejects itself (its own catch turns a fault into `error: true`).
    */
   const reserve = admission.then((admitted) =>
-    admitted.ok && creditAccountId !== undefined && !req.serviceApp && localRuntime === null
+    admitted.ok && creditAccountId !== undefined && paidHere && localRuntime === null
       ? (async () => {
           signal?.throwIfAborted();
           await getOrCreateUserCredits(creditAccountId);
@@ -1084,13 +1095,7 @@ export async function buildChatRequestContext(
       return null;
     }
 
-    if (
-      req.user &&
-      !req.serviceApp &&
-      !creditReservation &&
-      !creditResult.error &&
-      localRuntime === null
-    ) {
+    if (paidHere && !creditReservation && !creditResult.error && localRuntime === null) {
       clearTimeout(globalTimer);
       const creditError = {
         message: "You've run out of credits. Add more or upgrade your plan to continue.",

@@ -407,8 +407,13 @@ describe('every route that reaches inference is rate limited (#139 ws15)', () =>
     expect(context).toContain(snippet('const creditAccountId = localAccountId;'));
     // Parenthesised or not: the formatter drops redundant parentheses, and the
     // conjunction is the same either way.
-    expect(context).toMatch(
-      /creditAccountId!==undefined&&!req\.serviceApp&&localRuntime===null\)?\?/,
+    expect(context).toMatch(/creditAccountId!==undefined&&paidHere&&localRuntime===null\)?\?/);
+    // Paid here: a person's own session, or a verified channel turn the integrations workload
+    // carries (it used to be read as a service call and ran unmetered).
+    expect(context).toContain(
+      snippet(
+        'const paidHere = creditAccountId !== undefined && (!req.serviceApp || req.channelContext !== undefined);',
+      ),
     );
 
     /**

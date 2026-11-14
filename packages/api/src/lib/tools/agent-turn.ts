@@ -140,6 +140,11 @@ export interface AgentTurnPerson {
   taskId?: string;
   /** The app the person is in, by its verified app assertion (ADR 0021), or `null`. */
   surfaceApplicationId: string | null;
+  /**
+   * The person turned personalization off for the outer turn: the nested one reads none of their
+   * memory either (the `memory` family is denied), as the outer turn reads none.
+   */
+  personalization?: false;
 }
 
 /** One earlier message of the conversation a turn answers. */
@@ -222,7 +227,7 @@ export async function runAgentTurn(input: {
         agentName: agentPromptName(agent),
       })}\n\n---\n\n${agentRemitPrompt(agent)}${await agentSpacePrompt(agent)}`;
   const observationMemory =
-    input.observation && agent.memoryStore === 'gemie'
+    input.observation && agent.memoryStore === 'gemie' && person.personalization !== false
       ? await (await import('../agent/agent-memory-runtime.js')).agentMemoryPromptSection(
           person.oxyUserId,
           agent._id,
@@ -260,6 +265,7 @@ export async function runAgentTurn(input: {
         actsForPerson: true,
         requesterAccountId: person.oxyUserId,
         surfaceApplicationId: person.surfaceApplicationId,
+        ...(person.personalization === false ? { personalization: false } : {}),
         nested: true,
         inputLimits: resolved.catalogue,
         toolsEnabled: true,

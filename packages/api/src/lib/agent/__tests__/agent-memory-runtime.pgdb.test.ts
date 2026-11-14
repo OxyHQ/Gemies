@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ToolCallOptions } from 'ai';
-import { closePostgres, connectPostgres } from '../../../db/index.js';
-import { readAgentMemory, writeAgentMemory } from '../../../db/agents/agentMemoryRepository.js';
+import { closePostgres, connectPostgres, getDb } from '../../../db/index.js';
+import {
+  deleteAgentMemory,
+  readAgentMemory,
+  writeAgentMemory,
+} from '../../../db/agents/agentMemoryRepository.js';
 import { agentMemoryPromptSection, buildAgentMemoryTool } from '../agent-memory-runtime.js';
 import { hashAgentMemory } from '../memory-contract.js';
 
@@ -83,5 +87,50 @@ describe("an agent's memory of one person", () => {
     });
     expect(await call({ action: 'append', content: 'Another fact' })).toBe('Saved MEMORY.md.');
     expect(await call({ action: 'read' })).toBe('Edited by the person\nAnother fact\n');
+  });
+});
+
+describe('a memory the person forgot while a turn ran', () => {
+  const person = `agent-memory-forget-${Math.random().toString(36).slice(2, 10)}`;
+  const remember = (content: string) =>
+    writeAgentMemory(getDb(), {
+      oxyUserId: person,
+      agentId: AGENT,
+      actorOxyAccountId: person,
+      path: 'MEMORY.md',
+      content,
+      expectedHash: hashAgentMemory(''),
+      origin: 'person',
+    });
+  const turn = () => {
+    const memory = buildAgentMemoryTool({
+      oxyUserId: person,
+      agentId: AGENT,
+      actorOxyAccountId: AGENT,
+    });
+    return (input: Record<string, unknown>) => memory.execute!(input as never, OPTIONS);
+  };
+
+  it('is never put back by that turn, from the copy it still holds', async () => {
+    await remember('Their doctor is Dr. Ruiz\n');
+    const call = turn();
+    await call({ action: 'list' });
+    // The person forgets it in the app; the turn's prompt still carries the old text.
+    await deleteAgentMemory(getDb(), { oxyUserId: person, agentId: AGENT });
+
+    expect(
+      String(await call({ action: 'replace', content: 'Their doctor is Dr. Ruiz\nLikes tea\n' })),
+    ).toMatch(/^Error: the person removed part of your memory/);
+    expect(await readAgentMemory(getDb(), person, AGENT, 'MEMORY.md')).toBeUndefined();
+
+    // The next turn starts from what is kept now, and may save again.
+    expect(await turn()({ action: 'append', content: 'Likes tea' })).toBe('Saved MEMORY.md.');
+  });
+
+  it('is not what the agent forgot itself: it goes on saving in that turn', async () => {
+    const call = turn();
+    await call({ action: 'list' });
+    expect(await call({ action: 'forget' })).toBe('Forgot MEMORY.md.');
+    expect(await call({ action: 'append', content: 'Prefers mornings' })).toBe('Saved MEMORY.md.');
   });
 });
