@@ -111,6 +111,7 @@ function safeError(error: unknown): string {
 }
 
 import { createAgentReactionTurn, reactionStepCalls } from '../agent-tool.js';
+import { emitEvaluationProgress } from '../../__tests__/evaluation-progress.js';
 import { messageFrom, replyInstructions } from '../../gemies/policy.js';
 import { selectRoomDecision } from '../../room/selector.js';
 import { getAIModel, resolveStoredModel } from '../../../chat-core.js';
@@ -597,8 +598,11 @@ beforeAll(async () => {
 describe('real authored reaction participation', () => {
   it.each(cases)('$label', async (testCase) => {
     const results: RecordRow[] = [];
-    for (let iteration = 1; iteration <= repetitions; iteration++)
-      results.push(await evaluateTool(testCase, iteration));
+    for (let iteration = 1; iteration <= repetitions; iteration++) {
+      const result = await evaluateTool(testCase, iteration);
+      results.push(result);
+      emitEvaluationProgress('agent-reaction-participation-evaluation', result);
+    }
     records.push(...results);
     expect(results.filter((result) => !result.passed)).toEqual([]);
   });
@@ -606,8 +610,11 @@ describe('real authored reaction participation', () => {
     '%s',
     async (label) => {
       const results: RecordRow[] = [];
-      for (let iteration = 1; iteration <= repetitions; iteration++)
-        results.push(await evaluateSelection(label, iteration));
+      for (let iteration = 1; iteration <= repetitions; iteration++) {
+        const result = await evaluateSelection(label, iteration);
+        results.push(result);
+        emitEvaluationProgress('agent-reaction-participation-evaluation', result);
+      }
       records.push(...results);
       expect(results.filter((result) => !result.passed)).toEqual([]);
     },

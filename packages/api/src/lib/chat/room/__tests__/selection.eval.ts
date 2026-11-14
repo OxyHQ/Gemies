@@ -4,6 +4,7 @@
  * Oxy workload authentication and Oxy-selected model are real. No agent runs.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { emitEvaluationProgress } from '../../__tests__/evaluation-progress.js';
 import { roomDecisionChoices, type RoomSelectionInput, type RoomDecision } from '../decision.js';
 import { structuredFailureDiagnostics } from './selection-diagnostics.js';
 import type { TranscriptRow } from '../engine.js';
@@ -364,7 +365,7 @@ describe('real Oxy group participation (synthetic rooms; no agent execution)', (
             expected.agentId === decision.agentId &&
             (expected.reason === undefined || expected.reason === decision.reason),
         );
-      records.push({
+      const record = {
         label,
         iteration,
         passed,
@@ -374,7 +375,9 @@ describe('real Oxy group participation (synthetic rooms; no agent execution)', (
         decision: decision
           ? { action: decision.action, agentId: decision.agentId, reason: decision.reason }
           : null,
-      });
+      };
+      records.push(record);
+      emitEvaluationProgress('group-participation-evaluation', record);
       if (!passed)
         failures.push({
           iteration,
