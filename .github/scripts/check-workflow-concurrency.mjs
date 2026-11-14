@@ -56,8 +56,10 @@ const EXPECTED = {
   // One OTA publish at a time: a newer pending push replaces an older one, and a
   // publish is never cancelled half-uploaded.
   'publish-update.yml': 'serialised',
-  // One live Kaana transcription session at a time, billed to the QA account.
+  // One live Kaana transcription at a time, billed to the QA account.
   'production-dictation-canary.yml': 'serialised',
+  // One live Kaana voice session at a time, billed to the QA account.
+  'production-voice-canary.yml': 'serialised',
   // One instance restarted over SSM: two overlapping restarts could leave the
   // unit on the older digest pair.
   'deploy-gemies-os.yml': 'serialised',
