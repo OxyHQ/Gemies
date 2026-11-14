@@ -87,7 +87,6 @@ export function usePersonalitySamplePhrase() {
               // No `max_tokens`: on a reasoning model the cap counts its thinking too, and 80
               // tokens of it left no greeting at all (`finish_reason: length`, empty). The
               // prompt asks for one or two sentences; the server bounds the rest.
-              temperature: 0.95,
               messages: [
                 {
                   role: 'system',

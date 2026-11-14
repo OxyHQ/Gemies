@@ -431,7 +431,6 @@ router.post('/generate', authenticateToken, async (req: Request, res: Response) 
         // that Oxy has never heard of.
         surface: 'authoring',
         maxOutputTokens: SUGGESTION_OUTPUT_TOKENS,
-        temperature: 0.8,
         oxyUserId: userId,
         /**
          * Converted from the same Zod object the answer is validated against,

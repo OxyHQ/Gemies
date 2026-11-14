@@ -243,7 +243,6 @@ export async function runAliaTask(
       tools,
       // Bounds each request to the per-request tool budget (`lib/tool-budget.ts`).
       ...routing,
-      temperature: 0.3,
       // The queue retries the whole run; a retry here would double-spend.
       maxRetries: 0,
       stopWhen: stepCountIs(ALIA_TASK_MAX_STEPS),

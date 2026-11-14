@@ -303,7 +303,6 @@ async function answerAsThirdParty(
       ],
       tools: { ...tools, [REACT_TOOL]: reaction.tool },
       ...routing,
-      temperature: 0.7,
       maxOutputTokens: 2048,
       stopWhen: stepBudget(5),
     });

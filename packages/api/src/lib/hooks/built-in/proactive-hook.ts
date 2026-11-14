@@ -114,7 +114,6 @@ registerHook({
             content: `User message: "${lastUserMessage.slice(0, 500)}"\n\nAI response: "${assistantResponse}"`,
           },
         ],
-        temperature: 0.1,
         maxOutputTokens: utilityOutputTokens(300),
         maxRetries: 0,
       });

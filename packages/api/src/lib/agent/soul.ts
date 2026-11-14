@@ -107,7 +107,6 @@ export async function evolveAgentSoul(
       model: getAIModel(resolved, 'agent_run'),
       prompt,
       maxOutputTokens: utilityOutputTokens(200),
-      temperature: 0.3,
     });
 
     const jsonMatch = result.text.match(/\{[\s\S]*\}/);

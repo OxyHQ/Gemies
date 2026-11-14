@@ -246,7 +246,6 @@ async function classifyEmail(input: {
       prompt: buildEmailClassifierPrompt(input),
       surface: 'background',
       maxOutputTokens: 60,
-      temperature: 0,
       oxyUserId: input.oxyUserId,
       responseFormat: {
         type: 'json_schema',
