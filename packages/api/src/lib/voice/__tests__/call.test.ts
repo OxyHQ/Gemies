@@ -7,16 +7,28 @@ vi.mock('../../logger.js', () => {
 
 const { creditsForCost } = await import('../../credits-manager.js');
 const { KaanaBillingError, KaanaError } = await import('@kaana.ai/sdk');
-const { decodeAssistantAudioFrame } = await import('../protocol.js');
-const { harness, START, until, pcmBase64, weatherTools, REALTIME, catalogueModel, realtimeModel } =
-  await import('./support.js');
+const {
+  catalogueModel,
+  failing,
+  harness,
+  LIVE_DEFAULT,
+  LIVE_FALLBACK,
+  liveLine,
+  pausedAfter,
+  pcmBase64,
+  RecordingSink,
+  say,
+  START,
+  until,
+  withTool,
+} = await import('./support.js');
 
 /**
  * A voice call end to end against `@kaana.ai/sdk/testing`, the real client
- * against Kaana's own rules and catalogue in memory (ADR 0017 §3): opening in
- * the ADR's order, tools run in Alia, barge-in truncated at what was heard,
- * transcripts persisted as messages, limits, credits per minute and typed
- * failures.
+ * against Kaana's own rules in memory, and a scripted chat route (ADR 0041):
+ * a `live` session opened on the catalogue's default line, every handed-over
+ * turn answered by the chat route sentence by sentence, supersession stopping
+ * a turn, limits, credits per minute and typed failures.
  */
 
 async function opened(options: Parameters<typeof harness>[0] = {}) {
@@ -26,115 +38,117 @@ async function opened(options: Parameters<typeof harness>[0] = {}) {
   return h;
 }
 
+type Harness = Awaited<ReturnType<typeof opened>>;
+
 /** The client-visible wire, as one string: what the device could ever see. */
-function wire(h: ReturnType<typeof harness>): string {
+function wire(h: Harness): string {
   return JSON.stringify(h.sink.events);
 }
 
-/** The catalogue's first voice of a gender on a model. */
-function voiceOf(model: typeof REALTIME, gender: 'female' | 'male'): string {
+/** The catalogue's voice of a gender on a line. */
+function voiceOf(model: typeof LIVE_DEFAULT, gender: 'female' | 'male'): string {
   return model.audio!.voices.find((voice) => voice.gender === gender)!.id;
 }
 
-describe('opening', () => {
-  it('correlates each actual upstream once without logging identity, instructions or audio', async () => {
-    const { log } = await import('../../logger.js');
-    const info = vi.mocked(log.voice.info);
-    info.mockClear();
-    const h = await opened();
-    try {
-      const first = h.session();
-      const correlation = () =>
-        info.mock.calls.filter(([, message]) => message === 'Voice upstream session created');
-      expect(correlation()).toEqual([
-        [
-          { callId: h.call.callId, kaanaRequestId: first.requestId },
-          'Voice upstream session created',
-        ],
-      ]);
-      first.emit({
-        type: 'session.created',
-        model: `${first.model.modelId}@${first.model.currentRevision}`,
-        kind: first.open.kind,
-        config: first.open.config,
-        limits: {
-          maxDurationMs: 60_000,
-          idleTimeoutMs: 30_000,
-          maxResponses: 10,
-          maxInputAudioBytes: 1_000_000,
-          maxOutputAudioBytes: 1_000_000,
-        },
-        resumeWindowMs: 30_000,
-        startedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      });
-      await until('duplicate created delivered', () => h.sink.find('session.ready').length === 2);
-      expect(correlation()).toHaveLength(1);
-      first.emit({
-        type: 'session.closed',
-        reason: 'server_shutdown',
-        units: [],
-        usageSource: 'provider_reported',
-        closedAt: new Date().toISOString(),
-      });
-      await until('replacement upstream correlated', () => correlation().length === 2);
-      expect(correlation()[1]).toEqual([
-        { callId: h.call.callId, kaanaRequestId: h.server.sessions[1]?.requestId },
-        'Voice upstream session created',
-      ]);
-      expect(h.server.sessions).toHaveLength(2);
-      expect(h.server.sessions[1]?.requestId).not.toBe(first.requestId);
-    } finally {
-      await h.call.end('hangup');
-    }
+/** The voice hands a turn over, after the person's words were transcribed. */
+function personSays(
+  h: Harness,
+  delegationId: string,
+  words: string,
+  itemId = `in_${delegationId}`,
+) {
+  const session = h.session();
+  session.emit({
+    type: 'transcript.delta',
+    source: 'input_audio',
+    itemId,
+    contentIndex: 0,
+    text: words,
   });
+  session.emit({
+    type: 'transcript.done',
+    source: 'input_audio',
+    itemId,
+    contentIndex: 0,
+    transcript: words,
+  });
+  session.emit({ type: 'delegation.requested', delegationId, text: words });
+}
 
-  it('opens a conversation with server VAD, barge-in, input transcription in the locale and the computed voice', async () => {
-    const h = await opened();
+const replies = (h: Harness, delegationId?: string) =>
+  h
+    .commands('delegation.reply')
+    .filter((reply) => delegationId === undefined || reply.delegationId === delegationId);
+
+describe('opening', () => {
+  it("opens a live session on the catalogue's default line, holding only a persona", async () => {
+    const h = await opened({
+      history: [
+        { id: 'm1', role: 'user', content: '¿Qué tal el día?' },
+        { id: 'm2', role: 'assistant', content: 'Muy bien, gracias.' },
+      ],
+    });
     const session = h.session();
-    expect(session.model.modelId).toBe(REALTIME.modelId);
+    // The default, though another live line is listed first and is cheaper.
+    expect(session.model.modelId).toBe(LIVE_DEFAULT.modelId);
     const { open } = session;
-    expect(open.kind).toBe('conversation');
-    // Barge-in is the session's; the silence that ends a turn is Kaana's default.
-    expect(open.config.turnDetection).toEqual({
-      type: 'server_vad',
-      createResponse: true,
-      interruptResponse: true,
+    expect(open.kind).toBe('live');
+    expect(open.config).toEqual({
+      instructions: expect.any(String),
+      voice: voiceOf(LIVE_DEFAULT, 'female'),
+      inputAudioFormat: 'pcm16_24khz',
+      outputAudioFormat: 'pcm16_24khz',
+      turnDetection: { type: 'server_vad', createResponse: true, interruptResponse: true },
+      inputAudioTranscription: { language: 'es-ES' },
+      delegation: { acknowledgement: 'auto' },
     });
-    // The person's locale as it is: Kaana gives every model the language.
-    expect(open.config.inputAudioTranscription).toEqual({ language: 'es-ES' });
-    expect(open.config.voice).toBe(voiceOf(REALTIME, 'female'));
-    expect(open.config.inputAudioFormat).toBe('pcm16_24khz');
-    expect(open.config.outputAudioFormat).toBe('pcm16_24khz');
-    expect(open.config.instructions).toBe('INSTRUCTIONS(0)');
-    expect(open.config.tools?.map((tool) => tool.name)).toEqual(['lookupWeather']);
-    expect(open.config.tools?.[0]?.parameters).toMatchObject({
-      type: 'object',
-      properties: { city: { type: 'string' } },
-    });
-    // Auto is the contract's default: never sent.
-    expect(open.config).not.toHaveProperty('toolChoice');
-    expect(open.limits).toMatchObject({
-      maxDurationMs: 30 * 60_000,
-      idleTimeoutMs: 2 * 60_000,
-      maxResponses: 500,
-    });
-    // The catalogue was read for the person, under Alia's service token.
+    // The persona: the gemie, the language, the conversation so far; no tools, no backend prompt.
+    expect(open.config.instructions).toContain('es-ES');
+    expect(open.config.instructions).toContain('Person: ¿Qué tal el día?');
+    expect(open.config.instructions).toContain('You: Muy bien, gracias.');
+    expect(open.config).not.toHaveProperty('tools');
+    expect(open.limits).toMatchObject({ maxDurationMs: 30 * 60_000, idleTimeoutMs: 2 * 60_000 });
+    // The catalogue was read for the person.
     const list = h.server.requests.find(
       (request) => request.method === 'GET' && request.path.endsWith('/models'),
     );
     expect(list?.headers.get('X-Oxy-User-Id')).toBe('user-1');
     expect(h.sink.types().slice(0, 2)).toEqual(['session.accepted', 'session.ready']);
-    const ready = h.sink.find('session.ready')[0]!;
-    expect(ready.model.id).toBe(`${REALTIME.modelId}@${REALTIME.currentRevision}`);
-    // The device never sees the instructions, a schema or the upstream voice id.
-    expect(wire(h)).not.toContain('INSTRUCTIONS');
-    expect(wire(h)).not.toContain('properties');
-    expect(wire(h)).not.toContain(voiceOf(REALTIME, 'female'));
-    // The one-call rule ran, and the first credit block is held.
+    expect(h.sink.find('session.ready')[0]!.model.id).toBe(
+      `${LIVE_DEFAULT.modelId}@${LIVE_DEFAULT.currentRevision}`,
+    );
+    // The device never sees the persona or the upstream voice id.
+    expect(wire(h)).not.toContain('Person:');
+    expect(wire(h)).not.toContain(voiceOf(LIVE_DEFAULT, 'female'));
     expect(h.startCall).toHaveBeenCalledOnce();
     expect(h.reserve).toHaveBeenCalledOnce();
     await h.call.end('hangup');
+  });
+
+  it("speaks in the catalogue's voice of the person's gender, never an unreviewed one", async () => {
+    const h = harness();
+    await h.call.open({ ...START, voice: 'male' });
+    await until('session.ready', () => h.sink.types().includes('session.ready'));
+    expect(h.session().open.config.voice).toBe(voiceOf(LIVE_DEFAULT, 'male'));
+    await h.call.end('hangup');
+
+    // A default line with no voice of that gender is passed over for one that has it.
+    const femaleOnly = liveLine('test-voice/female-only', {
+      isDefault: true,
+      voices: {
+        ...LIVE_DEFAULT.audio!,
+        voices: [{ id: 'only-female', name: 'F', languages: ['en'], gender: 'female' }],
+      },
+    });
+    const other = await opened({ models: [femaleOnly, LIVE_FALLBACK] });
+    expect(other.session().model.modelId).toBe(femaleOnly.modelId);
+    await other.call.end('hangup');
+    const male = harness({ models: [femaleOnly, LIVE_FALLBACK] });
+    await male.call.open({ ...START, voice: 'male' });
+    await until('session.ready', () => male.sink.types().includes('session.ready'));
+    expect(male.session().model.modelId).toBe(LIVE_FALLBACK.modelId);
+    expect(male.session().open.config.voice).toBe(voiceOf(LIVE_FALLBACK, 'male'));
+    await male.call.end('hangup');
   });
 
   it('forwards audio only into a created session, acknowledging the first frame once', async () => {
@@ -172,7 +186,6 @@ describe('opening', () => {
       code: 'realtime-unavailable',
       retryable: true,
     });
-    expect(h.sink.find('error').map((event) => event.code)).not.toContain('plan-required');
     expect(h.reserve).not.toHaveBeenCalled();
     expect(h.server.sessions).toHaveLength(0);
   });
@@ -201,29 +214,33 @@ describe('opening', () => {
     expect(h.server.sessions).toHaveLength(0);
   });
 
-  it('is realtime-unavailable without a Kaana client, or with no model that can hold the call', async () => {
+  it('is realtime-unavailable without a Kaana client, or with no line that holds a live call', async () => {
     const none = harness({ noKaana: true });
     await none.call.open(START);
     expect(none.sink.find('error')[0]?.code).toBe('realtime-unavailable');
 
-    const noRealtime = harness({ models: [catalogueModel('x-ai/grok-voice-transcribe-2.0')] });
-    await noRealtime.call.open(START);
-    expect(noRealtime.sink.find('error')[0]?.code).toBe('realtime-unavailable');
-    expect(noRealtime.reserve).not.toHaveBeenCalled();
+    // Dictation lines and a `conversation` line hold no live call.
+    const noLive = harness({
+      models: [
+        catalogueModel('x-ai/grok-voice-transcribe-2.0'),
+        catalogueModel('x-ai/grok-voice-3.0'),
+      ],
+    });
+    await noLive.call.open(START);
+    expect(noLive.sink.find('error')[0]?.code).toBe('realtime-unavailable');
+    expect(noLive.reserve).not.toHaveBeenCalled();
   });
 
-  it('opens on the cheapest minute, and tries the next candidate only when the model itself refused', async () => {
-    const cheap = realtimeModel('x-ai/voice-cheap', '0.01');
-    const dear = realtimeModel('x-ai/voice-dear', '0.5');
+  it('tries the next live line only when the default model itself refused', async () => {
     const tried: string[] = [];
-    // Kaana answering the cheapest model with its own refusal of the model.
+    // Kaana answering the default line with its own refusal of the model.
     const refusing =
       (refusal: () => Error) => (kaana: import('../../kaana/port.js').KaanaClient) => ({
         ...kaana,
         realtime: {
           connect: (async (request, options) => {
             tried.push(request.model);
-            if (request.model === cheap.modelId) throw refusal();
+            if (request.model === LIVE_DEFAULT.modelId) throw refusal();
             return kaana.realtime.connect(request, options);
           }) as typeof kaana.realtime.connect,
         },
@@ -236,9 +253,10 @@ describe('opening', () => {
         requestId: 'req_1',
         retryable: false,
       });
-    const h = await opened({ models: [dear, cheap], wrapKaana: refusing(modelGone) });
-    expect(tried).toEqual([cheap.modelId, dear.modelId]);
-    expect(h.session().model.modelId).toBe(dear.modelId);
+    const h = await opened({ wrapKaana: refusing(modelGone) });
+    expect(tried).toEqual([LIVE_DEFAULT.modelId, LIVE_FALLBACK.modelId]);
+    expect(h.session().model.modelId).toBe(LIVE_FALLBACK.modelId);
+    expect(h.session().open.config.voice).toBe(voiceOf(LIVE_FALLBACK, 'female'));
     await h.call.end('hangup');
 
     tried.length = 0;
@@ -250,9 +268,10 @@ describe('opening', () => {
         requestId: 'req_2',
         retryable: false,
       });
-    const refused = harness({ models: [dear, cheap], wrapKaana: refusing(billing) });
+    const refused = harness({ wrapKaana: refusing(billing) });
     await refused.call.open(START);
-    expect(tried).toEqual([cheap.modelId]);
+    // Not the model's refusal: no other line is tried.
+    expect(tried).toEqual([LIVE_DEFAULT.modelId]);
     expect(refused.sink.find('error')[0]?.code).toBe('realtime-limited');
     // Nothing was served: every credit held is given back.
     expect(refused.refund).toHaveBeenCalledOnce();
@@ -278,432 +297,194 @@ describe('hanging up while the call opens', () => {
     expect(h.finishCall).toHaveBeenCalledWith(h.call.callId, 'hangup');
     expect(h.server.sessions).toHaveLength(0);
     expect(h.refund).toHaveBeenCalledOnce();
-
-    let releaseReserve: () => void = () => undefined;
-    const slow = harness({
-      reserve: (userId, credits) =>
-        new Promise((resolve) => {
-          releaseReserve = () =>
-            resolve({
-              userId,
-              creditsReserved: credits,
-              initialFreeCredits: 0,
-              initialPaidCredits: 0,
-              grantKind: 'paid_balance',
-            });
-        }),
-    });
-    const slowOpening = slow.call.open(START);
-    await until('reserve', () => slow.reserve.mock.calls.length === 1);
-    await slow.call.end('hangup');
-    releaseReserve();
-    await slowOpening;
-    expect(slow.refund).toHaveBeenCalledOnce();
-    expect(slow.startCall).not.toHaveBeenCalled();
   });
 });
 
-describe('tools run in Alia, never on the device', () => {
-  it('executes the call, answers the model and continues the response; the client sees only the name', async () => {
-    const execute = vi.fn(async ({ city }: { city: string }) => ({ city, celsius: 19 }));
-    const h = await opened({ tools: weatherTools(execute) });
-    const session = h.session();
-    session.emit({ type: 'response.created', responseId: 'r1' });
-    session.emit({
-      type: 'tool_call',
-      responseId: 'r1',
-      itemId: 'fc1',
-      toolCallId: 'call-1',
-      name: 'lookupWeather',
-      argumentsDelta: '{"city":',
-      complete: false,
+describe('every turn is a typed turn, through the chat route', () => {
+  it('runs the delegated turn with the stored history, its ids and the person’s credentials', async () => {
+    const h = await opened({ history: [{ id: 'm1', role: 'user', content: 'Antes' }] });
+    h.call.setAccessToken('token-2', 'clarity-assertion');
+    personSays(h, 'd1', 'Recuérdame llamar a Ana mañana');
+    await until('turn asked', () => h.turns.requests.length === 1);
+    const request = h.turns.requests[0]!;
+    expect(request).toMatchObject({
+      accessToken: 'token-2',
+      appAssertion: 'clarity-assertion',
+      conversationId: START.conversationId,
     });
-    session.emit({
-      type: 'tool_call',
-      responseId: 'r1',
-      itemId: 'fc1',
-      toolCallId: 'call-1',
-      argumentsDelta: '"Madrid"}',
-      complete: true,
-    });
-    session.emit({
-      type: 'response.done',
-      responseId: 'r1',
-      status: 'completed',
-      units: [],
-      usageSource: 'provider_reported',
-    });
-    await until('response.create', () => h.commands('response.create').length === 1);
-    expect(execute).toHaveBeenCalledWith(
-      { city: 'Madrid' },
-      expect.objectContaining({ toolCallId: 'call-1' }),
-    );
-    const output = h.commands('conversation.item.create')[0]!;
-    expect(output.item).toEqual({
-      type: 'function_call_output',
-      callId: 'call-1',
-      output: JSON.stringify({ city: 'Madrid', celsius: 19 }),
-    });
-    expect(h.sink.find('tool.started')[0]).toMatchObject({
-      callId: 'call-1',
-      name: 'lookupWeather',
-    });
-    expect(h.sink.find('tool.finished')[0]).toMatchObject({ ok: true });
-    expect(wire(h)).not.toContain('Madrid');
-    expect(wire(h)).not.toContain('celsius');
-
-    // The answer that follows is the same turn: stored once, with the round trip.
-    session.emit({ type: 'response.created', responseId: 'r2' });
-    session.emit({
-      type: 'output_audio.delta',
-      responseId: 'r2',
-      itemId: 'a2',
-      contentIndex: 0,
-      format: 'pcm16_24khz',
-      data: pcmBase64(40),
-    });
-    session.emit({
-      type: 'transcript.done',
-      source: 'output_audio',
-      itemId: 'a2',
-      contentIndex: 0,
-      responseId: 'r2',
-      transcript: 'Hace diecinueve grados.',
-    });
-    session.emit({
-      type: 'response.done',
-      responseId: 'r2',
-      status: 'completed',
-      units: [],
-      usageSource: 'provider_reported',
-    });
-    await until('persisted', () => h.persisted.length === 1);
-    expect(h.persisted[0]).toEqual([
-      expect.objectContaining({
-        role: 'assistant',
-        content: 'Hace diecinueve grados.',
-        toolInvocations: [
-          expect.objectContaining({
-            toolCallId: 'call-1',
-            toolName: 'lookupWeather',
-            args: { city: 'Madrid' },
-          }),
-        ],
-      }),
+    expect(request).not.toHaveProperty('agentId');
+    expect(request.turnId).toMatch(/^[0-9a-f-]{36}$/);
+    // The person's words are their message, under the id their transcript was drawn under.
+    const userMessageId = h.sink.find('transcript.done')[0]!.messageId;
+    expect(request.messages).toEqual([
+      { id: 'm1', role: 'user', content: 'Antes' },
+      { id: userMessageId, role: 'user', content: 'Recuérdame llamar a Ana mañana' },
     ]);
-    // Its tools and its words are one message on the wire, the one stored.
-    const storedId = h.persisted[0]![0]!.id;
-    const named = h.sink.events.filter((event) =>
-      ['tool.started', 'tool.finished', 'transcript.done'].includes(event.type),
-    ) as Array<{ messageId: string }>;
-    expect(named.length).toBe(3);
-    expect(new Set(named.map((event) => event.messageId))).toEqual(new Set([storedId]));
+    await until('final reply', () => replies(h).some((reply) => reply.final));
+    // Stored by the chat route, as a typed turn is; the call stores nothing itself.
+    expect(h.stored.map((message) => message.id)).toEqual([
+      'm1',
+      userMessageId,
+      request.assistantMessageId,
+    ]);
+    expect(h.sink.find('messages.saved')[0]).toEqual(
+      expect.objectContaining({
+        conversationId: START.conversationId,
+        messageIds: [userMessageId, request.assistantMessageId],
+      }),
+    );
     await h.call.end('hangup');
   });
 
-  it('answers a tool that runs too long with a typed tool error, never an invented result', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    try {
-      const h = harness({ tools: weatherTools(() => new Promise(() => undefined)) });
-      await h.call.open(START);
-      await vi.waitFor(() => expect(h.sink.types()).toContain('session.ready'));
-      const session = h.session();
-      session.emit({
-        type: 'tool_call',
-        responseId: 'r1',
-        itemId: 'fc1',
-        toolCallId: 'call-9',
-        name: 'lookupWeather',
-        argumentsDelta: '{"city":"Oslo"}',
-        complete: true,
-      });
-      await vi.waitFor(() => expect(h.sink.types()).toContain('tool.started'));
-      await vi.advanceTimersByTimeAsync(60_001);
-      await vi.waitFor(() => expect(h.commands('conversation.item.create')).toHaveLength(1));
-      const output = JSON.parse(
-        h.commands('conversation.item.create')[0]!.item.type === 'function_call_output'
-          ? (h.commands('conversation.item.create')[0]!.item as { output: string }).output
-          : '{}',
-      );
-      expect(output.error.type).toBe('tool_timeout');
-      expect(h.sink.find('tool.finished')[0]?.ok).toBe(false);
-      void h.call.end('hangup');
-    } finally {
-      vi.useRealTimers();
-    }
+  it('names the gemie the call named, as a typed turn does', async () => {
+    const h = harness();
+    await h.call.open({ ...START, agentId: 'gemie-7' });
+    await until('session.ready', () => h.sink.types().includes('session.ready'));
+    personSays(h, 'd1', 'Hola');
+    await until('turn asked', () => h.turns.requests.length === 1);
+    expect(h.turns.requests[0]!.agentId).toBe('gemie-7');
+    await h.call.end('hangup');
   });
-});
 
-describe('barge-in and transcripts', () => {
-  it('never adds an answer the person talked over to the one that follows it', async () => {
+  it('streams the answer one sentence per reply, the last final, with its exact spans verbatim', async () => {
     const h = await opened();
-    const session = h.session();
-    const answer = (
-      responseId: string,
-      itemId: string,
-      transcript: string,
-      status: 'completed' | 'cancelled',
-    ) => {
-      session.emit({ type: 'response.created', responseId });
-      session.emit({
-        type: 'transcript.done',
-        source: 'output_audio',
-        itemId,
-        contentIndex: 0,
-        responseId,
-        transcript,
-      });
-      session.emit({
-        type: 'response.done',
-        responseId,
-        status,
-        units: [],
-        usageSource: 'oxy_measured',
-      });
-    };
-    session.emit({ type: 'input_audio.speech_started', itemId: 'u1', audioStartMs: 0 });
-    // The provider answered a pause, the person went on, the answer was cancelled.
-    answer('r1', 'a1', 'Sure, what', 'cancelled');
-    session.emit({ type: 'input_audio.committed', itemId: 'u1' });
-    session.emit({
-      type: 'transcript.done',
-      source: 'input_audio',
-      itemId: 'u1',
-      contentIndex: 0,
-      transcript: 'Hey, which city is the capital of France?',
-    });
-    answer('r2', 'a2', 'The capital of France is Paris.', 'completed');
-
-    await until('stored', () =>
-      h.persisted.flat().some((message) => message.content.includes('Paris')),
+    h.turns.answer(
+      say('Listo. Te llamo a las 10:30 en la ', 'Calle Mayor 12. Tu código es AB12-CD', '.'),
     );
-    const assistant = h.persisted.flat().filter((message) => message.role === 'assistant');
-    expect(assistant.at(-1)?.content).toBe('The capital of France is Paris.');
-    const transcripts = h.sink.events.filter(
-      (event) => event.type === 'transcript.done' && event.role === 'assistant',
-    ) as Array<{ messageId: string; itemId: string }>;
-    // Two answers, two messages: never one message holding both.
-    expect(new Set(transcripts.map((event) => event.messageId)).size).toBe(2);
+    personSays(h, 'd1', 'Recuérdamelo');
+    await until('final reply', () => replies(h).some((reply) => reply.final));
+    const sent = replies(h, 'd1');
+    expect(sent.map(({ text, final }) => ({ text, final }))).toEqual([
+      { text: 'Listo.', final: false },
+      { text: 'Te llamo a las 10:30 en la Calle Mayor 12.', final: false },
+      { text: 'Tu código es AB12-CD.', final: true },
+    ]);
+    expect(sent[0]).not.toHaveProperty('verbatim');
+    expect(sent[1]!.verbatim).toEqual(['10:30', 'Calle Mayor', '12']);
+    expect(sent[2]!.verbatim).toEqual(['AB12-CD']);
+    // Every span is a part of its reply, exactly as written.
+    for (const reply of sent)
+      for (const span of reply.verbatim ?? []) expect(reply.text).toContain(span);
+    expect(h.sink.find('assistant.done').at(-1)?.status).toBe('completed');
+    await h.call.end('hangup');
   });
 
-  it('stores one message per spoken item and per answer, under the id every transcript event names', async () => {
+  it('tells the device which tool runs, under the answer it belongs to, and the voice to hold on', async () => {
     const h = await opened();
-    const session = h.session();
-    // Kaana's one canonical shape (contract set 6.0.0): deltas that only append,
-    // and exactly one final transcript.done per item.
-    session.emit({ type: 'input_audio.speech_started', itemId: 'u1', audioStartMs: 0 });
-    for (const text of [
-      'Please tell me,',
-      ' in one short sentence,',
-      ' what is the capital of France?',
-    ])
-      session.emit({
-        type: 'transcript.delta',
-        source: 'input_audio',
-        itemId: 'u1',
-        contentIndex: 0,
-        text,
-      });
-    session.emit({ type: 'input_audio.speech_stopped', itemId: 'u1', audioEndMs: 4_000 });
-    session.emit({ type: 'input_audio.committed', itemId: 'u1' });
-    session.emit({
-      type: 'transcript.done',
-      source: 'input_audio',
-      itemId: 'u1',
-      contentIndex: 0,
-      transcript: 'Please tell me, in one short sentence, what is the capital of France?',
+    h.turns.answer(withTool('createReminder', true, 'Hecho, te lo recuerdo mañana.'));
+    personSays(h, 'd1', 'Recuérdame comprar pan');
+    await until('final reply', () => replies(h).some((reply) => reply.final));
+    const { assistantMessageId } = h.turns.requests[0]!;
+    expect(h.sink.find('tool.started')).toEqual([
+      expect.objectContaining({
+        messageId: assistantMessageId,
+        callId: 'call_createReminder',
+        name: 'createReminder',
+      }),
+    ]);
+    expect(h.sink.find('tool.finished')[0]).toMatchObject({
+      messageId: assistantMessageId,
+      ok: true,
     });
-    session.emit({ type: 'response.created', responseId: 'r1' });
-    session.emit({
+    expect(h.commands('delegation.context')).toEqual([
+      expect.objectContaining({
+        delegationId: 'd1',
+        text: expect.stringContaining('createReminder'),
+      }),
+    ]);
+    // The voice's own words of this turn are drawn under the same answer.
+    h.session().emit({
       type: 'transcript.delta',
       source: 'output_audio',
-      itemId: 'a1',
+      itemId: 'out_1',
       contentIndex: 0,
-      responseId: 'r1',
-      text: 'The capital of France is Paris.',
+      text: 'Hecho',
     });
-    session.emit({
-      type: 'transcript.done',
-      source: 'output_audio',
-      itemId: 'a1',
-      contentIndex: 0,
-      responseId: 'r1',
-      transcript: 'The capital of France is Paris.',
+    await until('assistant transcript', () => h.sink.find('transcript.delta').length === 2);
+    expect(h.sink.find('transcript.delta')[1]).toMatchObject({
+      role: 'assistant',
+      messageId: assistantMessageId,
     });
-    session.emit({
-      type: 'response.done',
-      responseId: 'r1',
-      status: 'completed',
-      units: [],
-      usageSource: 'oxy_measured',
-    });
-
-    await until('persisted', () => h.persisted.flat().length === 2);
-    const stored = h.persisted.flat();
-    expect(stored.map((message) => [message.role, message.content])).toEqual([
-      ['user', 'Please tell me, in one short sentence, what is the capital of France?'],
-      ['assistant', 'The capital of France is Paris.'],
-    ]);
-    // One message id per role on the wire, and it is the stored one.
-    const transcripts = h.sink.events.filter(
-      (event) => event.type === 'transcript.delta' || event.type === 'transcript.done',
-    ) as Array<{ role: string; messageId: string }>;
-    for (const message of stored)
-      expect(
-        new Set(
-          transcripts
-            .filter((event) => event.role === message.role)
-            .map((event) => event.messageId),
-        ),
-      ).toEqual(new Set([message.id]));
-  });
-
-  it('truncates the interrupted item at what was played and stores the answer whole, marked', async () => {
-    const h = await opened();
-    const session = h.session();
-    session.emit({ type: 'input_audio.speech_started', itemId: 'u1', audioStartMs: 0 });
-    session.emit({ type: 'input_audio.speech_stopped', itemId: 'u1', audioEndMs: 900 });
-    session.emit({ type: 'input_audio.committed', itemId: 'u1' });
-    session.emit({
-      type: 'transcript.done',
-      source: 'input_audio',
-      itemId: 'u1',
-      contentIndex: 0,
-      transcript: '¿Qué tiempo hace?',
-    });
-    session.emit({ type: 'response.created', responseId: 'r1' });
-    session.emit({
-      type: 'output_audio.delta',
-      responseId: 'r1',
-      itemId: 'a1',
-      contentIndex: 0,
-      format: 'pcm16_24khz',
-      data: pcmBase64(40),
-    });
-    session.emit({
-      type: 'output_audio.delta',
-      responseId: 'r1',
-      itemId: 'a1',
-      contentIndex: 0,
-      format: 'pcm16_24khz',
-      data: pcmBase64(40),
-    });
-    session.emit({
-      type: 'transcript.done',
-      source: 'output_audio',
-      itemId: 'a1',
-      contentIndex: 0,
-      responseId: 'r1',
-      transcript: 'Hoy hace sol y mañana lloverá.',
-    });
-    await until('audio', () => h.sink.audio.length === 2);
-    expect(decodeAssistantAudioFrame(h.sink.audio[0]!)?.itemId).toBe('a1');
-    expect(h.sink.audioFor('a1')).toBe(80 * 48);
-
-    // The person talks over it.
-    session.emit({ type: 'input_audio.speech_started', itemId: 'u2', audioStartMs: 1_000 });
-    await until('user.speech_started', () => h.sink.find('user.speech_started').length === 2);
-    h.call.onPlaybackInterrupted('a1', 50);
-    expect(h.commands('conversation.item.truncate')).toEqual([
-      expect.objectContaining({ itemId: 'a1', contentIndex: 0, audioEndMs: 50 }),
-    ]);
-    session.emit({
-      type: 'response.done',
-      responseId: 'r1',
-      status: 'cancelled',
-      units: [],
-      usageSource: 'provider_reported',
-    });
-    await until('persisted', () => h.persisted.flat().length === 2);
-    expect(h.persisted.flat()).toEqual([
-      expect.objectContaining({ role: 'user', content: '¿Qué tiempo hace?' }),
-      expect.objectContaining({
-        role: 'assistant',
-        content: 'Hoy hace sol y mañana lloverá.',
-        interruptedAfterMs: 50,
-      }),
-    ]);
-    expect(h.sink.find('messages.saved')[0]?.conversationId).toBe('conv-1');
     await h.call.end('hangup');
   });
 
-  it('does not truncate an item that was played to the end', async () => {
+  it('carries the voice audio to the device, framed by its item', async () => {
     const h = await opened();
-    const session = h.session();
-    session.emit({ type: 'response.created', responseId: 'r1' });
-    session.emit({
+    h.session().emit({
       type: 'output_audio.delta',
       responseId: 'r1',
-      itemId: 'a1',
+      itemId: 'out_1',
       contentIndex: 0,
       format: 'pcm16_24khz',
       data: pcmBase64(40),
     });
     await until('audio', () => h.sink.audio.length === 1);
-    h.call.onPlaybackInterrupted('a1', 400);
-    expect(h.commands('conversation.item.truncate')).toHaveLength(0);
+    expect(h.sink.audioFor('out_1')).toBe(40 * 48);
     await h.call.end('hangup');
   });
 
-  it('keeps the order user → assistant when the input transcript arrives late, and stores nothing for an empty response', async () => {
+  it('a failed turn is a typed failure: the voice is told in context and the turn dropped, no filler', async () => {
     const h = await opened();
-    const session = h.session();
-    session.emit({ type: 'input_audio.speech_started', itemId: 'u1', audioStartMs: 0 });
-    session.emit({ type: 'response.created', responseId: 'r1' });
-    session.emit({
-      type: 'transcript.done',
-      source: 'output_audio',
-      itemId: 'a1',
-      contentIndex: 0,
-      responseId: 'r1',
-      transcript: 'Claro.',
-    });
-    session.emit({
-      type: 'response.done',
-      responseId: 'r1',
-      status: 'completed',
-      units: [],
-      usageSource: 'provider_reported',
-    });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(h.persisted).toHaveLength(0);
-    session.emit({ type: 'input_audio.committed', itemId: 'u1' });
-    session.emit({
-      type: 'transcript.done',
-      source: 'input_audio',
-      itemId: 'u1',
-      contentIndex: 0,
-      transcript: 'Hola',
-    });
-    await until('persisted', () => h.persisted.flat().length === 2);
-    expect(h.persisted.flat().map((message) => [message.role, message.content])).toEqual([
-      ['user', 'Hola'],
-      ['assistant', 'Claro.'],
-    ]);
-    // The first words of a new conversation title it.
-    expect(h.titleConversation).toHaveBeenCalledWith('user-1', 'conv-1', 'Hola');
-
-    session.emit({ type: 'input_audio.speech_started', itemId: 'u2', audioStartMs: 0 });
-    session.emit({ type: 'input_audio.committed', itemId: 'u2' });
-    session.emit({
-      type: 'transcript.done',
-      source: 'input_audio',
-      itemId: 'u2',
-      contentIndex: 0,
-      transcript: 'Nada',
-    });
-    session.emit({ type: 'response.created', responseId: 'r2' });
-    session.emit({
-      type: 'response.done',
-      responseId: 'r2',
-      status: 'completed',
-      units: [],
-      usageSource: 'provider_reported',
-    });
-    await until('persisted', () => h.persisted.flat().length === 3);
-    expect(h.persisted.flat().at(-1)).toMatchObject({ role: 'user', content: 'Nada' });
+    h.turns.answer(failing('RATE_LIMITED'));
+    personSays(h, 'd1', 'Hola');
+    await until('dropped', () => h.commands('delegation.cancel').length === 1);
+    expect(replies(h)).toHaveLength(0);
+    expect(h.commands('delegation.context')[0]!.text).toMatch(/could not be answered/);
+    expect(h.sink.find('assistant.done').at(-1)?.status).toBe('failed');
+    expect(h.sink.find('messages.saved')).toHaveLength(0);
+    expect(h.stored).toHaveLength(0);
+    // The call goes on: the next turn is answered.
+    personSays(h, 'd2', 'Otra vez');
+    await until('answered', () => replies(h, 'd2').some((reply) => reply.final));
+    expect(h.sink.types()).not.toContain('session.closed');
     await h.call.end('hangup');
-    expect(h.persisted.flat()).toHaveLength(3);
+  });
+});
+
+describe('a superseded turn is stopped', () => {
+  it("aborts the turn's signal and stops it the way Stop does; its words open the next turn", async () => {
+    const h = await opened();
+    const first = pausedAfter('Vale, ');
+    h.turns.answer(first.script, say('Perfecto, a las cinco.'));
+    personSays(h, 'd1', 'Pon una alarma');
+    await until('first turn', () => h.turns.requests.length === 1);
+    const stopped = h.turns.requests[0]!;
+    // A newer delegation before d1's final reply: Kaana supersedes d1 first.
+    h.session().emit({ type: 'delegation.requested', delegationId: 'd2', text: 'a las cinco' });
+    await until('second turn', () => h.turns.requests.length === 2);
+    expect(stopped.signal.aborted).toBe(true);
+    expect(h.turns.cancelled).toEqual([
+      expect.objectContaining({ turnId: stopped.turnId, conversationId: START.conversationId }),
+    ]);
+    // Nothing more is spoken for it.
+    expect(replies(h, 'd1')).toHaveLength(0);
+    // The stopped turn stored nothing, so its words come with the next.
+    expect(h.turns.requests[1]!.messages.at(-1)?.content).toBe('Pon una alarma a las cinco');
+    await until('answered', () => replies(h, 'd2').some((reply) => reply.final));
+    expect(h.stored.map((message) => message.content)).toEqual([
+      'Pon una alarma a las cinco',
+      'Perfecto, a las cinco.',
+    ]);
+    await h.call.end('hangup');
+  });
+
+  it('never repeats words a superseded turn managed to store', async () => {
+    const h = await opened();
+    const first = pausedAfter('Hecho.');
+    h.turns.answer(first.script);
+    personSays(h, 'd1', 'Uno');
+    await until('first turn', () => h.turns.requests.length === 1);
+    // The first turn had already been stored when the voice moved on.
+    const { messages, assistantMessageId } = h.turns.requests[0]!;
+    h.stored.push(messages.at(-1)!, {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: 'Hecho.',
+    });
+    h.session().emit({ type: 'delegation.requested', delegationId: 'd2', text: 'Dos' });
+    await until('second turn', () => h.turns.requests.length === 2);
+    expect(h.turns.requests[1]!.messages.at(-1)?.content).toBe('Dos');
+    await h.call.end('hangup');
   });
 });
 
@@ -742,26 +523,27 @@ describe('limits', () => {
 });
 
 describe('one call per person', () => {
-  it('hangs up with call-moved-elsewhere when another device takes over, storing what it had', async () => {
+  it('hangs up with call-moved-elsewhere when another device takes over', async () => {
     const h = await opened();
     const session = h.session();
-    session.emit({ type: 'input_audio.speech_started', itemId: 'u1', audioStartMs: 0 });
-    session.emit({ type: 'input_audio.committed', itemId: 'u1' });
-    session.emit({
-      type: 'transcript.done',
-      source: 'input_audio',
-      itemId: 'u1',
-      contentIndex: 0,
-      transcript: 'Último',
-    });
-    await new Promise((resolve) => setTimeout(resolve, 5));
     await h.held()!.takenOver();
     expect(h.sink.find('session.closed')[0]?.reason).toBe('call-moved-elsewhere');
     expect(h.sink.find('error')).toHaveLength(0);
-    expect(h.persisted.flat().map((message) => message.content)).toContain('Último');
     // The takeover already ended the row; this task does not end it again.
     expect(h.finishCall).not.toHaveBeenCalled();
     expect(session.closed).toBe(true);
+  });
+
+  it('a hang-up leaves the answer being given to finish and be stored, as a typed turn does', async () => {
+    const h = await opened();
+    const answer = pausedAfter('Vale.');
+    h.turns.answer(answer.script);
+    personSays(h, 'd1', 'Hola');
+    await until('turn asked', () => h.turns.requests.length === 1);
+    await h.call.end('hangup');
+    // Only this side stopped listening: the chat route's turn is not cancelled.
+    expect(h.turns.cancelled).toHaveLength(0);
+    expect(h.turns.requests[0]!.signal.aborted).toBe(true);
   });
 });
 
@@ -778,22 +560,27 @@ describe('reconnection', () => {
     await h.call.end('hangup');
   });
 
-  it('opens a new session under the same call, from the stored messages, when resume cannot work', async () => {
-    const h = await opened({ history: [{ role: 'user', content: 'antes' }] });
+  it('opens a new session on the same line, from the stored messages, when resume cannot work', async () => {
+    const h = await opened({ history: [{ id: 'm1', role: 'user', content: 'antes' }] });
     const first = h.session();
+    h.stored.push({ id: 'm2', role: 'assistant', content: 'después' });
     // Gone while the connection was down: the resume is refused.
     first.drop();
     first.end('upstream_error');
     await until('second session', () => h.server.sessions.length === 2);
     await until('ready again', () => h.sink.find('session.ready').length === 2);
     expect(h.server.sessions[1]!.model.modelId).toBe(first.model.modelId);
-    expect(h.instructionsFor).toHaveBeenLastCalledWith([{ role: 'user', content: 'antes' }]);
+    expect(h.server.sessions[1]!.open.config.instructions).toContain('You: después');
     expect(h.startCall).toHaveBeenCalledOnce();
     await h.call.end('hangup');
   });
 
-  it('opens a new session when the Kaana task shuts down', async () => {
+  it('opens a new session when the Kaana task shuts down, stopping the turns of the old one', async () => {
     const h = await opened();
+    const answer = pausedAfter('Vale.');
+    h.turns.answer(answer.script);
+    personSays(h, 'd1', 'Hola');
+    await until('turn asked', () => h.turns.requests.length === 1);
     h.session().emit({
       type: 'session.closed',
       reason: 'server_shutdown',
@@ -802,6 +589,8 @@ describe('reconnection', () => {
       closedAt: new Date().toISOString(),
     });
     await until('second session', () => h.server.sessions.length === 2);
+    expect(h.turns.requests[0]!.signal.aborted).toBe(true);
+    expect(h.turns.cancelled).toHaveLength(1);
     await h.call.end('hangup');
   });
 
@@ -811,7 +600,6 @@ describe('reconnection', () => {
     h.call.detach(h.sink);
     h.session().emit({ type: 'input_audio.speech_started', itemId: 'u1', audioStartMs: 0 });
     await new Promise((resolve) => setTimeout(resolve, 5));
-    const { RecordingSink } = await import('./support.js');
     const back = new RecordingSink();
     expect(h.call.attach(back, lastSeen)).toBe(true);
     expect(back.types()).toEqual(['user.speech_started', 'session.resumed']);
@@ -823,25 +611,30 @@ describe('reconnection', () => {
 });
 
 describe('credits per minute, at the real cost', () => {
-  it("settles the call's minutes at the served model's price per minute", async () => {
+  it("settles the call's minutes at the line's price per minute; the turns are charged as turns", async () => {
     let clock = 1_000_000;
     const h = await opened({ now: () => clock });
-    const perMinute = Number(REALTIME.pricePerMinute!.amount);
+    const perMinute = Number(LIVE_DEFAULT.pricePerMinute!.amount);
     // The block held five minutes at the catalogue's minute.
     expect(h.reservations[0]!.creditsReserved).toBe(creditsForCost(perMinute * 5));
+    personSays(h, 'd1', 'Hola');
+    await until('answered', () => replies(h).some((reply) => reply.final));
     clock += 90_000;
     await h.call.end('hangup');
-    // 90 s, silence included, at the published minute.
+    // 90 s, silence included, at the published minute: the turn is not in it.
+    expect(h.finalize).toHaveBeenCalledOnce();
     expect(h.finalize).toHaveBeenCalledWith(h.reservations[0], creditsForCost(perMinute * 1.5));
+    expect(h.session().closed).toBe(true);
     expect(h.recordAnalytics).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: REALTIME.modelId,
-        resolvedModelReference: `${REALTIME.modelId}@${REALTIME.currentRevision}`,
+        model: LIVE_DEFAULT.modelId,
+        resolvedModelReference: `${LIVE_DEFAULT.modelId}@${LIVE_DEFAULT.currentRevision}`,
       }),
     );
+    expect(h.finishCall).toHaveBeenCalledWith(h.call.callId, 'hangup');
   });
 
-  it('ends with credits-exhausted after the spoken item when the next block is refused', async () => {
+  it('ends with credits-exhausted after the turn being answered when the next block is refused', async () => {
     let calls = 0;
     let clock = 1_000_000;
     const h = await opened({
@@ -860,21 +653,18 @@ describe('credits per minute, at the real cost', () => {
           : null;
       },
     });
-    const session = h.session();
-    session.emit({ type: 'response.created', responseId: 'r1' });
+    const answer = pausedAfter('Un momento. ', 'Ya está.');
+    h.turns.answer(answer.script);
+    personSays(h, 'd1', 'Hola');
+    await until('turn asked', () => h.turns.requests.length === 1);
     // Four and a half minutes into a five-minute block, mid-answer.
     clock += 270_000;
     await until('next block asked', () => calls === 2);
     expect(h.sink.types()).not.toContain('session.closed');
-    // Never mid-word: the answer being spoken finishes first.
-    session.emit({
-      type: 'response.done',
-      responseId: 'r1',
-      status: 'completed',
-      units: [],
-      usageSource: 'oxy_measured',
-    });
+    // Never mid-answer: the turn being answered finishes first.
+    answer.release();
     await until('closed', () => h.sink.types().includes('session.closed'));
+    expect(replies(h).at(-1)?.final).toBe(true);
     expect(h.sink.find('error')[0]?.code).toBe('credits-exhausted');
     expect(h.sink.find('session.closed')[0]?.reason).toBe('credits-exhausted');
   });
@@ -903,6 +693,6 @@ describe('typed failures', () => {
     });
     expect(h.sink.audio.length).toBe(audioBefore);
     expect(h.sink.find('transcript.done')).toHaveLength(0);
-    expect(h.persisted).toHaveLength(0);
+    expect(h.stored).toHaveLength(0);
   });
 });

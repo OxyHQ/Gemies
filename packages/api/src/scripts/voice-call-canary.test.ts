@@ -1,109 +1,275 @@
-import { describe, expect, it } from 'vitest';
-import { createFakeKaana, voiceCatalogue } from '@kaana.ai/sdk/testing';
-import { rankRealtimeCandidates } from '../lib/models/voice-models.js';
-import {
-  canaryAccount,
+import { readFileSync } from 'node:fs';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../lib/logger.js', () => {
+  const quiet = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  return { log: new Proxy({}, { get: () => quiet }) };
+});
+// The socket's default environment is never built here: the server gets the harness's.
+vi.mock('../lib/voice/environment.js', () => ({ createVoiceEnvironment: vi.fn() }));
+vi.mock('../lib/socket-session-auth.js', () => ({ authenticateSocketSession: vi.fn() }));
+vi.mock('../lib/app-surface.js', () => ({ verifySurface: vi.fn(async () => null) }));
+
+const {
+  canaryIdentity,
+  FIXTURE,
   judgeVoice,
   parseVoiceArgs,
+  reminderIdsOf,
   runVoiceCanary,
-  type VoiceCanaryReport,
   voicePlan,
-} from './voice-call-canary.js';
+} = await import('./voice-call-canary.js');
+const { voiceSessionRoute } = await import('../lib/voice/voice-socket.js');
+const { routeWebSocketUpgrades } = await import('../lib/websocket-upgrades.js');
+const { harness, LIVE_DEFAULT, pcmBase64, until, withTool } = await import(
+  '../lib/voice/__tests__/support.js'
+);
 
-const passing: VoiceCanaryReport = {
-  model: 'x-ai/grok-voice-3.0',
-  sessionId: 'req_1',
-  audioMs: 8_000,
-  wallMs: 14_000,
-  counts: { responsesCreated: 1, responsesDone: 1, audioDeltas: 12, errors: 0 },
-  firstAudioMs: 900,
-  units: [{ unit: 'session_milliseconds', quantity: 12_000 }],
-  fatal: null,
-};
+/**
+ * The production voice canary (ADR 0041 §7) end to end: the canary's own
+ * client against the real voice socket, served by the production `VoiceCall`
+ * over `@kaana.ai/sdk/testing`'s `live` session and a scripted chat route, and
+ * the app routes it cleans up through.
+ */
 
-describe('voice call canary', () => {
-  it('passes a complete call and fails each missing piece (negative controls)', () => {
-    expect(judgeVoice(passing)).toEqual([]);
-    expect(judgeVoice({ ...passing, sessionId: null })).toEqual(['no session opened']);
-    expect(judgeVoice({ ...passing, counts: { ...passing.counts, responsesCreated: 0 } })).toEqual([
-      'no response.created',
-    ]);
-    expect(judgeVoice({ ...passing, counts: { ...passing.counts, audioDeltas: 0 } })).toEqual([
-      'no output_audio.delta',
-    ]);
-    expect(judgeVoice({ ...passing, counts: { ...passing.counts, responsesDone: 0 } })).toEqual([
-      'no response.done',
-    ]);
-    expect(judgeVoice({ ...passing, units: [] })).toEqual(['no units billed']);
-    expect(judgeVoice({ ...passing, fatal: 'policy_violation' })).toEqual([
-      'fatal: policy_violation',
-    ]);
+const QA = '0123456789abcdef01234567';
+
+function passing() {
+  return {
+    callId: 'vc_1',
+    model: 'test-voice/live-default@1',
+    audioMs: 4_200,
+    answeredTurns: 1,
+    tools: [{ name: 'createAutomation', ok: true }],
+    audioBytes: 9_600,
+    answerAudioBytes: 4_800,
+    firstAnswerAudioMs: 1_800,
+    closedReason: 'hangup',
+    errors: [],
+    reminderStopped: true,
+    conversationRemoved: true,
+    wallMs: 12_000,
+  };
+}
+
+describe('the judgement', () => {
+  it('passes a call that answered one turn with the tool, spoke it, closed and cleaned up', () => {
+    expect(judgeVoice(passing())).toEqual([]);
   });
 
-  it('refuses to run without the QA account and the explicit confirmation', () => {
-    expect(() => canaryAccount({})).toThrow(/ALIA_VOICE_CANARY_CONFIRM/);
-    expect(() => canaryAccount({ ALIA_VOICE_CANARY_CONFIRM: 'production-voice-canary' })).toThrow(
-      /ALIA_CANARY_OXY_USER_ID/,
+  it.each([
+    [{ model: null }, 'the call was never ready'],
+    [{ answeredTurns: 0 }, '0 turns answered and stored, not exactly one'],
+    [{ answeredTurns: 2 }, '2 turns answered and stored, not exactly one'],
+    [{ tools: [{ name: 'createAutomation', ok: false }] }, 'did not run createAutomation'],
+    [{ tools: [{ name: 'webSearch', ok: true }] }, 'did not run createAutomation'],
+    [{ audioBytes: 0, answerAudioBytes: 0 }, 'no audio came back'],
+    [{ answerAudioBytes: 0 }, 'the answer was not spoken'],
+    [{ closedReason: 'error' }, 'closed error'],
+    [{ closedReason: null }, 'closed never'],
+    [{ reminderStopped: false }, 'the reminder was not stopped'],
+    [{ errors: ['realtime-unavailable'] }, 'call errors: realtime-unavailable'],
+  ])('fails %o', (change, failure) => {
+    expect(judgeVoice({ ...passing(), ...change }).join('\n')).toContain(failure);
+  });
+});
+
+describe('the options and the identity', () => {
+  it('takes the voice and the locale, and a dry run names no model', () => {
+    expect(parseVoiceArgs([])).toEqual({ dryRun: false, voice: 'female', locale: 'en-US' });
+    expect(parseVoiceArgs(['--voice', 'male', '--locale', 'en-GB', '--dry-run'])).toEqual({
+      dryRun: true,
+      voice: 'male',
+      locale: 'en-GB',
+    });
+    expect(() => parseVoiceArgs(['--voice', 'alloy'])).toThrow('--voice');
+    expect(() => parseVoiceArgs(['--locale', 'not a tag'])).toThrow('--locale');
+    expect(voicePlan(parseVoiceArgs([]))).not.toMatch(/gpt|grok|openai|x-ai/i);
+  });
+
+  it('needs the explicit confirmation and the QA session opened for this run', () => {
+    const session = {
+      ALIA_CANARY_OXY_USER_ID: QA,
+      ALIA_CANARY_SESSION_TOKEN: 'qa-session',
+      ALIA_CANARY_DEVICE_ID: 'device',
+      ALIA_CANARY_DEVICE_SECRET: 'secret',
+    };
+    expect(() => canaryIdentity(session)).toThrow('ALIA_VOICE_CANARY_CONFIRM');
+    const confirm = { ALIA_VOICE_CANARY_CONFIRM: 'production-voice-canary' };
+    expect(() => canaryIdentity({ ...confirm, ...session, ALIA_CANARY_SESSION_TOKEN: '' })).toThrow(
+      'ALIA_CANARY_SESSION_TOKEN',
     );
+    expect(canaryIdentity({ ...confirm, ...session })).toMatchObject({
+      accountId: QA,
+      accessToken: 'qa-session',
+    });
+  });
+});
+
+describe('the recorded request', () => {
+  it('is 24 kHz PCM16 mono speech of a few seconds', () => {
+    const pcm = readFileSync(FIXTURE);
+    expect(pcm.byteLength % 2).toBe(0);
+    const seconds = pcm.byteLength / 48_000;
+    expect(seconds).toBeGreaterThan(2);
+    expect(seconds).toBeLessThan(10);
+    // Not silence: the samples move.
+    let peak = 0;
+    for (let index = 0; index < pcm.byteLength; index += 2)
+      peak = Math.max(peak, Math.abs(pcm.readInt16LE(index)));
+    expect(peak).toBeGreaterThan(2_000);
+  });
+
+  it('the reminders are read from the stored answers’ createAutomation results', () => {
     expect(
-      canaryAccount({
-        ALIA_VOICE_CANARY_CONFIRM: 'production-voice-canary',
-        ALIA_CANARY_OXY_USER_ID: '0123456789abcdef01234567',
+      reminderIdsOf([
+        { toolInvocations: [{ toolName: 'webSearch', result: { automation: { id: 'x' } } }] },
+        {
+          toolInvocations: [
+            { toolName: 'createAutomation', result: { success: true, automation: { id: 'a1' } } },
+            { toolName: 'createAutomation', result: { success: false, error: 'too_many' } },
+          ],
+        },
+      ]),
+    ).toEqual(['a1']);
+  });
+});
+
+const servers: http.Server[] = [];
+afterEach(async () => {
+  await Promise.all(
+    servers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))),
+  );
+});
+
+/** The live image's API, as the canary reaches it: the voice socket and the app routes it cleans up through. */
+async function api(h: ReturnType<typeof harness>) {
+  const seen: Array<{ method: string; url: string; authorization: string | undefined }> = [];
+  const server = http.createServer((req, res) => {
+    seen.push({
+      method: req.method ?? '',
+      url: req.url ?? '',
+      authorization: req.headers.authorization,
+    });
+    if (req.method === 'GET' && req.url?.startsWith('/conversations/')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      // What the chat route stored, with the tool result `saveConversation` keeps.
+      res.end(
+        JSON.stringify({
+          messages: h.stored.map((message) =>
+            message.role === 'assistant'
+              ? {
+                  ...message,
+                  toolInvocations: [
+                    {
+                      toolName: 'createAutomation',
+                      state: 'result',
+                      result: { success: true, automation: { id: 'auto-1' } },
+                    },
+                  ],
+                }
+              : message,
+          ),
+        }),
+      );
+      return;
+    }
+    res.writeHead(req.method === 'DELETE' ? 200 : 404, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  servers.push(server);
+  routeWebSocketUpgrades(server, {
+    socketIoPath: '/socket.io',
+    routes: [
+      voiceSessionRoute(undefined, {
+        environment: () => h.env,
+        authenticate: async (token) =>
+          token === 'qa-session' ? { userId: 'user-1', sessionId: 'session-1' } : null,
       }),
-    ).toBe('0123456789abcdef01234567');
+    ],
   });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  return { baseURL: `http://127.0.0.1:${port}`, seen };
+}
 
-  it('parses its flags and prints the plan on a dry run', () => {
-    expect(parseVoiceArgs(['--dry-run']).dryRun).toBe(true);
-    expect(parseVoiceArgs([])).toMatchObject({ seconds: 8, voice: 'female', locale: 'en' });
-    expect(() => parseVoiceArgs(['--seconds', '2'])).toThrow();
-    expect(() => parseVoiceArgs(['--voice', 'robot'])).toThrow(/--voice/);
-    expect(voicePlan(parseVoiceArgs([]))).toMatch(/server_vad/);
-  });
+describe('the run', () => {
+  it('calls through the socket, gets a tool-calling answer spoken, hangs up and cleans up', async () => {
+    const h = harness();
+    h.turns.answer(withTool('createAutomation', true, 'Done. ', 'I will remind you at nine.'));
+    const { baseURL, seen } = await api(h);
+    // A short request: ten frames of the recording.
+    const pcm = new Uint8Array(readFileSync(FIXTURE).subarray(0, 19_200));
 
-  it('opens a conversation as a call does and reads back the answer and billed units', async () => {
-    const fake = createFakeKaana({ models: voiceCatalogue });
-    const pcm = new Uint8Array(48 * 1_000);
     const running = runVoiceCanary(parseVoiceArgs([]), pcm, {
-      kaana: fake.kaana,
-      account: 'user-1',
+      baseURL,
+      bearer: async () => 'qa-session',
       frameDelayMs: 0,
-      answerWaitMs: 2_000,
+      quietAfterAnswerMs: 30,
+      timeoutMs: 5_000,
     });
-    while (fake.server.sessions.length === 0)
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    const session = fake.server.sessions[0];
-    if (!session) throw new Error('no session');
-    expect(session.open).toMatchObject({
-      kind: 'conversation',
-      config: {
-        outputModalities: ['audio'],
-        inputAudioFormat: 'pcm16_24khz',
-        turnDetection: { type: 'server_vad', createResponse: true },
-        inputAudioTranscription: { language: 'en' },
-      },
+
+    // The voice hears the request, hands the turn over and speaks the answer.
+    await until(
+      'request streamed',
+      () => h.server.sessions.length === 1 && h.commands('input_audio.append').length >= 10,
+    );
+    h.session().emit({
+      type: 'delegation.requested',
+      delegationId: 'd1',
+      text: 'Remind me to water the plants tomorrow at nine.',
     });
-    session.emit({ type: 'response.created', responseId: 'resp_1' });
-    session.emit({
+    await until('answer', () => h.commands('delegation.reply').some((reply) => reply.final));
+    await until('stored', () => h.stored.length === 2);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    h.session().emit({
       type: 'output_audio.delta',
-      responseId: 'resp_1',
-      itemId: 'item_1',
+      responseId: 'r1',
+      itemId: 'out_1',
       contentIndex: 0,
       format: 'pcm16_24khz',
-      data: Buffer.alloc(480).toString('base64'),
+      data: pcmBase64(40),
     });
-    session.emit({
-      type: 'response.done',
-      responseId: 'resp_1',
-      status: 'completed',
-      units: [],
-      usageSource: 'provider_reported',
-    });
+
     const report = await running;
-    expect(report.sessionId).not.toBeNull();
-    expect(report.counts).toMatchObject({ responsesCreated: 1, audioDeltas: 1, responsesDone: 1 });
-    expect(report.model).toBe(
-      rankRealtimeCandidates(voiceCatalogue, { voice: 'female' })[0]?.model.modelId,
+    expect(judgeVoice(report)).toEqual([]);
+    expect(report).toMatchObject({
+      callId: expect.stringMatching(/^vc_/),
+      model: `${LIVE_DEFAULT.modelId}@${LIVE_DEFAULT.currentRevision}`,
+      answeredTurns: 1,
+      tools: [{ name: 'createAutomation', ok: true }],
+      answerAudioBytes: 40 * 48,
+      closedReason: 'hangup',
+      reminderStopped: true,
+      conversationRemoved: true,
+    });
+    // The call ran as the QA person, in the conversation it then cleaned up.
+    expect(h.session().open.kind).toBe('live');
+    expect(h.turns.requests[0]!.accessToken).toBe('qa-session');
+    const conversationId = h.turns.requests[0]!.conversationId;
+    expect(seen.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      `GET /conversations/${conversationId}`,
+      'DELETE /automations/auto-1',
+      `DELETE /conversations/${conversationId}`,
+    ]);
+    expect(seen.every((request) => request.authorization === 'Bearer qa-session')).toBe(true);
+    expect(h.session().closed).toBe(true);
+  });
+
+  it('a call the plan refuses fails typed, and still removes its conversation', async () => {
+    const h = harness({ voiceMode: false });
+    const { baseURL, seen } = await api(h);
+    const report = await runVoiceCanary(parseVoiceArgs([]), new Uint8Array(1_920), {
+      baseURL,
+      bearer: async () => 'qa-session',
+      frameDelayMs: 0,
+      timeoutMs: 2_000,
+    });
+    expect(judgeVoice(report)).toEqual(
+      expect.arrayContaining(['the call was never ready', 'call errors: plan-required']),
     );
+    expect(seen.at(-1)?.method).toBe('DELETE');
   });
 });

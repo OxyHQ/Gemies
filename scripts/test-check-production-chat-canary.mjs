@@ -7,10 +7,12 @@ const sources = {
     new URL('../.github/workflows/production-chat-canary.yml', import.meta.url),
     'utf8',
   ),
-  runner: readFileSync(
-    new URL('../packages/api/src/scripts/production-chat-canary.ts', import.meta.url),
-    'utf8',
-  ),
+  // The runner and the QA person it is (`canary-qa-person.ts`), read as one.
+  runner: ['production-chat-canary.ts', 'canary-qa-person.ts']
+    .map((file) =>
+      readFileSync(new URL(`../packages/api/src/scripts/${file}`, import.meta.url), 'utf8'),
+    )
+    .join('\n'),
   build: readFileSync(new URL('../packages/api/build.ts', import.meta.url), 'utf8'),
 };
 assert.deepEqual(checkProductionChatCanary(sources), []);

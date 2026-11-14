@@ -540,6 +540,8 @@ describe('runtime secrets live in SSM only; no workflow writes one', () => {
     // The QA account's key: the runner signs it in for one run (`scripts/canary-qa-session.mjs`)
     // and signs it out after. Never runtime configuration, never written anywhere.
     'production-chat-canary.yml': ['ALIA_CANARY_OXY_QA_KEY'],
+    // The same QA sign-in, for the voice canary's one call.
+    'production-voice-canary.yml': ['ALIA_CANARY_OXY_QA_KEY'],
   };
 
   it('read every deploy workflow', () => {

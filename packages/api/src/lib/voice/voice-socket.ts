@@ -86,6 +86,8 @@ function handleVoiceConnection(ws: WebSocket, options: VoiceSocketOptions = {}):
   let token: string | null = null;
   /** The app the call comes from, by the latest `auth`'s assertion (ADR 0021). */
   let surfaceApplicationId: string | null = null;
+  /** That assertion, verified, which the call's turns carry to the chat route. */
+  let appAssertion: string | null = null;
   let call: VoiceCall | null = null;
   let pendingStart = false;
   let authenticating = false;
@@ -201,7 +203,8 @@ function handleVoiceConnection(ws: WebSocket, options: VoiceSocketOptions = {}):
           token = event.token;
           authFrame = JSON.stringify(event);
           surfaceApplicationId = surface;
-          call?.setAccessToken(event.token);
+          appAssertion = surface === null ? null : (event.appAssertion ?? null);
+          call?.setAccessToken(event.token, appAssertion);
           if (first) sendPre({ type: 'auth.ok' });
         });
       return;
@@ -220,6 +223,7 @@ function handleVoiceConnection(ws: WebSocket, options: VoiceSocketOptions = {}):
           return;
         }
         const started = new VoiceCall(environment(oxyUserId), oxyUserId, token);
+        started.setAccessToken(token, appAssertion);
         call = started;
         pendingStart = true;
         const owner = oxyUserId;
@@ -264,7 +268,7 @@ function handleVoiceConnection(ws: WebSocket, options: VoiceSocketOptions = {}):
           return;
         }
         if (held) {
-          held.setAccessToken(token);
+          held.setAccessToken(token, appAssertion);
           call = held;
           return;
         }
@@ -299,9 +303,6 @@ function handleVoiceConnection(ws: WebSocket, options: VoiceSocketOptions = {}):
           });
         return;
       }
-      case 'playback.interrupted':
-        call?.onPlaybackInterrupted(event.itemId, event.playedMs);
-        return;
       case 'session.end':
         if (pendingStart) {
           // Stop is meaningful before admission too. Closing the socket aborts

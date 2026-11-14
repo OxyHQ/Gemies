@@ -1,20 +1,18 @@
 /**
  * A voice call wired to `@kaana.ai/sdk/testing` — the real `Kaana` client
- * against Kaana's own rules in memory — and in-memory stores, for the voice
- * suites. Everything the call reaches is here and observable: the upstream
- * session (`session()`, the server's, which the test drives with `emit`), the
- * commands it applied (`commands(type)`), the events and audio the client
- * received (`sink`), what was stored (`persisted`), and the credit and
- * registry calls.
+ * against Kaana's own rules in memory — a scripted chat route and in-memory
+ * stores, for the voice suites. Everything the call reaches is here and
+ * observable: the upstream `live` session (`session()`, the server's, which
+ * the test drives with `emit`), the commands it applied (`commands(type)`),
+ * the turns the chat route was asked for (`turns`), the events and audio the
+ * client received (`sink`), the conversation as the chat route stored it
+ * (`stored`), and the credit and registry calls.
  */
 
 import { aliaGemie } from '../../../__tests__/support/gemies.js';
-import { tool, type ToolSet } from 'ai';
 import { vi } from 'vitest';
-import { z } from 'zod';
 import type { Model, RealtimeClientCommand } from '@kaana.ai/contracts';
 import { createFakeKaana, type FakeKaanaServer, voiceCatalogue } from '@kaana.ai/sdk/testing';
-import type { AppendedMessage } from '../../conversation-saver.js';
 import type { CreditReservation } from '../../credits-manager.js';
 import type { KaanaClient } from '../../kaana/port.js';
 import {
@@ -25,8 +23,15 @@ import {
   VoiceCall,
 } from '../call.js';
 import type { HeldCall } from '../call-registry.js';
+import {
+  type DelegatedTurnEvent,
+  DelegatedTurnFailure,
+  type DelegatedTurnRequest,
+  type TurnCredentials,
+  type VoiceTurnRunner,
+} from '../delegated-turn.js';
+import type { HistoryMessage } from '../persona.js';
 import { decodeAssistantAudioFrame, type SequencedVoiceEvent } from '../protocol.js';
-import type { HistoryMessage, VoiceTurnInput } from '../turn.js';
 
 export class RecordingSink implements VoiceClientSink {
   readonly events: SequencedVoiceEvent[] = [];
@@ -59,8 +64,168 @@ export class RecordingSink implements VoiceClientSink {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/*  The chat route, scripted                                                   */
+/* -------------------------------------------------------------------------- */
+
+/** What the chat route answers one turn with: its events, as it streams them. */
+export type TurnScript = (request: DelegatedTurnRequest) => AsyncIterable<DelegatedTurnEvent>;
+
+/** An answer in words, streamed in the pieces given. */
+export function say(...pieces: string[]): TurnScript {
+  return async function* () {
+    for (const text of pieces) yield { type: 'text', text };
+  };
+}
+
+/** A turn that calls a tool, then answers. */
+export function withTool(name: string, ok: boolean, ...pieces: string[]): TurnScript {
+  return async function* () {
+    yield { type: 'tool.started', callId: `call_${name}`, name };
+    yield { type: 'tool.finished', callId: `call_${name}`, name, ok };
+    for (const text of pieces) yield { type: 'text', text };
+  };
+}
+
+/** A turn the chat route refuses or fails, typed. */
+export function failing(code: string): TurnScript {
+  // biome-ignore lint/correctness/useYield: a turn that fails before it streams anything
+  return async function* () {
+    throw new DelegatedTurnFailure(code, 503);
+  };
+}
+
+/**
+ * A turn that streams `first`, then waits for `release()` (or its abort) before
+ * it streams `rest`. Aborted, it throws as `fetch` does.
+ */
+export function pausedAfter(first: string, ...rest: string[]) {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const script: TurnScript = async function* (request) {
+    yield { type: 'text', text: first };
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => reject(request.signal.reason ?? new Error('aborted'));
+      if (request.signal.aborted) abort();
+      request.signal.addEventListener('abort', abort, { once: true });
+      void gate.then(resolve);
+    });
+    for (const text of rest) yield { type: 'text', text };
+  };
+  return { script, release: () => release() };
+}
+
+/**
+ * The chat route as the call sees it: every turn it was asked for, and the
+ * conversation it stores — the person's message and the answer, appended when
+ * a turn completes, exactly as `saveConversation` stores a typed turn.
+ */
+export class ScriptedChatRoute implements VoiceTurnRunner {
+  readonly requests: DelegatedTurnRequest[] = [];
+  readonly cancelled: Array<TurnCredentials & { turnId: string; conversationId: string }> = [];
+  private readonly queue: TurnScript[] = [];
+
+  constructor(
+    readonly stored: HistoryMessage[],
+    private readonly fallback: TurnScript = say('Vale.'),
+  ) {}
+
+  /** The next turns' answers, in order; after them every turn says the fallback. */
+  answer(...scripts: TurnScript[]): void {
+    this.queue.push(...scripts);
+  }
+
+  run(request: DelegatedTurnRequest): AsyncIterable<DelegatedTurnEvent> {
+    this.requests.push(request);
+    const script = this.queue.shift() ?? this.fallback;
+    const stored = this.stored;
+    return (async function* () {
+      let answer = '';
+      for await (const event of script(request)) {
+        if (event.type === 'text') answer += event.text;
+        yield event;
+      }
+      request.signal.throwIfAborted();
+      stored.push(request.messages.at(-1)!, {
+        id: request.assistantMessageId,
+        role: 'assistant',
+        content: answer,
+      });
+    })();
+  }
+
+  async cancel(turn: TurnCredentials & { turnId: string; conversationId: string }) {
+    this.cancelled.push(turn);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  The catalogue                                                              */
+/* -------------------------------------------------------------------------- */
+
+/** Kaana's realtime voice line in its own catalogue: what a `live` line is built from. */
+const REALTIME = voiceCatalogue.find((model) => model.capabilities.realtime)!;
+
+/**
+ * A `live` line (Kaana ADR 0012 §1): Kaana's realtime line under its own id,
+ * holding `live` sessions, the default of the kind when `isDefault`, with a
+ * reviewed female and male voice.
+ */
+export function liveLine(
+  modelId: string,
+  options: { isDefault?: boolean; usdPerMinute?: string; voices?: Model['audio'] } = {},
+): Model {
+  const realtime = REALTIME.capabilities.realtime!;
+  return {
+    ...REALTIME,
+    modelId,
+    pricePerMinute: { amount: options.usdPerMinute ?? '0.05', currency: 'USD' },
+    capabilities: {
+      ...REALTIME.capabilities,
+      realtime: {
+        ...realtime,
+        sessionKinds: ['live'],
+        ...(options.isDefault ? { defaultKinds: ['live'] } : {}),
+      },
+    },
+    audio: options.voices ?? {
+      ...REALTIME.audio!,
+      voices: [
+        { id: `${modelId.split('/')[1]}-unreviewed`, name: 'Unreviewed', languages: ['en'] },
+        {
+          id: `${modelId.split('/')[1]}-female`,
+          name: 'Female',
+          languages: ['en'],
+          gender: 'female',
+        },
+        { id: `${modelId.split('/')[1]}-male`, name: 'Male', languages: ['en'], gender: 'male' },
+      ],
+    },
+  } as Model;
+}
+
+/** The catalogue's default `live` line, and a second line that is its fallback. */
+export const LIVE_DEFAULT = liveLine('test-voice/live-default', { isDefault: true });
+export const LIVE_FALLBACK = liveLine('test-voice/live-fallback', { usdPerMinute: '0.01' });
+
+/** A catalogue like production's: dictation lines, a `conversation` line and two `live` lines. */
+export const LIVE_CATALOGUE: readonly Model[] = [LIVE_FALLBACK, ...voiceCatalogue, LIVE_DEFAULT];
+
+/** A dictation-only model of Kaana's own voice catalogue, by id. */
+export function catalogueModel(modelId: string): Model {
+  const model = voiceCatalogue.find((entry) => entry.modelId === modelId);
+  if (!model) throw new Error(`No ${modelId} in Kaana's voice catalogue`);
+  return model;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  The harness                                                                */
+/* -------------------------------------------------------------------------- */
+
 export interface HarnessOptions {
-  /** The catalogue Kaana serves; Kaana's own voice catalogue by default. */
+  /** The catalogue Kaana serves; {@link LIVE_CATALOGUE} by default. */
   models?: readonly Model[];
   /** No Kaana client at all, as a process with no Oxy service identity. */
   noKaana?: boolean;
@@ -74,25 +239,15 @@ export interface HarnessOptions {
   entitlementsUnavailable?: boolean;
   turnAgent?: Awaited<ReturnType<VoiceCallEnvironment['prefetch']>>['turnAgent'];
   reserve?: (userId: string, credits: number) => Promise<CreditReservation | null>;
+  /** The conversation as stored before the call. */
   history?: HistoryMessage[];
-  tools?: ToolSet;
   limits?: Partial<VoiceCallLimits>;
   /** The call's clock. */
   now?: () => number;
 }
 
-export function weatherTools(execute?: (input: { city: string }) => Promise<unknown>): ToolSet {
-  return {
-    lookupWeather: tool({
-      description: 'The weather in a city',
-      inputSchema: z.object({ city: z.string() }),
-      execute: execute ?? (async ({ city }: { city: string }) => ({ city, celsius: 21 })),
-    }),
-  };
-}
-
 export function harness(options: HarnessOptions = {}) {
-  const fake = createFakeKaana({ models: options.models ?? voiceCatalogue });
+  const fake = createFakeKaana({ models: options.models ?? LIVE_CATALOGUE });
   const server: FakeKaanaServer = fake.server;
   const kaana = options.noKaana ? null : (options.wrapKaana?.(fake.kaana) ?? fake.kaana);
   /** The upstream session the call opened last. */
@@ -106,7 +261,6 @@ export function harness(options: HarnessOptions = {}) {
     session().commands.filter((command) => command.type === type) as Array<
       Extract<RealtimeClientCommand, { type: T }>
     >;
-  const persisted: AppendedMessage[][] = [];
   const reservations: CreditReservation[] = [];
   const reserve = vi.fn(
     options.reserve ??
@@ -124,21 +278,17 @@ export function harness(options: HarnessOptions = {}) {
   );
   const finalize = vi.fn(async (_reservation: CreditReservation, _credits: number) => undefined);
   const refund = vi.fn(async (_reservation: CreditReservation) => undefined);
-  let held: HeldCall | null = null;
+  let heldCall: HeldCall | null = null;
   const startCall = vi.fn(async (input: { call: HeldCall }) => {
-    held = input.call;
+    heldCall = input.call;
     return { replaced: 0 };
   });
   const finishCall = vi.fn(async () => undefined);
-  let history = options.history ?? [];
-  const turnInputs: VoiceTurnInput[] = [];
+  const stored: HistoryMessage[] = [...(options.history ?? [])];
+  const turns = new ScriptedChatRoute(stored);
   /** What each call asked its turn inputs for: the person, the agent and the app. */
   const prefetched: Parameters<VoiceCallEnvironment['prefetch']>[0][] = [];
-  const tools = options.tools ?? weatherTools();
-  const instructionsFor = vi.fn(
-    async (h: readonly HistoryMessage[]) => `INSTRUCTIONS(${h.length})`,
-  );
-  const titleConversation = vi.fn();
+  const loadHistory = vi.fn(async () => [...stored]);
   const recordAnalytics = vi.fn(async () => undefined);
 
   const env: VoiceCallEnvironment = {
@@ -161,25 +311,10 @@ export function harness(options: HarnessOptions = {}) {
     credits: { reserve, finalize, refund },
     startCall: startCall as unknown as VoiceCallEnvironment['startCall'],
     finishCall,
-    loadHistory: async () => history,
+    loadHistory,
     groupMembers: async (_oxyUserId, conversationId) =>
       conversationId.startsWith('group-') ? ['gemie-a', 'gemie-b'] : [],
-    buildTurn: async (input) => {
-      turnInputs.push(input);
-      return {
-        tools,
-        activeToolNames: () => Object.keys(tools),
-        instructions: instructionsFor,
-      };
-    },
-    persist: async (params) => {
-      persisted.push([...params.messages]);
-      history = [
-        ...history,
-        ...params.messages.map((message) => ({ role: message.role, content: message.content })),
-      ];
-    },
-    titleConversation,
+    turns,
     recordAnalytics,
   };
   const sink = new RecordingSink();
@@ -198,39 +333,19 @@ export function harness(options: HarnessOptions = {}) {
     session,
     commands,
     env,
-    persisted,
+    turns,
+    stored,
+    loadHistory,
     reservations,
     reserve,
     finalize,
     refund,
     startCall,
     finishCall,
-    turnInputs,
     prefetched,
-    instructionsFor,
-    titleConversation,
     recordAnalytics,
-    held: () => held,
+    held: () => heldCall,
   };
-}
-
-/** A model of Kaana's own voice catalogue, by id. */
-export function catalogueModel(modelId: string): Model {
-  const model = voiceCatalogue.find((entry) => entry.modelId === modelId);
-  if (!model) throw new Error(`No ${modelId} in Kaana's voice catalogue`);
-  return model;
-}
-
-/** Kaana's realtime voice model, the one a call opens on by default. */
-export const REALTIME = voiceCatalogue.find((model) => model.capabilities.realtime)!;
-
-/** Another realtime model like {@link REALTIME}, under its own id and price per minute. */
-export function realtimeModel(modelId: string, usdPerMinute: string): Model {
-  return {
-    ...REALTIME,
-    modelId,
-    pricePerMinute: { amount: usdPerMinute, currency: 'USD' },
-  } as Model;
 }
 
 export const START = {

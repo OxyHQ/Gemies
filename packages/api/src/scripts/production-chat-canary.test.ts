@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import {
-  PRODUCTION_CANARY_CASES,
-  apiEnvironment,
-  canarySession,
-  qaBearer,
-  summarize,
-} from './production-chat-canary.js';
+import { apiEnvironment, canarySession, qaBearer } from './canary-qa-person.js';
+import { PRODUCTION_CANARY_CASES, summarize } from './production-chat-canary.js';
 
 describe('production chat canary safe projection', () => {
   it('has the exact default, research, tool, refusal and recovery matrix without duplicate labels', () => {

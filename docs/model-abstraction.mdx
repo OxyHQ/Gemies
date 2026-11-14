@@ -250,9 +250,11 @@ returned as a short-lived playback link. See the
 history.
 
 Voice calls and dictation reach Kaana through the `@kaana.ai/sdk` port in
-`lib/kaana/` (ADR 0017): their realtime and transcription models are computed
-from Kaana's catalogue by capability and price (`lib/models/voice-models.ts`),
-and power levels never choose them ([Voice](./voice.mdx)). Hosted image
+`lib/kaana/` (ADR 0017, ADR 0041), computed from Kaana's catalogue
+(`lib/models/voice-models.ts`): a call opens the catalogue's default `live` line,
+dictation the cheapest transcription line, and power levels choose neither. A
+call's answers are typed turns, which follow the person's level
+([Voice](./voice.mdx)). Hosted image
 generation and embeddings do not yet have a Kaana capability seam. Those routes
 fail closed with HTTP 503 and `KAANA_CAPABILITY_UNAVAILABLE` before provider
 selection, billing or egress.
