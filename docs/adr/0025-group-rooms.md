@@ -134,7 +134,7 @@ target replacement or deletion clears it and cancels pending work; conversation 
 the feedback and receipts. Minimal rolling-compatibility triggers mirror old reaction updates and
 restore old writers' inserted caches without creating response authority. Existing feedback is
 seeded in the same transaction as these triggers, without retroactive observations. The response and existing
-`conversation:reaction` socket event carry stable message ID, emoji set, revision and mutation ID;
+`message.reaction` durable account event carry stable message ID, emoji set, revision and mutation ID;
 history carries `reactionRevision`. This is an event on the existing connection, not a new
 WebSocket route. [The runtime contract](../chat-runtime.mdx#reactions-are-conversation-feedback)
 defines the fields and recovery behavior.
