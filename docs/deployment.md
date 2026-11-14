@@ -104,11 +104,10 @@ Recommended, each disabling a feature when absent rather than blocking boot:
 
 ```bash
 REDIS_URL=rediss://...                 # BullMQ, rate limiting, Socket.IO adapter
-TOKEN_ENCRYPTION_KEY=<32-byte hex>     # see below — NOT optional for shows
+TOKEN_ENCRYPTION_KEY=<32-byte hex>     # see below — a write that needs it throws without it
 INTEGRATIONS_URL=https://...           # MCP tools and channel proxy
 GEMIES_OS_URL=http://computer.alia.internal.oxy.so:8080  # agents' computer (no secret: workload identity)
 GEMIES_OS_INSTANCE_ID=i-...     # lets the API wake the host when it has stopped itself
-SYRA_API_URL=https://api.syra.fm       # where a show series is published
 ```
 
 GemiesOS (`packages/gemies-os`) is not part of the API's
@@ -121,58 +120,31 @@ workspace/browser image, the `host` and `workspace` targets of
 host's unit over SSM Run Command. Without `GEMIES_OS_URL` the API simply builds
 no `computer` tools ([actors](./actors.mdx#the-agents-computer)).
 
-`SYRA_API_URL` carries no secret and needs none: Syra authenticates the caller's
-own Oxy token for everything a route does, and the background worker redeems a
-single-use ingest ticket that the route minted while that token was live. There
-is no service credential to hold, because service-token delegation is closed
-platform-wide until ADR 0012 lands.
-
 **Oxy Files** ([Alia on Oxy Files](./oxy-files.md)): `OXY_FILES_WEBHOOK_SECRET`
 (SSM `/oxy/alia/OXY_FILES_WEBHOOK_SECRET`, bound in the API task definition) is the `whsec_…`
 secret Oxy shows once when the file-events endpoint `https://api.gemies.ai/webhooks/oxy-files`
 is registered (every registration issues a new one); without it the route answers only the registration challenge (404 to everything else). Private content (library,
 spoken clips, skill files) always goes to Oxy first — there is no switch — and
-the backfill (`dist/scripts/migrate-to-oxy-files.js`) runs as an ECS one-shot;
-`SYRA_COVER_FILE_IDS` stays unset until Syra is deployed with `imageFileId`
-(Syra #214) and lists Alia in `SYRA_COVER_APPLICATION_IDS`.
+the backfill (`dist/scripts/migrate-to-oxy-files.js`) runs as an ECS one-shot.
 Alia's Oxy application needs `files:app:write`, `files:app:delete`,
 `files:references:write`, `files:read`, `files:linked:read` and
 `files:user-media:write` (staff-granted).
 `AWS_S3_BUCKET` stays until the bucket's retirement gate is met.
 
-**One prerequisite lives in SYRA, not here.** Web playback fetches an episode's
-audio from `api.syra.fm` with the listener's bearer token, so Alia's web origin
-must be in Syra's CORS allow-list (`packages/backend/server.ts`, `ALLOWED_ORIGINS`).
-Native has no CORS and is unaffected. Until that is set, episodes play on iOS and
-Android and fail in a browser.
+### `TOKEN_ENCRYPTION_KEY` is listed above but a write that needs it throws
 
-### `TOKEN_ENCRYPTION_KEY` is listed above but is REQUIRED for shows
-
-It is in the recommended block because its absence does not block boot, and that
-much is still true. The rest of that heading is not: it does not degrade a
-feature, it **throws**.
+It is in the recommended block because its absence does not block boot. It does
+not degrade a feature, though: it **throws**.
 
 `encryptedText` (`db/schema/columns.ts`) applies `encrypt` to every write drizzle
 builds, and `crypto-utils.ts` throws when the key is absent or is not 64 hex
-characters. The columns that use it are the OAuth access and refresh tokens on
-`integrations`, `bots.bot_token`, and
-`show_episodes.ingest_ticket` — enumerated rather than counted, so the list
-cannot drift from a number beside it.
+characters. The column that uses it is `bots.bot_token` — named rather than
+counted, so the list cannot drift from a number beside it. Without the key, the
+write that sets it answers a sanitized 500 that names nothing — **an operator
+reading it has no reason to suspect a missing variable.**
 
-That last one is on the CREATE path, not a background one. Without the key,
-`POST /shows/series/:id/episodes` fails at the insert, after the Syra episode has
-already been drafted, and answers a sanitized 500 that names nothing —
-**an operator reading it has no reason to suspect a missing variable.** Listing
-and reading shows keep working, because the route-facing queries name their
-columns and leave the ticket out; only creating an episode fails.
-
-**Rotating the key breaks whatever is in flight.** A ticket encrypted under the
-old key cannot be read under the new one, and the read fails rather than
-returning a wrong value, so every queued episode fails at the point the worker
-loads it. The blast radius is bounded and self-clearing: tickets are single-use
-and Syra mints them with a 24-hour TTL (`INGEST_TICKET_TTL_SEC`), so the damage
-is the episodes queued at the moment of rotation and nothing older. Drain the
-show queue before rotating, or accept that those episodes need starting again.
+**Rotating the key breaks what was written under the old one**: the read fails
+rather than returning a wrong value.
 
 It must also be the **same value** in the API and the integrations service:
 encrypted tokens are written by one process and read by the other.

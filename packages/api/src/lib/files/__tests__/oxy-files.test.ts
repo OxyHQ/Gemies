@@ -64,7 +64,6 @@ const {
   setOxyFilesClientForTests,
   storeChannelMedia,
   storePrivateContent,
-  storeShowCover,
   uploadRoute,
 } = await import('../oxy-files.js');
 const { parseStoredLocator, storedLocator } = await import('../../../domain/oxy-files.js');
@@ -95,36 +94,42 @@ beforeEach(() => {
 });
 afterEach(() => setOxyFilesClientForTests(null));
 
-describe('show covers', () => {
-  const bytes = new Uint8Array([1, 2, 3, 4]);
+describe('the backfill’s copy of an Alia file', () => {
+  const clip = {
+    kind: 'speech_clip' as const,
+    owner: { kind: 'alia' as const },
+    bytes: Buffer.from([1, 2, 3, 4]),
+    mime: 'audio/mpeg',
+    name: 'speech.mp3',
+  };
 
-  it('are stored as Alia’s PUBLIC file and answer its id and hash', async () => {
+  it('is stored as Alia’s PRIVATE file and answers its id', async () => {
     const uploadAppFile = vi.fn(async () => ({
-      file: { id: 'oxy-1', sha256: sha(bytes) },
+      file: { id: 'oxy-1', sha256: sha(clip.bytes), visibility: 'private' },
       deduplicated: false,
     }));
     setOxyFilesClientForTests(() => fakeOxy({ uploadAppFile }));
-    await expect(storeShowCover(bytes, 'image/png')).resolves.toEqual({
-      fileId: 'oxy-1',
-      sha256: sha(bytes),
-    });
-    expect(uploadAppFile).toHaveBeenCalledWith(bytes, 'image/png', {
-      visibility: 'public',
-      originalName: 'cover.png',
+    await expect(copyIntoOxy(clip)).resolves.toBe('oxy-1');
+    expect(uploadAppFile).toHaveBeenCalledWith(clip.bytes, 'audio/mpeg', {
+      visibility: 'private',
+      originalName: 'speech.mp3',
+      timeout: expect.any(Number),
     });
   });
 
-  it('are refused when Oxy reports a different hash', async () => {
+  it('is refused when Oxy reports a different hash', async () => {
     setOxyFilesClientForTests(() =>
-      fakeOxy({ uploadAppFile: async () => ({ file: { id: 'x', sha256: 'f'.repeat(64) } }) }),
+      fakeOxy({
+        uploadAppFile: async () => ({
+          file: { id: 'x', sha256: 'f'.repeat(64), visibility: 'private' },
+        }),
+      }),
     );
-    await expect(storeShowCover(bytes, 'image/png')).rejects.toBeInstanceOf(OxyFileIntegrityError);
+    await expect(copyIntoOxy(clip)).rejects.toBeInstanceOf(OxyFileIntegrityError);
   });
 
   it('cannot be stored without an Oxy identity', async () => {
-    await expect(storeShowCover(bytes, 'image/png')).rejects.toBeInstanceOf(
-      OxyFilesUnavailableError,
-    );
+    await expect(copyIntoOxy(clip)).rejects.toBeInstanceOf(OxyFilesUnavailableError);
   });
 });
 

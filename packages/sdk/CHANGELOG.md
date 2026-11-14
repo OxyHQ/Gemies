@@ -1,5 +1,12 @@
 # @gemies/sdk
 
+## 7.0.0
+
+- **Breaking: the `show.progress` realtime event is gone** (`REALTIME_SIGNAL_TYPES`, `RealtimeData`).
+  Gemies no longer generates podcasts: that is Syra's, which a gemie reaches through the Syra
+  connector. A host that listened for it (`useRealtimeEvent('show.progress', …)`) removes its shows
+  screens with it; the server stopped emitting the event in the same release.
+
 ## 6.4.0
 
 - **Stop no longer cancels an answer that had already finished.** The stop endpoint answers

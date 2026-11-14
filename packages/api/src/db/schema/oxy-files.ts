@@ -23,11 +23,13 @@ import {
   LEGACY_READ_KINDS,
   LEGACY_STORED_OBJECT_KINDS,
   OXY_FILE_ENTITY_TYPES,
+  OXY_FILE_REFERENCE_ENTITY_TYPES,
   OXY_FILE_REFERENCE_STATES,
   OXY_FILE_SYNC_STATUSES,
   type LegacyReadKind,
   type LegacyStoredObjectKind,
   type OxyFileEntityType,
+  type OxyFileReferenceEntityType,
   type OxyFileReferenceState,
   type OxyFileSyncStatus,
 } from '../../domain/oxy-files.js';
@@ -63,8 +65,10 @@ export const oxyFileReferenceSync = pgTable(
   {
     /** An Oxy file id. No foreign key: Oxy owns files. */
     fileId: text().notNull(),
-    entityType: text({ enum: OXY_FILE_ENTITY_TYPES as unknown as [string, ...string[]] })
-      .$type<OxyFileEntityType>()
+    entityType: text({
+      enum: OXY_FILE_REFERENCE_ENTITY_TYPES as unknown as [string, ...string[]],
+    })
+      .$type<OxyFileReferenceEntityType>()
       .notNull(),
     entityId: text().notNull(),
     desired: text({ enum: OXY_FILE_REFERENCE_STATES as unknown as [string, ...string[]] })
@@ -90,7 +94,11 @@ export const oxyFileReferenceSync = pgTable(
       columns: [t.fileId, t.entityType, t.entityId],
     }),
     index('oxy_file_reference_sync_claim_idx').on(t.status, t.availableAt),
-    checkOneOf('oxy_file_reference_sync_entity_type_check', t.entityType, OXY_FILE_ENTITY_TYPES),
+    checkOneOf(
+      'oxy_file_reference_sync_entity_type_check',
+      t.entityType,
+      OXY_FILE_REFERENCE_ENTITY_TYPES,
+    ),
     checkOneOf('oxy_file_reference_sync_desired_check', t.desired, OXY_FILE_REFERENCE_STATES),
     checkOneOf('oxy_file_reference_sync_status_check', t.status, OXY_FILE_SYNC_STATUSES),
   ],

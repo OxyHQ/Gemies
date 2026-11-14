@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { constraintNameOf, isCheckViolation, uuidv7 } from '@oxy.so/db';
@@ -19,19 +20,16 @@ import {
   ReferenceOutsideTransactionError,
   referenceInventory,
 } from '../files/oxyFileRepository';
-import { oxyFileReferenceSync, storageGcCandidates } from '../schema/oxy-files';
+import {
+  oxyFileReconcileRuns,
+  oxyFileReferenceSync,
+  storageGcCandidates,
+} from '../schema/oxy-files';
 import { libraryFiles } from '../schema/library';
-import { showSeries } from '../schema/shows';
 import { skillFiles } from '../schema/skills';
 import { speechClips } from '../schema/speech';
-import {
-  adoptSeriesCoverFile,
-  createSeries,
-  deleteSeriesForUser,
-  dropSeriesCoverFile,
-  updateSeriesForUser,
-} from '../shows/showRepository';
 import { createLibraryFile, deleteLibraryFile } from '../library/libraryFileRepository';
+import { RELEASE_ONLY_OXY_FILE_ENTITY_TYPES } from '../../domain/oxy-files';
 import { createSkill, deleteOwnedSkill, insertSkillVersion } from '../agents/skillRepository';
 import {
   collectLegacyGarbageOnce,
@@ -92,7 +90,7 @@ describe('the reference outbox', () => {
   it('refuses to be written outside a transaction', async () => {
     await expect(
       recordFileReferences(db, [
-        { fileId: `${RUN}-f0`, entityType: 'show_series', entityId: 'e', desired: 'present' },
+        { fileId: `${RUN}-f0`, entityType: 'library_file', entityId: 'e', desired: 'present' },
       ]),
     ).rejects.toBeInstanceOf(ReferenceOutsideTransactionError);
   });
@@ -101,12 +99,12 @@ describe('the reference outbox', () => {
     const file = `${RUN}-f1`;
     await db.transaction((tx) =>
       recordFileReferences(tx, [
-        { fileId: file, entityType: 'show_series', entityId: 's1', desired: 'present' },
+        { fileId: file, entityType: 'library_file', entityId: 's1', desired: 'present' },
       ]),
     );
     await db.transaction((tx) =>
       recordFileReferences(tx, [
-        { fileId: file, entityType: 'show_series', entityId: 's1', desired: 'absent' },
+        { fileId: file, entityType: 'library_file', entityId: 's1', desired: 'absent' },
       ]),
     );
     expect(await intentsFor(file)).toEqual([{ entityId: 's1', desired: 'absent', generation: 2 }]);
@@ -164,8 +162,8 @@ describe('the reference outbox', () => {
     const file = `${RUN}-f4`;
     await db.transaction((tx) =>
       recordFileReferences(tx, [
-        { fileId: file, entityType: 'show_series', entityId: 'a', desired: 'present' },
-        { fileId: file, entityType: 'show_series', entityId: 'b', desired: 'absent' },
+        { fileId: file, entityType: 'library_file', entityId: 'a', desired: 'present' },
+        { fileId: file, entityType: 'library_file', entityId: 'b', desired: 'absent' },
       ]),
     );
     const calls: { method: string; references: { entityId: string }[] }[] = [];
@@ -198,6 +196,96 @@ describe('the reference outbox', () => {
         (call) => call.method === 'remove' && call.references.some((r) => r.entityId === 'b'),
       ),
     ).toBe(true);
+  });
+
+  it('still delivers the release of an entity class Alia no longer uses, and nothing else of it', async () => {
+    const [released] = RELEASE_ONLY_OXY_FILE_ENTITY_TYPES;
+    const file = `${RUN}-f5`;
+    // What a migration that retires an entity class leaves in the outbox: its
+    // releases, written in SQL, since no code may record one any more.
+    await db
+      .insert(oxyFileReferenceSync)
+      .values({ fileId: file, entityType: released, entityId: 'retired-1', desired: 'absent' });
+    type Reference = { fileId: string; entityType: string; entityId: string };
+    const sent: { method: string; reference: Reference }[] = [];
+    // Other files' rows may be due too, and are answered like any Oxy would.
+    const answer = (method: string, result: string) => async (references: Reference[]) => {
+      for (const reference of references) sent.push({ method, reference });
+      return references.map((reference) => ({ ...reference, result }));
+    };
+    setOxyFileSyncClientForTests(
+      () =>
+        ({
+          assets: {
+            references: { add: answer('add', 'created'), remove: answer('remove', 'removed') },
+          },
+        }) as unknown as OxyServer,
+    );
+    for (let pass = 0; pass < 20 && (await intentsFor(file)).length > 0; pass += 1) {
+      await drainReferenceSyncOnce(db);
+    }
+    expect(await intentsFor(file)).toEqual([]);
+    expect(sent.filter(({ reference }) => reference.fileId === file)).toEqual([
+      {
+        method: 'remove',
+        reference: { fileId: file, entityType: released, entityId: 'retired-1' },
+      },
+    ]);
+    // The nightly reconciliation no longer knows it: its ledger refuses the class.
+    await expectCheck(
+      db.insert(oxyFileReconcileRuns).values({ entityType: released as never }),
+      'oxy_file_reconcile_runs_entity_type_check',
+    );
+  });
+
+  it('the retiring migration never lets its release overtake an add still in flight', async () => {
+    const [released] = RELEASE_ONLY_OXY_FILE_ENTITY_TYPES;
+    const file = `${RUN}-f6`;
+    await db
+      .insert(oxyFileReferenceSync)
+      .values({ fileId: file, entityType: released, entityId: 'in-flight', desired: 'present' });
+    // Worker A holds the `present` intent: its `references.add` is on the wire.
+    const owner = `${RUN}-adder`;
+    const [held] = (
+      await claimReferenceSyncs(db, { leaseOwner: owner, limit: 1000, leaseSeconds: 60 })
+    ).filter((row) => row.fileId === file);
+    if (held === undefined) throw new Error('worker A claimed nothing');
+
+    // Migration 0170's own UPDATE, read from the file the migrator applies.
+    const migration = readFileSync(
+      new URL('../../../drizzle/0170_podcasts_belong_to_syra.sql', import.meta.url),
+      'utf8',
+    );
+    const update = migration
+      .split('--> statement-breakpoint')
+      .map((statement) => statement.replace(/^\s*(--[^\n]*\n)*/u, '').trim())
+      .find((statement) => statement.startsWith('UPDATE "oxy_file_reference_sync"'));
+    expect(update).toBeDefined();
+    await db.execute(sql.raw(update ?? ''));
+
+    const [row] = await db
+      .select({
+        desired: oxyFileReferenceSync.desired,
+        leaseOwner: oxyFileReferenceSync.leaseOwner,
+        generation: oxyFileReferenceSync.generation,
+      })
+      .from(oxyFileReferenceSync)
+      .where(eq(oxyFileReferenceSync.fileId, file));
+    // Now a release, still under A's lease, one generation on.
+    expect(row).toEqual({ desired: 'absent', leaseOwner: owner, generation: held.generation + 1 });
+    // So no other worker can send the release while A's add is outstanding…
+    const overtaking = await claimReferenceSyncs(db, {
+      leaseOwner: `${RUN}-remover`,
+      limit: 1000,
+      leaseSeconds: 60,
+    });
+    expect(overtaking.some((claimed) => claimed.fileId === file)).toBe(false);
+    // …and A, when its add returns, can neither forget nor fail the release.
+    expect(await completeReferenceSync(db, held, owner)).toBe(false);
+    await failReferenceSync(db, held, owner, 'late', 1);
+    expect(await intentsFor(file)).toEqual([
+      { entityId: 'in-flight', desired: 'absent', generation: held.generation + 1 },
+    ]);
   });
 });
 
@@ -287,65 +375,6 @@ describe('rows that name a stored file', () => {
       .from(storageGcCandidates)
       .where(eq(storageGcCandidates.key, `${RUN}/skills/b`));
     expect(candidates).toEqual([{ key: `${RUN}/skills/b`, kind: 'skill_file' }]);
-  });
-
-  it('a series records, replaces and releases its cover reference with its own writes', async () => {
-    const id = uuidv7();
-    await createSeries(db, {
-      id,
-      userId: USER,
-      syraPodcastId: `${RUN}-pod-${id}`,
-      title: 'T',
-      format: 'podcast',
-      brief: 'brief long enough',
-      speakers: [],
-      visibility: 'private',
-      coverFileId: `${RUN}-cover-1`,
-    });
-    expect(await intentsFor(`${RUN}-cover-1`)).toEqual([
-      { entityId: id, desired: 'present', generation: 1 },
-    ]);
-
-    await updateSeriesForUser(db, id, USER, {
-      coverFileId: `${RUN}-cover-2`,
-      coverImageAssetId: null,
-    });
-    expect(await intentsFor(`${RUN}-cover-1`)).toEqual([
-      expect.objectContaining({ desired: 'absent' }),
-    ]);
-    expect(await intentsFor(`${RUN}-cover-2`)).toEqual([
-      expect.objectContaining({ desired: 'present' }),
-    ]);
-
-    expect(await deleteSeriesForUser(db, id, USER)).toBe(true);
-    expect(await intentsFor(`${RUN}-cover-2`)).toEqual([
-      expect.objectContaining({ desired: 'absent' }),
-    ]);
-  });
-
-  it('a taken-down cover clears the legacy cover too, and the migration adopts only an unmoved one', async () => {
-    const id = uuidv7();
-    await db.insert(showSeries).values({
-      id,
-      userId: USER,
-      syraPodcastId: `${RUN}-pod-${id}`,
-      title: 'T',
-      brief: 'brief long enough',
-      coverImageAssetId: 'syra-legacy',
-    });
-    expect(await adoptSeriesCoverFile(db, id, 'some-other-legacy', `${RUN}-cover-3`)).toBe(false);
-    expect(await adoptSeriesCoverFile(db, id, 'syra-legacy', `${RUN}-cover-3`)).toBe(true);
-    expect(await adoptSeriesCoverFile(db, id, 'syra-legacy', `${RUN}-cover-4`)).toBe(false);
-
-    expect(await dropSeriesCoverFile(db, `${RUN}-cover-3`)).toEqual([id]);
-    const [row] = await db
-      .select({ file: showSeries.coverFileId, legacy: showSeries.coverImageAssetId })
-      .from(showSeries)
-      .where(eq(showSeries.id, id));
-    expect(row).toEqual({ file: null, legacy: null });
-    expect(await intentsFor(`${RUN}-cover-3`)).toEqual([
-      expect.objectContaining({ desired: 'absent' }),
-    ]);
   });
 
   it('deleting a library file releases what it named in the same transaction', async () => {

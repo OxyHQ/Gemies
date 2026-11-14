@@ -76,7 +76,6 @@ const ALLOWED = new Set([
   // The product, and Alia's page title in it (ADR 0034).
   'Gemies',
   'Alia \\ Gemies',
-  'Syra',
   'Oxy',
   // The Oxy personal bundle, a product name in every language.
   'Oxy One',

@@ -64,7 +64,6 @@ socket event by name.
 | `room` | `{ conversationId, chainId, event, data }` — a group room's frames (ADR 0025) | `publishRoomEvent` |
 | `presence` | `{ agentId, online }` | the external-agent relay |
 | `runtimes` | `{}` | a device offering or withdrawing its own models |
-| `show.progress` | an episode's progress | the show pipeline |
 | `agent.activity` | an agent run's detailed event, on its topic | `EventStream` |
 
 ## Catch-up: the account log
@@ -182,4 +181,4 @@ have no event source:
 `alia:activity` is still emitted beside `activity` for agent runs: the "Ask Alia" button of every
 Oxy app on `@gemies/sdk` before 6.0 (and `@alia.onl/sdk`) listens for it. It goes when those apps
 are on 6.0 or later. Nothing else of the previous events (`notification`, `conversation:message`,
-`conversation:reaction`, `group:event`, `show:progress`, `agent-activity`) is emitted any more.
+`conversation:reaction`, `group:event`, `agent-activity`) is emitted any more.

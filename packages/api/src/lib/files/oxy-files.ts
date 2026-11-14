@@ -7,7 +7,6 @@
  *
  * | What                         | Owner                       | Visibility | Reference            |
  * |------------------------------|-----------------------------|------------|----------------------|
- * | A show's cover art           | ALIA (Alia draws it)        | public     | `show_series`/<id>   |
  * | A library upload             | the PERSON (their file)     | private    | `library_file`/<id>  |
  * | A spoken clip (cache)        | ALIA (a cache Alia expires) | private    | `speech_clip`/<key>  |
  * | A catalogue skill's file     | ALIA (no person owns it)    | private    | `skill_file`/<id>    |
@@ -21,13 +20,8 @@
  * "not in use" in their file manager forever. As Alia's, removing the reference
  * is the expiry: Oxy trashes an unreferenced application file after 24 hours.
  *
- * Show working segments are not here at all: they were pipeline scratch that
- * nothing read, and the pipeline no longer stores them (`show-pipeline.ts`).
- *
  * ## How each kind reaches Oxy (stage 4c)
  *
- * - Covers: Alia's public image (`uploadAppFile`), handed to Syra as a file
- *   once Syra takes one (`syraTakesCoverFiles`).
  * - Private content (`storePrivateContent`), always `visibility: 'private'`:
  *   media (image, video, audio) of at most 40 MiB is streamed
  *   (`uploadAppFile` / `uploadUserMedia`); anything else — a PDF, a document,
@@ -122,96 +116,6 @@ function oxy(): OxyServer {
 
 export function sha256Hex(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
-}
-
-// ── Show covers: in Oxy today ───────────────────────────────────────────────
-
-/** What a stored cover is: the Oxy file, and the hash of the bytes it holds. */
-export interface StoredCover {
-  readonly fileId: string;
-  readonly sha256: string;
-}
-
-/**
- * Store a cover Alia drew as ALIA's own public Oxy file.
- *
- * Unreferenced until the caller records the `show_series` reference in the
- * same transaction as the row that names it (`recordFileReferences`). That is
- * deliberate rather than a gap: if the series is never written, the file is an
- * unreferenced application file, and Oxy trashes it 24 hours later and purges
- * it 30 days after that (ADR 0043 D5). Nothing here has to clean up.
- *
- * Idempotent per bytes: Oxy answers the file Alia already holds for the same
- * bytes (`deduplicated`), so a retried cover is one file, not two.
- */
-export async function storeShowCover(bytes: Uint8Array, mime: string): Promise<StoredCover> {
-  const expected = sha256Hex(bytes);
-  const { file } = await oxy().assets.uploadAppFile(bytes, mime, {
-    visibility: 'public',
-    originalName: mime === 'image/png' ? 'cover.png' : 'cover',
-  });
-  if (file.sha256 !== expected) throw new OxyFileIntegrityError(expected, file.sha256);
-  return { fileId: file.id, sha256: file.sha256 };
-}
-
-/**
- * Whether Syra takes a show's cover as an Oxy file (`imageFileId`).
- *
- * Syra learns `imageFileId` in Syra #214 (`@syra.fm/sdk` 0.21.0), and accepts
- * one only from an application it trusts to supply covers. A Syra without it
- * would drop the field and leave the show without art, so until Syra is
- * deployed with it and trusts Alia, a cover is uploaded into Syra as before
- * (`uploadPodcastImage`) and Alia holds no file for it. Switch it with
- * `SYRA_COVER_FILE_IDS=enabled`, AFTER Syra (`docs/oxy-files.md`).
- */
-function syraTakesCoverFiles(env: NodeJS.ProcessEnv = process.env): boolean {
-  return (env.SYRA_COVER_FILE_IDS ?? '').trim() === 'enabled';
-}
-
-/** Where a newly drawn cover went: Alia's Oxy file, or Syra's own image store. */
-export type ShowCover =
-  | { readonly kind: 'oxy_file'; readonly fileId: string }
-  | { readonly kind: 'syra_image'; readonly imageId: string };
-
-/** The one Syra call `storeCoverForShow` may make. */
-export interface SyraCoverUploader {
-  uploadPodcastImage(image: Blob, filename?: string): Promise<{ readonly id: string }>;
-}
-
-/** Store a cover Alia drew wherever Syra can take it from today. */
-export async function storeCoverForShow(
-  syra: SyraCoverUploader,
-  bytes: Uint8Array,
-  mime: string,
-): Promise<ShowCover> {
-  if (syraTakesCoverFiles()) {
-    const stored = await storeShowCover(bytes, mime);
-    return { kind: 'oxy_file', fileId: stored.fileId };
-  }
-  const uploaded = await syra.uploadPodcastImage(
-    new Blob([new Uint8Array(bytes)], { type: mime }),
-    mime === 'image/png' ? 'cover.png' : 'cover',
-  );
-  return { kind: 'syra_image', imageId: uploaded.id };
-}
-
-/** The podcast field that names a cover, for `createPodcast` / `updatePodcast`. */
-export function syraCoverFields(cover: ShowCover | null): { image?: string; imageFileId?: string } {
-  if (cover === null) return {};
-  return cover.kind === 'oxy_file' ? { imageFileId: cover.fileId } : { image: cover.imageId };
-}
-
-/**
- * The series columns that name a cover. Each kind clears the other: a new
- * cover supersedes whichever one the series had.
- */
-export function seriesCoverColumns(cover: ShowCover): {
-  coverFileId: string | null;
-  coverImageAssetId: string | null;
-} {
-  return cover.kind === 'oxy_file'
-    ? { coverFileId: cover.fileId, coverImageAssetId: null }
-    : { coverFileId: null, coverImageAssetId: cover.imageId };
 }
 
 // ── Private content ─────────────────────────────────────────────────────────

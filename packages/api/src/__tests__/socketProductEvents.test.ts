@@ -14,7 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
  * throws when a listener binds a name nobody emits. Renaming
  * `agent-activity` to `agent:activity` on either side compiles, deploys,
  * passes every existing test, and silently removes the live run view from the
- * product. The same is true of `notification` and `show:progress`.
+ * product. The same is true of `notification`.
  *
  * So the required name set is derived from the CONSUMER — the app's own
  * `socket.on(...)` calls, read off disk — rather than written out here from

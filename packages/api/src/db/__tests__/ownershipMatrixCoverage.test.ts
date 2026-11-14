@@ -123,13 +123,13 @@ interface MatrixRow {
  * deleted. They are ANNOTATED rather than repointed at the new file, because
  * `currentPath` records where the code was when the matrix was taken and a row
  * that silently follows a file around stops being evidence of anything. The
- * routes now live at `packages/api/src/routes/shows.ts`, mounted at `/shows` —
- * which is the `keep-alia-product` destination those same rows already named.
+ * routes moved to `/shows` — the `keep-alia-product` destination those same
+ * rows already named — and left later with the whole feature (145 -> 147).
  *
- * `socket-show-progress` did NOT move. Its `currentPath` is the pipeline, which
- * still exists, so it may not claim `removedIn` — the existence check would
- * fail it, correctly. Its evidence line and its `dependsOn` were corrected in
- * place instead.
+ * `socket-show-progress` did NOT move then. Its `currentPath` was the pipeline,
+ * which still existed, so it could not claim `removedIn` — the existence check
+ * would have failed it, correctly. Its evidence line and its `dependsOn` were
+ * corrected in place instead.
  *
  * Those five rows carry a BRANCH NAME where every other annotated row carries a
  * `#NNN`. The field wants the PR that deleted the file and this branch has no
@@ -268,8 +268,18 @@ interface MatrixRow {
  *
  * Codea's extension and CLI moved to OxyHQ/Codea, so the eleven rows that described their files
  * leave the matrix the same way; none of them was annotated as removed.
+ *
+ * ## 145 -> 147: generated podcasts are Syra's
+ *
+ * The show pipeline is gone with the whole feature — routes, queue, tables (migration 0170) and its
+ * realtime event: podcast generation belongs to Syra, reached through the Syra connector. Two
+ * rows named the pipeline's file, `show-pipeline-provider-calls` and
+ * `socket-show-progress`; both are annotated and their `reachable` moved `live` -> `dead` in the
+ * same edit, for the reason `gwc-import-chat-service` records.
+ *
+ * They carry a branch name for the reason the others do.
  */
-const REMOVED_ROW_COUNT = 145;
+const REMOVED_ROW_COUNT = 147;
 
 const OWNERS = new Set(['alia', 'oxy', 'kaana', 'delete']);
 const REACHABLE = new Set(['live', 'dead', 'unverified', 'loaded-not-invoked']);

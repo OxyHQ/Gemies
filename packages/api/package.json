@@ -44,7 +44,6 @@
     "@oxy.so/telemetry": "^2.2.0",
     "@oxy.so/utils": "^1.5.2",
     "@socket.io/redis-adapter": "^8.3.0",
-    "@syra.fm/sdk": "0.23.0",
     "adm-zip": "^0.6.1",
     "ai": "6.0.323",
     "bullmq": "^6.3.15",

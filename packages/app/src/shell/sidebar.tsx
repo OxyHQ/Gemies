@@ -68,7 +68,6 @@ import { RiPushpinLine } from '@oxy.so/bloom/icons/RiPushpinLine';
 import { RiCustomerServiceLine } from '@oxy.so/bloom/icons/RiCustomerServiceLine';
 import { RiFileTextLine } from '@oxy.so/bloom/icons/RiFileTextLine';
 import { RiGiftLine } from '@oxy.so/bloom/icons/RiGiftLine';
-import { RiMicLine } from '@oxy.so/bloom/icons/RiMicLine';
 import { RiPlugLine } from '@oxy.so/bloom/icons/RiPlugLine';
 import { RiSettings4Line } from '@oxy.so/bloom/icons/RiSettings4Line';
 import { RiShieldLine } from '@oxy.so/bloom/icons/RiShieldLine';
@@ -686,7 +685,6 @@ function useSidebarProps() {
 
   // New chat and Agents are the toolbar's "+" and store button, not rows.
   const items: SidebarNavItem[] = [
-    { key: 'shows', label: t('sidebar.shows'), icon: RiMicLine, onPress: () => go('/(app)/shows') },
     {
       key: 'connectors',
       label: t('sidebar.connectors'),

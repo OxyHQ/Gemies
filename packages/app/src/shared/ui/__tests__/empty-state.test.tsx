@@ -68,7 +68,7 @@ describe('EmptyState', () => {
 
   it('hands Bloom a gemie it can draw: the default look, painted in the default colour', () => {
     // Bloom throws on a character with neither a preset nor a paint, and the throw takes the whole
-    // app down (gemies.ai/shows, a profile, «Gemie not found»). The bare look has no paint.
+    // app down (a profile, «Gemie not found»). The bare look has no paint.
     const root = render(<EmptyState title="Nothing here" />);
     const { character } = root.findByType('BloomEmptyState' as never).props.illustration.props;
     expect(drawable(DEFAULT_AGENT_CHARACTER)).toBe(false);

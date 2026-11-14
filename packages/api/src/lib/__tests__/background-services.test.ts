@@ -36,7 +36,6 @@ const STOPPER_FOR: Readonly<Record<string, string>> = {
   initTaskQueue: 'shutdownTaskQueue',
   initAliaTaskQueue: 'shutdownAliaTaskQueue',
   initRoomQueue: 'shutdownRoomQueue',
-  initShowQueue: 'shutdownShowQueue',
   // Fire-and-forget work with no running resource behind it. Each of these
   // is one call that settles; there is nothing left to stop.
   failOrphanedAudioJobs: '',
@@ -44,7 +43,6 @@ const STOPPER_FOR: Readonly<Record<string, string>> = {
   startWorker: 'shutdownTaskQueue',
   startAliaTaskWorker: 'shutdownAliaTaskQueue',
   startRoomWorker: 'shutdownRoomQueue',
-  startShowWorker: 'shutdownShowQueue',
   startSkillRegistrySync: 'stopSkillRegistrySync',
   startConnectorCatalogue: 'stopConnectorCatalogue',
 };
@@ -78,9 +76,6 @@ const shutdownAliaTaskQueue = traced('shutdownAliaTaskQueue');
 const initRoomQueue = traced('initRoomQueue');
 const startRoomWorker = traced('startRoomWorker');
 const shutdownRoomQueue = traced('shutdownRoomQueue');
-const initShowQueue = traced('initShowQueue');
-const startShowWorker = traced('startShowWorker');
-const shutdownShowQueue = traced('shutdownShowQueue');
 const startSkillRegistrySync = tracedSync('startSkillRegistrySync');
 const stopSkillRegistrySync = traced('stopSkillRegistrySync');
 const startConnectorCatalogue = tracedSync('startConnectorCatalogue');
@@ -110,7 +105,6 @@ vi.mock('../alia-task-queue.js', () => ({
   shutdownAliaTaskQueue,
 }));
 vi.mock('../chat/room/queue.js', () => ({ initRoomQueue, startRoomWorker, shutdownRoomQueue }));
-vi.mock('../show/show-queue.js', () => ({ initShowQueue, startShowWorker, shutdownShowQueue }));
 vi.mock('../skills/scheduler.js', () => ({ startSkillRegistrySync, stopSkillRegistrySync }));
 vi.mock('../connector-catalogue/scheduler.js', () => ({
   startConnectorCatalogue,
@@ -159,8 +153,6 @@ describe('startBackgroundServices', () => {
     expect(startAgentRunReaper).toHaveBeenCalledTimes(1);
     expect(initRoomQueue).toHaveBeenCalledTimes(1);
     expect(startRoomWorker).toHaveBeenCalledTimes(1);
-    expect(initShowQueue).toHaveBeenCalledTimes(1);
-    expect(startShowWorker).toHaveBeenCalledTimes(1);
     expect(startSkillRegistrySync).toHaveBeenCalledTimes(1);
     expect(startConnectorCatalogue).toHaveBeenCalledTimes(1);
   });
@@ -179,14 +171,14 @@ describe('startBackgroundServices', () => {
       order.push('initTaskQueue');
       return new Promise(() => {});
     });
-    initShowQueue.mockImplementationOnce(() => {
-      order.push('initShowQueue');
+    initRoomQueue.mockImplementationOnce(() => {
+      order.push('initRoomQueue');
       return new Promise(() => {});
     });
 
     expect(startBackgroundServices()).toBeUndefined();
     // It got all the way to the last statement despite two starters that never settle.
-    expect(initShowQueue).toHaveBeenCalledTimes(1);
+    expect(startConnectorCatalogue).toHaveBeenCalledTimes(1);
   });
 
   it('starts them in the order the boot path has always used', async () => {
@@ -198,9 +190,9 @@ describe('startBackgroundServices', () => {
      * if it changes nothing about WHEN anything happens, and "I moved the lines
      * unchanged" is a claim about a diff, not about behaviour.
      *
-     * The two workers appear after every synchronous starter because they hang
-     * off `initTaskQueue().then(...)` and `initShowQueue().then(...)`, which is
-     * the pre-existing shape and not an accident of the doubles.
+     * The workers appear after every synchronous starter because they hang off
+     * their queue's `init…().then(...)`, which is the pre-existing shape and not
+     * an accident of the doubles.
      */
     expect(order).toEqual([
       'startTriggerEngine',
@@ -211,13 +203,11 @@ describe('startBackgroundServices', () => {
       'initRoomQueue',
       'failOrphanedAudioJobs',
       'startAgentRunReaper',
-      'initShowQueue',
       'startSkillRegistrySync',
       'startConnectorCatalogue',
       'startWorker',
       'startAliaTaskWorker',
       'startRoomWorker',
-      'startShowWorker',
     ]);
   });
 
@@ -250,7 +240,7 @@ describe('startBackgroundServices', () => {
     expect(dispatcherStart).toHaveBeenCalledTimes(1);
     expect(reactionsStart).toHaveBeenCalledTimes(1);
     expect(startWorker).toHaveBeenCalledTimes(1);
-    expect(startShowWorker).toHaveBeenCalledTimes(1);
+    expect(startRoomWorker).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -264,7 +254,6 @@ describe('stopBackgroundServices', () => {
     expect(shutdownTaskQueue).toHaveBeenCalledTimes(1);
     expect(shutdownAliaTaskQueue).toHaveBeenCalledTimes(1);
     expect(shutdownRoomQueue).toHaveBeenCalledTimes(1);
-    expect(shutdownShowQueue).toHaveBeenCalledTimes(1);
     expect(stopSkillRegistrySync).toHaveBeenCalledTimes(1);
     expect(stopConnectorCatalogue).toHaveBeenCalledTimes(1);
   });
@@ -289,7 +278,7 @@ describe('stopBackgroundServices', () => {
     await settle();
     const started = [...order];
     // Vacuity floor: an empty `started` would make the loop below assert nothing.
-    expect(started.length).toBe(15);
+    expect(started.length).toBe(13);
 
     order.length = 0;
     await stopBackgroundServices();
@@ -368,7 +357,6 @@ describe('stopBackgroundServices', () => {
       'shutdownTaskQueue',
       'shutdownAliaTaskQueue',
       'shutdownRoomQueue',
-      'shutdownShowQueue',
     ]);
   });
 });

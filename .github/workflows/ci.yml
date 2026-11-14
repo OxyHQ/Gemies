@@ -534,7 +534,7 @@ jobs:
           node scripts/check-production-chat-canary.mjs
           node scripts/test-check-production-chat-canary.mjs
 
-      # Retired product routes and the retired app-agent lane (ADR 0020 §8).
+      # Retired product routes, the retired app-agent lane (ADR 0020 §8) and generated podcasts (Syra's).
       - name: Check retired vocabulary cannot return
         run: node scripts/check-retired-vocabulary.mjs
 

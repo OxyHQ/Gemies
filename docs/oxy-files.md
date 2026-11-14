@@ -9,14 +9,11 @@ the code is `packages/api/src/lib/files/`.
 
 | What | Owner | Visibility | Reference (`entityType`/`entityId`) | Where today |
 |---|---|---|---|---|
-| A show's cover art | **Alia** (Alia draws it) | public | `show_series`/series id | **Oxy Files** once `SYRA_COVER_FILE_IDS=enabled`; until then Syra's image store, as before |
 | A library upload | **the person** | private | `library_file`/row id | **Oxy Files** (`uploadUserMedia` for media ≤ 40 MiB, else `uploadUserMediaLarge`) |
 | A spoken clip (TTS cache) | **Alia** (a cache Alia expires) | private | `speech_clip`/cache key | **Oxy Files** (`uploadAppFile`, audio) |
 | A catalogue skill's bundled file | **Alia** | private | `skill_file`/row id | **Oxy Files** (`uploadAppFileLarge`; small media streamed) |
 | A person's own skill's bundled file | **the person** | private | `skill_file`/row id | **Oxy Files** (`uploadUserMediaLarge`; small media streamed) |
 | Media sent on a channel | **the person** | private | its message's `file` part | **Oxy Files** only, under the channel's task (`storeChannelMedia`) |
-| A show's working segments | — | — | — | **not stored at all** |
-| A published episode's audio | Syra | — | — | Syra (unchanged) |
 
 - **A spoken clip is Alia's, not the person's.** It is a 30-day cache that Alia
   deletes when unused and with its conversation. An account's file is never
@@ -24,25 +21,12 @@ the code is `packages/api/src/lib/files/`.
   could never expire; it would pile up as "not in use" in their file manager.
   As Alia's, releasing the reference IS the expiry: Oxy trashes an unreferenced
   application file after 24 hours and purges it 30 days later.
-- **Show segments were never content.** The pipeline wrote every spoken line to
-  `show-segments/` as "working storage", joined the episode from the buffers it
-  already held, and deleted the objects in a `finally` — so nothing read them,
-  and a worker that died mid-run leaked them. They are now joined in memory and
-  never stored; the published file lives in Syra.
-- **Syra uses Alia's cover; it does not own it.** `createPodcast` /
-  `updatePodcast` receive `imageFileId` (Syra #214, `@syra.fm/sdk` 0.21.0); Syra accepts
-  only an active public image owned by the caller or by an application in its
-  `SYRA_COVER_APPLICATION_IDS` (Alia's id), and registers its own `podcast`
-  reference. Deleting a series releases Alia's reference; deleting the podcast
-  releases Syra's; Oxy collects the file when neither uses it.
-- **Until Syra takes a file, a cover is uploaded into Syra.** A Syra without
-  `imageFileId` would drop the field and leave the show without art, so
-  `storeCoverForShow` (`lib/files/oxy-files.ts`) uploads it with
-  `uploadPodcastImage` and records `cover_image_asset_id`, exactly as before
-  this change, unless `SYRA_COVER_FILE_IDS=enabled`. Switch it on only after
-  Syra is deployed with #214 and Alia's application id is in its
-  `SYRA_COVER_APPLICATION_IDS`; a series made before the switch keeps its Syra
-  cover until the cover migration below moves it.
+- **Podcast covers are not Gemies' any more.** Podcast generation belongs to
+  Syra (a gemie reaches it through the Syra connector), so Gemies draws and
+  stores no cover. Migration `0170` dropped the series and released, through the
+  outbox below, each cover reference Gemies held; Syra keeps its own reference
+  on the same file. The outbox still admits that entity class
+  (`RELEASE_ONLY_OXY_FILE_ENTITY_TYPES`) until production holds no row of it.
 
 ## How a use reaches Oxy
 
@@ -77,8 +61,8 @@ another import is rewriting.
 entity type, streamed from Postgres in keyset pages. It runs once a day per type
 on the trigger-engine leader, claimed through `oxy_file_reconcile_runs` (which
 also records the last result), so restarts and several tasks still run it once.
-Every entity type is reconciled: `show_series`, `library_file`, `speech_clip`
-and `skill_file`.
+Every entity type in use is reconciled: `library_file`, `speech_clip` and
+`skill_file`.
 
 ## File events
 
@@ -105,8 +89,8 @@ secret bound from `oxy-alia:758`.
 
 | Event | What Alia does |
 |---|---|
-| `file.deleted`, `file.blocked` | every row of Alia that used the file lets go of it: a series loses its cover (the legacy Syra cover too — same bytes, so showing it would route around a takedown), a library file or a spoken clip loses its row; a skill's bundled file is logged as an error (a published version cannot drop a file; the file route answers 404 for it) |
-| `file.trashed`, `file.restored`, `file.unblocked`, `file.visibility_changed` | logged; a cover that stops being public is logged as an error |
+| `file.deleted`, `file.blocked` | every row of Alia that used the file lets go of it: a library file or a spoken clip loses its row; a skill's bundled file is logged as an error (a published version cannot drop a file; the file route answers 404 for it) |
+| `file.trashed`, `file.restored`, `file.unblocked`, `file.visibility_changed` | logged |
 
 Delivery is at least once. An event is remembered (`oxy_file_events`, 30 days)
 only after it was handled, so a failure answers 500 and is delivered again.
@@ -145,33 +129,6 @@ uploads a minute, a large upload spends two (start and complete), and the run
 spends at most 24 of them (`MIGRATION_UPLOADS_PER_MINUTE`) so Alia's live writes
 keep the rest. An item Oxy answers 429 waits a minute and is tried again; it is
 reported `failed` only after eleven 429s in a row.
-
-### Covers: two steps, Alia first, after Syra #214 is deployed
-
-1. **Alia** copies each legacy cover — the EXACT bytes Syra serves at
-   `GET {SYRA_API_URL}/api/images/:id`, never re-encoded — into an Alia-owned
-   public file, references it, and sets `show_series.cover_file_id`:
-
-   ```bash
-   bun run --cwd packages/api migrate:oxy-files --target-database <db> --kind show-covers \
-     --report covers-preview.jsonl                      # preview
-   bun run --cwd packages/api migrate:oxy-files --target-database <db> --kind show-covers \
-     --apply --report covers-apply.jsonl --syra-mapping covers-handover.jsonl
-   ```
-
-   `covers-handover.jsonl` is the operator's record, one line per podcast:
-   `{"syraPodcastId","legacyImageAssetId","fileId","sha256"}` (sha256 as Oxy
-   reports it). It is regenerated complete on every run, whatever earlier runs
-   copied.
-2. **Syra** then runs `migrate:alia-covers --apply`: for each podcast with an
-   `alia_series_id` whose cover is still a legacy bucket image, it hashes its
-   own legacy object, finds the Oxy file with that sha256, and repoints the
-   podcast only if that file is owned by an application in
-   `SYRA_COVER_APPLICATION_IDS` (Alia), active and an image. That is why step 1
-   must upload the exact bytes, and must run first.
-
-The app reads `coverFileId` first (through Bloom's image resolver, bound to
-`oxyServices.assets.publicUrl`) and Syra's legacy image only when there is none.
 
 ### Library files, spoken clips, skill files
 
@@ -249,26 +206,24 @@ The bucket (`AWS_S3_BUCKET`) is retired only when BOTH hold, measured with
   not scraped) — every read
   served from the bucket by `/media`, the skill file route and the dual-read
   fallback is counted there;
-- **zero rows still on legacy storage** (`rowsOnLegacyStorage`: series with a
-  legacy cover and no file, library files, clips and skill files with a key and
-  no Oxy file), and an empty reference outbox (`referenceOutbox`).
+- **zero rows still on legacy storage** (`rowsOnLegacyStorage`: library files,
+  clips and skill files with a key and no Oxy file), and an empty reference
+  outbox (`referenceOutbox`).
 
-Then, in order: a `post` migration dropping `show_series.cover_image_asset_id`
-and the legacy key columns (`library_files.url`/`thumbnail`,
+Then, in order: a `post` migration dropping the legacy key columns
+(`library_files.url`/`thumbnail`,
 `speech_clips.object_key`, `skill_files.s3_key`) together with the code paths
 that read them, `lib/s3.ts` and the garbage collector; then empty and delete
-the bucket and remove `AWS_S3_BUCKET` and the IAM grant. Covers alone can be
-closed earlier (their legacy copies live in Syra's bucket, not Alia's): drop
-`cover_image_asset_id` once Syra reports no Alia podcast on a legacy image.
+the bucket and remove `AWS_S3_BUCKET` and the IAM grant.
 `audio_job` reads are the retired audio-generation feature's results; their rows
 expire after a day, so that kind reaches zero by itself.
 
 ## Scopes and configuration
 
 Alia's Oxy application (internal tier, granted by staff): `files:app:write`
-(covers, clips, catalogue skill files), `files:app:delete`,
-`files:references:write` (outbox, reconciliation), `files:read`
-(`metadataByIds` for the cover handover record), `files:linked:read` (read-back),
+(clips, catalogue skill files), `files:app:delete`,
+`files:references:write` (outbox, reconciliation), `files:read` (no caller in
+this repository since the cover handover went), `files:linked:read` (read-back),
 and `files:user-media:write` (staff-granted act-as: the library and a person's
 own skill files, stored for them as their private files — the grant Oxy's
 consent for Alia to read them back rests on). Since Alia is a first-party
@@ -278,4 +233,3 @@ no scope stands in for it.
 | Variable | Default | Meaning |
 |---|---|---|
 | `OXY_FILES_WEBHOOK_SECRET` | unset → route 404 | the file-events endpoint's `whsec_…` secret (SSM) |
-| `SYRA_COVER_FILE_IDS` | off | `enabled` stores a new cover as Alia's Oxy file and hands Syra `imageFileId` — only after Syra #214 is deployed and trusts Alia |

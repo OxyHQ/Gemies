@@ -55,7 +55,6 @@ const EDITOR_PANEL_WIDTH = 380;
 
 /** The crumb each page's section gets. */
 const PAGE_TITLES: Record<string, string> = {
-  shows: 'sidebar.shows',
   agents: 'sidebar.agents',
   connectors: 'sidebar.connectors',
   notifications: 'sidebar.notifications',
