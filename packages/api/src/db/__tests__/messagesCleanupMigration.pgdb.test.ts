@@ -220,3 +220,46 @@ describe('0170–0174: what the saver’s rewrites left in a channel conversatio
     expect(outcome.copyRefused).toBe(true);
   });
 });
+
+describe('0175: a run’s status line delivered as its message', () => {
+  it('becomes the typed failure, and nothing else does', async () => {
+    const outcome = await db
+      .transaction(async (tx) => {
+        const conversationId = `run-status-${process.pid}`;
+        const message = (seq: number, clientMessageId: string, content: string) => ({
+          oxyUserId: USER,
+          conversationId,
+          clientMessageId,
+          role: 'assistant' as const,
+          content,
+          seq,
+        });
+        await tx
+          .insert(messages)
+          .values([
+            message(0, 'agent-push-result-a', 'Token budget exhausted. Partial progress was made.'),
+            message(1, 'agent-push-result-b', 'Tienes 20 emails sin leer.'),
+            message(2, 'reply-c', 'Token budget exhausted. Partial progress was made.'),
+          ]);
+        for (const statement of statements('0175_run_status_lines_become_failures'))
+          await tx.execute(sql.raw(statement));
+        const rows = await tx
+          .select()
+          .from(messages)
+          .where(and(eq(messages.oxyUserId, USER), eq(messages.conversationId, conversationId)))
+          .orderBy(messages.seq);
+        throw Object.assign(new Rollback(), { rows });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Rollback) return error as Rollback & Record<string, unknown>;
+        throw error;
+      });
+
+    const rows = outcome.rows as Array<typeof messages.$inferSelect>;
+    expect(rows.map((row) => row.content)).toEqual([
+      [{ type: 'failure', code: 'task_unfinished' }],
+      'Tienes 20 emails sin leer.',
+      'Token budget exhausted. Partial progress was made.',
+    ]);
+  });
+});

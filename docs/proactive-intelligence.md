@@ -211,7 +211,9 @@ a run. A **heartbeat** wakes the agent once with the list, and only when somethi
   tool result whole, as the tool pipeline bounded it (JSON, its lists cut to
   their head when too large), not its first 2,000 characters: a follow-up asked
   to summarise email once spent its 100,000 tokens listing the inbox again
-  because the emails it observed were an escaped preview (2026-11-14).
+  because the emails it observed were an escaped preview (2026-11-14). Migration
+  0175 turned the run status lines already delivered as messages into the typed
+  failure.
 - **Communication**: useful results and blockers go through `sendMessageToUser`;
   autonomous completions stay quiet otherwise. Check-in limits do not stop work.
   Subscribed agent emails use the same batch instead of a second classifier.
