@@ -1,3 +1,4 @@
+import { CONVERSATION_WRITE_VERSION } from '../release.js';
 import { roomRequestDigest } from './obligations.js';
 /**
  * Starting a room's chain, at the edge where the person's request still holds their bearer.
@@ -137,7 +138,7 @@ export const prepareRoom: PrepareRoom = async (input) => {
       try {
         await enqueueRoomJob({
           // Activate the producer separately, after the v3 consumer is the verified rollback baseline (ADR 0025).
-          version: 2,
+          version: CONVERSATION_WRITE_VERSION,
           requestDigest: roomRequestDigest(canonicalTrigger.content),
           phase: 'select',
           userId,

@@ -468,6 +468,7 @@ describe('peer reactions within an already admitted chain', () => {
     await w.start('Gracias.');
     const job = { ...w.queue.shift()!, tokens: 7 };
     const replay = vi.fn(async () => undefined);
+    const prepare = vi.fn<NonNullable<RoomEngineDeps['prepareReaction']>>(async () => undefined);
     const enqueue = vi
       .fn()
       .mockRejectedValueOnce(new Error('Queue unavailable'))
@@ -477,14 +478,18 @@ describe('peer reactions within an already admitted chain', () => {
       enqueue,
       room: {
         ...w.deps.room,
+        // Release A can read a release B receipt with new authoring unavailable.
+        prepareReaction: prepare,
         reactionCompletion: async () => (completed ? { tokensUsed: 100 } : null),
         replayReactions: replay,
       },
     };
     await expect(processGemieStep(job, deps)).rejects.toThrow('Queue unavailable');
+    prepare.mockClear();
     expect(await processGemieStep(job, deps)).toBe('continued');
     expect(w.turns).toHaveLength(1);
     expect(replay).toHaveBeenCalledOnce();
+    expect(prepare).not.toHaveBeenCalled();
     expect(w.queue).toHaveLength(1);
     expect(w.queue[0]).toMatchObject({ phase: 'continue', messages: 2, tokens: 107 });
     expect(w.said('between')).toHaveLength(1);

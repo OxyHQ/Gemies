@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { personaGemie } from '../../../../__tests__/support/gemies.js';
 const h = vi.hoisted(() => ({
+  authoring: true,
   db: vi.fn(() => ({})),
   find: vi.fn(),
   targets: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('../../../agent-availability.js', () => ({ agentOpensOn: h.opens }));
 vi.mock('../../../agent-identity.js', () => ({
   agentPromptName: (agent: { name: string }) => agent.name,
 }));
+vi.mock('../../release.js', () => ({ authoredReactionsEnabled: () => h.authoring }));
 vi.mock('../bus.js', () => ({ publishConversationReaction: h.publish }));
 const { prepareAgentReactionTurn } = await import('../agent-runtime.js');
 const actor = () => personaGemie({ _id: 'a', id: 'a', name: 'Salina' });
@@ -42,6 +44,7 @@ const input = () => ({
 });
 beforeEach(() => {
   vi.clearAllMocks();
+  h.authoring = true;
   h.find.mockResolvedValue(actor());
   h.opens.mockResolvedValue('reachable');
   h.targets.mockResolvedValue([
@@ -70,6 +73,27 @@ const execute = (turn: NonNullable<Awaited<ReturnType<typeof prepareAgentReactio
   );
 };
 describe('hosted reaction identity', () => {
+  it.each(['person', 'peer'] as const)(
+    'release A withholds %s authoring before any query or writable capability',
+    async (kind) => {
+      h.authoring = false;
+      const admitted = input();
+      const trigger =
+        kind === 'person'
+          ? admitted.trigger
+          : {
+              kind: 'peer' as const,
+              chainId: 'chain',
+              message: { id: 'peer', content: 'Listo', actorId: 'other' },
+            };
+      expect(await prepareAgentReactionTurn({ ...admitted, trigger })).toBeUndefined();
+      expect(h.db).not.toHaveBeenCalled();
+      expect(h.targets).not.toHaveBeenCalled();
+      expect(h.mutate).not.toHaveBeenCalled();
+      expect(h.complete).not.toHaveBeenCalled();
+    },
+  );
+
   it('does not build a hosted capability for a local identity or query Oxy for it', async () => {
     expect(await prepareAgentReactionTurn({ ...input(), agent: local() })).toBeUndefined();
     expect(h.db).not.toHaveBeenCalled();
