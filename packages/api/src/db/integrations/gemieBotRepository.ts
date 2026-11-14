@@ -9,7 +9,7 @@
 import { and, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import { decrypt } from '../../lib/crypto-utils.js';
 import type { ApiDatabase } from '../index';
-import { bots, type BotGroupReplies, type BotStatus } from '../schema/bots';
+import { bots, gemieBotTurns, type BotGroupReplies, type BotStatus } from '../schema/bots';
 
 type Executor = Pick<ApiDatabase, 'select' | 'insert' | 'update' | 'delete'>;
 
@@ -458,4 +458,89 @@ export async function deferGemieBotProfile(
       profilePhotoKey: input.photoKey,
     })
     .where(eq(bots.id, claim.id));
+}
+
+/** One Telegram message of a gemie's bot. */
+export interface GemieBotTurnKey {
+  readonly botId: string;
+  readonly chatId: string;
+  readonly messageId: string;
+}
+
+/** What claiming a message's turn found. */
+export type GemieBotTurnClaim =
+  | { readonly kind: 'claimed' }
+  | { readonly kind: 'running' }
+  | { readonly kind: 'answered'; readonly answer: Record<string, unknown> };
+
+const turnKey = (key: GemieBotTurnKey) =>
+  and(
+    eq(gemieBotTurns.botId, key.botId),
+    eq(gemieBotTurns.chatId, key.chatId),
+    eq(gemieBotTurns.messageId, key.messageId),
+  );
+
+/**
+ * Take a message's turn: `claimed` when this attempt runs it (the first, or one taking over a
+ * claim older than `leaseMs`, whose instance died), else what the earlier attempt left.
+ */
+export async function claimGemieBotTurn(
+  db: ApiDatabase,
+  key: GemieBotTurnKey,
+  leaseMs: number,
+): Promise<GemieBotTurnClaim> {
+  const inserted = await db
+    .insert(gemieBotTurns)
+    .values({ ...key, status: 'running' })
+    .onConflictDoNothing()
+    .returning({ botId: gemieBotTurns.botId });
+  if (inserted.length > 0) return { kind: 'claimed' };
+  const takenOver = await db
+    .update(gemieBotTurns)
+    .set({ updatedAt: new Date() })
+    .where(
+      and(
+        turnKey(key),
+        eq(gemieBotTurns.status, 'running'),
+        lte(gemieBotTurns.updatedAt, new Date(Date.now() - leaseMs)),
+      ),
+    )
+    .returning({ botId: gemieBotTurns.botId });
+  if (takenOver.length > 0) return { kind: 'claimed' };
+  return readGemieBotTurn(db, key);
+}
+
+/** What a message's turn is now. */
+export async function readGemieBotTurn(
+  db: ApiDatabase,
+  key: GemieBotTurnKey,
+): Promise<GemieBotTurnClaim> {
+  const [row] = await db
+    .select({ status: gemieBotTurns.status, answer: gemieBotTurns.answer })
+    .from(gemieBotTurns)
+    .where(turnKey(key));
+  return row?.status === 'answered' && row.answer
+    ? { kind: 'answered', answer: row.answer }
+    : { kind: 'running' };
+}
+
+/** The turn answered: every later attempt gets this answer. */
+export async function settleGemieBotTurn(
+  db: ApiDatabase,
+  key: GemieBotTurnKey,
+  answer: Record<string, unknown>,
+): Promise<void> {
+  await db
+    .update(gemieBotTurns)
+    .set({ status: 'answered', answer, updatedAt: new Date() })
+    .where(turnKey(key));
+}
+
+/** Forget turns older than `maxAgeMs`: no retry reaches them any more. */
+export async function pruneGemieBotTurns(db: ApiDatabase, maxAgeMs: number): Promise<number> {
+  const removed = await db
+    .delete(gemieBotTurns)
+    .where(lte(gemieBotTurns.createdAt, new Date(Date.now() - maxAgeMs)))
+    .returning({ botId: gemieBotTurns.botId });
+  return removed.length;
 }

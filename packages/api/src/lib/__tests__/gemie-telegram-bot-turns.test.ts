@@ -126,6 +126,10 @@ vi.mock('../conversation-saver.js', () => ({
 vi.mock('../../db/integrations/gemieBotRepository.js', () => ({
   claimGemieBotLinkCode: state.claim,
   recordGemieBotMessage: vi.fn(async () => undefined),
+  // Each message's turn is this attempt's: the run-once claim is `gemie-bot-turns.pgdb.test.ts`'s.
+  claimGemieBotTurn: vi.fn(async () => ({ kind: 'claimed' })),
+  readGemieBotTurn: vi.fn(async () => ({ kind: 'running' })),
+  settleGemieBotTurn: vi.fn(async () => undefined),
 }));
 
 const { answerGemieTelegramMessage } = await import('../gemie-telegram-bot.js');
@@ -142,6 +146,8 @@ const PUBLIC_TOOLS = new Set([
   'getFairCoin',
   // Reacting to the message it answers reaches nothing of anybody's.
   'reactToMessage',
+  // Says how the person's apps become reachable here; reaches nothing itself.
+  'personalAppsAccess',
 ]);
 
 const PERSON = '570038640';
@@ -197,9 +203,9 @@ function expectThirdPartyTurn() {
   expect(handed.filter((name) => !PUBLIC_TOOLS.has(name))).toEqual([]);
   // Not even asked: a source that is not fetched cannot leak.
   expect(state.asked).toEqual({ mcp: 0, oxy: 0, agent: 0 });
-  // Honest about why, and how the person changes it.
-  expect(state.model[0]!.system).toContain('only in their own private chat');
-  expect(state.model[0]!.system).toContain('Link my Telegram');
+  // Honest about why, and how the person changes it: from a tool, not a sentence it may ignore.
+  expect(state.model[0]!.system).toContain('call personalAppsAccess');
+  expect(handed).toContain('personalAppsAccess');
 }
 
 beforeEach(() => {
@@ -322,5 +328,38 @@ describe('linking a Telegram account', () => {
       }),
     );
     expect(state.claim).not.toHaveBeenCalled();
+  });
+});
+
+describe('asked for its person’s apps in a turn that cannot reach them', () => {
+  type Tools = Record<string, { execute: (input: unknown, options: unknown) => Promise<string> }>;
+  const access = async (botOver: Partial<GemieBotRow>, over: Partial<GemieTelegramBotMessage>) => {
+    state.model = [];
+    await answerGemieTelegramMessage(
+      bot(botOver),
+      message({ text: '¿Qué hay en mi email?', ...over }),
+    );
+    const tools = state.model[0]?.tools as unknown as Tools;
+    return tools.personalAppsAccess.execute({ asked: 'email' }, {});
+  };
+
+  it('says how its person links their Telegram while nobody has, never that it cannot', async () => {
+    const said = await access(
+      { linkedTelegramUserId: null, oxyTaskId: null },
+      { from: { ...stranger(), languageCode: 'es' } },
+    );
+    expect(said).toContain('once its person links their Telegram');
+    expect(said).toContain('Vincular mi Telegram');
+    expect(state.model[0]?.system).toContain('never say the capability does not exist');
+  });
+
+  it('tells anyone else on a linked bot that only its person, in private, can', async () => {
+    expect(await access({}, { from: stranger() })).toContain('This sender is not that account');
+  });
+
+  it('in a group, says never there', async () => {
+    expect(
+      await access({}, { chatKind: 'group', mentionsBot: true, chatId: '-1', chatTitle: 'Team' }),
+    ).toContain('In a group');
   });
 });

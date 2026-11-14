@@ -36,9 +36,11 @@ import { reapAbandonedAliaRuns } from '../alia-task-reaper.js';
 import { reapStalledAutomationEvents } from '../automation-event-dispatch.js';
 import { reapStalledChannelInbound } from '../channels/inbound-sweep.js';
 import { syncDueGemieBotProfiles } from '../gemie-telegram-bot-profile.js';
+import { pruneGemieBotTurns } from '../../db/integrations/gemieBotRepository.js';
 import { runAgentHeartbeats } from './heartbeat.js';
 
 const REAP_EVERY_MS = 60_000;
+const TWO_DAYS_MS = 2 * 24 * 60 * 60_000;
 
 export interface ReapResult {
   resumed: number;
@@ -127,6 +129,10 @@ async function sweep(): Promise<void> {
     // instance died before syncing it (`gemie-telegram-bot-profile.ts`).
     await syncDueGemieBotProfiles().catch((err: unknown) =>
       log.channels.error({ err }, '[GemieBotProfile] Sync error'),
+    );
+    // A gemie bot's per-message turns, once no retry can reach them (`gemie-telegram-bot.ts`).
+    await pruneGemieBotTurns(getDb(), TWO_DAYS_MS).catch((err: unknown) =>
+      log.channels.error({ err }, '[GemieBotTurns] Prune error'),
     );
     // Agents with something waiting in their inbox whose heartbeat is due (`heartbeat.ts`).
     await runAgentHeartbeats().catch((err: unknown) =>
