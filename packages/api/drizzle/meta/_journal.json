@@ -1240,6 +1240,13 @@
       "when": 1794658965592,
       "tag": "0176_podcasts_belong_to_syra",
       "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1794659717123,
+      "tag": "0177_channel_tasks_renew_before_they_lapse",
+      "breakpoints": true
     }
   ]
 }

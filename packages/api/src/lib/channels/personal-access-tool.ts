@@ -6,7 +6,8 @@
  * A prompt telling the model so was not enough: asked for "mi email" or "un mensaje en 1 minuto",
  * it answered "esa capacidad no está disponible para mí", and once a chat held that answer every
  * later turn repeated it. A tool the model calls for those requests answers deterministically, from
- * what the bot actually is: not linked yet, linked to someone else, or in a group.
+ * what the bot actually is: not linked yet, linked to someone else, in a group, or written to by
+ * its person after the authority they granted it lapsed.
  */
 
 import { tool } from 'ai';
@@ -31,12 +32,18 @@ export function buildPersonalAccessTool(input: {
   readonly name: string;
   /** Whether the bot's person has linked their Telegram to it already. */
   readonly personLinked: boolean;
+  /**
+   * Where the sender, when they are the bot's person in private, renews the authority they granted
+   * it, which lapsed (`lib/channel-task-authority.ts`); absent otherwise.
+   */
+  readonly reauthorizeAt?: string;
   readonly chatKind: 'direct' | 'group';
 }) {
   const { name } = input;
   const steps = linkSteps(name);
-  const answer =
-    input.chatKind === 'group'
+  const answer = input.reauthorizeAt
+    ? `${name} no longer has its person's permission to use their apps here: it lapsed. If you are that person, renew it in one tap at ${input.reauthorizeAt}, then ask again.`
+    : input.chatKind === 'group'
       ? `In a group ${name} never uses its person's apps, because everybody reads the answer. Ask its person to write to ${name} in a private chat${input.personLinked ? '' : `, once they link their Telegram: ${steps}`}.`
       : input.personLinked
         ? `${name} uses its person's apps (email, calendar, files, connected accounts, memory, scheduled messages and tasks) only in its person's own private chat, from the Telegram account they linked. This sender is not that account, so it cannot be done for them here.`

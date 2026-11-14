@@ -39,6 +39,11 @@ export interface GemieTelegramBot {
    * their private chat with the bot, with their apps, accounts, memory and tasks, as in the app.
    */
   personLinked: boolean;
+  /**
+   * Linked, but the authority they granted the gemie there lapsed: their private chat is a
+   * stranger's until they reauthorise it (`useReauthorizeChannels`), keeping the link.
+   */
+  personAuthorityLapsed: boolean;
   /** Who is linked, as their Telegram showed them (`@username`, else their name); null when nobody. */
   linkedAs: string | null;
   totalMessages: number;

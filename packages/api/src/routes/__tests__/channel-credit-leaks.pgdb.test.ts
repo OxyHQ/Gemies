@@ -158,6 +158,7 @@ function linkedBotUser(oxyUserId: string): BotUserRow {
     oxyUserId,
     isLinked: true,
     oxyTaskId: null,
+    oxyTaskExpiresAt: null,
     oxyTaskState: 'reauth_required',
     linkedAt: new Date(),
     username: null,
@@ -219,6 +220,8 @@ async function gemieBot(
     linkedTelegramUserId: null,
     linkedTelegramName: null,
     oxyTaskId: null,
+    oxyTaskState: 'reauth_required',
+    oxyTaskExpiresAt: null,
     totalMessages: 0,
     lastMessageAt: null,
     profileSyncError: null,
@@ -509,6 +512,8 @@ describe('a gemie bot’s person sends media: kept at once, and read on the turn
       ...(await gemieBot(ownerId)),
       linkedTelegramUserId: 'tg-1',
       oxyTaskId: 'bot-task',
+      oxyTaskState: 'active',
+      oxyTaskExpiresAt: new Date(Date.now() + 86_400_000),
     };
     let n = 0;
     vi.mocked(storeChannelMedia).mockImplementation(async () => `kept-${(n += 1)}`);

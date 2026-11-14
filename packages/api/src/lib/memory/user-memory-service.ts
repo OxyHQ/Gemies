@@ -40,3 +40,11 @@ export async function getUserLanguage(userId?: string): Promise<string> {
     return 'en-US';
   }
 }
+
+/** The two languages a fixed, server-written message to a person is written in. */
+export type MessageLanguage = 'es' | 'en';
+
+/** The person's language for a fixed message: Spanish when they prefer it, else English. */
+export async function messageLanguageOf(userId: string): Promise<MessageLanguage> {
+  return (await getUserLanguage(userId)).toLowerCase().startsWith('es') ? 'es' : 'en';
+}

@@ -92,8 +92,22 @@ vi.mock('../../db/integrations/connectedAccountRepository.js', () => ({
   listAccountsAnsweredBy: vi.fn(async () => []),
 }));
 vi.mock('../../lib/oxy-task-authority.js', () => ({
-  createOxyTask: state.createTask,
   revokeOxyTask: state.revokeTask,
+  // `bindOxyTask`'s contract (its own suite proves it): mint, write, and release the loser or the
+  // replaced task only after the write.
+  bindOxyTask: async (
+    input: unknown,
+    write: (task: { id: string; expiresAt: Date }) => Promise<{ replaced: string | null } | null>,
+  ) => {
+    const task = { id: await state.createTask(input), expiresAt: new Date('2027-11-14T00:00:00Z') };
+    const written = await write(task);
+    if (!written) {
+      await state.revokeTask(task.id);
+      return null;
+    }
+    if (written.replaced) await state.revokeTask(written.replaced);
+    return task;
+  },
 }));
 vi.mock('../../lib/integrations-client.js', () => ({
   integrationsFetch: vi.fn(async (_account: string, path: string, init: RequestInit = {}) => {
@@ -389,14 +403,24 @@ describe('who answers it', () => {
 });
 
 describe('an account’s task', () => {
-  it('renews it for the answering gemie, revoking the old one', async () => {
+  it('renews it for the answering gemie, revoking the old one only once the new one is held', async () => {
     state.answering = 'persona-1';
     const { status, body } = await call('POST', '/me/accounts/account-1/reauthorize');
     expect(status).toBe(200);
     expect(body).toEqual({ success: true, oxyTaskState: 'active' });
-    expect(state.revokeTask).toHaveBeenCalledWith('old-task');
     expect(state.createTask).toHaveBeenCalledWith(
       expect.objectContaining({ actor: { type: 'agent', accountId: 'bot-1' } }),
+    );
+    // Swapped in place of the task it held, with Oxy's expiry, then the old one released.
+    expect(state.saveTask).toHaveBeenCalledWith(
+      {},
+      'account-1',
+      { id: 'new-task', expiresAt: new Date('2027-11-14T00:00:00Z') },
+      'old-task',
+    );
+    expect(state.revokeTask).toHaveBeenCalledWith('old-task');
+    expect(state.saveTask.mock.invocationCallOrder[0]).toBeLessThan(
+      state.revokeTask.mock.invocationCallOrder[0] ?? 0,
     );
   });
 
@@ -407,11 +431,12 @@ describe('an account’s task', () => {
     expect(state.createTask).not.toHaveBeenCalled();
   });
 
-  it('revokes a losing concurrent task instead of leaving an untracked root', async () => {
+  it('revokes a losing concurrent task and keeps the one the account still holds', async () => {
     state.answering = 'persona-1';
-    state.saveTask.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    state.saveTask.mockResolvedValueOnce(false);
     expect((await call('POST', '/me/accounts/account-1/reauthorize')).status).toBe(503);
     expect(state.revokeTask).toHaveBeenCalledWith('new-task');
+    expect(state.revokeTask).not.toHaveBeenCalledWith('old-task');
   });
 });
 
