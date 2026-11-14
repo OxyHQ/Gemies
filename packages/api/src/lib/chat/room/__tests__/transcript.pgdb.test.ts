@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../../../../db/index.js';
-import { deleteMessages, insertMessages } from '../../../../db/chat/messageRepository.js';
-import { roomRuntime } from '../runtime.js';
+import {
+  deleteMessages,
+  insertMessages,
+  listMessages,
+} from '../../../../db/chat/messageRepository.js';
+import { appendRoomReply, roomRuntime } from '../runtime.js';
+import { sharedMessagesOf } from '../../../shared-conversation.js';
 import { memberMessages } from '../transcript.js';
 
 let db: ApiDatabase;
@@ -41,5 +46,38 @@ it('round-trips speaker IDs into the room context without trusting matching disp
   expect(history[0]).toEqual({ role: 'assistant', content: 'My answer' });
   expect(history[1]?.role).toBe('user');
   expect(history[1]?.content).toContain('"agentId":"peer"');
+  await deleteMessages(db, userId, conversationId);
+});
+
+it('keeps what a member drew on its reply, which a share shows under the lead’s rule', async () => {
+  const userId = 'room-canvas-user';
+  const conversationId = 'room-canvas-conversation';
+  const drawn = {
+    toolCallId: 'c1',
+    toolName: 'canvas',
+    state: 'result' as const,
+    args: { type: 'markdown', title: 'Plan' },
+    result: { type: 'markdown', title: 'Plan', data: { content: '# Plan' } },
+  };
+  const agentInfo = { id: 'a1', name: 'Scout', handle: 'scout', color: 'teal', character: null };
+  await appendRoomReply(db, {
+    userId,
+    conversationId,
+    clientMessageId: 'group-reply-p1-0',
+    content: 'here is the plan',
+    agentInfo,
+    toolInvocations: [drawn],
+  });
+
+  const rows = await listMessages(db, userId, conversationId);
+  expect(rows[0]?.toolInvocations).toEqual([drawn]);
+  expect(sharedMessagesOf(rows)).toEqual([
+    {
+      role: 'assistant',
+      content: 'here is the plan',
+      agent: { id: 'a1', name: 'Scout', handle: 'scout', color: 'teal', character: null },
+      artifacts: [{ id: 'c1', type: 'markdown', title: 'Plan', data: { content: '# Plan' } }],
+    },
+  ]);
   await deleteMessages(db, userId, conversationId);
 });
