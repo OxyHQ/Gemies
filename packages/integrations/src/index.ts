@@ -1,7 +1,7 @@
 import 'dotenv/config';
-import { startPlatformActivity } from './platform-activity';
 import express from 'express';
-import { oxyTrustProxy } from '@oxy.so/core/server';
+import { oxyTrustProxy, startEcosystemTraffic } from '@oxy.so/core/server';
+import { createAwsWorkloadCredentialProvider } from '@oxy.so/core/server/aws';
 import { OXY_SOURCE_REGION_HEADER } from '@oxy.so/telemetry';
 import { Server as WebSocketServer } from 'ws';
 import http from 'http';
@@ -36,7 +36,12 @@ if (!DATABASE_URL) {
 const POSTGRES_URL: string = DATABASE_URL;
 
 let activityReady = false;
-const activity = startPlatformActivity(() => activityReady);
+const activity = startEcosystemTraffic({
+  service: 'alia-integrations',
+  ready: () => activityReady,
+  baseURL: process.env.OXY_API_URL || 'https://api.oxy.so',
+  workloadCredentials: createAwsWorkloadCredentialProvider(),
+});
 const accountGateways: AccountGateway[] = [];
 const botAdapters: BotAdapter[] = [];
 
@@ -121,7 +126,7 @@ async function main() {
   // The real client behind the ALB (and Cloudflare, when proxied); see
   // `oxyTrustProxy` in @oxy.so/core.
   app.set('trust proxy', oxyTrustProxy);
-  if (activity) app.use(activity.observeHttp);
+  app.use(activity.observeHttp);
   // A gemie bot's profile carries its avatar as a JPEG (`telegram/gemie-bots.ts`).
   app.use(express.json({ limit: '2mb' }));
 
@@ -241,7 +246,7 @@ async function main() {
       return;
     }
 
-    activity?.observeWebSocket(ws, {
+    activity.observeWebSocket(ws, {
       activityType: 'communication',
       getPeer: () => ({
         service: 'alia',
@@ -317,7 +322,7 @@ async function shutdown(signal: string) {
         },
       },
       ...allAdapters.map((adapter) => ({ name: adapter.name, run: () => adapter.shutdown() })),
-      { name: 'platform activity', run: async () => activity?.stop() },
+      { name: 'platform activity', run: async () => activity.stop() },
       { name: 'Postgres pool', run: () => closePostgres() },
     ],
     logger,

@@ -1,8 +1,13 @@
 import express from 'express';
-import { createOxyRateLimit, createOxySecurityHeaders, oxyTrustProxy } from '@oxy.so/core/server';
+import {
+  createOxyRateLimit,
+  createOxySecurityHeaders,
+  oxyTrustProxy,
+  startEcosystemTraffic,
+} from '@oxy.so/core/server';
+import { createAwsWorkloadCredentialProvider } from '@oxy.so/core/server/aws';
 import { OXY_TELEMETRY_REQUEST_HEADERS } from '@oxy.so/telemetry';
 import { oxy } from './lib/oxy.js';
-import { startPlatformActivity } from './lib/platform-activity.js';
 import http from 'http';
 import type { WebSocket } from 'ws';
 import cors from 'cors';
@@ -118,8 +123,15 @@ const server = http.createServer(
   },
   app,
 );
-const activity = startPlatformActivity(() => server.listening);
-if (activity) app.use(activity.observeHttp);
+// Publishes only where the flag is true, or (flag unset) on an ECS task; never in a developer shell.
+const activity = startEcosystemTraffic({
+  service: 'alia',
+  ready: () => server.listening,
+  baseURL: process.env.OXY_API_URL || 'https://api.oxy.so',
+  workloadCredentials: createAwsWorkloadCredentialProvider(),
+  deployedOnly: true,
+});
+app.use(activity.observeHttp);
 
 // Handle HTTP server errors (e.g. EADDRINUSE)
 server.on('error', (error: NodeJS.ErrnoException) => {
@@ -139,9 +151,9 @@ server.on('connection', (socket) => {
 });
 
 const io = initSocket(server);
-io.on('connection', (socket) => activity?.observeSocket(socket));
+io.on('connection', (socket) => activity.observeSocket(socket));
 const observeAiSocket = (socket: WebSocket, headers: http.IncomingHttpHeaders) => {
-  activity?.observeWebSocket(socket, { headers, activityType: 'ai' });
+  activity.observeWebSocket(socket, { headers, activityType: 'ai' });
 };
 routeWebSocketUpgrades(server, {
   socketIoPath: io.path(),
@@ -606,7 +618,7 @@ const shutdown = async (signal: string) => {
 
     // Close the Postgres pool last: it is the store every ported route reads, so
     // it stays open until everything that could still be using it has stopped.
-    await activity?.stop();
+    await activity.stop();
     await closePostgres();
     log.general.info('Postgres pool closed');
 
