@@ -507,11 +507,15 @@ Every channel (a gemie's own bot, Telegram Business, WhatsApp) reads a message i
 and the API turns it into the turn's user message the same way for all of them
 (`lib/channel-messages.ts`):
 
-- **Media is kept like an app attachment**: as a private Oxy file of the person whose conversation it
-  is (`storeChannelMedia`), with a `file` part in the stored message. A photo (Telegram's largest
-  size), a sticker (its image, emoji and set; an animated one by its still) and a document are the
-  file; a video, a round video or a GIF is its first frame. Documents are read as attachments are
-  (`readFileForModel`); a type no model reads is named, not kept.
+- **Media is kept like an app attachment, and drawn as one**: as a private Oxy file of the person whose
+  conversation it is (`storeChannelMedia`, with the channel's task), with a `file` part in the stored
+  message that carries what it was (`kind`), its words (`description`, e.g. "Sticker 😂 from the set …"),
+  its length and its transcript. The app draws it with `TurnAttachments` (`@gemies/sdk`), as it
+  draws an attachment the person made: a photo, a sticker (an animated one by its still), a voice
+  note that plays with its transcript, a file chip. A photo (Telegram's largest size), a sticker and
+  a document are the file; a video, a round video or a GIF is its first frame. Documents are read as
+  attachments are (`readFileForModel`); a type no model reads is named, not kept. Media that is not
+  kept (a third party's) is said in the message's words.
 - **Kept only under the person's own task.** A channel message carries no session, and Oxy stores a
   person's media for Gemies only into the account a verified session or task names
   (`requireUserMediaOwner`). So media is kept with the channel's task — the connected account's, or

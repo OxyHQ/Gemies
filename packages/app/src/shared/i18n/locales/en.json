@@ -600,6 +600,14 @@
     "blockFailed": "This part of the answer couldn't be shown.",
     "readAloud": "Read Aloud",
     "generateAudio": "Generate Audio",
+    "attachment": {
+      "photo": "Photo",
+      "sticker": "Sticker",
+      "voice": "Voice note",
+      "transcribe": "Transcript",
+      "hideTranscript": "Hide transcript",
+      "unavailable": "This file can't be opened"
+    },
     "copy": "Copy",
     "like": "Like",
     "dislike": "Dislike",

@@ -134,6 +134,12 @@ vi.mock('@oxy.so/bloom/agent-avatar', async () => ({
   avatarCharacterInColor: (character: unknown) => character,
   parseAvatarCharacter: (value: unknown) => value,
 }));
+vi.mock('@oxy.so/bloom/message-media', async () => ({
+  FileMessage: await stub('FileMessage')(),
+  ImageMessage: await stub('ImageMessage')(),
+  StickerMessage: await stub('StickerMessage')(),
+  VoiceMessage: await stub('VoiceMessage')(),
+}));
 vi.mock('@oxy.so/bloom/divider', async () => ({ Divider: await stub('Divider')() }));
 vi.mock('@oxy.so/bloom/task-list', async () => ({ TaskList: await stub('TaskList')() }));
 vi.mock('@oxy.so/bloom/web-search', async () => ({ WebSearch: await stub('WebSearch')() }));

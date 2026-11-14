@@ -1,5 +1,18 @@
 # @gemies/sdk
 
+## 6.3.0
+
+- **A turn's attachments are drawn as media** (`TurnAttachments`, used by every user turn in the
+  thread). A file kept in Oxy Files is drawn from the URL Oxy answers the signed-in caller
+  (`useFileDownloadUrl`):
+  - a photo is a photo, and a channel's sticker a sticker (an animated one by its still);
+  - a voice note or audio is a voice message that plays, with its transcript;
+  - any other file is a file chip that opens it.
+
+  A photo sent inline stays the thumbnail it was. Media that arrived on a gemie's Telegram bot or a
+  connected account carries `kind`, `description`, `durationSeconds` and `transcript` on its `file`
+  part, so the app shows it as the person sent it, not as a line about it.
+
 ## 6.2.0
 
 - **The connectors store also lists Docker's MCP catalogue.** `ConnectorEntry.source` may be `docker`:

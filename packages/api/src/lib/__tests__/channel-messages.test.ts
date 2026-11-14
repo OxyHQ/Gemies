@@ -79,9 +79,18 @@ describe('a channel message, as the turn carries it', () => {
         },
       ],
     });
+    // The conversation keeps the sticker itself, which the app draws; its words travel with it.
     expect(result.content).toEqual([
-      { type: 'text', text: '[Sticker 😂 from the set "HappyCats"]' },
-      { type: 'file', file: { file_id: 'file-1', filename: 'sticker.webp', mime: 'image/webp' } },
+      {
+        type: 'file',
+        file: {
+          file_id: 'file-1',
+          filename: 'sticker.webp',
+          mime: 'image/webp',
+          description: 'Sticker 😂 from the set "HappyCats"',
+          kind: 'sticker',
+        },
+      },
     ]);
     expect(stored.calls).toEqual([
       { oxyUserId: 'owner-1', taskId: 'task-1', mime: 'image/webp', name: 'sticker.webp' },
@@ -98,14 +107,17 @@ describe('a channel message, as the turn carries it', () => {
       media: [{ kind: 'voice', durationSeconds: 4, file: { mime: 'audio/ogg', data: b64('ogg') } }],
     });
     expect(heard.calls).toEqual(['gemie-1']);
+    // The app draws it as a voice note, with its transcript under it.
     expect(result.content).toEqual([
-      { type: 'text', text: '[Voice note, 0:04]' },
       {
         type: 'file',
         file: {
           file_id: 'file-1',
           filename: 'voice.ogg',
           mime: 'audio/ogg',
+          description: 'Voice note, 0:04',
+          kind: 'voice',
+          durationSeconds: 4,
           transcript: 'hola, ¿quedamos mañana?',
         },
       },
@@ -122,11 +134,15 @@ describe('a channel message, as the turn carries it', () => {
       text: '',
       media: [{ kind: 'voice', durationSeconds: 4, file: { mime: 'audio/ogg', data: b64('ogg') } }],
     });
-    expect(result.content[0]).toEqual({
-      type: 'text',
-      text: '[Voice note, 0:04; it could not be transcribed]',
-    });
-    expect(result.content[1]).toMatchObject({ type: 'file', file: { file_id: 'file-1' } });
+    expect(result.content).toEqual([
+      {
+        type: 'file',
+        file: expect.objectContaining({
+          file_id: 'file-1',
+          description: 'Voice note, 0:04; it could not be transcribed',
+        }),
+      },
+    ]);
   });
 
   it('shows a video by its first frame, with its caption', async () => {
@@ -135,10 +151,17 @@ describe('a channel message, as the turn carries it', () => {
       media: [{ kind: 'video', durationSeconds: 75, still: { mime: 'image/jpeg', data: JPEG } }],
     });
     expect(result.content).toEqual([
-      { type: 'text', text: '[Video, 1:15; only its first frame is shown]\nmira' },
+      { type: 'text', text: 'mira' },
       {
         type: 'file',
-        file: { file_id: 'file-1', filename: 'video-still.jpeg', mime: 'image/jpeg' },
+        file: {
+          file_id: 'file-1',
+          filename: 'video-still.jpeg',
+          mime: 'image/jpeg',
+          description: 'Video, 1:15; only its first frame is shown',
+          kind: 'video',
+          durationSeconds: 75,
+        },
       },
     ]);
   });
@@ -162,9 +185,18 @@ describe('a channel message, as the turn carries it', () => {
     expect(result.content).toEqual([
       {
         type: 'text',
-        text: '[File: notes.txt]\n[File: game.zip; its type (application/zip) cannot be read here]',
+        text: '[File: game.zip; its type (application/zip) cannot be read here]',
       },
-      { type: 'file', file: { file_id: 'file-1', filename: 'notes.txt', mime: 'text/plain' } },
+      {
+        type: 'file',
+        file: {
+          file_id: 'file-1',
+          filename: 'notes.txt',
+          mime: 'text/plain',
+          description: 'File: notes.txt',
+          kind: 'document',
+        },
+      },
     ]);
     expect(result.modelParts[1]).toEqual({
       type: 'text',
@@ -253,7 +285,8 @@ describe('a channel message, as the turn carries it', () => {
       },
       { keep: false },
     );
-    expect(result.content).toEqual([{ type: 'text', text: '[Photo]\nedited' }]);
+    // Only its words are new: the photo's line stays with the file the message keeps.
+    expect(result.content).toEqual([{ type: 'text', text: 'edited' }]);
     expect(stored.calls).toEqual([]);
   });
 

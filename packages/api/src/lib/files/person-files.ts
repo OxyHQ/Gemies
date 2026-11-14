@@ -91,7 +91,12 @@ function isFilePartRef(value: unknown): value is FilePartRef {
       (typeof ref.filename === 'string' && ref.filename.length <= 255)) &&
     (ref.mime === undefined || (typeof ref.mime === 'string' && ref.mime.length <= 255)) &&
     (ref.transcript === undefined ||
-      (typeof ref.transcript === 'string' && ref.transcript.length <= MAX_TRANSCRIPT_CHARS))
+      (typeof ref.transcript === 'string' && ref.transcript.length <= MAX_TRANSCRIPT_CHARS)) &&
+    (ref.description === undefined ||
+      (typeof ref.description === 'string' && ref.description.length <= 500)) &&
+    (ref.kind === undefined || (typeof ref.kind === 'string' && ref.kind.length <= 32)) &&
+    (ref.durationSeconds === undefined ||
+      (typeof ref.durationSeconds === 'number' && Number.isFinite(ref.durationSeconds)))
   );
 }
 
@@ -264,8 +269,14 @@ async function resolveOne(
   // Oxy's record decides what the file is; the part's own `mime` is only a hint.
   const mime = record.mime.toLowerCase();
   const name = record.originalName ?? ref.filename ?? ref.file_id;
+  const what = ref.description ? `[${ref.description}]` : null;
   if (mime.startsWith('audio/') && ref.transcript !== undefined) {
-    return [{ type: 'text', text: `[Attached audio: ${name}. It says: ${ref.transcript}]` }];
+    return [
+      {
+        type: 'text',
+        text: `[${ref.description ?? `Attached audio: ${name}`}. It says: ${ref.transcript}]`,
+      },
+    ];
   }
   if (record.size > MAX_FILE_BYTES) {
     throw new FilePartError(
@@ -277,7 +288,7 @@ async function resolveOne(
   const cacheKey = `${options.personAccountId}:${ref.file_id}`;
   if (asText) {
     const cached = readCache.get(cacheKey);
-    if (cached !== undefined) return documentParts(name, cached);
+    if (cached !== undefined) return withWhat(what, documentParts(name, cached));
   } else if (!mime.startsWith('image/') && !options.modelAcceptsFiles) {
     throw new FilePartError(
       'file_type_unsupported',
@@ -292,11 +303,19 @@ async function resolveOne(
     log.v1.warn({ err: error, fileId: ref.file_id }, 'Could not download a file part');
     throw unavailable(ref.file_id);
   }
-  return readFileForModel(
-    bytes,
-    { mime, name, id: ref.file_id },
-    { modelAcceptsFiles: options.modelAcceptsFiles, cacheKey },
+  return withWhat(
+    what,
+    await readFileForModel(
+      bytes,
+      { mime, name, id: ref.file_id },
+      { modelAcceptsFiles: options.modelAcceptsFiles, cacheKey },
+    ),
   );
+}
+
+/** A channel's media, said in words before the file itself ("[Sticker 😂 from the set …]"). */
+function withWhat(what: string | null, parts: ResolvedFilePart[]): ResolvedFilePart[] {
+  return what ? [{ type: 'text', text: what }, ...parts] : parts;
 }
 
 /**

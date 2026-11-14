@@ -600,6 +600,14 @@
     "blockFailed": "Esta parte de la respuesta no se ha podido mostrar.",
     "readAloud": "Leer en voz alta",
     "generateAudio": "Generar audio",
+    "attachment": {
+      "photo": "Foto",
+      "sticker": "Sticker",
+      "voice": "Nota de voz",
+      "transcribe": "Transcripción",
+      "hideTranscript": "Ocultar transcripción",
+      "unavailable": "No se puede abrir este archivo"
+    },
     "copy": "Copiar",
     "like": "Me gusta",
     "dislike": "No me gusta",

@@ -97,6 +97,11 @@ export type GemieTurnContentPart =
         readonly file_id: string;
         readonly filename?: string;
         readonly mime?: string;
+        /** What a channel's media is, in words ("Sticker 😂 from the set …", "Voice note, 0:04"). */
+        readonly description?: string;
+        /** What it was on its channel, so an app draws a sticker as a sticker, a voice note as one. */
+        readonly kind?: GemieChannelMediaKind;
+        readonly durationSeconds?: number;
         readonly transcript?: string;
       };
     };
@@ -115,10 +120,16 @@ export function turnContentText(content: unknown): string {
     else if (part?.type === 'file' && part.file && typeof part.file === 'object') {
       const file = part.file as Record<string, unknown>;
       const name = typeof file.filename === 'string' ? file.filename : 'a file';
+      const what =
+        typeof file.description === 'string' && file.description
+          ? file.description
+          : typeof file.transcript === 'string' && file.transcript
+            ? `Attached audio: ${name}`
+            : `Attached: ${name}`;
       lines.push(
         typeof file.transcript === 'string' && file.transcript
-          ? `[Attached audio: ${name}. It says: ${file.transcript}]`
-          : `[Attached: ${name}]`,
+          ? `[${what}. It says: ${file.transcript}]`
+          : `[${what}]`,
       );
     } else if (part?.type === 'image_url') lines.push('[Attached: an image]');
   }

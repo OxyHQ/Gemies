@@ -45,6 +45,12 @@ interface StreamOptions {
 
 interface FixtureThreadApi {
   stream: (options?: StreamOptions) => Promise<{ updates: number; elapsed: number }>;
+  /**
+   * A turn that arrived on a channel (a gemie's Telegram bot), with its media kept as Oxy files: a
+   * sticker, a voice note with its transcript, a document. A file id that is already an absolute URL
+   * is drawn as it is, so the export's own icon stands in for the person's files.
+   */
+  channelMedia: () => void;
 }
 
 interface FixtureWindow {
@@ -129,7 +135,53 @@ export default function FixtureChatPage() {
   useFocusEffect(
     useCallback(() => {
       const fixtures = registry();
-      fixtures.threads[id] = { stream };
+      const channelMedia = () => {
+        const asset = `${window.location.origin}/icon-192.png`;
+        const now = new Date().toISOString();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `${id}-channel-media`,
+            role: 'user',
+            createdAt: now,
+            content: [
+              {
+                type: 'file',
+                file: {
+                  file_id: asset,
+                  filename: 'sticker.webp',
+                  mime: 'image/webp',
+                  kind: 'sticker',
+                  description: 'Sticker 😂 from the set "HappyCats"',
+                },
+              },
+              {
+                type: 'file',
+                file: {
+                  file_id: `${asset}?voice`,
+                  filename: 'voice.ogg',
+                  mime: 'audio/ogg',
+                  kind: 'voice',
+                  description: 'Voice note, 0:04',
+                  durationSeconds: 4,
+                  transcript: 'Hola, ¿quedamos mañana a las diez?',
+                },
+              },
+              {
+                type: 'file',
+                file: {
+                  file_id: `${asset}?doc`,
+                  filename: 'plan.pdf',
+                  mime: 'application/pdf',
+                  kind: 'document',
+                },
+              },
+              { type: 'text', text: 'Mira esto' },
+            ],
+          } as Message,
+        ]);
+      };
+      fixtures.threads[id] = { stream, channelMedia };
       // The first frame after the commit that drew the thread.
       let timer: ReturnType<typeof setTimeout> | undefined;
       const frame = requestAnimationFrame(() => {

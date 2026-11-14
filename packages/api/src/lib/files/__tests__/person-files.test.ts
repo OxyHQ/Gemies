@@ -125,6 +125,35 @@ describe('filePartsOf', () => {
     expect(() => filePartsOf([...history, message('new')])).toThrow(FilePartError);
   });
 
+  it('says what a channel’s media is beside the file itself, and a voice note in its words', async () => {
+    files.set('sticker', { mime: 'image/webp', size: 4, bytes: new Uint8Array([1, 2, 3, 4]) });
+    files.set('voice', { mime: 'audio/ogg', size: 10, bytes: new Uint8Array(10) });
+    const turn: ChatMessage = {
+      role: 'user',
+      content: [
+        {
+          type: 'file',
+          file: { file_id: 'sticker', description: 'Sticker 😂 from the set "HappyCats"' },
+        },
+        {
+          type: 'file',
+          file: { file_id: 'voice', description: 'Voice note, 0:04', transcript: 'hola' },
+        },
+      ],
+    };
+    const resolved = await resolveFileParts(filePartsOf([turn]), {
+      ...person,
+      modelAcceptsFiles: false,
+    });
+    expect(resolved.get('sticker')).toEqual([
+      { type: 'text', text: '[Sticker 😂 from the set "HappyCats"]' },
+      { type: 'image', image: expect.any(Uint8Array), mediaType: 'image/webp' },
+    ]);
+    expect(resolved.get('voice')).toEqual([
+      { type: 'text', text: '[Voice note, 0:04. It says: hola]' },
+    ]);
+  });
+
   it('refuses a malformed part, a file outside a user message, and too many files', () => {
     expect(() =>
       filePartsOf([{ role: 'user', content: [{ type: 'file', file: { file_id: '' } }] }]),
