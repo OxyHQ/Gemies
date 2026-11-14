@@ -14,14 +14,14 @@ import {
   errorStatus,
   readErrorResponseBody,
 } from './error-utils';
-import { agentMessageId, buildOutboundMessages, isAgentMessageOf } from './message-history';
+import { memberDraftId, buildOutboundMessages, isMemberDraftOf } from './message-history';
 import { gemieQueryKeys } from './query-keys';
 import {
   applyRoomEvent,
-  claimConsult,
+  claimMemberTurn,
   createRoomLedger,
   isRoomOwned,
-  releaseConsult,
+  releaseMemberTurn,
   type RoomLedger,
 } from './room-events';
 import { createRandomUuid } from './random-uuid';
@@ -31,9 +31,9 @@ import { type GemieHostTools, HostOutcomeQueue, hostRequest } from './host-tools
 import { API_ROUTES } from './routes';
 import { createSseFrameReader } from './sse-frame-reader';
 import {
-  type ConsultEvent,
+  type MemberTurnEvent,
   lockedFeatureOf,
-  parseConsultEvent,
+  parseMemberTurnEvent,
   parseHostAction,
 } from './stream-events';
 import { hasUsableStreamOutput, type StreamOutputEvidence } from './stream-outcome';
@@ -159,7 +159,7 @@ export interface UseConversationStreamOptions {
    */
   clientContext?: string;
   /**
-   * Which consultation each message draws, shared with the room's socket events (`use-room-events.ts`)
+   * Which speaking turn each message draws, shared with the room's socket events (`use-room-events.ts`)
    * so a member's reply that both the request and the socket carry is drawn once.
    */
   room?: RoomLedger;
@@ -168,7 +168,7 @@ export interface UseConversationStreamOptions {
 /** The typed end the chat request gives a member still speaking when it closes (ADR 0025). */
 const ROOM_CONTINUES = 'room_continues';
 
-/** The words a message holds, as text: a consulted agent's reply is plain text as it streams. */
+/** The words a message holds, as text: a member's reply is plain text as it streams. */
 function messageWords(message: Message): string {
   return typeof message.content === 'string' ? message.content : '';
 }
@@ -258,7 +258,7 @@ export function useConversationStream({
   // Batching refs: accumulate streaming text and flush at ~20fps instead of per-chunk
   const pendingContentRef = useRef('');
   const pendingReasoningRef = useRef('');
-  /** A consulted agent's streamed words, by the id of the message they belong to. */
+  /** A member's streamed words, by the id of the message they belong to. */
   const pendingAgentContentRef = useRef(new Map<string, string>());
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -556,17 +556,17 @@ export function useConversationStream({
         unsaved: true,
       };
       setMessages((prev) => [...prev, assistantMessage]);
-      /** How many agents the lead has consulted in this turn: the next one's `agentMessageId` index. */
+      /** How many members have started speaking in this turn: the next one's `memberDraftId` index. */
       let agentAnswers = 0;
-      const nextAgentMessageId = (): string => agentMessageId(assistantMessage.id, agentAnswers++);
+      const nextMemberDraftId = (): string => memberDraftId(assistantMessage.id, agentAnswers++);
       /** Each consultation of this turn, by `consultId`: the message its agent writes into. */
-      const consults = new Map<string, string>();
+      const memberTurns = new Map<string, string>();
       /** Whether `id` names a message this turn wrote: the question, the reply, an agent's answer. */
       const isThisTurn = (id: string): boolean =>
         id === userMessage.id ||
         id === assistantMessage.id ||
-        isAgentMessageOf(id, assistantMessage.id) ||
-        (isGroupTurn && [...consults.values()].includes(id));
+        isMemberDraftOf(id, assistantMessage.id) ||
+        (isGroupTurn && [...memberTurns.values()].includes(id));
 
       /**
        * End the assistant message's turn, once.
@@ -590,7 +590,7 @@ export function useConversationStream({
           // A turn that completed is one the server has stored, under these ids.
           const stored = outcome === 'completed';
           return prev.map((m) => {
-            // A consultation still open when the turn ends ends with it.
+            // A member's turn still open when the request ends ends with it.
             const settles =
               m.id === assistantMessage.id ||
               (m.isStreaming === true && isThisTurn(m.id) && !isRoomOwned(roomRef.current, m.id));
@@ -604,17 +604,22 @@ export function useConversationStream({
         });
       };
 
-      /** What a consult frame does to the thread: the agent's own message, from start to end. */
-      const applyConsult = (event: ConsultEvent): void => {
+      /**
+       * What a member frame does to the thread: the member's own message, from start to end. Only a
+       * group turn's request carries them (ADR 0025); a gemie that wants something from another
+       * writes to it in their own conversation (ADR 0041), never in this one.
+       */
+      const applyMemberTurn = (event: MemberTurnEvent): void => {
+        if (!isGroupTurn) return;
         if (event.type === 'start') {
-          if (consults.has(event.consultId) || roomRef.current.discarded.has(event.consultId))
+          if (memberTurns.has(event.consultId) || roomRef.current.discarded.has(event.consultId))
             return;
-          const id = nextAgentMessageId();
-          consults.set(event.consultId, id);
+          const id = nextMemberDraftId();
+          memberTurns.set(event.consultId, id);
           // The room's socket may have drawn this member typing already: that is its message.
-          const adopted = claimConsult(roomRef.current, event.consultId, id);
+          const adopted = claimMemberTurn(roomRef.current, event.consultId, id);
           if (adopted !== null) {
-            consults.set(event.consultId, adopted);
+            memberTurns.set(event.consultId, adopted);
             if (!roomRef.current.ended.has(event.consultId)) {
               setMessages((prev) =>
                 prev.map((m) => (m.id === adopted ? { ...m, content: '' } : m)),
@@ -641,7 +646,7 @@ export function useConversationStream({
           });
           return;
         }
-        const id = consults.get(event.consultId);
+        const id = memberTurns.get(event.consultId);
         if (id === undefined || roomRef.current.discarded.has(event.consultId)) return;
         if (
           roomRef.current.ended.has(event.consultId) &&
@@ -683,7 +688,7 @@ export function useConversationStream({
         if (event.errorCode === ROOM_CONTINUES) {
           // The request is over but the member is still speaking: the room's socket carries it on.
           // With no socket to carry it (signed out), it stops here, unfinished but not failed.
-          if (realtimeRef.current) releaseConsult(roomRef.current, event.consultId);
+          if (realtimeRef.current) releaseMemberTurn(roomRef.current, event.consultId);
           else {
             setMessages((prev) =>
               prev.map((m) => (m.id === id ? { ...m, isStreaming: false } : m)),
@@ -702,7 +707,7 @@ export function useConversationStream({
         if (event.content !== undefined) outputEvidence.agentOutputChars += event.content.length;
         if (isGroupTurn && event.status === 'completed' && event.messageId !== undefined) {
           roomRef.current.ended.add(event.consultId);
-          consults.set(event.consultId, event.messageId);
+          memberTurns.set(event.consultId, event.messageId);
           setMessages((prev) =>
             applyRoomEvent(prev, roomRef.current, conversationId ?? '', {
               conversationId: conversationId ?? '',
@@ -1055,8 +1060,8 @@ export function useConversationStream({
                   case 'alia.agent_delta':
                   case 'alia.agent_tool':
                   case 'alia.agent_end': {
-                    const consult = parseConsultEvent(currentEventType, parsed);
-                    if (consult !== null) applyConsult(consult);
+                    const memberTurn = parseMemberTurnEvent(currentEventType, parsed);
+                    if (memberTurn !== null) applyMemberTurn(memberTurn);
                     continue;
                   }
                   case 'alia.host_action': {

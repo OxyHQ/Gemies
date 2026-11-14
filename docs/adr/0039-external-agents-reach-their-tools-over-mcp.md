@@ -63,16 +63,17 @@ The owner wants an external agent to message other gemies and to use the person'
 Telegram accounts the person grants it. Both go through this lane once the lane behind them admits
 it. These are the steps, owned here:
 
-1. **Messaging other gemies.** `sendMessage` (gemie-to-gemie conversations, the branch
-   `feat/gemies-talk-for-real`) writes into the person's chat the turn belongs to, so `forUser`
-   builds it only with a `conversationId`. It also withholds it on an unreserved lane
-   (`!isLocalRuntime`), as `consultAgent` was.
-   - When it lands, the daemon passes the conversation of each turn (the relay's `threadKey`) as a
-     header of that run's MCP config.
-   - The tool server checks that the conversation is the owner's with this gemie, and hands it to
-     `forUser`.
-   - If `sendMessage` runs no hosted inference of its own, it should not be withheld on this lane.
-     That rule is the messaging layer's to state, and this lane follows it.
+1. **Messaging other gemies** ([ADR 0041](./0041-gemies-talk-in-conversations.md)). `sendMessage`
+   writes into the conversation between the two gemies and the answer comes back to the person's
+   chat the turn belongs to, so `forUser` builds it only with a `conversationId`. Writing spends
+   nothing of the writer's turn (each turn of the chain reserves its own credits), so it is not
+   withheld on this unreserved lane.
+   - **Done on the server:** the tool server reads the run's conversation from the
+     `X-Gemies-Conversation` header (`EXTERNAL_AGENT_CONVERSATION_HEADER`), checks that it is the
+     owner's chat with this gemie and not a conversation between gemies, and hands it to `forUser`.
+     Anything else is no conversation, and the run simply has no `sendMessage`.
+   - **Pending on the daemon:** pass the conversation of each turn (the relay's `threadKey`) as
+     that header in the run's MCP config.
 2. **The person's connected accounts.** `loadGrantableGemie` (ADR 0035 as amended, #81) refuses
    every grant to a gemie with no Oxy account, because an answering gemie needs an actor. Using an
    account is different: the account tools (`buildAccountTools`) send as the person's own account

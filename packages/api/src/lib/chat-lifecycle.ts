@@ -1,4 +1,3 @@
-import type { AgentInfo } from '../domain/conversation.js';
 import type { Request } from 'express';
 import {
   saveConversation,
@@ -123,11 +122,6 @@ export async function saveConversationResult(
     args?: unknown;
     result?: unknown;
   }>,
-  agentMessages?: Array<{
-    role: 'assistant';
-    content: string;
-    agentInfo: AgentInfo;
-  }>,
 ): Promise<void> {
   const { userId, conversationId, assistantMessageId, messages, originApp, agentId } = ctx;
   if (!conversationId || !userId || !turnProducedOutput(assistantResponse, toolInvocations)) return;
@@ -141,7 +135,6 @@ export async function saveConversationResult(
       assistantMessageId,
       toolInvocations,
       agentId,
-      agentMessages: agentMessages && agentMessages.length > 0 ? agentMessages : undefined,
       ...(originApp === undefined ? {} : { originApp }),
     });
     log.v1.info({ conversationId }, 'Conversation saved');

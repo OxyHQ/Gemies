@@ -45,11 +45,12 @@ vi.mock('../../db/agents/agentRepository.js', async (importOriginal) => ({
   listActiveAgentsByAuthor: async () => [],
   searchActiveAgents: async () => store.searched,
 }));
-const turn = vi.hoisted(() => ({ ran: [] as string[] }));
-vi.mock('../tools/agent-turn.js', () => ({
-  runAgentTurn: async ({ agent }: { agent: { _id: string } }) => {
-    turn.ran.push(agent._id);
-    return { response: 'answer', tokensUsed: 1, creditsCharged: 0 };
+const sent = vi.hoisted(() => ({ to: [] as string[] }));
+vi.mock('../chat/gemies/send.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../chat/gemies/send.js')>()),
+  sendGemieMessage: async ({ to }: { to: { info: { id: string } } }) => {
+    sent.to.push(to.info.id);
+    return { conversationId: 'between', messageId: 'm', chainId: 'c' };
   },
 }));
 vi.mock('../agent-identity.js', async (importOriginal) => ({
@@ -68,7 +69,7 @@ const { canReachAgent } = await import('../agent-account.js');
 const { appSurfaceOf } = await import('../app-surface.js');
 const { clearAgentAvailabilityCache } = await import('../agent-availability.js');
 const { createSearchAgentsTool } = await import('../tools/agent-search.js');
-const { buildConsultAgentTool } = await import('../tools/consult-agent.js');
+const { buildSendMessageTool } = await import('../tools/send-message.js');
 
 const CLARITY_APP = 'clarity-app';
 const HOMIIO_APP = 'homiio-app';
@@ -176,7 +177,7 @@ beforeEach(() => {
   store.agents.clear();
   store.agents.set('clarity-agent', clarity);
   store.agents.set('sindi-agent', sindi);
-  turn.ran = [];
+  sent.to = [];
 });
 
 describe('a confined agent opens only in its own app', () => {
@@ -268,7 +269,7 @@ describe('searchAgents offers only agents that open where the person is', () => 
   });
 
   async function search(surface: string | null) {
-    const tool = createSearchAgentsTool(surface);
+    const tool = createSearchAgentsTool(PERSON.userId, surface);
     const result = (await tool.execute?.({ query: 'help' }, { toolCallId: 't', messages: [] })) as {
       agents: Array<{ id: string }>;
     };
@@ -285,38 +286,39 @@ describe('searchAgents offers only agents that open where the person is', () => 
   });
 });
 
-describe('consultAgent refuses a confined agent outside its app', () => {
-  async function consult(surface: string | null) {
-    const tools = await buildConsultAgentTool({
+describe('sendMessage refuses a confined gemie outside its app', () => {
+  async function write(surface: string | null) {
+    const tools = await buildSendMessageTool({
       person: {
         oxyUserId: PERSON.userId,
         accessToken: 'person-bearer',
         isDirectSession: true,
         surfaceApplicationId: surface,
       },
-      payerOxyUserId: PERSON.userId,
-      callerAgentId: null,
+      from: { _id: 'writer', handle: 'writer', color: null, character: null } as never,
+      delivery: { startsIn: 'chat-1' },
     });
-    return (await tools.consultAgent.execute?.(
-      { agentId: 'clarity-agent', task: 'help' },
+    return (await tools.sendMessage.execute?.(
+      { to: 'clarity-agent', text: 'help' },
       { toolCallId: 't', messages: [] },
-    )) as { error?: string; response: string };
+    )) as { error?: string; status?: string };
   }
 
-  it('answers "not found" and runs nothing from another app', async () => {
-    const result = await consult(HOMIIO_APP);
-    expect(result.error).toBe('Agent not found');
-    expect(turn.ran).toEqual([]);
+  it('answers "not found" and sends nothing from another app', async () => {
+    const result = await write(HOMIIO_APP);
+    expect(result.error).toBe('Gemie not found');
+    expect(sent.to).toEqual([]);
   });
 
-  it('answers "not found" and runs nothing with no app', async () => {
-    expect((await consult(null)).error).toBe('Agent not found');
-    expect(turn.ran).toEqual([]);
+  it('answers "not found" and sends nothing with no app', async () => {
+    expect((await write(null)).error).toBe('Gemie not found');
+    expect(sent.to).toEqual([]);
   });
 
-  it('consults it from its own app', async () => {
-    const result = await consult(CLARITY_APP);
+  it('writes to it from its own app', async () => {
+    const result = await write(CLARITY_APP);
     expect(result.error).toBeUndefined();
-    expect(turn.ran).toEqual(['clarity-agent']);
+    expect(result.status).toBe('sent');
+    expect(sent.to).toEqual(['clarity-agent']);
   });
 });

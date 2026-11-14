@@ -73,8 +73,8 @@ export const FIXED_CAPABILITY_FAMILIES = [
  * owner's connectors was.
  *
  * `agent` is instanced for the first reason and not the second: its single tool
- * is written here (`consultAgent`), and what the grant names is which agents
- * that tool may consult, within what the person could open themselves. The tool
+ * is written here (`sendMessage`, ADR 0041), and what the grant names is which
+ * gemies it may write to, within what the person could open themselves. The tool
  * is not built at all when the selection resolves to none, so the family is
  * still absent rather than inert.
  * {@link EVERY_ROW_FAMILIES} is where its bare grant is argued.
@@ -101,7 +101,7 @@ const OXY_SERVICE_TOOL_SOURCE = 'oxy_service' as const;
  * grant.
  *
  * `agent` is the case where that argument does not hold, because its rows are
- * themselves SUBJECTS of this vocabulary. A consulted agent reaches only what
+ * themselves SUBJECTS of this vocabulary. A gemie written to reaches only what
  * its own configuration allows for the person present (its families, its
  * requester's live account and resource authority), so an agent created after the grant was written
  * cannot widen it. What the bare grant actually authorises is a CONVERSATION
@@ -112,11 +112,11 @@ const OXY_SERVICE_TOOL_SOURCE = 'oxy_service' as const;
 export const EVERY_ROW_FAMILIES = ['agent'] as const;
 
 /**
- * What a NEW agent is granted when its creator names no grants: to consult any agent the person present
- * could open themselves. Agents are meant to talk to each other (ADR 0020 §5), and an agent born with no
- * grant answers "I have no tool for that" to the plainest request, as one did. The argument above for
+ * What a NEW agent is granted when its creator names no grants: to write to any gemie the person present
+ * could open themselves. Gemies are meant to talk to each other (ADR 0041), and one born with no grant
+ * answers "I have no tool for that" to the plainest request, as one did. The argument above for
  * {@link EVERY_ROW_FAMILIES} is why this one family may be the default: it authorises a conversation
- * with agents the person could open anyway, billed to them, one level deep.
+ * with gemies the person could open anyway, billed to them, within the chain's bounds.
  *
  * Only for a creator that sends no grants. An explicit list — empty included — is the owner's choice
  * and is kept, and agents that already exist are never changed by this.

@@ -1,7 +1,7 @@
 /**
  * Retired vocabulary cannot return.
  *
- * Two retirements, each a clean cut with no compatibility code, so any trace of
+ * Three retirements, each a clean cut with no compatibility code, so any trace of
  * them in the tree is either dead code or a lane coming back:
  *
  *  1. The retired product routes (`<kaana|alia>-lite`, `<kaana|alia>-v1-*`).
@@ -10,6 +10,9 @@
  *     tools `consultAgent` replaced, the negotiated stream features, and an
  *     application binding on an agent (ADR 0021 keeps it deleted: where an
  *     agent opens is Oxy's fact, read live, never an Alia column).
+ *  3. Consultation tools (ADR 0041): gemies talk to each other in conversations
+ *     of their own (`sendMessage`), never through a tool that asks one and
+ *     returns its answer.
  *
  * Records of the past keep their words: ADRs, audits, migration inventories,
  * changelogs and applied migrations are history, not code. Every pattern is
@@ -55,6 +58,19 @@ const retiredLane = new RegExp(
   'g',
 );
 
+const retiredConsultation = new RegExp(
+  [`\\bconsult${'Agent'}\\b`, `\\bconsult${'Gemie'}\\b`, `\\bask${'Alia'}\\b`].join('|'),
+  'g',
+);
+/**
+ * The test of the migration that moved stored consultations into conversations replays rows written
+ * the old way, so it names the old tool on purpose.
+ */
+const consultationHistory = [
+  ...laneHistory,
+  /^packages\/api\/src\/db\/__tests__\/gemieConversations\.pgdb\.test\.ts$/,
+];
+
 /** What an agent is, on the server and on the wire: no application binding. */
 const agentSchemas = [
   'packages/api/src/db/schema/agents.ts',
@@ -93,6 +109,9 @@ for (const file of tracked) {
   }
   if (!laneHistory.some((history) => history.test(file))) {
     report(file, source, retiredLane, 'retired native-product-agent lane, ADR 0020 §8');
+  }
+  if (!consultationHistory.some((history) => history.test(file))) {
+    report(file, source, retiredConsultation, 'retired consultation tool, ADR 0041');
   }
   if (agentSchemas.includes(file)) {
     report(file, source, applicationBinding, 'an agent has no application binding, ADR 0021');

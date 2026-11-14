@@ -23,10 +23,10 @@ import { lockMessageThread } from './messageLock.js';
  * see `messageRepository.ts`, which is where `seq` actually lives.
  */
 
-import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, gte, inArray, lt, not, sql } from 'drizzle-orm';
 import type { ConversationSource } from '../../domain/conversation.js';
 import type { ApiDatabase, Executor } from '../index';
-import { conversationMembers, conversations } from '../schema/chat';
+import { conversationMembers, conversations, gemieConversations } from '../schema/chat';
 import { conversationCollectionItems } from '../schema/collections';
 
 /** A stored conversation, as this repository reads it. */
@@ -123,14 +123,31 @@ export async function listConversations(
     readonly agentId?: string;
     /** Only the conversations started in this app (`?app=`). */
     readonly originApp?: string;
+    /**
+     * The person's own conversations (`person`, the default) or the ones their gemies have with
+     * each other (`gemies`, ADR 0041), which the person reads and never writes in.
+     */
+    readonly kind?: 'person' | 'gemies';
   } = {},
 ): Promise<ConversationRow[]> {
+  const betweenGemies = exists(
+    db
+      .select({ one: sql`1` })
+      .from(gemieConversations)
+      .where(
+        and(
+          eq(gemieConversations.oxyUserId, conversations.oxyUserId),
+          eq(gemieConversations.conversationId, conversations.conversationId),
+        ),
+      ),
+  );
   return db
     .select()
     .from(conversations)
     .where(
       and(
         eq(conversations.oxyUserId, oxyUserId),
+        options.kind === 'gemies' ? betweenGemies : not(betweenGemies),
         options.agentId === undefined ? undefined : eq(conversations.agentId, options.agentId),
         options.originApp === undefined
           ? undefined
@@ -377,7 +394,8 @@ export async function deleteConversation(
   oxyUserId: string,
   conversationId: string,
 ): Promise<number> {
-  // A group's members go with it: there is no foreign key to do it (`db/schema/chat.ts`).
+  // A group's members, and the pair of a conversation between gemies, go with it: there is no
+  // foreign key to do it (`db/schema/chat.ts`).
   return db.transaction(async (tx) => {
     await lockMessageThread(tx, oxyUserId, conversationId);
     await tx
@@ -403,6 +421,14 @@ export async function deleteConversation(
         and(
           eq(conversationMembers.oxyUserId, oxyUserId),
           eq(conversationMembers.conversationId, conversationId),
+        ),
+      );
+    await tx
+      .delete(gemieConversations)
+      .where(
+        and(
+          eq(gemieConversations.oxyUserId, oxyUserId),
+          eq(gemieConversations.conversationId, conversationId),
         ),
       );
     const result = await tx

@@ -33,7 +33,7 @@ import {
 import type { Agent } from '@/shared/contracts/agents';
 import { formatRelativeTime } from '@/shared/format/relative-time';
 import { queryKeys } from '@/shared/api/query-keys';
-import { GemieAvatar, readAgentCharacter } from '@gemies/sdk';
+import { GemieAvatar, agentCharacterOf, readAgentCharacter } from '@gemies/sdk';
 import type { Conversation } from '@gemies/sdk/model';
 import {
   useConversationStore,
@@ -231,11 +231,20 @@ function useSidebarProps() {
     return all.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   }, [data]);
 
+  // What the person's gemies say to each other (ADR 0041): theirs to read, never in the person's
+  // own list. Their first page is enough for the sidebar; each one is a pair, reopened every time.
+  const { data: betweenGemiesData } = useConversations({ kind: 'gemies' });
+  const betweenGemies = React.useMemo(
+    () => betweenGemiesData?.pages[0]?.conversations ?? [],
+    [betweenGemiesData],
+  );
+
   const openConversation = React.useCallback(
     (id: string) => {
       // Seed the detail cache from the list so the chat renders at once.
       if (!queryClient.getQueryData(queryKeys.conversations.detail(id))) {
-        const listed = conversations.find((c) => c.id === id);
+        const listed =
+          conversations.find((c) => c.id === id) ?? betweenGemies.find((c) => c.id === id);
         if (listed) {
           queryClient.setQueryData(
             queryKeys.conversations.detail(id),
@@ -248,7 +257,7 @@ function useSidebarProps() {
       closeNav?.();
       router.replace(`/(app)/c/${id}`);
     },
-    [router, queryClient, prefetchConversation, conversations, closeNav],
+    [router, queryClient, prefetchConversation, conversations, betweenGemies, closeNav],
   );
 
   /**
@@ -607,6 +616,42 @@ function useSidebarProps() {
     return rows.length ? { key: 'agents', label: t('sidebar.yourGemies'), items: rows } : undefined;
   }, [isAuthenticated, myAgents, groupConversations, row, agentRow, searchQuery, t]);
 
+  /**
+   * Between gemies (ADR 0041): one row per pair of the person's gemies that talked, with both
+   * avatars and the last thing said. The person reads them from here, or from the card in the chat
+   * where it happened; pressing one opens it read-only (`/c/:id`).
+   */
+  const betweenGemiesSection = React.useMemo<SidebarTree | undefined>(() => {
+    if (!isAuthenticated || betweenGemies.length === 0) return undefined;
+    const query = searchQuery.trim().toLowerCase();
+    const rows = betweenGemies.flatMap((conv): SidebarTreeItem[] => {
+      const members = conv.members ?? [];
+      const label = members.map((member) => member.name).join(' · ') || conv.title;
+      if (query && !label.toLowerCase().includes(query)) return [];
+      return [
+        {
+          key: conv.id,
+          label,
+          leading: (
+            <AgentStack
+              size={AGENT_ROW_AVATAR}
+              agents={members.map((member) => ({
+                id: member.id,
+                name: member.name,
+                avatar: agentCharacterOf(member),
+              }))}
+            />
+          ),
+          description: conv.lastMessage?.trim() || t('sidebar.noAgentMessages'),
+          onPrefetch: () => onHoverIntent(() => prefetchConversation(conv.id)),
+        },
+      ];
+    });
+    return rows.length
+      ? { key: 'between-gemies', label: t('sidebar.betweenGemies'), items: rows }
+      : undefined;
+  }, [isAuthenticated, betweenGemies, searchQuery, t, onHoverIntent, prefetchConversation]);
+
   // Alia's own chats: a section of title-only rows, the ones filed nowhere, pinned and favourites first.
   const chatSection = React.useMemo<SidebarTree | undefined>(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -651,9 +696,12 @@ function useSidebarProps() {
       })),
     ];
     // Signed in, the tree stands even while empty: it holds "new project/folder".
-    const sectionsAbove = [agentSection, ...spaceSections, chatSection].filter(
-      (s): s is SidebarTree => s !== undefined,
-    );
+    const sectionsAbove = [
+      agentSection,
+      ...spaceSections,
+      betweenGemiesSection,
+      chatSection,
+    ].filter((s): s is SidebarTree => s !== undefined);
     if (!treeFolders.length && !isAuthenticated)
       return sectionsAbove.length ? sectionsAbove : undefined;
     const projectsTree: SidebarTree = {
@@ -672,6 +720,7 @@ function useSidebarProps() {
     sections,
     agentSection,
     spaceSections,
+    betweenGemiesSection,
     chatSection,
     toggleProject,
     toggleFolder,

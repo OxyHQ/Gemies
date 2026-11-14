@@ -3,7 +3,7 @@
  * keep holding now that she is a row whose configuration says what she may do:
  *
  *  - her memory (Nilo's, `memoryStore = 'nilo'`) never reaches another gemie, in tools or prompt;
- *  - consulting a gemie stays one level deep, whoever is consulted;
+ *  - a gemie that was written to never writes on, whoever it is (ADR 0041);
  *  - a chat with her runs as it did: Oxy's person lane, no `self_*` account (no mailbox), no
  *    machine, the person's installed skills, the base identity and no remit;
  *  - the public wire still spells her as no `agentId`;
@@ -40,8 +40,8 @@ vi.mock('../tools/oxy-services.js', () => ({
   getOxyServicePromptFragment: vi.fn(() => ''),
   getOxyServiceContext: vi.fn(async () => '\n\nINBOX CONTEXT OF THE PERSON'),
 }));
-vi.mock('../tools/consult-agent.js', () => ({
-  buildConsultAgentTool: vi.fn(async () => ({ consultAgent: { description: 'consult' } })),
+vi.mock('../tools/send-message.js', () => ({
+  buildSendMessageTool: vi.fn(async () => ({ sendMessage: { description: 'write to a gemie' } })),
 }));
 vi.mock('../logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -154,20 +154,20 @@ describe('Alia’s memory never reaches another gemie', () => {
   });
 });
 
-describe('consulting stays one level deep', () => {
+describe('a gemie that was written to never writes on', () => {
   it.each([
     ['Alia', aliaGemie],
     ['a persona', persona],
-  ])('a nested turn of %s holds no consultAgent and no catalogue search', async (_, gemie) => {
-    const names = await toolsFor(gemie(), { nested: true });
-    expect(names).not.toContain('consultAgent');
+  ])('a nested turn of %s holds no sendMessage and no catalogue search', async (_, gemie) => {
+    const names = await toolsFor(gemie(), { nested: true, gemieChat: 'chat-1' });
+    expect(names).not.toContain('sendMessage');
     expect(names).not.toContain('searchAgents');
     expect(names).not.toContain('createAgent');
   });
 
-  it('the outer turn of either still consults (the control)', async () => {
-    expect(await toolsFor(aliaGemie())).toContain('consultAgent');
-    expect(await toolsFor(persona())).toContain('consultAgent');
+  it('the live turn of either still writes (the control)', async () => {
+    expect(await toolsFor(aliaGemie(), { gemieChat: 'chat-1' })).toContain('sendMessage');
+    expect(await toolsFor(persona(), { gemieChat: 'chat-1' })).toContain('sendMessage');
   });
 });
 

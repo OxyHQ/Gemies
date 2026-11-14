@@ -1,72 +1,41 @@
 import { reserveBackgroundProductCredits } from '../product-credit-access';
 /**
- * ONE agent turn, run from inside somebody else's turn, streamed and PAID FOR
- * (Alia ADR 0020 §5).
+ * ONE turn of a gemie that is not the person's live chat with it, streamed and PAID FOR: a member's
+ * turn in a group room (ADR 0025), a reaction observation, and both sides of a conversation between
+ * gemies (ADR 0041) — the gemie that was written to answering, and the one that wrote continuing
+ * once it has the answer.
  *
- * `consultAgent` is the one tool that runs an agent this way: Alia — or an
- * agent granted the `agent` family — asks another agent the person can reach,
- * and that agent answers in its own voice, live, in the same conversation.
+ * ## It is the gemie's turn FOR THE SAME PERSON
  *
- * ## It is the consulted agent's turn FOR THE SAME PERSON
+ * The turn is assembled by `ToolPipeline.forUser` as that person's turn with this gemie as the
+ * agent, so it reaches exactly what an ordinary conversation with it would — its own families and
+ * memory of this person, and the person's Oxy apps on the task the turn runs under (ADR 0022).
  *
- * The person present is still present: the nested turn is assembled by
- * `ToolPipeline.forUser` as that person's turn with the CALLEE as the agent, so
- * it reaches exactly what an ordinary conversation with the callee would — its
- * own families and memory of this person, and the person's Oxy apps on the
- * same requester account and original task proof (ADR0022). Nothing is widened by
- * being consulted rather than opened.
+ * `nested: true` is the recursion bound and the surface bound at once: a turn here never opens a
+ * conversation with another gemie, searches the catalogue, creates agents, or gets host or SSE
+ * tools. The one exception is `gemieChain`: the gemie that wrote first in a conversation between
+ * gemies, reading the answer, may write once more, to the gemie it talks to and nobody else.
  *
- * `nested: true` is the recursion bound and the surface bound at once: a
- * nested turn never receives `consultAgent`, the catalogue search, agent
- * creation, host tools or the SSE tools — there is no second surface to draw
- * them and depth is one by construction.
+ * ## The person pays
  *
- * ## The payer is the outer turn's
- *
- * `payerOxyUserId` is resolved when the tool is built: the account that funds
- * the outer turn funds the turns it spawns (`lib/agent/turn-funding.ts`). The
- * nested turn reserves, settles and refunds on its own — the outer turn's
- * usage is assigned from its own stream and never covers tokens spent inside a
- * tool — and every exit either settles or refunds.
- *
- * ## The CALLEE's feature gates apply
- *
- * The outer turn's attachments (`attachments`) are checked, and spent where
- * the callee's app sells them, against the CALLEE's gates on the person's lane,
- * before the nested reservation — exactly as if the person had opened the callee
- * with them (ADR 0020 §6). The nested turn receives no parts, but the lead can
- * hand it any of them as text in `task`, and Alia cannot tell which it will; so
- * every attachment the outer turn carries is one the callee could read. The
- * spend key is the attachment's own (`attachedPartsOf`), so a document already
- * spent for the same app feature is not spent again.
- *
- * Refusing gated parts outright in a consultation would be the wrong rule: it
- * would lock out a person who IS entitled (a Homiio+ subscriber asking Alia,
- * who consults Sindi about their lease) — the gate sells the feature, it does
- * not forbid the path. A refusal is `refusal` on the result, typed, so the
- * client can show the app's own upsell.
+ * `payerOxyUserId` reserves, settles and refunds on its own; every exit either settles or refunds.
  *
  * ## It answers as ITSELF
  *
- * The system message is the identity guard plus the agent's remit — the same
- * composition every agent surface uses.
+ * The system message is the identity guard plus the agent's remit — the same composition every
+ * agent surface uses — and the caller's protocol (`room.instructions`) after it.
  */
 
-import { randomUUID } from 'node:crypto';
 import { streamText, type ToolSet } from 'ai';
+import type { ForUserOptions } from '../tool-pipeline.js';
 import { stepBudget } from '../tool-budget.js';
 import { owedAnswerRequest, owesAnswer } from '../chat/tool-synthesis.js';
-import {
-  checkGatedParts,
-  gatedPartsFor,
-  spendGatedParts,
-  type FeatureRefusal,
-  type GatedPart,
-} from '../agent-features.js';
 import { agentPromptName, type HydratedAgent } from '../agent-identity.js';
 import { agentRemitPrompt } from '../agent/archetype-prompts.js';
 import { agentSpacePrompt } from '../agent/space-prompt.js';
 import { buildIdentityGuard } from '../identity-guard.js';
+import { isAliaMemoryTool } from './oxy-tool-names.js';
+import { SEND_MESSAGE_TOOL } from './send-message.js';
 import { resolveStoredModel, getAIModel } from '../chat-core.js';
 import { evolveAgentSoul } from '../agent/soul.js';
 import { finalizeCredits, refundReservation, type CreditReservation } from '../credits-manager.js';
@@ -75,22 +44,25 @@ import { getErrorMessage } from '../errors/index.js';
 import { servedModelId, servedReferenceOf } from '../models/power-levels.js';
 import { isExternalAgent, runExternalAgentTurn } from '../external-agents/turn.js';
 
-/**
- * Bounded so a consultation fits inside the outer request's own limit
- * (`routes/v1/chat-completions.ts`) with room for the lead to answer after it.
- */
+/** Bounded so one turn never holds a room, or a conversation between gemies, for long. */
 const AGENT_TIMEOUT_MS = 45_000;
 const AGENT_MAX_STEPS = 8;
 const AGENT_MAX_OUTPUT_TOKENS = 4096;
 
 /**
- * What the person's own assistant (`reach = 'person'`, Alia) can use when an agent asks her something:
- * ANSWERING tools only. She holds powers an agent may not (sending messages, writing memory, connectors
- * that act), and a question must not be a way to borrow them, so everything that changes something is left out: the built-ins below are the ones that
- * only read, and the person's Oxy apps are held to `read_only` autonomy, which Oxy enforces when a tool
- * runs. `loadTools` is the budget's way of loading those apps' tools and is kept with them.
+ * What the person's own assistant (`reach = 'person'`, Alia) can use in a turn here, where another
+ * gemie wrote to her or she is following up on what one answered: READING tools only. She holds
+ * powers a gemie may not (sending messages, writing memory, connectors that act), and a message must
+ * not be a way to borrow them, so everything that changes something is left out: the built-ins below
+ * only read, and the person's Oxy apps are held to `read_only` autonomy, which Oxy enforces when a
+ * tool runs. `loadTools` is the budget's way of loading those apps' tools and is kept with them.
+ *
+ * Her memory of the person (Nilo) is left out too: it never reaches another gemie (ADR 0034), and in
+ * a conversation with one, whatever she reads she could repeat to it.
  */
-const ALIA_CONSULT_BUILTIN_TOOLS = new Set([
+const ALIA_READING_BUILTIN_TOOLS = new Set([
+  // Writing on in a chain she started, to the one gemie she talks to (`gemieChain`).
+  SEND_MESSAGE_TOOL,
   'getCurrentDate',
   'getWeather',
   'getMarketQuote',
@@ -100,41 +72,30 @@ const ALIA_CONSULT_BUILTIN_TOOLS = new Set([
   'loadTools',
 ]);
 
-/** The tools of a consultation of Alia, from the full set. Pure. */
-export function aliaConsultTools(tools: ToolSet): ToolSet {
+/** Alia's tools in a turn here, from the full set. Pure. */
+export function aliaReadingTools(tools: ToolSet): ToolSet {
   return Object.fromEntries(
     Object.entries(tools).filter(
-      ([name]) => ALIA_CONSULT_BUILTIN_TOOLS.has(name) || name.startsWith('oxy_'),
+      ([name]) =>
+        ALIA_READING_BUILTIN_TOOLS.has(name) ||
+        (name.startsWith('oxy_') && !isAliaMemoryTool(name)),
     ),
   );
 }
-
-/**
- * What Alia is told when an agent of a space asks her something (ADR 0028): she answers as the person's
- * main assistant, with what she knows of them and her tools, briefly, and only what was asked.
- */
-const ALIA_CONSULT_PROMPT =
-  "An agent that works for the same person, in one of their spaces, is asking you something. Answer it as the person's main assistant: use what you know about them and the tools you have, be concise and factual, and answer only what was asked.";
 
 export interface AgentTurnResult {
   response: string;
   tokensUsed: number;
   /** What the nested turn actually cost the payer, after settlement. */
   creditsCharged: number;
-  /**
-   * Why there is no response, in words the CALLING MODEL is meant to read: a
-   * nested turn fails for reasons the outer turn can act on, so it comes back
-   * as a value rather than a throw that would abort the whole turn.
-   */
+  /** Why there is no response: a turn here fails as a value, never a throw. */
   error?: string;
-  /** Set when the callee's feature gate refused one of the outer turn's attachments. */
-  refusal?: FeatureRefusal;
 }
 
 /** The person the nested turn is for, exactly as the outer turn holds them. */
 export interface AgentTurnPerson {
   oxyUserId: string;
-  /** The person's live bearer, for Oxy direct requests; absent on a channel turn. */
+  /** The person's live bearer, for Oxy direct requests; absent on an unattended turn. */
   accessToken?: string;
   isDirectSession: boolean;
   taskId?: string;
@@ -167,21 +128,21 @@ function failed(error: string): AgentTurnResult {
  */
 export async function runAgentTurn(input: {
   /**
-   * The callee. The person's own assistant (`reach = 'person'`, Alia: a space member asking her)
-   * answers read-only, under the base identity; any other gemie under its own remit.
+   * The gemie whose turn it is. The person's own assistant (`reach = 'person'`, Alia) works
+   * read-only, under the base identity ({@link aliaReadingTools}); any other gemie under its remit.
    */
   agent: HydratedAgent;
   task: string;
   person: AgentTurnPerson;
   payerOxyUserId: string;
   observer?: AgentTurnObserver;
-  /** The outer turn's attachments, which the callee's gates are applied to. */
-  attachments?: readonly GatedPart[];
-  /**
-   * What was said before `task`, oldest first: a group member answers a conversation, not a
-   * lone question. Omitted (`consultAgent`), the agent is given `task` and nothing else.
-   */
+  /** What was said before `task`, oldest first: a turn answers a conversation, not a lone question. */
   history?: readonly AgentTurnMessage[];
+  /**
+   * The chain this turn continues, when it is the gemie that wrote first reading the answer: the
+   * assembler builds its `sendMessage`, bound to `peerId` (`lib/chat/gemies/engine.ts`).
+   */
+  gemieChain?: ForUserOptions['gemieChain'];
   /** Server-owned group protocol and observations since the person's message. */
   room?: { readonly instructions: string; readonly observations: readonly AgentTurnMessage[] };
   /** A server-attributed observation can invite words, never tools or an inferred user task. */
@@ -196,7 +157,8 @@ export async function runAgentTurn(input: {
   const personAssistant = agent.reach === 'person';
 
   // An external agent (ADR 0030) is answered by the person's own daemon: no model, no tools of
-  // ours, no credits. This one branch serves `consultAgent`, group rooms and any other caller.
+  // ours, no credits. This one branch serves group rooms, conversations between gemies and any
+  // other caller.
   if (agent.taskAuthority === 'session' && (await isExternalAgent(agent._id))) {
     // The external task protocol has no enforceable tools-disabled mode. Keep feedback in later
     // ordinary context, without giving a daemon an unsolicited task that could execute actions.
@@ -204,7 +166,7 @@ export async function runAgentTurn(input: {
     return runExternalAgentTurn({
       agentId: agent._id,
       task: input.room
-        ? `${input.room.instructions}\n\nPerson's original message: ${JSON.stringify(task)}\n\nSubsequent room observations: ${JSON.stringify(input.room.observations)}`
+        ? `${input.room.instructions}\n\nThe message to answer: ${JSON.stringify(task)}\n\nSubsequent room observations: ${JSON.stringify(input.room.observations)}`
         : task,
       ...(input.history ? { history: input.history } : {}),
       ...(observer?.onTextDelta ? { onTextDelta: observer.onTextDelta } : {}),
@@ -213,11 +175,12 @@ export async function runAgentTurn(input: {
     });
   }
 
-  // The callee's remit, then — for a member of a SPACE — the space and its shared notes (ADR 0028). This
-  // is the system prompt of every nested turn (a group room, `consultAgent`), so the space reaches the
-  // member here and not only in a chat with the person.
+  // The gemie's remit, then — for a member of a SPACE — the space and its shared notes (ADR 0028). This
+  // is the system prompt of every turn here (a group room, a conversation between gemies), so the
+  // space reaches the member here and not only in a chat with the person. What the turn is FOR is the
+  // caller's protocol (`room.instructions`), after it.
   const systemPrompt = personAssistant
-    ? `${buildIdentityGuard()}\n\n---\n\n${ALIA_CONSULT_PROMPT}`
+    ? buildIdentityGuard()
     : `${buildIdentityGuard({
         agentName: agentPromptName(agent),
       })}\n\n---\n\n${agentRemitPrompt(agent)}${await agentSpacePrompt(agent)}`;
@@ -266,49 +229,26 @@ export async function runAgentTurn(input: {
         webSearch: true,
         isLocalRuntime: false,
         agent,
-        // A consultation of the person's assistant only reads (see ALIA_CONSULT_BUILTIN_TOOLS);
-        // connectors that act are not even fetched.
+        ...(input.gemieChain ? { gemieChain: input.gemieChain } : {}),
+        // The person's assistant only reads here (see ALIA_READING_BUILTIN_TOOLS); connectors that
+        // act are not even fetched.
         ...(personAssistant
-          ? { oxyAutonomy: 'read_only' as const, instancedSources: ['oxy_service' as const] }
+          ? {
+              oxyAutonomy: 'read_only' as const,
+              instancedSources: input.gemieChain
+                ? (['oxy_service', 'agent'] as const)
+                : (['oxy_service'] as const),
+            }
           : {}),
       });
-  const agentTools = personAssistant ? aliaConsultTools(allTools) : allTools;
-
-  /** The callee's gates, checked then spent, before anything is reserved. */
-  const gated = gatedPartsFor(agent, input.attachments ?? []);
-  if (gated.length > 0) {
-    const featurePerson = {
-      accountId: person.oxyUserId,
-      // The person's own bearer only: without one no lane can be authorized.
-      accessToken: person.isDirectSession ? person.accessToken : undefined,
-      taskId: person.taskId,
-      runId: randomUUID(),
-    };
-    const refused =
-      (await checkGatedParts(agent, featurePerson, gated)) ??
-      (await spendGatedParts(agent, featurePerson, gated));
-    if (refused !== null) {
-      log.general.info(
-        { agentId: agent._id, feature: refused.feature, code: refused.code },
-        'Consultation refused by the consulted agent’s feature gate',
-      );
-      return {
-        ...failed(
-          refused.code === 'feature_entitlement_required'
-            ? `This agent needs an upgrade in its app before it can work with the person's ${refused.feature.slice('attachments.'.length)}. Tell the person; do not pass the attachment's content to it another way.`
-            : 'The app that unlocks this agent’s attachments could not be asked. Try again later.',
-        ),
-        refusal: refused,
-      };
-    }
-  }
+  const agentTools = personAssistant ? aliaReadingTools(allTools) : allTools;
 
   /** Reserved after everything that can refuse without spending. */
   const reservation: CreditReservation | null =
     await reserveBackgroundProductCredits(payerOxyUserId);
   if (!reservation) {
-    log.credits.info({ agentId: agent._id, payerOxyUserId }, 'Consultation refused: no credits');
-    return failed('Not enough credits to consult that agent');
+    log.credits.info({ agentId: agent._id, payerOxyUserId }, 'Agent turn refused: no credits');
+    return failed('Not enough credits for this turn');
   }
 
   let settled = false;
@@ -323,7 +263,7 @@ export async function runAgentTurn(input: {
     try {
       call();
     } catch (error: unknown) {
-      log.general.warn({ err: error, agentId: agent._id }, 'A consultation observer threw');
+      log.general.warn({ err: error, agentId: agent._id }, 'An agent turn observer threw');
     }
   };
 
@@ -425,7 +365,7 @@ export async function runAgentTurn(input: {
         payerOxyUserId,
         latencyMs: Date.now() - start,
       },
-      'Consultation completed',
+      'Agent turn completed',
     );
 
     // A persona's soul evolves with its conversations; the person's own assistant has none.
@@ -445,7 +385,7 @@ export async function runAgentTurn(input: {
   } catch (error: unknown) {
     log.general.error(
       input.observation ? { agentId: agent._id } : { err: error, agentId: agent._id },
-      'Consultation failed',
+      'Agent turn failed',
     );
     return failed(
       signal.aborted

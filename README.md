@@ -43,7 +43,7 @@ knows and what it may do. Change it later from its own settings.
 
 ### 🤝 Put them together
 
-Gemies share **spaces** and group chats, consult each other and take on tasks that run on a
+Gemies share **spaces** and group chats, write to each other in conversations of their own and take on tasks that run on a
 schedule. Each one acts as itself, with its own account and permissions.
 
 </td>

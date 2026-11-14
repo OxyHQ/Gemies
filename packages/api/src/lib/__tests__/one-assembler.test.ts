@@ -133,10 +133,10 @@ const ALLOWED: Readonly<Record<string, string>> = {
     "SOURCE: ONE tool (`sendTelegramMessage`), offered when the person linked their Telegram to the turn's gemie (ADR 0037). Merges nothing.",
   'packages/api/src/lib/skills/runtime.ts':
     "SOURCE: one origin (the skills this account installed). Its three tools read that one candidate set — which is also the turn's authorization, resolved before any tool exists — and it merges nothing from anywhere else.",
-  'packages/api/src/lib/tools/consult-agent.ts':
-    'SOURCE: ONE tool (`consultAgent`), whose reach is `canReachAgent` narrowed by the grant. Merges nothing.',
+  'packages/api/src/lib/tools/send-message.ts':
+    'SOURCE: ONE tool (`sendMessage`, ADR 0041), whose reach is `canReachAgent` narrowed by the grant and the space, or, for a gemie continuing a chain, the one gemie it talks to. Merges nothing.',
   'packages/api/src/lib/tools/agent-turn.ts':
-    "FILTER of one set: cuts the assembler's tools for a consultation of Alia down to the ones that only answer (`aliaConsultTools`). Gathers from nowhere and adds nothing.",
+    "FILTER of one set: cuts the assembler's tools for Alia in a turn between gemies down to the ones that only read (`aliaReadingTools`). Gathers from nowhere and adds nothing.",
   'packages/api/src/lib/external-agents/tool-server.ts':
     "FILTER of one set: serves an external agent the assembler's tools for its owner (ADR 0039), without the `loadTools` loader an MCP client has no use for. Gathers from nowhere and adds nothing.",
   'packages/api/src/lib/host-tools.ts':
@@ -343,8 +343,8 @@ describe('nothing hands a model a tool set the assembler did not build', () => {
     );
     expect(callers.length).toBeGreaterThanOrEqual(5);
     expect(callers).toContain('packages/api/src/lib/channels/inbound-handlers.ts');
-    // `agent-turn.ts`: the consulted agent's turn — the model call, its tools
-    // and its reservation — is one runner, behind `consultAgent`.
+    // `agent-turn.ts`: a gemie's turn outside its live chat — the model call, its
+    // tools and its reservation — is one runner, behind rooms and gemie chains.
     expect(callers).toContain('packages/api/src/lib/tools/agent-turn.ts');
   });
 

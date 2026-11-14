@@ -48,6 +48,7 @@ import {
   startAliaTaskWorker,
 } from './alia-task-queue.js';
 import { initRoomQueue, shutdownRoomQueue, startRoomWorker } from './chat/room/queue.js';
+import { initGemieQueue, shutdownGemieQueue, startGemieWorker } from './chat/gemies/queue.js';
 import { reactionDispatcher } from './chat/reactions/dispatcher.js';
 import { startSkillRegistrySync, stopSkillRegistrySync } from './skills/scheduler.js';
 import {
@@ -86,6 +87,10 @@ export function startBackgroundServices(): void {
   initRoomQueue()
     .then(() => startRoomWorker())
     .catch((err) => log.general.error({ err }, '[RoomQueue] Startup error'));
+  // The steps of conversations between gemies: one writes, the other answers (ADR 0041)
+  initGemieQueue()
+    .then(() => startGemieWorker())
+    .catch((err) => log.general.error({ err }, '[GemieQueue] Startup error'));
   // Clean up orphaned audio jobs from previous process crashes (non-blocking).
   failOrphanedAudioJobs(getDb())
     .then((count) => {
@@ -145,6 +150,7 @@ export async function stopBackgroundServices(): Promise<void> {
   await shutdownTaskQueue();
   await shutdownAliaTaskQueue();
   await shutdownRoomQueue();
+  await shutdownGemieQueue();
   await shutdownShowQueue();
   log.general.info('Task queues shut down');
 }

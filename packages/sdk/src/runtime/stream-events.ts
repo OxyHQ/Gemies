@@ -6,8 +6,11 @@
  * `use-conversation-stream.ts` decides what each one does to the thread.
  */
 
-/** The consulted agent, as `alia.agent_start` names it. */
-export interface ConsultAgent {
+/**
+ * A group member that speaks in a room's turn, as `alia.agent_start` names it (ADR 0025). The
+ * frames' `consultId` is the id of that speaking turn: the wire's name for it.
+ */
+export interface MemberTurnAgent {
   id: string;
   name: string;
   handle?: string;
@@ -15,8 +18,8 @@ export interface ConsultAgent {
   character?: unknown;
 }
 
-export type ConsultEvent =
-  | { type: 'start'; consultId: string; agent: ConsultAgent; task?: string }
+export type MemberTurnEvent =
+  | { type: 'start'; consultId: string; agent: MemberTurnAgent; task?: string }
   | { type: 'delta'; consultId: string; content: string }
   | {
       type: 'tool';
@@ -43,14 +46,14 @@ const isText = (value: unknown): value is string => typeof value === 'string' &&
 const optionalText = (value: unknown): string | undefined =>
   typeof value === 'string' && value !== '' ? value : undefined;
 
-/** A frame of this contract: version 1 and a consult it belongs to. */
+/** A frame of this contract: version 1 and the speaking turn it belongs to. */
 function versioned(data: unknown): (Raw & { consultId: string }) | null {
   if (!isObject(data) || data.eventVersion !== 1 || !isText(data.consultId)) return null;
   return data as Raw & { consultId: string };
 }
 
-/** The consult frame `event` carries, or `null` when it is not one or not well-formed. */
-export function parseConsultEvent(event: string, data: unknown): ConsultEvent | null {
+/** The member frame `event` carries, or `null` when it is not one or not well-formed. */
+export function parseMemberTurnEvent(event: string, data: unknown): MemberTurnEvent | null {
   const frame = versioned(data);
   if (frame === null) return null;
   const { consultId } = frame;

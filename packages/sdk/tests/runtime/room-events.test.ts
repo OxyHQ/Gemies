@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyRoomEvent,
-  claimConsult,
+  claimMemberTurn,
   createRoomLedger,
   isRoomOwned,
-  releaseConsult,
+  releaseMemberTurn,
   type RoomEvent,
 } from '../../src/runtime/room-events';
 import type { Message } from '../../src/runtime/types';
@@ -187,8 +187,8 @@ describe('a member speaking in the room', () => {
     (released) => {
       const id = 'group-reply-p1-1';
       const ledger = createRoomLedger();
-      claimConsult(ledger, id, 'sse-draft');
-      if (released) releaseConsult(ledger, id);
+      claimMemberTurn(ledger, id, 'sse-draft');
+      if (released) releaseMemberTurn(ledger, id);
       ledger.ended.add(id);
       const { messages } = run(
         [
@@ -315,7 +315,7 @@ describe('a member the chat request already drew', () => {
 
   it('is not drawn or streamed again by the socket, but is reconciled to the stored id', () => {
     const ledger = createRoomLedger();
-    claimConsult(ledger, 'k1', 'a-agent-0');
+    claimMemberTurn(ledger, 'k1', 'a-agent-0');
     const { messages } = run(
       [
         start(),
@@ -336,9 +336,9 @@ describe('a member the chat request already drew', () => {
 
   it('continues on the socket once the request ended with room_continues', () => {
     const ledger = createRoomLedger();
-    claimConsult(ledger, 'k1', 'a-agent-0');
+    claimMemberTurn(ledger, 'k1', 'a-agent-0');
     expect(isRoomOwned(ledger, 'a-agent-0')).toBe(false);
-    releaseConsult(ledger, 'k1');
+    releaseMemberTurn(ledger, 'k1');
     expect(isRoomOwned(ledger, 'a-agent-0')).toBe(true);
     const { messages } = run([delta(' mundo')], [requestMessage()], ledger);
     expect(messages[0]?.content).toBe('Hola mundo');
@@ -347,7 +347,7 @@ describe('a member the chat request already drew', () => {
   it('adopts a draft the socket drew first, and empties it for the request to say it all', () => {
     const ledger = createRoomLedger();
     const drawn = run([start(), delta('Ho')], [], ledger);
-    expect(claimConsult(ledger, 'k1', 'a-agent-0')).toBe('room-k1');
+    expect(claimMemberTurn(ledger, 'k1', 'a-agent-0')).toBe('room-k1');
     expect(drawn.messages).toHaveLength(1);
   });
 });
@@ -385,14 +385,14 @@ describe('room chain ownership', () => {
     end({ status: 'failed', error: { code: 'room_continues' } }, 'claimed'),
   ])('learns the chain from an SSE-owned $event before release', (socketEvent) => {
     const ledger = createRoomLedger();
-    claimConsult(ledger, 'claimed', 'sse-reply');
+    claimMemberTurn(ledger, 'claimed', 'sse-reply');
     const initial: Message[] = [
       { id: 'sse-reply', role: 'assistant', content: 'SSE text', isStreaming: true },
     ];
     const observed = run([inChain('new', socketEvent)], initial, ledger);
     expect(ledger.chains.get('claimed')).toBe('new');
     expect(observed.messages).toEqual(initial);
-    releaseConsult(ledger, 'claimed');
+    releaseMemberTurn(ledger, 'claimed');
     const oldEnded = run(
       [inChain('old', event('group.idle', { reason: 'error' }))],
       observed.messages,
@@ -413,8 +413,8 @@ describe('room chain ownership', () => {
 
   it('leaves unknown released SSE ownership alone until the synthetic silence timeout', () => {
     const ledger = createRoomLedger();
-    claimConsult(ledger, 'unknown', 'sse-reply');
-    releaseConsult(ledger, 'unknown');
+    claimMemberTurn(ledger, 'unknown', 'sse-reply');
+    releaseMemberTurn(ledger, 'unknown');
     const initial: Message[] = [
       { id: 'sse-reply', role: 'assistant', content: 'SSE text', isStreaming: true },
     ];
@@ -443,5 +443,37 @@ describe('room chain ownership', () => {
     );
     expect(result.messages[0]).toMatchObject({ content: 'current', isStreaming: true });
     expect(ledger.chains.get('k1')).toBe('new');
+  });
+});
+
+describe('the lead speaking in its own chat (ADR 0041)', () => {
+  it('draws its reply as its ordinary reply, with no identity of a guest', () => {
+    const ledger = createRoomLedger();
+    let messages: Message[] = [];
+    messages = applyRoomEvent(messages, ledger, CONV, {
+      ...start('r1'),
+      data: { consultId: 'r1', agent: NADIA, lead: true },
+    });
+    messages = applyRoomEvent(messages, ledger, CONV, delta('Lumen says yes.', 'r1'));
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).not.toHaveProperty('agentInfo');
+    expect(messages[0]?.content).toBe('Lumen says yes.');
+    messages = applyRoomEvent(
+      messages,
+      ledger,
+      CONV,
+      event('group.message', {
+        message: { id: 'r1', role: 'assistant', content: 'Lumen says yes.' },
+      }),
+    );
+    messages = applyRoomEvent(
+      messages,
+      ledger,
+      CONV,
+      end({ status: 'completed', messageId: 'r1' }, 'r1'),
+    );
+    expect(messages.map((m) => [m.id, m.agentInfo, m.isStreaming])).toEqual([
+      ['r1', undefined, false],
+    ]);
   });
 });

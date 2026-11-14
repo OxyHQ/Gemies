@@ -4,6 +4,8 @@
 
 > Amended 2026-10-27 by the owner: a shared conversation shows its canvas artifacts (see "Amendment" below §8), and §3 is reaffirmed for tools acting in connected apps.
 
+> §5 (`consultAgent`) and the consultation half of §7 (a consulted agent joining the header) are superseded by [ADR 0041](./0041-gemies-talk-in-conversations.md) (2026-11-13): a gemie writes to another with `sendMessage` in the conversation the two have, and nobody joins a chat mid-turn. Reach (`canReachAgent`) and the recipient's feature gates carry over unchanged.
+
 
 *Todos los agentes son el mismo agente: Alia, los agentes de las personas y los de las apps comparten una sola base.*
 

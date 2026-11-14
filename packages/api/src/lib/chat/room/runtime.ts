@@ -160,7 +160,7 @@ export async function appendRoomReply(
         clientMessageId: input.clientMessageId,
         role: 'assistant',
         content: input.content,
-        agentInfo: input.agentInfo,
+        ...(input.agentInfo === null ? {} : { agentInfo: input.agentInfo }),
         seq,
         createdAt,
       },
@@ -169,7 +169,7 @@ export async function appendRoomReply(
       oxyUserId: input.userId,
       conversationId: input.conversationId,
       lastMessage: input.content.slice(0, 100),
-      titleOnInsert: input.agentInfo.name,
+      titleOnInsert: input.agentInfo?.name ?? 'New chat',
       agentId: ROOM_GEMIE_ID,
       // A member answering in the room: the person may be watching, and reading clears it.
       unread: 1,

@@ -20,7 +20,9 @@ import { type LayoutChangeEvent, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import type { ReadAloudState } from '../../hooks/useReadAloud';
 import type { Vote } from '../../hooks/useMessageVote';
-import { readAgentCharacter } from '../../lib/agent-character';
+import { agentCharacterOf } from '../../lib/participants';
+import { gemieConversationOf } from '../../runtime/gemie-conversations';
+import { GemieConversationCard } from './GemieConversationCard';
 import { useBubbles } from '../../lib/bubbles';
 import { messageText } from '../../lib/content-utils';
 import { hasAttachments, TurnAttachments } from './TurnAttachments';
@@ -258,7 +260,7 @@ function ReplyTurn({
   const plan = message.plan;
   const agent = message.agentInfo;
   const { readOnly = false } = actions;
-  /** In an agent's thread every reply is a bubble, and so is a consulted agent's anywhere. */
+  /** In an agent's thread every reply is a bubble, and so is any reply under another gemie's name. */
   const bubbled = useBubbles() || agent !== undefined;
 
   // A host's own drawing of a catalogue tool's result, before any generic card: keyed by the
@@ -293,9 +295,17 @@ function ReplyTurn({
           : [{ key: call.toolCallId || `canvas-${message.id}-${index}`, call, canvas }];
       })
     : [];
+  // A gemie writing to another draws the card of their conversation, never a generic step.
+  const gemieConversations = toolInvocations.flatMap((call, index) => {
+    const conversation = gemieConversationOf(call);
+    return conversation === null
+      ? []
+      : [{ key: call.toolCallId || `gemies-${message.id}-${index}`, call, conversation }];
+  });
   const renderedCalls = new Set([
     ...rendered.map(({ call }) => call),
     ...inlineCanvases.map(({ call }) => call),
+    ...gemieConversations.map(({ call }) => call),
   ]);
 
   // The calls the work summary lists: every one that did not draw its own card. Read on each
@@ -398,13 +408,14 @@ function ReplyTurn({
 
   const { openThought } = actions;
   const viewDetails = openThought && (() => openThought(message.id, 'steps'));
-  /** A consulted agent's reply is drawn from its first frame: its identity is where it joins from. */
+  /** A reply under a gemie's name is drawn from its first frame: its identity shows who is writing. */
   const showsContent =
     agent !== undefined ||
     text.length > 0 ||
     hasWorkLog ||
     toolCards.length > 0 ||
     rendered.length > 0 ||
+    gemieConversations.length > 0 ||
     inlineCanvases.length > 0 ||
     (message.isStreaming === true && message.source === 'voice');
   /** Its avatar is the source of the flight into the header while it is answering, and the landing of a group's first one. */
@@ -458,7 +469,7 @@ function ReplyTurn({
           {agent && agentAnchor ? (
             <View className="mb-0.5">
               <AgentReplyIdentity
-                character={readAgentCharacter(agent.character, agent.color)}
+                character={agentCharacterOf(agent)}
                 name={agent.name}
                 thinking={agentLive && text.length === 0}
                 workingKey={agent.id}
@@ -547,6 +558,14 @@ function ReplyTurn({
                   <ToolResultCard card={card} />
                 </MessageBlockBoundary>
               ))}
+              {gemieConversations.map(({ key, conversation }) => (
+                <MessageBlockBoundary key={key}>
+                  <GemieConversationCard
+                    call={conversation}
+                    startedLive={message.isStreaming === true}
+                  />
+                </MessageBlockBoundary>
+              ))}
               {questions.length === 0 ? null : (
                 <MessageBlockBoundary>
                   <AskedQuestions questions={questions} />
@@ -554,7 +573,7 @@ function ReplyTurn({
               )}
               {agent && message.turnOutcome === 'failed' && text.length === 0 ? (
                 <Text className="text-sm text-muted-foreground">
-                  {t('chat.consultFailed', { name: agent.name })}
+                  {t('chat.agentFailed', { name: agent.name })}
                 </Text>
               ) : null}
               {bubbled ? (

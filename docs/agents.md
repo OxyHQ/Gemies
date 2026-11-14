@@ -87,7 +87,7 @@ the agent is created; a null owner fails closed for Oxy tools, and
 
 Alia's row cannot be edited through the API yet: who may edit a gemie is `act_as` over
 its Oxy account, and hers is pending in Oxy (`ALIA_PENDING_OXY_ACCOUNT_ID`). She is not
-a member of rooms or spaces (a member asks her with `askAlia`), opens no independent
+a member of rooms or spaces (a member writes to her with `sendMessage`), opens no independent
 threads and takes no goals (`task_authority = 'standing'`: no agent session), and does
 not answer reactions (a reply to one is background work of a session gemie). She does
 have **one continuous thread with each person**, apart from her loose chats: see
@@ -127,7 +127,7 @@ live:
 
 Every reach path takes the surface: opening an agent (`loadTurnAgent`,
 `loadThreadAgent`), a chat or voice turn (the voice socket carries the
-assertion as `appAssertion` in its `auth` frame), `consultAgent`,
+assertion as `appAssertion` in its `auth` frame), `sendMessage`,
 `searchAgents`, `/v1/agents/:id/profile|features`, `POST /conversations/new`
 with an `agentId`, its threads, teams, computer and suggestions, and its card
 (`GET /agents/:id` and `GET /agents/handle/:username`, except for their editors: editing is not
@@ -321,10 +321,11 @@ holds at most six, and the caller needs standing over each agent (`loadAgentForA
   with the `spaceNotes` tool and put in its prompt as labelled data. Writes name the hash they read (a
   second writer gets a conflict, never a silent overwrite). The person reads and edits them with
   `GET`/`PUT`/`DELETE /spaces/:id/notes`.
-- **Reach**: a member consults exactly the other members (membership is the permission, no `agent`
-  grant needed), and the tools that find, create, manage or hire agents outside the space are not built
-  for it (`ToolPipeline`, `consultSelection`). Alia, outside every space, still consults any agent, and a
-  member may ask her with `askAlia`: she answers read-only (no tool that sends, writes or acts).
+- **Reach**: a member writes (`sendMessage`) exactly to the other members and to Alia (membership is
+  the permission, no `agent` grant needed), and the tools that find, create, manage or hire agents
+  outside the space are not built for it (`ToolPipeline`, `messagingSelection`). Alia, outside every
+  space, writes to any gemie the person can open; when a member writes to her she answers read-only
+  (no tool that sends, writes or acts, and never her memory).
 
 ## Teams
 
@@ -592,38 +593,53 @@ Two properties are worth stating outright, because both reverse what came before
   are not in this vocabulary at all — see "Oxy apps: for the person and as
   itself" below.
 
-### Consulting another agent
+### Gemies talking to each other
 
-`consultAgent` (ADR 0020 §5) is the one way an agent is asked something inside
-another conversation. Alia always has it (`agent` is in her grants and her `reach = 'person'` reaches every agent the
-person can open); another gemie has it through the `agent` family, separate from `delegation` (which finds and creates agents in the
-catalogue, `searchAgents` / `createAgent`).
+A gemie that wants something from another WRITES to it (ADR 0041): `sendMessage { to, text }` stores
+the message in the conversation the two of them have for this person — one per pair, reopened every
+time — and returns at once. Nothing waits for the answer:
+
+1. the other gemie answers in its own turn, in that conversation (`lib/chat/gemies/engine.ts`);
+2. the answer wakes the gemie that wrote, as a turn of its own in the person's chat with it, where it
+   was working: it writes again, or tells the person what it found — its ordinary reply there;
+3. a continuation that does not write again ends the chain.
+
+The person reads the conversation live (the card in their chat, "Pepe is talking to Lumen…") and
+later (the sidebar's **Between gemies**), read-only: they never write in it.
+
+Alia always has the tool (`agent` is in her grants and her `reach = 'person'` reaches every gemie the
+person can open); another gemie has it through the `agent` family, separate from `delegation` (which
+finds and creates agents in the catalogue, `searchAgents` / `createAgent`). It exists on every turn
+where the person is the one talking to the gemie, on any channel — the app or the gemie's own
+Telegram bot — and on an external agent's run that names that chat (ADR 0039's tool lane checks it);
+a contact on a connected account, a voice call or an unattended run has none. The tool names the
+person's gemies and connected agents, and `to` takes an id, an @handle or a name ("Claude");
+`searchAgents` finds them by name before the public directory. External agents are participants like
+any gemie: written to, they answer through their daemon.
 
 A NEW agent is created with the bare `agent` grant when its creator names no grants
 (`DEFAULT_NEW_AGENT_GRANTS`: the server's `POST /agents` and the chat `createAgent` tool), so it can
-consult any agent the person could open from the start. A list the creator does send — an empty one
+write to any gemie the person could open from the start. A list the creator does send — an empty one
 included — is kept, and agents that already exist are never changed by it.
 
-Reach is the ordinary rule: an agent can be consulted exactly when the person
-present could open it themselves (`canReachAgent`) — their own agents, agents
-shared with them, and public active agents such as Homiio's Sindi. An agent's
-grant narrows it further:
+Reach is the ordinary rule: a gemie can be written to exactly when the person present could open it
+themselves (`canReachAgent`) — their own agents, agents shared with them, and public active agents
+such as Homiio's Sindi. A gemie's grant narrows it further:
 
 - `agent:<agentId>` — that agent, and no other.
 - `agent` — any agent the person can reach. The only bare instanced grant the
   vocabulary accepts; `EVERY_ROW_FAMILIES` argues why this family may and the
   connector families may not.
 
-The consulted agent answers in a nested turn (`lib/tools/agent-turn.ts`) that is
-the SAME person's turn with the callee as the agent: its own prompt, families and
-memory of this person, and the person's Oxy apps on the lane the person stands in
-on the original requester's effective account. It is
-reserved and settled against the account that funds the outer turn, and it
-streams: the client draws it joining the conversation (`alia.agent_start` …
-`alia.agent_end`, [Embedding an agent](./agent-embedding.md) §4). A nested turn
-never holds `consultAgent` itself — A can consult B, and B cannot consult back. When the
-callee is Alia (`reach = 'person'`), her nested turn only answers: the base identity, the
-consultation prompt, the person's Oxy apps at `read_only` and no connector that acts.
+Both sides' turns are `runAgentTurn` (`lib/tools/agent-turn.ts`): the SAME person's turn with that
+gemie as the agent — its own prompt, families and memory of this person, and the person's Oxy apps on
+the Oxy task minted when the chain started. The person pays for each. The gemie written to answers
+nested: it can write to nobody, so A can write to B and B cannot start a chain of its own from there.
+When Alia is either side, her turn only reads: the base identity, the person's Oxy apps at
+`read_only`, no connector that acts and never her memory.
+
+Each chain is bounded — `GEMIE_CHAIN_MAX_MESSAGES` (8) and `GEMIE_CHAIN_MAX_TOKENS` (120 000) — and
+once another exchange would not fit, the gemie that wrote is told to tell the person what it has.
 
 `lib/__tests__/capability-grants.test.ts` is what says the vocabulary is wired:
 it grants one family, runs the real assembler and asserts the set gained exactly
@@ -653,8 +669,8 @@ A turn that carries more tools than one request holds defers every app tool behi
 depends on the model loading them, and Sindi, from a person's own account, did not:
 it searched the web and answered without a listing. So the owner names the app tools
 the agent works with (`agents.primary_tools`, `<appId>:<tool>` keys, at most 12,
-`domain/agent-primary-tools.ts`), and every turn the agent leads — its nested
-`consultAgent` turn too — loads them first as pins, never unloadable.
+`domain/agent-primary-tools.ts`), and every turn the agent leads — its turns in a
+conversation with another gemie too — loads them first as pins, never unloadable.
 
 - **Naming a tool grants nothing.** A key resolves to the name the turn bound it
   under: the verified requester's account (`oxy_<app>__<tool>`)
@@ -712,9 +728,9 @@ Homiio+ unlocks documents without Alia knowing what Homiio+ is.
   `{ features: [{ key, state, remaining? }] }`.
 - **Walk-arounds closed.** On an agent that gates a level, an exact hosted
   `publisher/model` is refused (`power_level_required`); an agent that gates
-  `deep_research` is never offered the `deepResearch` tool; and a consultation
-  applies the CONSULTED agent's gates to the outer turn's attachments before the
-  nested turn reserves (`lib/tools/agent-turn.ts`).
+  `deep_research` is never offered the `deepResearch` tool; and a message to it
+  (`sendMessage`) applies ITS gates to the writing turn's attachments before
+  anything is sent (`lib/tools/send-message.ts`).
 
 ## Oxy apps: for the person and as itself
 

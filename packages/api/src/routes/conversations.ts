@@ -11,6 +11,7 @@ import { getDb } from '../db/index.js';
 import { findAgentById } from '../db/agents/agentRepository.js';
 import { findAgentThread } from '../db/agents/agentRuntimeRepository.js';
 import { createGroupConversation } from '../db/chat/conversationMemberRepository.js';
+import { isGemieConversation } from '../db/chat/gemieConversationRepository.js';
 import { parseGroupMembers } from '../domain/conversation-groups.js';
 import { canReachAgent } from '../lib/agent-account.js';
 import { accountEventHead } from '../db/realtime/accountEventRepository.js';
@@ -250,6 +251,14 @@ function requestedApp(value: unknown): string | undefined | null {
 const INVALID_APP = { error: 'app must be an app slug (^[a-z][a-z0-9-]{0,31}$)' };
 
 // Create a new empty conversation
+/** What a client is told of a conversation between gemies: the person only reads it. */
+const BETWEEN_GEMIES = {
+  error: {
+    code: 'conversation_between_gemies',
+    message: 'This conversation is between gemies; it can only be read.',
+  },
+} as const;
+
 router.post('/new', authenticateToken, async (req: Request, res: Response) => {
   try {
     if (!req.user?.id) {
@@ -300,7 +309,7 @@ router.post('/new', authenticateToken, async (req: Request, res: Response) => {
         if (
           agent === null ||
           // A room's members are personas. The person's own assistant (Alia) stays outside rooms
-          // as she stays outside spaces; a member asks her instead (`askAlia`).
+          // as she stays outside spaces; a member writes to her instead (`sendMessage`, ADR 0041).
           agent.reach !== 'grants' ||
           (await canReachAgent(agent, {
             oxyUserId: req.user.id,
@@ -430,6 +439,14 @@ router.get('/', authenticateTokenOrApiKey, async (req: Request, res: Response) =
      */
     const originApp = requestedApp(req.query.app);
     if (originApp === null) return res.status(400).json(INVALID_APP);
+    /**
+     * `?kind=gemies` lists the conversations the person's gemies have with each other (ADR 0041)
+     * instead of the person's own, which are the default and never include them.
+     */
+    const kind = req.query.kind;
+    if (kind !== undefined && kind !== 'person' && kind !== 'gemies') {
+      return res.status(400).json({ error: 'kind must be person or gemies' });
+    }
 
     // The account's realtime cursor, read BEFORE the rows: an event is logged after its change
     // commits, so every change behind a number up to this one is already in the rows below, and a
@@ -441,6 +458,7 @@ router.get('/', authenticateTokenOrApiKey, async (req: Request, res: Response) =
       ...(before === undefined ? {} : { before }),
       ...(agentId === undefined ? {} : { agentId }),
       ...(originApp === undefined ? {} : { originApp }),
+      ...(kind === undefined ? {} : { kind }),
     });
 
     const hasMore = rows.length > limit;
@@ -510,6 +528,9 @@ router.post('/', authenticateTokenOrApiKey, async (req: Request, res: Response) 
     }
     const originApp = requestedApp(req.body.app);
     if (originApp === null) return res.status(400).json(INVALID_APP);
+    if (await isGemieConversation(getDb(), localAccountId, conversationId)) {
+      return res.status(403).json(BETWEEN_GEMIES);
+    }
 
     // Anything that is not recognisably a message is dropped, as before.
     const validMessages = messages.flatMap((message: unknown) => {
@@ -598,6 +619,10 @@ router.post(
       });
       if (!limit.allowed) return res.status(429).json({ error: 'Too many reaction changes' });
       const conversationId = String(req.params.id);
+      // The person reads a conversation between gemies; reacting there would be talking in it.
+      if (await isGemieConversation(getDb(), req.user.id, conversationId)) {
+        return res.status(403).json(BETWEEN_GEMIES);
+      }
       const result = await applyConversationReaction({
         userId: req.user.id,
         conversationId,

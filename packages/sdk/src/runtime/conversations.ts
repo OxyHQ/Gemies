@@ -133,7 +133,7 @@ function useConversationsClient(): ConversationsClient {
 async function fetchConversationsPage(
   client: ConversationsClient,
   pageParam: string | undefined,
-  { agentId, app }: ConversationsFilter,
+  { agentId, app, kind }: ConversationsFilter,
   signal?: AbortSignal,
 ): Promise<ConversationsPage> {
   const { data } = await client.api.get<{
@@ -148,6 +148,7 @@ async function fetchConversationsPage(
       ...(pageParam ? { cursor: pageParam } : {}),
       ...(agentId === undefined ? {} : { agentId }),
       ...(app === undefined ? {} : { app }),
+      ...(kind === undefined ? {} : { kind }),
     },
   });
   if (typeof data.realtimeSeq === 'number') client.realtime?.noteSnapshot(data.realtimeSeq);
@@ -167,9 +168,11 @@ async function fetchConversationsPage(
  * The person's conversations, newest first, a page at a time. The sidebar and the sheet read this.
  * Given `agentId`, only the conversations with that agent; given `app`, only the ones started in
  * that app — an embedding app's own list (`GET /v1/conversations?agentId=&app=`). Neither is
- * implied by the chat's `app`: the app that wants only its own says so here.
+ * implied by the chat's `app`: the app that wants only its own says so here. Given
+ * `kind: 'gemies'`, the conversations the person's gemies have with each other (ADR 0041), each
+ * with both gemies in `members`.
  */
-export function useConversations({ agentId, app }: ConversationsFilter = {}) {
+export function useConversations({ agentId, app, kind }: ConversationsFilter = {}) {
   const { user, isAuthenticated, canUsePrivateApi, isAccountCacheReady } = useOxy();
   const client = useConversationsClient();
   const accountId = user?.id;
@@ -180,7 +183,13 @@ export function useConversations({ agentId, app }: ConversationsFilter = {}) {
     data: ConversationsInfiniteData;
   } | null>(null);
   useEffect(() => {
-    if (!isAuthenticated || !isAccountCacheReady || agentId !== undefined || app !== undefined)
+    if (
+      !isAuthenticated ||
+      !isAccountCacheReady ||
+      agentId !== undefined ||
+      app !== undefined ||
+      kind !== undefined
+    )
       return;
     let current = true;
     void new OfflineConversations(offlineStore ?? null)
@@ -208,15 +217,15 @@ export function useConversations({ agentId, app }: ConversationsFilter = {}) {
     return () => {
       current = false;
     };
-  }, [accountId, offlineStore, isAuthenticated, isAccountCacheReady, agentId, app]);
+  }, [accountId, offlineStore, isAuthenticated, isAccountCacheReady, agentId, app, kind]);
 
   const query = useInfiniteQuery({
     queryKey:
-      agentId === undefined && app === undefined
+      agentId === undefined && app === undefined && kind === undefined
         ? gemieQueryKeys.conversations.all
-        : gemieQueryKeys.conversations.filtered({ agentId, app }),
+        : gemieQueryKeys.conversations.filtered({ agentId, app, kind }),
     queryFn: ({ pageParam, signal }) =>
-      fetchConversationsPage(client, pageParam, { agentId, app }, signal),
+      fetchConversationsPage(client, pageParam, { agentId, app, kind }, signal),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
     select: reviveConversationDates,
@@ -230,6 +239,7 @@ export function useConversations({ agentId, app }: ConversationsFilter = {}) {
     isAccountCacheReady &&
     agentId === undefined &&
     app === undefined &&
+    kind === undefined &&
     offline?.accountId === accountId &&
     offline?.store === offlineStore
       ? offline.data

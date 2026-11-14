@@ -362,6 +362,9 @@ vi.mock('../../../db/memory/userMemoryRepository.js', () => ({
  * and the transcript below is two entries short.
  */
 // No conversation here is a group: the members repository would need a real database.
+vi.mock('../../../db/chat/gemieConversationRepository.js', () => ({
+  isGemieConversation: vi.fn(async () => false),
+}));
 vi.mock('../../../db/chat/conversationMemberRepository.js', () => ({
   listGroupMembers: vi.fn(async () => []),
 }));
@@ -2332,18 +2335,7 @@ describe('fixture: a turn served by the user own device', () => {
     expect(H.timeline.filter((entry) => entry.startsWith('credits:'))).toEqual([]);
   });
 
-  it('never offers consultAgent, which runs a hosted agent turn', async () => {
-    const res = recordingRes();
-    await run(
-      recordingReq({
-        body: { messages: [{ role: 'user', content: 'hola' }], model: LOCAL_MODEL, stream: true },
-      }),
-      res,
-    );
-    expect(toolNamesSeenByModel()).not.toContain('consultAgent');
-  });
-
-  it('never offers the deep-research tool, which reaches the same engine', async () => {
+  it('never offers the deep-research tool, which runs hosted inference behind a tool call', async () => {
     const res = recordingRes();
     await run(
       recordingReq({

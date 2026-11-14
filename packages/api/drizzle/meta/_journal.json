@@ -1191,6 +1191,20 @@
       "when": 1794621522079,
       "tag": "0169_gemie_bot_linked_name",
       "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1794648435518,
+      "tag": "0170_gemie_conversations",
+      "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1794648436968,
+      "tag": "0171_consultations_become_gemie_conversations",
+      "breakpoints": true
     }
   ]
 }

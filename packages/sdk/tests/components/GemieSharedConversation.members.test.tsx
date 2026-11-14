@@ -41,12 +41,12 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let renderer: ReactTestRenderer;
 afterEach(() => act(() => renderer?.unmount()));
 
-it('passes the shared conversation lead to the same thread membership rule', () => {
+it('hands the thread the shared conversation’s messages, each under its gemie', () => {
   act(() => {
     renderer = create(<GemieSharedConversation token="shared" />);
   });
   const thread = renderer.root.findByType('Thread' as never);
-  expect(thread.props.memberIds).toEqual(new Set(['eusebio']));
+  expect(thread.props.readOnly).toBe(true);
   expect(thread.props.messages[0].agentInfo).toEqual(data.agent);
   expect(thread.props.readOnly).toBe(true);
 });

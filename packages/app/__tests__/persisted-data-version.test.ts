@@ -28,7 +28,7 @@ const SHAPES: Record<string, string[]> = {
 };
 
 /** Bump both together: `PERSISTED_DATA_VERSION`, and this to what the failure prints. */
-const RECORDED = { version: 3, fingerprint: '7c954d9bcffd4427' };
+const RECORDED = { version: 5, fingerprint: '4099f6cdf66e9aa0' };
 
 /** Every `export interface|type` declaration, and every exported `const` that shapes the blob. */
 function declarations(source: string): string[] {

@@ -1,11 +1,13 @@
 /**
- * Two things the nested turn does for SPACES (ADR 0028):
+ * What the nested turn does for SPACES (ADR 0028) and for conversations between gemies (ADR 0041):
  *
  *  - an agent that is in a space is told about it in its system prompt, here and not only in a chat with
- *    the person, because this is the prompt of every group-room turn and every `consultAgent`;
- *  - Alia can be the CALLEE (her gemie, `reach = 'person'`, `askAlia`), and then she only ANSWERS: her tool set is cut to
- *    read-only tools and her Oxy apps are held to `read_only`, so a question is never a way to borrow the
- *    powers she holds and the asking agent may not (sending messages, writing memory, connectors that act).
+ *    the person, because this is the prompt of every group-room turn and every turn between gemies;
+ *  - Alia can be written to by another gemie (her gemie, `reach = 'person'`), and then she only READS:
+ *    her tool set is cut to read-only tools, without her memory, and her Oxy apps are held to
+ *    `read_only`, so a message is never a way to borrow the powers she holds and the writing gemie
+ *    may not (sending messages, writing memory, connectors that act), nor to read her memory;
+ *  - the gemie that wrote first, continuing its chain, gets its `sendMessage` from the assembler.
  */
 import { aliaGemie } from '../../../__tests__/support/gemies.js';
 import { ALIA_GEMIE_ID } from '../../../domain/alia-gemie.js';
@@ -86,7 +88,7 @@ vi.mock('../../logger.js', () => {
   return { log: { general: child, credits: child } };
 });
 
-const { aliaConsultTools, runAgentTurn } = await import('../agent-turn.js');
+const { aliaReadingTools, runAgentTurn } = await import('../agent-turn.js');
 
 const person = {
   oxyUserId: 'person-1',
@@ -135,7 +137,7 @@ beforeEach(() => {
   H.tools = { ...ALL_TOOLS };
 });
 
-describe('aliaConsultTools', () => {
+describe('aliaReadingTools', () => {
   it('an observation uses the actor memory but never fetches or exposes tools or fabricates a person task', async () => {
     await runAgentTurn({
       agent: member(null),
@@ -158,20 +160,19 @@ describe('aliaConsultTools', () => {
       },
     ]);
   });
-  it('keeps what only reads, and the person’s Oxy apps (held to read_only elsewhere)', () => {
-    expect(Object.keys(aliaConsultTools(ALL_TOOLS as never)).sort()).toEqual([
+  it('keeps what only reads, and the person’s Oxy apps (held to read_only elsewhere), never her memory', () => {
+    expect(Object.keys(aliaReadingTools(ALL_TOOLS as never)).sort()).toEqual([
       'getCurrentDate',
       'getWeather',
       'loadTools',
       'oxy_inbox__searchEmails',
-      'oxy_nilo_memories__recallMemories',
       'webScraper',
       'webSearch',
     ]);
   });
 
   it('drops every tool that sends, writes, acts or runs code', () => {
-    const kept = Object.keys(aliaConsultTools(ALL_TOOLS as never));
+    const kept = Object.keys(aliaReadingTools(ALL_TOOLS as never));
     for (const name of [
       'sendTelegramMessage',
       'sendAccountMessage',
@@ -187,7 +188,7 @@ describe('aliaConsultTools', () => {
   });
 });
 
-describe('a turn whose callee is Alia', () => {
+describe('a turn of Alia, written to by another gemie', () => {
   it('runs her read-only: Oxy apps at read_only, connectors that act not even fetched', async () => {
     const result = await runAgentTurn({
       agent: aliaGemie(),
@@ -207,11 +208,18 @@ describe('a turn whose callee is Alia', () => {
     });
   });
 
-  it('gives her the answering prompt and no agent identity, and only the read-only tools', async () => {
-    await runAgentTurn({ agent: aliaGemie(), task: 'q', person, payerOxyUserId: 'person-1' });
+  it('gives her the caller’s protocol and no agent identity, and only the read-only tools', async () => {
+    await runAgentTurn({
+      agent: aliaGemie(),
+      task: 'q',
+      person,
+      payerOxyUserId: 'person-1',
+      room: { instructions: 'A GEMIE WROTE TO YOU', observations: [] },
+    });
 
-    expect(H.streamed?.system).toContain('is asking you something');
+    expect(H.streamed?.system).toContain('A GEMIE WROTE TO YOU');
     expect(H.streamed?.system).not.toContain('REMIT');
+    expect(Object.keys(H.streamed?.tools ?? {})).not.toContain('oxy_nilo_memories__recallMemories');
     expect(Object.keys(H.streamed?.tools ?? {})).not.toContain('sendTelegramMessage');
     expect(Object.keys(H.streamed?.tools ?? {})).toContain('oxy_inbox__searchEmails');
   });
@@ -284,5 +292,33 @@ describe('room protocol in the actual agent turn', () => {
       { role: 'user', content: '  Eusebio, what can you do?  ' },
       observation,
     ]);
+  });
+});
+
+describe('the gemie that wrote first, continuing its chain', () => {
+  it('asks the assembler for its bound sendMessage, and Alia keeps it among her reading tools', async () => {
+    const deliver = vi.fn();
+    H.tools = { ...ALL_TOOLS, sendMessage: {} };
+    await runAgentTurn({
+      agent: aliaGemie(),
+      task: 'q',
+      person,
+      payerOxyUserId: 'person-1',
+      gemieChain: { peerId: 'peer-1', deliver },
+    });
+
+    expect(H.pipeline).toMatchObject({
+      nested: true,
+      gemieChain: { peerId: 'peer-1', deliver },
+      instancedSources: ['oxy_service', 'agent'],
+    });
+    expect(Object.keys(H.streamed?.tools ?? {})).toContain('sendMessage');
+  });
+
+  it('is not asked for a chain on a turn that continues none', async () => {
+    await runAgentTurn({ agent: aliaGemie(), task: 'q', person, payerOxyUserId: 'person-1' });
+
+    expect(H.pipeline).not.toHaveProperty('gemieChain');
+    expect(H.pipeline).toMatchObject({ instancedSources: ['oxy_service'] });
   });
 });

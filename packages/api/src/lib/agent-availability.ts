@@ -7,7 +7,7 @@
  * `GET /capabilities/agent-availability/:agentAccountId` on its service lane.
  *
  * The answer is cached briefly per agent: a confinement Oxy adds or lifts takes
- * effect within a minute, and a turn, a search and a consultation in the same
+ * effect within a minute, and a turn, a search and a message to a gemie in the same
  * minute ask once.
  *
  * ## An answer Oxy could not give is never "anywhere"

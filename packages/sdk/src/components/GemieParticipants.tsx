@@ -1,45 +1,22 @@
 /**
- * The conversation's participants: Bloom's `AgentProfile` with `[lead, ...joined]`, and the
- * agents joining it (ADR 0020 §7).
+ * The conversation's participants: Bloom's `AgentProfile` with `[lead, ...joined]` (ADR 0020 §7).
  *
- * When the lead consults another agent (`alia.agent_start`), the agent's reply appears in the
- * thread under its own identity (anchor `reply:<agentId>`), and that avatar flies into the header
- * through Bloom's `useAvatarJoin`: one choreography for every multi-agent conversation, Bloom's
- * own `MultiAgentChat` included. The header gains the agent only when its flight lands; with
- * reduced motion, or when there is nothing to measure, it gains it at once. An agent already in
- * the conversation when the chat opens is simply there.
+ * Who is in a conversation is known when it opens: its lead, a group's members, or the two gemies
+ * of a conversation between gemies (ADR 0041). Nobody joins a chat mid-turn any more — a gemie that
+ * wants something from another writes to it in their own conversation — so the header is drawn,
+ * never joined. A GROUP's first message flies its members' avatars out of the empty chat into it
+ * (`groupFirstSend`), Bloom's own multi-agent choreography.
  *
- * A GROUP's first message flies its members' avatars out of the empty chat the same way
- * (`groupFirstSend`).
- *
- * This is the ONLY file that draws `AgentProfile` or joins agents to it (`one-thread.test.tsx`
- * holds it), so the header of the sheet, the screen and the Alia app are one header.
+ * This is the ONLY file that draws `AgentProfile` (`one-thread.test.tsx` holds it), so the header
+ * of the sheet, the screen and the Alia app are one header.
  */
 
 import { AgentProfile } from '@oxy.so/bloom/agent-reply';
-import {
-  type AvatarFlightSpec,
-  type AvatarFlights,
-  avatarJoinFlights,
-  useAvatarJoin,
-} from '@oxy.so/bloom/avatar-flight';
+import { type AvatarFlightSpec, avatarJoinFlights } from '@oxy.so/bloom/avatar-flight';
 import { memo, useMemo } from 'react';
 import { ANCHORS, useGemieFlights } from '../lib/flights';
-import {
-  type GemieChatParticipants,
-  type GemieLead,
-  type GemieParticipant,
-  consultedAgents,
-} from '../lib/participants';
-import type { Message } from '../runtime/types';
+import type { GemieChatParticipants, GemieParticipant } from '../lib/participants';
 import { useConversationActivityText } from '../realtime/activity-text';
-
-export interface UseParticipantsOptions {
-  lead: GemieLead;
-  messages: readonly Message[];
-  /** The chat's flights; `null` draws everybody in place without flying. */
-  flights: AvatarFlights | null;
-}
 
 /** How long the answering member's avatar takes to land on its reply. */
 const REPLY_LANDING_MS = 800;
@@ -68,35 +45,6 @@ export function groupFirstSend(members: readonly GemieParticipant[]): AvatarFlig
   ];
 }
 
-const fromReply = (agent: GemieParticipant) => ANCHORS.reply(agent.id);
-const characterOf = (agent: GemieParticipant) => agent.character;
-
-/** Who the header shows: the lead, then the agents it consulted as each one's avatar lands. */
-export function useParticipants({
-  lead,
-  messages,
-  flights,
-}: UseParticipantsOptions): GemieChatParticipants {
-  const arrivals = useMemo(
-    () =>
-      consultedAgents(messages, lead.id).map(({ participant, live }) => ({
-        agent: participant,
-        live,
-      })),
-    [messages, lead.id],
-  );
-  const joined = useAvatarJoin({
-    arrivals,
-    flights,
-    from: fromReply,
-    to: ANCHORS.profile,
-    character: characterOf,
-    // A new lead is a new conversation: nobody has joined it.
-    resetKey: lead.id,
-  });
-  return useMemo(() => ({ lead, joined: [...joined] }), [lead, joined]);
-}
-
 export interface GemieParticipantsProps {
   participants: GemieChatParticipants;
   /** Pressing the profile. Omitted, every avatar in it waves. */
@@ -106,8 +54,8 @@ export interface GemieParticipantsProps {
 const noop = () => undefined;
 
 /**
- * The header's participants: the lead's avatar above its name, joined by the agents it consulted
- * ("Alia + Sindi"). Place it in the chat's chrome; it is the conversation's title.
+ * The header's participants: the lead's avatar above its name, with the others in the conversation
+ * ("Pepe + Lumen"). Place it in the chat's chrome; it is the conversation's title.
  */
 export const GemieParticipants = memo(function GemieParticipants({
   participants,

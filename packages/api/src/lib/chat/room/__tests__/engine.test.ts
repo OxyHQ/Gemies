@@ -111,8 +111,8 @@ function harness(options: {
         clientMessageId: input.clientMessageId,
         role: 'assistant',
         content: input.content,
-        agentName: input.agentInfo.name,
-        agentId: input.agentInfo.id,
+        agentName: input.agentInfo?.name ?? null,
+        agentId: input.agentInfo?.id ?? null,
       };
       rows.push(row);
       return { id: input.clientMessageId, seq: seq++, createdAt: new Date(0) };

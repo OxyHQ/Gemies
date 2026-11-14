@@ -26,6 +26,8 @@ function toConversation(row: RealtimeConversationRow): Conversation {
     agentId: row.agentId,
     memberAgentIds: row.memberAgentIds,
     spaceId: row.spaceId,
+    ...(row.kind === undefined ? {} : { kind: row.kind }),
+    ...(row.members === undefined ? {} : { members: row.members }),
     threadId: row.threadId,
     app: row.app,
     unreadCount: row.unreadCount,
@@ -36,6 +38,9 @@ function toConversation(row: RealtimeConversationRow): Conversation {
 }
 
 function matches(filter: ConversationsFilter | undefined, row: Conversation): boolean {
+  // The person's own lists never hold a conversation between their gemies, and that list holds
+  // nothing else (ADR 0041).
+  if ((filter?.kind ?? 'person') !== (row.kind ?? 'person')) return false;
   if (!filter) return true;
   if (filter.agentId !== undefined && row.agentId !== filter.agentId) return false;
   if (filter.app !== undefined && row.app !== filter.app) return false;

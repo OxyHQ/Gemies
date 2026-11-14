@@ -59,10 +59,10 @@ vi.mock('../tools/oxy-services.js', () => ({
     return { oxy_inbox__listMessages: { description: 'private' } };
   }),
 }));
-vi.mock('../tools/consult-agent.js', () => ({
-  buildConsultAgentTool: vi.fn(async () => {
+vi.mock('../tools/send-message.js', () => ({
+  buildSendMessageTool: vi.fn(async () => {
     state.asked.agent += 1;
-    return { consultAgent: { description: 'private' } };
+    return { sendMessage: { description: 'private' } };
   }),
 }));
 vi.mock('../../db/integrations/connectedAccountRepository.js', () => ({

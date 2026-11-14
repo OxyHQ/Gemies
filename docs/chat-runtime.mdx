@@ -89,7 +89,7 @@ results arrived after the last text it wrote, whether the steps ran out or the n
 gets one tools-disabled synthesis pass (`lib/chat/tool-synthesis.ts`); narration written before the
 tools is not that answer. The same pass, one request builder (`owedAnswerRequest`), serves every
 surface that ends a tool loop: the non-streaming chat route, Alia's tasks, `/internal` triggers,
-channel bots, `askAlia`/agent turns and the text-tool-call follow-up.
+channel bots, a gemie's turns in rooms and conversations between gemies, and the text-tool-call follow-up.
 
 `reasoningEffort` (`low` | `medium` | `high`) is accepted only when the model
 lists that level in its `reasoningEfforts`. Oxy and Kaana own route authorization and
@@ -343,7 +343,7 @@ It is enforced twice:
 
 - **`ToolPipeline.forUser`** (`lib/tool-budget.ts`) never lets a request carry
   more. Every path that runs a model with tools — chat streaming and
-  non-streaming, the autonomous runner, `consultAgent` turns, Telegram
+  non-streaming, the autonomous runner, gemies' turns in rooms and conversations between gemies, Telegram
   bot turns (`routes/webhooks.ts`) and service-token triggers
   (`routes/internal.ts`) — assembles through it and spreads its `routing`
   beside `tools`.
@@ -484,9 +484,10 @@ returns and the per-message routes address (`PATCH
 /conversations/:id/messages/:messageId/vote`, `POST /v1/audio/speech` with
 `conversationId` and `messageId`). A client that wants to address a reply it
 is still showing sends each message with its `id` and names the reply it is
-drawing in `assistantMessageId`; a consulted agent's answers in that turn are
-stored as `<assistantMessageId>-agent-<n>`, in the order of their
-`alia.agent_start` events (`docs/agent-embedding.md` §4). A message sent
+drawing in `assistantMessageId`. A message a gemie writes outside the
+request — a room member's reply, or a gemie telling the person what another
+answered (ADR 0041) — is stored under an id derived from its step
+(`group-reply-…`), which every rewrite keeps. A message sent
 without an id is named by its position, `msg-<seq>`. A malformed
 `assistantMessageId` (not a string of 1–128 characters) is refused with `400
 invalid_request`. A turn is stored when it completes, so a failed turn has no

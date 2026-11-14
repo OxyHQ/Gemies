@@ -60,9 +60,9 @@ export interface Message {
    */
   unsaved?: true;
   /**
-   * The agent that wrote this message: a consultation (`consultAgent`, ADR 0020 §5), a group
-   * member, or the direct agent's proactive/scheduled reply. Identity alone does not mean
-   * delegation: the conversation's members speak directly to the person.
+   * The gemie that wrote this message: a group member, either gemie of a conversation between
+   * gemies (ADR 0041), or the direct agent's proactive/scheduled reply. The conversation's members
+   * speak directly to whoever reads it.
    *
    * `character` is the agent's look as the server stores it (JSON), parsed
    * where it is drawn; absent, the default look.
@@ -122,6 +122,13 @@ export interface Conversation {
    * own, a group member answering in the background). The sidebar's badge; zeroed by reading it.
    */
   unreadCount?: number;
+  /**
+   * `gemies` for a conversation the person's gemies have with each other (ADR 0041): the person
+   * reads it and never writes in it. `person` (or absent) for the person's own.
+   */
+  kind?: 'person' | 'gemies';
+  /** The two gemies of a conversation between gemies, as their messages carry them. */
+  members?: NonNullable<Message['agentInfo']>[];
   createdAt: Date;
   updatedAt: Date;
   messages: Message[];

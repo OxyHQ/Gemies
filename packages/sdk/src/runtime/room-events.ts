@@ -32,20 +32,20 @@ export function roomFailureReason(value: unknown): RoomFailureReason | null {
 }
 
 /**
- * Which consultation is drawn in which message, and what the request already owns.
+ * Which member's speaking turn is drawn in which message, and what the request already owns.
  *
  * Mutable on purpose: one per open conversation, held by the thread.
  */
 export interface RoomLedger {
   /** `consultId` to the id of the message that draws it. */
   messages: Map<string, string>;
-  /** Socket-observed chain for a consult, including one initially drawn by SSE. */
+  /** Socket-observed chain for a turn, including one initially drawn by SSE. */
   chains: Map<string, string>;
-  /** Consultations the chat request's SSE frames drew: the socket must not draw them again. */
+  /** Turns the chat request's SSE frames drew: the socket must not draw them again. */
   claimed: Set<string>;
-  /** Claimed consultations whose request ended with `room_continues`: the socket carries them now. */
+  /** Claimed turns whose request ended with `room_continues`: the socket carries them now. */
   released: Set<string>;
-  /** Consultations whose end was applied. */
+  /** Turns whose end was applied. */
   ended: Set<string>;
   /** Provisional replies explicitly discarded by the room, never restored by late frames. */
   discarded: Set<string>;
@@ -62,7 +62,7 @@ export function createRoomLedger(): RoomLedger {
   };
 }
 
-/** The id a consultation drawn from the socket gets until its stored reply names it. */
+/** The id a turn drawn from the socket gets until its stored reply names it. */
 const roomDraftId = (consultId: string): string => `room-${consultId}`;
 
 /**
@@ -71,7 +71,7 @@ const roomDraftId = (consultId: string): string => `room-${consultId}`;
  * the caller empties that message and lets the request say it all (what the socket added before
  * would otherwise be said twice).
  */
-export function claimConsult(ledger: RoomLedger, consultId: string, id: string): string | null {
+export function claimMemberTurn(ledger: RoomLedger, consultId: string, id: string): string | null {
   const existing = ledger.messages.get(consultId);
   ledger.claimed.add(consultId);
   if (existing !== undefined) return existing;
@@ -80,7 +80,7 @@ export function claimConsult(ledger: RoomLedger, consultId: string, id: string):
 }
 
 /** The request closed `consultId` with `room_continues`: the room goes on, the socket takes over. */
-export function releaseConsult(ledger: RoomLedger, consultId: string): void {
+export function releaseMemberTurn(ledger: RoomLedger, consultId: string): void {
   if (ledger.claimed.has(consultId)) ledger.released.add(consultId);
 }
 
@@ -98,7 +98,7 @@ const isObject = (value: unknown): value is Raw =>
 const text = (value: unknown): string | undefined =>
   typeof value === 'string' && value !== '' ? value : undefined;
 
-/** A consultation the socket drives is live; one the request drew is, once it let go. */
+/** A turn the socket drives is live; one the request drew is, once it let go. */
 const isLive = (ledger: RoomLedger, consultId: string): boolean =>
   !ledger.claimed.has(consultId) || ledger.released.has(consultId);
 
@@ -166,7 +166,7 @@ export function applyRoomEvent(
       incoming.event === 'alia.agent_tool' ||
       incoming.event === 'alia.agent_end')
   ) {
-    // SSE may already own this consult, but only the socket carries its chain.
+    // SSE may already own this turn, but only the socket carries its chain.
     // Record it before the duplicate/ownership guards can discard the frame.
     const knownChain = ledger.chains.get(consultId);
     if (knownChain !== undefined && knownChain !== chainId) return messages;
@@ -180,16 +180,22 @@ export function applyRoomEvent(
       if (!isObject(agent) || !text(agent.id) || !text(agent.name)) return messages;
       const id = roomDraftId(consultId);
       ledger.messages.set(consultId, id);
+      const draft: Message = {
+        id,
+        unsaved: true,
+        role: 'assistant',
+        content: '',
+        toolInvocations: [],
+        createdAt: new Date().toISOString(),
+        isStreaming: true,
+      };
+      // The conversation's own lead speaking in its chat (a gemie telling the person what another
+      // gemie answered, ADR 0041): its ordinary reply, drawn as every other one of its replies.
+      if (data.lead === true) return [...messages, draft];
       return [
         ...messages,
         {
-          id,
-          unsaved: true,
-          role: 'assistant',
-          content: '',
-          toolInvocations: [],
-          createdAt: new Date().toISOString(),
-          isStreaming: true,
+          ...draft,
           agentInfo: {
             id: agent.id as string,
             name: agent.name as string,

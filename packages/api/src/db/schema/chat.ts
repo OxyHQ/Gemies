@@ -410,3 +410,36 @@ export const conversationMembers = pgTable(
     ),
   ],
 );
+
+/**
+ * A conversation between two gemies (ADR 0041): the place where they talk to each other, owned by
+ * the person they both work for, and the person only reads it.
+ *
+ * It is an ordinary `conversations` row (the room gemie's, like a group) with both gemies in
+ * `conversation_members`, and this row says two things a member list cannot:
+ *
+ *  - that the person never writes in it (`routes/v1/chat-completions.ts` refuses a turn there), and
+ *  - which pair it belongs to, so a gemie that writes to another reopens the SAME conversation,
+ *    as a person does: `first_agent_id < second_agent_id`, unique per person.
+ *
+ * No foreign keys, for the reason `conversation_members` has none; `deleteConversation` removes the
+ * row with the conversation.
+ */
+export const gemieConversations = pgTable(
+  'gemie_conversations',
+  {
+    id: generatedId(),
+    /** The person both gemies work for: the conversation's owner. An Oxy account; no foreign key. */
+    oxyUserId: text().notNull(),
+    conversationId: text().notNull(),
+    /** The pair, ordered so each pair has one spelling. `agents` rows; no foreign key. */
+    firstAgentId: text().notNull(),
+    secondAgentId: text().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('gemie_conversations_conversation_key').on(t.oxyUserId, t.conversationId),
+    uniqueIndex('gemie_conversations_pair_key').on(t.oxyUserId, t.firstAgentId, t.secondAgentId),
+    check('gemie_conversations_pair_order_check', sql`${t.firstAgentId} < ${t.secondAgentId}`),
+  ],
+);

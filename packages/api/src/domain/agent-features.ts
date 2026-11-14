@@ -55,7 +55,7 @@ export function powerLevelFeature(level: string | null): GatedFeature | null {
     : null;
 }
 
-/** Whether a feature is one of the attachment kinds (what a consulted agent would read). */
+/** Whether a feature is one of the attachment kinds (what a gemie written to could be handed). */
 export function isAttachmentFeature(feature: GatedFeature): boolean {
   return feature.startsWith('attachments.');
 }

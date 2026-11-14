@@ -112,7 +112,11 @@ export interface RoomEngineDeps {
     readonly conversationId: string;
     readonly clientMessageId: string;
     readonly content: string;
-    readonly agentInfo: AgentInfo;
+    /**
+     * Who said it. `null` is the conversation's own lead in its direct chat (a gemie telling the
+     * person what another gemie answered, ADR 0041): stored as its ordinary reply.
+     */
+    readonly agentInfo: AgentInfo | null;
   }) => Promise<StoredReply>;
   readonly revokeTasks: (taskIds: readonly string[]) => Promise<void>;
   readonly now: () => number;
@@ -269,7 +273,7 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
     reply = textOf(alreadyStored.content);
     if (data.version === 2 && member) {
       // The database commit may have preceded a lost event or failed next-job enqueue. Replay the
-      // SAME consultation and stored message so every subscriber converges, without another turn.
+      // SAME turn and stored message so every subscriber converges, without another turn.
       await emit('alia.agent_start', {
         consultId: replyId,
         agent: member.info,
@@ -469,11 +473,7 @@ async function speak(input: {
     const passed = data.version !== 2 && gate.finish();
 
     if (outcome.error !== undefined || outcome.response.trim() === '') {
-      return await fail(
-        outcome.refusal
-          ? { code: outcome.refusal.code, feature: outcome.refusal.feature }
-          : { code: 'agent_unavailable' },
-      );
+      return await fail({ code: 'agent_unavailable' });
     }
     if (data.version !== 2 && (passed || isPass(outcome.response))) {
       await emit('alia.agent_end', { consultId, status: 'declined' });

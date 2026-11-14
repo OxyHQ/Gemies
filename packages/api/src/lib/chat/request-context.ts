@@ -141,8 +141,8 @@ export interface ChatRequestContext {
    */
   earlierFilesInWords: boolean;
   /**
-   * Everything this turn uses that an agent can gate (`turnFeatureUsesOf`). A
-   * consulted agent's gates are applied to its attachments (`consultAgent`).
+   * Everything this turn uses that an agent can gate (`turnFeatureUsesOf`). The
+   * gates of a gemie this turn writes to apply to its attachments (`sendMessage`).
    */
   featureUses: GatedPart[];
   deepResearch: boolean | undefined;
@@ -743,7 +743,7 @@ export async function buildChatRequestContext(
    * Refused rather than silently downgraded: a person who asked for deep
    * research and got an ordinary answer has been told something untrue about
    * the turn they paid nothing for. The composer hides the control for a local
-   * model; this is what answers a client that asks anyway. `consultAgent`, the
+   * model; this is what answers a client that asks anyway. `sendMessage`, the
    * other way into hosted inference, is withheld by `lib/tool-pipeline.ts`.
    *
    * The `deepResearch` TOOL is withheld separately, in `lib/tool-pipeline.ts` —

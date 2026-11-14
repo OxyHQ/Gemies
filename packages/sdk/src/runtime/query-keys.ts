@@ -8,6 +8,11 @@ export interface ConversationsFilter {
   agentId?: string;
   /** Only the conversations started in this app, by its slug (`docs/agent-embedding.md` §6). */
   app?: string;
+  /**
+   * The conversations the person's gemies have with each other (`gemies`, ADR 0041) instead of the
+   * person's own, which are the default and never include them.
+   */
+  kind?: 'gemies';
 }
 
 export const gemieQueryKeys = {
@@ -21,7 +26,7 @@ export const gemieQueryKeys = {
      * write to the list reaches it.
      */
     filtered: (filter: ConversationsFilter) =>
-      ['conversations', { agentId: filter.agentId, app: filter.app }] as const,
+      ['conversations', { agentId: filter.agentId, app: filter.app, kind: filter.kind }] as const,
   },
   /**
    * The person's connected accounts (ADR 0035 as amended): the list with its grants, the code of
