@@ -8,6 +8,7 @@ import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index.js';
+import { setUpTestDatabase, type TestDatabaseHandle } from '../testDatabase.js';
 import { bots, botUsers } from '../schema/bots.js';
 import { connectedAccounts } from '../schema/integrations.js';
 import { upsertBotUser, findBotUser } from '../integrations/botRepository.js';
@@ -17,11 +18,19 @@ import {
 } from '../integrations/migrateChannelTaskAuthority.js';
 
 let db: ApiDatabase;
-beforeAll(() => {
+let database: TestDatabaseHandle;
+// Inventory assertions count the whole database; other suites may connect or expire channels.
+beforeAll(async () => {
   process.env.TOKEN_ENCRYPTION_KEY ??= 'a'.repeat(64);
-  db = connectPostgres(process.env.DATABASE_URL)!;
+  database = await setUpTestDatabase();
+  const connected = connectPostgres(database.databaseUrl);
+  if (!connected) throw new Error('Disposable channel migration database required');
+  db = connected;
+}, 120_000);
+afterAll(async () => {
+  await closePostgres();
+  await database?.drop();
 });
-afterAll(closePostgres);
 let sequence = 0;
 async function legacy(token: string, linked = true) {
   const id = `channel-task-${process.pid}-${sequence++}`;
@@ -88,7 +97,7 @@ describe('controlled channel-task conversion', () => {
       oxyUserId: 'rotation-person',
       platform: 'telegram',
     });
-    // This tests competing active rotations. The expiry sweep runs in another suite on this DB.
+    // This tests competing active rotations, not tasks that have already expired.
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const updates = await Promise.all([
       setConnectedAccountTask(db, row.id, { id: 'root-a', expiresAt }, null),
