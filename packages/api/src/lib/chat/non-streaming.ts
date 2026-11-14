@@ -209,6 +209,7 @@ export async function runNonStreaming(params: NonStreamingParams): Promise<void>
     lifecycleCtx.omitLeadReply = await params.conversationReaction.complete(
       assistantResponse,
       allCalls,
+      tokenUsage.totalTokens,
     );
   }
   if (!lifecycleCtx.omitLeadReply)

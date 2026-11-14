@@ -451,14 +451,22 @@ describe('peer reactions within an already admitted chain', () => {
 
   it('replays a durable recipient reaction after lost enqueue without another inference or double count', async () => {
     let completed = false;
-    const w = world({
-      lumen: async () => {
-        completed = true;
-        return { text: '', reactionOnly: true };
+    const w = world(
+      {
+        lumen: async () => {
+          completed = true;
+          return { text: '', reactionOnly: true };
+        },
+        pepe: async (turn) => {
+          expect(turn.conversationReaction).toBeUndefined();
+          expect(turn.gemieChain).toBeUndefined();
+          return { text: 'Hecho.' };
+        },
       },
-    });
+      { maxMessages: 8, maxTokens: 107 },
+    );
     await w.start('Gracias.');
-    const job = w.queue.shift()!;
+    const job = { ...w.queue.shift()!, tokens: 7 };
     const replay = vi.fn(async () => undefined);
     const enqueue = vi
       .fn()
@@ -467,15 +475,21 @@ describe('peer reactions within an already admitted chain', () => {
     const deps = {
       ...w.deps,
       enqueue,
-      room: { ...w.deps.room, reactionCompleted: async () => completed, replayReactions: replay },
+      room: {
+        ...w.deps.room,
+        reactionCompletion: async () => (completed ? { tokensUsed: 100 } : null),
+        replayReactions: replay,
+      },
     };
     await expect(processGemieStep(job, deps)).rejects.toThrow('Queue unavailable');
     expect(await processGemieStep(job, deps)).toBe('continued');
     expect(w.turns).toHaveLength(1);
     expect(replay).toHaveBeenCalledOnce();
     expect(w.queue).toHaveLength(1);
-    expect(w.queue[0]).toMatchObject({ phase: 'continue', messages: 2 });
+    expect(w.queue[0]).toMatchObject({ phase: 'continue', messages: 2, tokens: 107 });
     expect(w.said('between')).toHaveLength(1);
+    expect(await processGemieStep(w.queue.shift()!, deps)).toBe('ended');
+    expect(w.queue).toHaveLength(0);
   });
 
   it('lets the initiator react to a textual peer reply in the pair, then ends without another message', async () => {
@@ -500,7 +514,11 @@ describe('peer reactions within an already admitted chain', () => {
     const replay = vi.fn(async () => undefined);
     await processGemieStep(continuation, {
       ...deps,
-      room: { ...deps.room, reactionCompleted: async () => true, replayReactions: replay },
+      room: {
+        ...deps.room,
+        reactionCompletion: async () => ({ tokensUsed: 100 }),
+        replayReactions: replay,
+      },
     });
     expect(replay).toHaveBeenCalledOnce();
     expect(w.turns).toHaveLength(2);
@@ -561,7 +579,11 @@ describe('peer reaction contribution bounds', () => {
       expect(
         await processGemieStep(continuation, {
           ...deps,
-          room: { ...deps.room, reactionCompleted: async () => true, replayReactions: replay },
+          room: {
+            ...deps.room,
+            reactionCompletion: async () => ({ tokensUsed: 100 }),
+            replayReactions: replay,
+          },
         }),
       ).toBe('ended');
       expect(replay).toHaveBeenCalledOnce();

@@ -1,5 +1,5 @@
 {
-  "id": "f652c5f3-3ed6-4ddc-b291-c4975f47a779",
+  "id": "baf41519-3418-4eca-adfc-8b54a74e2991",
   "prevId": "66eff029-7e38-410f-bda6-08107a57e848",
   "version": "7",
   "dialect": "postgresql",
@@ -14850,6 +14850,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "tokens_used": {
+          "name": "tokens_used",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
         "completed_at": {
           "name": "completed_at",
           "type": "timestamp with time zone",
@@ -14913,7 +14919,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "agent_reaction_turns_tokens_check": {
+          "name": "agent_reaction_turns_tokens_check",
+          "value": "\"agent_reaction_turns\".\"tokens_used\" >= 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.conversation_activities": {

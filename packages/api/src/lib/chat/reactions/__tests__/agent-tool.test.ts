@@ -95,31 +95,34 @@ describe('native agent reactions', () => {
     const result = await f.execute();
     const calls = [{ toolName: 'react_to_message', state: 'result', result }];
     expect(f.complete).not.toHaveBeenCalled();
-    expect(await f.turn.complete('Here is the answer', calls)).toBe(false);
-    expect(await f.turn.complete('', [...calls, { toolName: 'search', state: 'error' }])).toBe(
+    expect(await f.turn.complete('Here is the answer', calls, 42)).toBe(false);
+    expect(await f.turn.complete('', [...calls, { toolName: 'search', state: 'error' }], 42)).toBe(
       false,
     );
     expect(
-      await f.turn.complete('', [
-        { ...calls[0]!, result: { ...result, mutationId: 'not-committed' } },
-      ]),
+      await f.turn.complete(
+        '',
+        [{ ...calls[0]!, result: { ...result, mutationId: 'not-committed' } }],
+        42,
+      ),
     ).toBe(false);
     expect(
-      await f.turn.complete('', [
-        ...calls,
-        { toolName: 'sendMessage', state: 'result', result: { status: 'sent' } },
-      ]),
+      await f.turn.complete(
+        '',
+        [...calls, { toolName: 'sendMessage', state: 'result', result: { status: 'sent' } }],
+        42,
+      ),
     ).toBe(false);
     expect(f.complete).not.toHaveBeenCalled();
-    expect(await f.turn.complete('', calls)).toBe(true);
-    expect(f.complete).toHaveBeenCalledOnce();
+    expect(await f.turn.complete('', calls, 42)).toBe(true);
+    expect(f.complete).toHaveBeenCalledExactlyOnceWith(42);
   });
 
   it('explicit continue does not waive the required response', async () => {
     const f = fixture();
     const result = await f.execute('person', { finishTurn: false });
     expect(
-      await f.turn.complete('', [{ toolName: 'react_to_message', state: 'result', result }]),
+      await f.turn.complete('', [{ toolName: 'react_to_message', state: 'result', result }], 42),
     ).toBe(false);
   });
 
@@ -138,7 +141,9 @@ describe('native agent reactions', () => {
       toolResults: [],
     };
     expect(f.turn.stopWhen({ steps: [pendingStep, reactionStep] })).toBe(false);
-    expect(await f.turn.complete('', reactionStepCalls([pendingStep, reactionStep]))).toBe(false);
+    expect(await f.turn.complete('', reactionStepCalls([pendingStep, reactionStep]), 42)).toBe(
+      false,
+    );
     expect(f.turn.stopWhen({ steps: [{ ...reactionStep, text: 'A partial answer' }] })).toBe(false);
   });
 
@@ -148,7 +153,7 @@ describe('native agent reactions', () => {
     const result = await f.execute();
     f.complete.mockResolvedValue(false);
     await expect(
-      f.turn.complete('', [{ toolName: 'react_to_message', state: 'result', result }]),
+      f.turn.complete('', [{ toolName: 'react_to_message', state: 'result', result }], 42),
     ).rejects.toThrow('completion unavailable');
     expect(f.mutate).toHaveBeenCalledOnce();
   });
@@ -160,7 +165,7 @@ describe('native agent reactions', () => {
     const result = await f.execute();
     f.complete.mockRejectedValue(new Error('raw private database failure'));
     await expect(
-      f.turn.complete('', [{ toolName: 'react_to_message', state: 'result', result }]),
+      f.turn.complete('', [{ toolName: 'react_to_message', state: 'result', result }], 42),
     ).rejects.toThrow(/^Reaction turn completion unavailable$/);
   });
 

@@ -115,12 +115,12 @@ interface StoredReply {
 
 export interface RoomEngineDeps {
   readonly prepareReaction?: typeof prepareAgentReactionTurn;
-  readonly reactionCompleted?: (
+  readonly reactionCompletion?: (
     userId: string,
     conversationId: string,
     actorId: string,
     turnId: string,
-  ) => Promise<boolean>;
+  ) => Promise<{ readonly tokensUsed: number } | null>;
   readonly replayReactions?: (
     userId: string,
     conversationId: string,
@@ -283,12 +283,12 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
   // Replaying a committed turn consumes neither another contribution nor another actor turn.
   const completedReaction =
     data.version === 3 && data.phase === 'speak' && !alreadyStored
-      ? await deps.reactionCompleted?.(userId, conversationId, data.speakerId, reactionTurnId)
+      ? await deps.reactionCompletion?.(userId, conversationId, data.speakerId, reactionTurnId)
       : undefined;
   const replay =
     data.version === 3 &&
     data.phase === 'speak' &&
-    (alreadyStored?.agentId === data.speakerId || completedReaction === true);
+    (alreadyStored?.agentId === data.speakerId || completedReaction != null);
   if (data.version === 3 && rateExceeded && !replay) return end('rate_limited', 'ended');
   if (data.version !== undefined) {
     if (!replay && data.turns >= MAX_TURNS_PER_MESSAGE) return end('turn_cap', 'ended');
@@ -406,7 +406,7 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
     data.version !== undefined &&
     member &&
     (completedReaction ??
-      (await deps.reactionCompleted?.(userId, conversationId, member.info.id, reactionTurnId)))
+      (await deps.reactionCompletion?.(userId, conversationId, member.info.id, reactionTurnId)))
   ) {
     await deps.replayReactions?.(userId, conversationId, member.info.id, reactionTurnId);
     await emit('alia.agent_start', {

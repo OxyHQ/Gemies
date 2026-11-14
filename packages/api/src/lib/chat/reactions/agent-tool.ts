@@ -54,7 +54,7 @@ export interface AgentReactionToolDeps {
     mutationId: string;
   }): Promise<AgentReactionSnapshot | undefined>;
   publish(snapshot: AgentReactionSnapshot): Promise<void>;
-  complete(): Promise<boolean>;
+  complete(tokensUsed: number): Promise<boolean>;
 }
 
 /** Canonical admitted identity plus content prevents an edited/reused client ID aliasing a turn. */
@@ -168,12 +168,18 @@ export function createAgentReactionTurn(scope: AgentReactionScope, deps: AgentRe
     stopWhen: ({ steps }: { steps: readonly ReactionStep[] }) =>
       steps.every((step) => !step.text?.trim()) && canFinish(reactionStepCalls(steps)),
     /** Called only after clean inference completion, never merely because a tool committed. */
-    complete: async (text: string, calls: readonly ReactionToolInvocation[]) => {
+    complete: async (
+      text: string,
+      calls: readonly ReactionToolInvocation[],
+      tokensUsed: number,
+    ) => {
       if (text.trim() || !canFinish(calls)) return false;
+      if (!Number.isSafeInteger(tokensUsed) || tokensUsed < 0 || tokensUsed > 2_147_483_647)
+        throw new Error('Invalid reaction completion usage');
       scope.signal?.throwIfAborted();
       let completed = false;
       try {
-        completed = await deps.complete();
+        completed = await deps.complete(tokensUsed);
       } catch {
         /* Never expose a storage exception. */
       }

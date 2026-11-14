@@ -607,7 +607,11 @@ export async function runStream<TOOLS extends ToolSet>(
 
   if (reactionFinishPending && params.conversationReaction) {
     await params.beforeReactionFinish?.();
-    reactionOnly = await params.conversationReaction.complete(assistantResponse, toolInvocations);
+    reactionOnly = await params.conversationReaction.complete(
+      assistantResponse,
+      toolInvocations,
+      usage.totalTokens,
+    );
     if (!reactionOnly) throw emptyResponseError('error');
     params.onReactionComplete?.();
     writeStopChunk(res, requestId, modelId, 'stop');
