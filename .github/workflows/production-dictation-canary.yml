@@ -15,8 +15,16 @@ on:
         description: Auditable incident or release reason
         required: true
         type: string
+      mode:
+        description: upload (what the apps do, POST /v1/audio/transcriptions) or stream (Kaana transcription session)
+        required: false
+        default: upload
+        type: choice
+        options:
+          - upload
+          - stream
       seconds:
-        description: Seconds of recorded speech to stream in real time (10-120)
+        description: Seconds of recorded speech to transcribe (10-120)
         required: false
         default: '60'
         type: string
@@ -57,6 +65,7 @@ jobs:
           EXPECTED_IMAGE_DIGEST: ${{ inputs.expected_live_image_digest }}
           REASON: ${{ inputs.reason }}
           SECONDS_OF_SPEECH: ${{ inputs.seconds }}
+          MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
           [[ "$EXPECTED_TASK_DEFINITION" =~ ^arn:aws:ecs:us-west-2:237343248947:task-definition/oxy-alia:[1-9][0-9]*$ ]] || {
@@ -67,6 +76,7 @@ jobs:
             echo '::error::the protected production ALIA_CANARY_OXY_USER_ID is absent or invalid'; exit 1;
           }
           [ -n "$REASON" ] || { echo '::error::reason is required'; exit 1; }
+          [[ "$MODE" == upload || "$MODE" == stream ]] || { echo '::error::mode must be upload or stream'; exit 1; }
           [[ "$SECONDS_OF_SPEECH" =~ ^[1-9][0-9]{1,2}$ ]] && [ "$SECONDS_OF_SPEECH" -ge 10 ] && [ "$SECONDS_OF_SPEECH" -le 120 ] || { echo '::error::seconds must be 10 to 120'; exit 1; }
           service_json=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --query 'services[0]' --output json)
           live=$(jq -r '.taskDefinition' <<<"$service_json")
@@ -90,7 +100,7 @@ jobs:
           # switch. This runs the LIVE image, so it needs a Bun image to be serving:
           # against a pre-switch Node revision the task fails to start (loudly, no
           # write), which is only possible until the first Bun deploy completes.
-          overrides=$(jq -cn --arg container "$container" --arg user "$QA_USER_ID" --arg seconds "$SECONDS_OF_SPEECH" '{containerOverrides:[{name:$container,command:["bun","packages/api/dist/scripts/dictation-stream-canary.js","--seconds",$seconds],environment:[{name:"ALIA_CANARY_OXY_USER_ID",value:$user},{name:"ALIA_DICTATION_CANARY_CONFIRM",value:"production-dictation-canary"}]}]}')
+          overrides=$(jq -cn --arg container "$container" --arg user "$QA_USER_ID" --arg seconds "$SECONDS_OF_SPEECH" --arg mode "$MODE" '{containerOverrides:[{name:$container,command:["bun","packages/api/dist/scripts/dictation-stream-canary.js","--mode",$mode,"--seconds",$seconds],environment:[{name:"ALIA_CANARY_OXY_USER_ID",value:$user},{name:"ALIA_DICTATION_CANARY_CONFIRM",value:"production-dictation-canary"}]}]}')
           task=''
           cleanup() {
             status=$?
@@ -136,7 +146,7 @@ jobs:
           done
           [ "$exit_code" = 0 ] && [ "$(grep -c '^ALIA_DICTATION_CANARY {' <<<"$result")" = 1 ] || { echo "::error::dictation canary failed (exit=$exit_code)"; grep '^ALIA_DICTATION_CANARY ' <<<"$result" | jq -Rr 'sub("^ALIA_DICTATION_CANARY ";"")' || true; exit 1; }
           safe=${result#ALIA_DICTATION_CANARY }
-          jq -e '.schemaVersion == 1 and .passed == true and (.failures | length == 0) and .counts.interim >= 1 and .counts.delta >= 1 and .counts.done >= 1 and .fatal == null and (.billedSessionMs | type == "number")' <<<"$safe" >/dev/null || { echo '::error::the canary report did not pass'; jq '{passed,failures,counts,firstInterimMs,recall,audioMs,wallMs,billedSessionMs}' <<<"$safe"; exit 1; }
-          jq '{schemaVersion,passed,model,sessionId,counts,firstInterimMs,audioMs,wallMs,billedSessionMs,units,recall,finalText}' <<<"$safe"
+          jq -e --arg mode "$MODE" '.schemaVersion == 1 and .passed == true and (.failures | length == 0) and .fatal == null and .mode == $mode and (if $mode == "stream" then .counts.interim >= 1 and .counts.delta >= 1 and .counts.done >= 1 and (.billedSessionMs | type == "number") else (.model | type == "string" and length > 0) and .recall >= 0.8 end)' <<<"$safe" >/dev/null || { echo '::error::the canary report did not pass'; jq '{mode,passed,failures,model,counts,firstInterimMs,recall,audioMs,wallMs,billedSessionMs}' <<<"$safe"; exit 1; }
+          jq '{schemaVersion,mode,passed,model,sessionId,counts,firstInterimMs,audioMs,wallMs,billedSessionMs,units,recall,finalText}' <<<"$safe"
           task=''
           trap - EXIT INT TERM

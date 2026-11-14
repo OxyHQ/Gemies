@@ -6,10 +6,12 @@ import {
   type CanaryReport,
   canaryAccount,
   judge,
+  judgeUpload,
   parseArgs,
   plan,
   recall,
   runCanary,
+  runUploadCanary,
 } from './dictation-stream-canary.js';
 
 const batchLine = voiceCatalogue.find(
@@ -33,6 +35,7 @@ const models = voiceCatalogue.map((model) =>
 );
 
 const passing: CanaryReport = {
+  mode: 'stream',
   model: 'x-ai/grok-voice-transcribe-2.0',
   sessionId: 'req_1',
   audioMs: 60_000,
@@ -92,13 +95,17 @@ describe('dictation stream canary', () => {
     expect(parseArgs(['--dry-run']).dryRun).toBe(true);
     expect(() => parseArgs(['--seconds', '5'])).toThrow();
     expect(() => parseArgs(['--audio-file', 'x.wav'])).toThrow(/--reference/);
-    expect(plan(parseArgs([]))).toMatch(/interimResults/);
+    expect(parseArgs([]).mode).toBe('upload');
+    expect(parseArgs(['--mode', 'stream']).mode).toBe('stream');
+    expect(() => parseArgs(['--mode', 'batch'])).toThrow(/--mode/);
+    expect(plan(parseArgs([]))).toMatch(/POST \/v1\/audio\/transcriptions/);
+    expect(plan(parseArgs(['--mode', 'stream']))).toMatch(/interimResults/);
   });
 
   it('opens a transcription session exactly as dictation does and reads back the billed units', async () => {
     const fake = createFakeKaana({ models });
     const pcm = new Uint8Array(48 * 1_000);
-    const running = runCanary(parseArgs([]), pcm, {
+    const running = runCanary(parseArgs(['--mode', 'stream']), pcm, {
       kaana: fake.kaana,
       account: 'user-1',
       frameDelayMs: 0,
@@ -143,5 +150,49 @@ describe('dictation stream canary', () => {
     expect(report.recall).toBe(1);
     expect(report.audioMs).toBe(1_000);
     expect(judge(report)).toEqual(['no session_milliseconds billed']);
+  });
+
+  it("uploads one WAV clip through the dictation route's own transcription", async () => {
+    const uploads: { mediaType: string; language?: string; bytes: number; model: string }[] = [];
+    const fake = createFakeKaana({
+      models: voiceCatalogue,
+      transcribe: (upload) => {
+        uploads.push({
+          mediaType: upload.mediaType,
+          bytes: upload.audio.byteLength,
+          model: upload.model.modelId,
+          ...(upload.language === undefined ? {} : { language: upload.language }),
+        });
+        return { text: `This is a LibriVox recording. ${CANARY_REFERENCE}.`, durationMs: 20_000 };
+      },
+    });
+    const wav = new Uint8Array(4_096).fill(1);
+    const report = await runUploadCanary(parseArgs(['--seconds', '20']), wav, {
+      kaana: fake.kaana,
+      account: 'user-1',
+    });
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]).toMatchObject({ mediaType: 'audio/wav', language: 'en', bytes: 4_096 });
+    expect(report).toMatchObject({ mode: 'upload', audioMs: 20_000, recall: 1, fatal: null });
+    expect(report.model.startsWith(`${uploads[0]?.model}@`)).toBe(true);
+    expect(judgeUpload(report)).toEqual([]);
+  });
+
+  it('fails an upload that no model served or that lost the words (negative controls)', () => {
+    const ok = {
+      mode: 'upload' as const,
+      model: 'x-ai/grok-voice-transcribe-2.0',
+      audioMs: 20_000,
+      wallMs: 2_000,
+      finalText: CANARY_REFERENCE,
+      recall: 1,
+      fatal: null,
+    };
+    expect(judgeUpload(ok)).toEqual([]);
+    expect(
+      judgeUpload({ ...ok, fatal: 'TRANSCRIPTION_UNAVAILABLE', model: '', recall: 0 }),
+    ).toEqual(['fatal: TRANSCRIPTION_UNAVAILABLE', 'final text recall 0.00 < 0.8']);
+    expect(judgeUpload({ ...ok, model: '' })).toEqual(['no model served the clip']);
+    expect(judgeUpload({ ...ok, recall: 0.5 })).toEqual(['final text recall 0.50 < 0.8']);
   });
 });
