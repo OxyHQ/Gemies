@@ -1,3 +1,4 @@
+import { roomRequestDigest } from './obligations.js';
 /**
  * Starting a room's chain, at the edge where the person's request still holds their bearer.
  *
@@ -123,6 +124,10 @@ export const prepareRoom: PrepareRoom = async (input) => {
           (row) => row.clientMessageId === triggerClientId,
         );
   if (trigger === undefined) throw new Error('The person’s message was not stored');
+  const canonicalTrigger = (await listMessages(getDb(), userId, conversationId)).find(
+    (row) => row.id === trigger.id,
+  );
+  if (!canonicalTrigger) throw new Error('The person’s message was removed');
 
   // Fetch everything that can fail before minting task authority.
   const space = await findSpaceByConversation(getDb(), userId, conversationId);
@@ -160,7 +165,8 @@ export const prepareRoom: PrepareRoom = async (input) => {
       await markConversationActive(userId, conversationId, trigger.id);
       try {
         await enqueueRoomJob({
-          version: 2,
+          version: 3,
+          requestDigest: roomRequestDigest(canonicalTrigger.content),
           phase: 'select',
           userId,
           conversationId,

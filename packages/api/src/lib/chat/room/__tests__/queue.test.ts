@@ -61,7 +61,9 @@ describe('versioned room queue isolation', () => {
     await startRoomWorker();
     await enqueueRoomJob({ ...base, version: 2, phase: 'select' });
     await enqueueRoomJob(base);
-    expect(h.workers).toEqual(['group-rooms-v2', 'group-rooms']);
+    expect(h.workers).toEqual(['group-rooms-v3', 'group-rooms-v2', 'group-rooms']);
+    await enqueueRoomJob({ ...base, version: 3, phase: 'select' });
+    expect(h.queues.get('group-rooms-v3')?.add).toHaveBeenCalledOnce();
     expect(h.queues.get('group-rooms-v2')?.add).toHaveBeenCalledOnce();
     expect(h.queues.get('group-rooms')?.add).toHaveBeenCalledOnce();
     expect(h.queues.get('group-rooms')?.options.defaultJobOptions).toMatchObject({
@@ -79,12 +81,17 @@ describe('versioned room queue isolation', () => {
     expect(selection).toBe(jobIdOf({ ...base, version: 2, phase: 'select' }));
   });
 
-  it('a lost Redis enqueue acknowledgement never executes a v2 turn locally', async () => {
-    h.queues.get('group-rooms-v2')?.add.mockRejectedValue(new Error('lost acknowledgement'));
-    await expect(enqueueRoomJob({ ...base, version: 2, phase: 'speak' })).rejects.toThrow(
-      'lost acknowledgement',
-    );
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(h.process).not.toHaveBeenCalled();
-  });
+  it.each([2, 3] as const)(
+    'a lost Redis enqueue acknowledgement never executes v%s locally',
+    async (version) => {
+      h.queues
+        .get(`group-rooms-v${version}`)
+        ?.add.mockRejectedValue(new Error('lost acknowledgement'));
+      await expect(enqueueRoomJob({ ...base, version, phase: 'speak' })).rejects.toThrow(
+        'lost acknowledgement',
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(h.process).not.toHaveBeenCalled();
+    },
+  );
 });

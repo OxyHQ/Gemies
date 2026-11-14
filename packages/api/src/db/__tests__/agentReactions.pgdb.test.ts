@@ -28,6 +28,7 @@ import {
   ReactionMutationConflict,
   listAgentReactionTargets,
   listAgentReactionTurnSnapshots,
+  listAgentReactionContributions,
   countAgentReactionTurnsSince,
 } from '../chat/reactionRepository';
 import { lockMessageThread } from '../chat/messageLock';
@@ -799,5 +800,48 @@ describe('peer-message reaction admission', () => {
         ),
       ).toBeNull();
     },
+  );
+});
+
+it('only exposes clean reaction contributions for exact request-derived turn ids and scope', async () => {
+  const f = await fixture();
+  const trigger = { kind: 'person' as const, message: { id: 'person', content: 'Gracias' } };
+  const previous = agentReactionTurnId('previous', trigger.message);
+  const current = agentReactionTurnId('current', trigger.message);
+  await f.react('previous-reaction', true, '❤️', 'peer', f.first, previous);
+  await markAgentReactionTurnComplete(
+    db,
+    f.userId,
+    f.conversationId,
+    f.first.id,
+    previous,
+    trigger,
+  );
+  expect(await listAgentReactionContributions(db, f.userId, f.conversationId, [current])).toEqual(
+    [],
+  );
+  await f.react('current-reaction', true, '👍', 'peer', f.first, current);
+  // A mutation alone cannot be treated as a finished contribution.
+  expect(await listAgentReactionContributions(db, f.userId, f.conversationId, [current])).toEqual(
+    [],
+  );
+  await markAgentReactionTurnComplete(db, f.userId, f.conversationId, f.first.id, current, trigger);
+  const expected = [
+    {
+      id: current,
+      actorId: f.first.id,
+      mutations: [{ messageId: 'peer', emoji: '👍', active: true }],
+    },
+  ];
+  expect(await listAgentReactionContributions(db, f.userId, f.conversationId, [current])).toEqual(
+    expected,
+  );
+  expect(
+    await listAgentReactionContributions(db, randomUUID(), f.conversationId, [current]),
+  ).toEqual([]);
+  expect(await listAgentReactionContributions(db, f.userId, randomUUID(), [current])).toEqual([]);
+  const edited = agentReactionTurnId('current', { ...trigger.message, content: 'Changed' });
+  expect(await listAgentReactionContributions(db, f.userId, f.conversationId, [edited])).toEqual(
+    [],
   );
 });

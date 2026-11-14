@@ -7,10 +7,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { emitEvaluationProgress } from '../../__tests__/evaluation-progress.js';
 import { roomDecisionChoices, type RoomSelectionInput, type RoomDecision } from '../decision.js';
 import { structuredFailureDiagnostics } from './selection-diagnostics.js';
+import type { RoomSelectionResult } from '../obligations.js';
 import type { TranscriptRow } from '../engine.js';
 import type { RoomMember } from '../policy.js';
 
 const billing = vi.hoisted(() => ({
+  selectorInvocations: 0,
   samples: [] as Array<{ model: string; input: number; output: number; total: number }>,
 }));
 
@@ -80,6 +82,7 @@ const reply = (id: string, who: RoomMember, content: string): TranscriptRow => (
 type EvaluationCase = {
   label: string;
   input: RoomSelectionInput;
+  initialRecipientId?: string;
   allowed: ReadonlyArray<
     Pick<RoomDecision, 'action' | 'agentId'> & Partial<Pick<RoomDecision, 'reason'>>
   >;
@@ -230,6 +233,7 @@ const cases: EvaluationCase[] = [
   },
   {
     label: 'completed-directed-task-agent-question-to-person',
+    initialRecipientId: nadia.info.id,
     input: room(
       [
         person('p1', 'Nadia, ¿qué puedes hacer?'),
@@ -245,6 +249,7 @@ const cases: EvaluationCase[] = [
   },
   {
     label: 'pending-original-recipient-despite-agent-question-to-person',
+    initialRecipientId: mateo.info.id,
     input: room(
       [
         person(
@@ -263,6 +268,7 @@ const cases: EvaluationCase[] = [
   },
   {
     label: 'explicit-peer-question-within-original-task',
+    initialRecipientId: ines.info.id,
     input: room(
       [
         person(
@@ -335,20 +341,50 @@ const records: Array<{
   passed: boolean;
   latencyMs: number;
   decision: Pick<RoomDecision, 'action' | 'agentId' | 'reason'> | null;
+  initialDecision?: Pick<RoomDecision, 'action' | 'agentId' | 'reason'> | null;
+  selectorInvocations: number;
   errorCategory?: string;
   structuredFailure?: ReturnType<typeof structuredFailureDiagnostics>;
 }> = [];
 
 describe('real Oxy group participation (synthetic rooms; no agent execution)', () => {
-  it.each(cases)('$label', async ({ label, input, allowed }) => {
+  it.each(cases)('$label', async ({ label, input, allowed, initialRecipientId }) => {
     const failures: Array<{ iteration: number; action: string; agentId: string | null }> = [];
     for (let iteration = 1; iteration <= repetitions; iteration++) {
       const started = Date.now();
-      let decision: RoomDecision | null = null;
+      let decision: RoomSelectionResult | null = null;
+      let initialDecision: RoomSelectionResult | null = null;
+      let initialPassed = initialRecipientId === undefined;
+      const invocationStart = billing.selectorInvocations;
       let errorCategory: string | undefined;
       let structuredFailure: ReturnType<typeof structuredFailureDiagnostics>;
       try {
-        decision = await selectRoomDecision(input);
+        let continuedInput = input;
+        if (initialRecipientId !== undefined) {
+          // Run the real extractor before the fixture reply exists, then carry its immutable plan.
+          const initialInput = {
+            ...input,
+            rows: input.rows.slice(
+              0,
+              input.rows.findIndex((row) => row.id === input.triggerId) + 1,
+            ),
+            lastSpeakerId: null,
+            depth: 0,
+          };
+          billing.selectorInvocations++;
+          initialDecision = await selectRoomDecision(initialInput);
+          initialPassed =
+            initialDecision.action === 'speak' &&
+            initialDecision.agentId === initialRecipientId &&
+            initialDecision.reason === 'directed' &&
+            initialDecision.obligationPlan !== undefined;
+          if (initialPassed)
+            continuedInput = { ...input, obligationPlan: initialDecision.obligationPlan };
+        }
+        if (initialPassed) {
+          billing.selectorInvocations++;
+          decision = await selectRoomDecision(continuedInput);
+        }
       } catch (error) {
         errorCategory = safeError(error);
         structuredFailure = structuredFailureDiagnostics(
@@ -358,6 +394,7 @@ describe('real Oxy group participation (synthetic rooms; no agent execution)', (
         // A failed inference is an acceptance failure, never a passing quiet result.
       }
       const passed =
+        initialPassed &&
         decision !== null &&
         allowed.some(
           (expected) =>
@@ -370,6 +407,18 @@ describe('real Oxy group participation (synthetic rooms; no agent execution)', (
         iteration,
         passed,
         latencyMs: Date.now() - started,
+        selectorInvocations: billing.selectorInvocations - invocationStart,
+        ...(initialRecipientId === undefined
+          ? {}
+          : {
+              initialDecision: initialDecision
+                ? {
+                    action: initialDecision.action,
+                    agentId: initialDecision.agentId,
+                    reason: initialDecision.reason,
+                  }
+                : null,
+            }),
         ...(errorCategory ? { errorCategory } : {}),
         ...(structuredFailure ? { structuredFailure } : {}),
         decision: decision
@@ -396,6 +445,8 @@ afterAll(() => {
       repetitions,
       acceptanceRepetitions: repetitions >= 10,
       samples: records.length,
+      selectorInvocations: billing.selectorInvocations,
+      completedModelRuns: billing.samples.length,
       passed: records.filter((r) => r.passed).length,
       failed: records.filter((r) => !r.passed).length,
       modelReferences: [...new Set(billing.samples.map((s) => s.model))],

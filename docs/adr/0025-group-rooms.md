@@ -162,6 +162,43 @@ agent session or empty assistant message. See the [runtime contract](../chat-run
 for wire fields and the clean-terminal requirement. These completions count against the room's
 existing contribution rate limit. Reaction observation turns retain their no-tools restriction.
 
+### Original assignments survive selection steps
+
+New admissions use `group-rooms-v3`. The selector's same structured inference returns the next
+choice and a bounded inventory of explicit assignments from the person's request. Each assignment
+has a stable recipient, task, dependencies, state and evidence IDs. Open questions need not assign
+every member. The initial extraction remains semantic: validation cannot prove that the model
+identified every assignment correctly, so real-inference evaluation must test extraction as well
+as continuation with the carried plan. There is no extra model call, retry-until-success, keyword
+routing or deterministic substitute speaker.
+
+The selected job persists this inventory before any actor runs. Subsequent selections preserve its
+assignments and dependencies while reevaluating their satisfaction against current stored content.
+A completed or waiting assignment requires evidence from its own recipient. Text evidence must
+follow the human trigger; a reaction contribution must have a clean durable completion for a
+server-derived turn of this exact request, even when its target is an older message. Existing emoji
+snapshots and other actors' replies cannot discharge a recipient's task. An optional question after
+a sufficient answer does not cancel a later assignment. Independent ready work continues while an
+unrelated assignment waits for the person. A valid idle with waiting assignments is `waiting_person`,
+not a claim that all assignments completed; contradictory selection is a typed failure.
+
+The plan binds the human row ID, exact content digest and admitted roster IDs. New human messages
+or edits to that same row supersede it. The worker rechecks after inference and before continuing;
+text persistence also compares the original snapshot under the message-thread database lock.
+Workers intersect admitted members with current membership, active status and surface confinement;
+this does not repeat the full private-standing authorization performed at admission, does not
+expand its roster, and grants no new Oxy task authority. Already committed replies or reaction
+completions can replay without a fresh actor execution or contribution slot after membership loss.
+
+The JSON plan is limited to 16 assignments with bounded text and evidence, carried only in the
+existing durable jobs. No SQL migration, bearer, transcript copy or public SDK schema is added.
+Keep workers for `group-rooms-v2` and `group-rooms` during rolling deployment: old processes produce
+and consume their old queues; new processes produce v3 and also drain old jobs with the original
+choice-only/legacy contract. A v2 successor stays v2. Never let an old worker consume a v3 job or
+reinterpret a queued v2 job as a newly extracted plan. Retire each old worker only after its
+waiting, active, delayed and retryable jobs have drained. A rollback must retain a v3 worker until
+its jobs drain; deleting or abandoning a queue is not a rollback procedure.
+
 ### Bounds
 
 | Bound | Value | Reason |
@@ -173,7 +210,7 @@ existing contribution rate limit. Reaction observation turns retain their no-too
 | Selector generation deadline | General 30 seconds; binary feedback 10 seconds | Bounded planning and observation; parent cancellation can end earlier. Credential/credit setup is separate. |
 | Selector retries | 1 | One bounded recovery, never a fallback to all members. |
 | Selector output | General 8192; binary feedback `utilityOutputTokens(512)` | Allow planning and structured output within Kaana's reviewed policy. |
-| Supersede | Newest person message | An old chain cannot start another actor's work. |
+| Supersede | Newest person message and exact request content | An old chain cannot start another actor's work. |
 | Rate | 60 contributions per room per 10 minutes | Count stored replies plus durable reaction-only completions. |
 | Credits | Per inference operation | Selection and actor execution both account for their actual usage. |
 
@@ -185,7 +222,7 @@ existing contribution rate limit. Reaction observation turns retain their no-too
   because it belongs to the room, and a completed exchange can stay quiet.
 - Selection adds a bounded inference call before an actor runs. Schema/roster validation makes
   control flow testable, but understanding a request still requires real-inference evaluation.
-- Jobs contain roster metadata, counters, task IDs and a selected decision, not the transcript or
+- Jobs contain roster metadata, counters, task IDs, bounded assignments and a selected decision, not the transcript or
   bearer. Workers load conversation data from Postgres when needed.
 - Infrastructure retries and at-most-once event delivery retain their existing limits. The stored
   message is the record after reconnection; the in-process queue fallback is not durable across a

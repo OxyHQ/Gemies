@@ -64,7 +64,9 @@ beforeEach(() => {
     character: null,
   }));
   h.latest.mockResolvedValue({ id: 'row-p', clientMessageId: 'client-p' });
-  h.list.mockResolvedValue([]);
+  h.list.mockResolvedValue([
+    { id: 'row-p', clientMessageId: 'client-p', content: input.messages[0]!.content },
+  ]);
   h.space.mockResolvedValue(null);
   h.mint.mockImplementation(async ({ actorAccountId }) => `task-${actorAccountId}`);
 });
@@ -86,7 +88,7 @@ describe('room preparation', () => {
     expect(h.enqueue).toHaveBeenCalledOnce();
     const job = h.enqueue.mock.calls[0]?.[0];
     expect(job).toMatchObject({
-      version: 2,
+      version: 3,
       phase: 'select',
       triggerId: 'row-p',
       speakerId: '',
@@ -147,7 +149,9 @@ describe('room preparation', () => {
 
   it('binds its own stored trigger even when a newer request wins the latest-message race', async () => {
     h.latest.mockResolvedValue({ id: 'row-newer', clientMessageId: 'newer' });
-    h.list.mockResolvedValue([{ id: 'row-p', clientMessageId: 'client-p' }]);
+    h.list.mockResolvedValue([
+      { id: 'row-p', clientMessageId: 'client-p', content: input.messages[0]!.content },
+    ]);
     const room = await prepareRoom(input);
     expect(room.chainId).toBe('row-p');
     await room.start();

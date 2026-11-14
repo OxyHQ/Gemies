@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
+import { messages } from '../../../../db/schema/chat.js';
+import { lockMessageThread } from '../../../../db/chat/messageLock.js';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../../../../db/index.js';
 import {
@@ -80,4 +84,92 @@ it('keeps what a member drew on its reply, which a share shows under the lead’
     },
   ]);
   await deleteMessages(db, userId, conversationId);
+});
+
+it.each(['edit', 'new-message'] as const)(
+  'fences %s under the same thread lock before storing a planned answer',
+  async (change) => {
+    const userId = randomUUID(),
+      conversationId = randomUUID();
+    await insertMessages(db, [
+      {
+        oxyUserId: userId,
+        conversationId,
+        clientMessageId: 'person',
+        role: 'user',
+        content: 'Original request',
+        seq: 0,
+      },
+    ]);
+    const [person] = await listMessages(db, userId, conversationId);
+    let acquired!: () => void, release!: () => void;
+    const locked = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const writer = db.transaction(async (tx) => {
+      await lockMessageThread(tx, userId, conversationId);
+      acquired();
+      await gate;
+      if (change === 'edit')
+        await tx
+          .update(messages)
+          .set({ content: 'Edited request' })
+          .where(eq(messages.id, person!.id));
+      else
+        await insertMessages(tx, [
+          {
+            oxyUserId: userId,
+            conversationId,
+            clientMessageId: 'newer',
+            role: 'user',
+            content: 'New request',
+            seq: 1,
+          },
+        ]);
+    });
+    await locked;
+    const append = appendRoomReply(db, {
+      userId,
+      conversationId,
+      clientMessageId: 'group-reply-old',
+      content: 'Stale answer',
+      agentInfo: { id: 'a', name: 'A', handle: 'a', color: null, character: null },
+      expectedPersonRequest: { id: person!.id, content: 'Original request' },
+    });
+    const assertion = expect(append).rejects.toThrow('Room request superseded');
+    release();
+    await writer;
+    await assertion;
+    expect(
+      (await listMessages(db, userId, conversationId)).every((row) => row.role === 'user'),
+    ).toBe(true);
+  },
+);
+
+it('stores a planned answer only while the exact person snapshot still matches', async () => {
+  const userId = randomUUID(),
+    conversationId = randomUUID();
+  await insertMessages(db, [
+    {
+      oxyUserId: userId,
+      conversationId,
+      clientMessageId: 'person',
+      role: 'user',
+      content: 'Original request',
+      seq: 0,
+    },
+  ]);
+  const [person] = await listMessages(db, userId, conversationId);
+  await appendRoomReply(db, {
+    userId,
+    conversationId,
+    clientMessageId: 'group-reply-current',
+    content: 'Current answer',
+    agentInfo: { id: 'a', name: 'A', handle: 'a', color: null, character: null },
+    expectedPersonRequest: { id: person!.id, content: person!.content },
+  });
+  expect((await listMessages(db, userId, conversationId)).at(-1)?.content).toBe('Current answer');
 });
