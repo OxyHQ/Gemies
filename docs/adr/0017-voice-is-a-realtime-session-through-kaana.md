@@ -10,8 +10,10 @@ the answers are decisions here, not open points (see "Owner's answers").
 **Date:** 2026-10-15
 
 **Model and tools amendment:** [ADR 0041](./0041-voice-turns-are-delegated-to-the-turn-pipeline.md)
-(2026-11-14) replaces §2 and §3 once it ships: a call opens a Kaana `live` session on the catalogue's
-default voice line, and every spoken turn is answered by the chat route's own turn. Dictation (§7) stands.
+(2026-11-14) replaces §2 and §3, built in its phase G1: a call opens a Kaana `live` session on the
+catalogue's default voice line, and every spoken turn is answered by the chat route's own turn. The tool
+bridge, the voice instructions and `rankRealtimeCandidates` this ADR describes are deleted. Dictation (§7)
+stands.
 
 **Routing amendment:** [ADR 0023](./0023-cookie-free-voice-resume.md) replaces the
 cookie-affinity requirement below with private owner routing. Deploy compatible

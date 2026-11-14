@@ -21,7 +21,7 @@ An ADR records a decision that is **in force now**, the context that forced it, 
 | [0013](./0013-voice-runs-on-the-device-livekit-and-cohost-are-retired.md) | Voice runs on the device; LiveKit, cohost and voice minutes are retired | Accepted | 2026-09-24 |
 | [0014](./0014-people-choose-power-levels-not-models.md) | People choose power levels, not models | Accepted | 2026-10-01 |
 | [0015](./0015-actors-and-identities.md) | Actors and identities: Alia and agents, for the person and as themselves | Accepted; amended by 0020 | 2026-10-06 |
-| [0017](./0017-voice-is-a-realtime-session-through-kaana.md) | Voice is a realtime speech-to-speech session through Kaana; dictation is Kaana transcription | Accepted (supersedes 0013 §1–3); amended by 0020 | 2026-10-15 |
+| [0017](./0017-voice-is-a-realtime-session-through-kaana.md) | Voice is a realtime speech-to-speech session through Kaana; dictation is Kaana transcription | Accepted (supersedes 0013 §1–3); amended by 0020 and 0041 | 2026-10-15 |
 | [0018](./0018-the-conversation-screen-is-the-sdks.md) | The conversation screen is the SDK's; the app keeps its layout | Accepted | 2026-10-15 |
 | [0019](./0019-alia-stores-files-in-oxy-files.md) | Alia stores files in Oxy Files, behind one seam | Accepted (implemented; switched on per Oxy and Syra deploy) | 2026-10-16 |
 | [0020](./0020-every-agent-is-the-same-agent.md) | Every agent is the same agent: one base for Alia, people's agents and app agents | Accepted | 2026-10-16 |

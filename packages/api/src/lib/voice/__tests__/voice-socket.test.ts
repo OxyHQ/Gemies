@@ -169,8 +169,13 @@ describe('which app the call is in (ADR 0021)', () => {
 });
 
 describe('a call over the socket', () => {
-  it('opens, carries audio both ways, and never sends a schema, an instruction or a tool result', async () => {
+  it('opens, carries audio both ways, and never sends the persona, a tool’s arguments or its result', async () => {
     const h = harness();
+    h.turns.answer(async function* () {
+      yield { type: 'tool.started', callId: 'c1', name: 'lookupWeather' };
+      yield { type: 'tool.finished', callId: 'c1', name: 'lookupWeather', ok: true };
+      yield { type: 'text', text: 'Hace sol.' };
+    });
     const client = await connect(await serve(h.env));
     client.send({ type: 'auth', token: 'good-token' });
     await until('auth.ok', () => types(client).includes('auth.ok'));
@@ -191,17 +196,15 @@ describe('a call over the socket', () => {
     await until('appended', () => h.commands('input_audio.append').length === 1);
     expect(Buffer.from(h.commands('input_audio.append')[0]!.data, 'base64').byteLength).toBe(1920);
 
-    // A tool round trip and a spoken answer.
+    // A turn handed over, answered by the chat route with a tool, and spoken.
     session.emit({
-      type: 'tool_call',
-      responseId: 'r1',
-      itemId: 'f1',
-      toolCallId: 'c1',
-      name: 'lookupWeather',
-      argumentsDelta: '{"city":"Lisboa"}',
-      complete: true,
+      type: 'delegation.requested',
+      delegationId: 'd1',
+      text: '¿Qué tiempo hace en Lisboa?',
     });
     await until('tool.finished', () => types(client).includes('tool.finished'));
+    await until('final reply', () => h.commands('delegation.reply').some((reply) => reply.final));
+    expect(h.turns.requests[0]!.accessToken).toBe('good-token');
     session.emit({
       type: 'output_audio.delta',
       responseId: 'r2',
@@ -216,16 +219,37 @@ describe('a call over the socket', () => {
     expect(frame?.pcm.byteLength).toBe(1920);
 
     const seen = JSON.stringify(client.events);
-    expect(seen).not.toContain('INSTRUCTIONS');
-    expect(seen).not.toContain('Lisboa');
+    expect(seen).not.toContain('Person:');
     expect(seen).not.toContain('celsius');
-    expect(seen).not.toContain('"properties"');
+    expect(seen).not.toContain('"arguments"');
     for (const event of client.events.slice(1)) expect(typeof event.seq).toBe('number');
 
     client.send({ type: 'session.end' });
     await until('closed', () => client.closed !== null);
     expect(client.events.at(-1)).toMatchObject({ type: 'session.closed', reason: 'hangup' });
     expect(session.closed).toBe(true);
+  });
+
+  it("gives the call's turns the verified app assertion, and keeps it across a refresh without one", async () => {
+    const h = harness();
+    const client = await connect(await serve(h.env));
+    client.send({ type: 'auth', token: 'good-token', appAssertion: 'clarity-assertion' });
+    await until('auth.ok', () => types(client).includes('auth.ok'));
+    client.send({
+      type: 'session.start',
+      protocol: 2,
+      conversationId: 'conv-1',
+      voice: 'female',
+      locale: 'es-ES',
+    });
+    await until('ready', () => types(client).includes('session.ready'));
+    client.send({ type: 'auth', token: 'good-token' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    h.session().emit({ type: 'delegation.requested', delegationId: 'd1', text: 'Hola' });
+    await until('turn', () => h.turns.requests.length === 1);
+    expect(h.turns.requests[0]!.appAssertion).toBe('clarity-assertion');
+    client.send({ type: 'session.end' });
+    await until('closed', () => client.closed !== null);
   });
 
   it('resumes a dropped socket on the same call and replays what it missed', async () => {

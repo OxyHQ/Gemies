@@ -31,7 +31,8 @@ export interface VoiceCreditDeps {
   refund(reservation: CreditReservation): Promise<void>;
 }
 
-const DEFAULT_DEPS: VoiceCreditDeps = {
+/** The real credit store: what a call holds and settles its minutes with. */
+export const VOICE_CREDIT_DEPS: VoiceCreditDeps = {
   reserve: (userId, credits) => reserveCredits(userId, credits),
   finalize: (reservation, credits) => finalizeFixedCredits(reservation, credits, 'voice'),
   refund: (reservation) => refundReservation(reservation),
@@ -45,7 +46,7 @@ export class VoiceCreditMeter {
 
   constructor(
     private readonly userId: string,
-    private readonly deps: VoiceCreditDeps = DEFAULT_DEPS,
+    private readonly deps: VoiceCreditDeps = VOICE_CREDIT_DEPS,
   ) {}
 
   /** Credits currently held, for tests and logs. */

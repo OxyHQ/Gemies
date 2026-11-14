@@ -1,53 +1,56 @@
 ---
 title: "Voice"
-description: "Voice calls are a realtime speech-to-speech session through Kaana; dictation is Kaana transcription; read-aloud is Oxy speech."
+description: "Voice calls are a Kaana live session whose turns the chat route answers; dictation is Kaana transcription; read-aloud is Oxy speech."
 order: 5
 ---
 
 # Voice
 
 Since `@gemies/sdk` 15.0.0 ([ADR 0017](./adr/0017-voice-is-a-realtime-session-through-kaana.md)),
-no surface uses the browser's or the operating system's speech recognition.
+no surface uses the browser's or the operating system's speech recognition. Since
+[ADR 0041](./adr/0041-voice-turns-are-delegated-to-the-turn-pipeline.md), a call's voice
+is a front end only: every turn it hears is answered by the chat route, as a typed turn.
 
 | Feature | Hook | What it does | Route |
 |---|---|---|---|
-| Voice call | `useVoiceRoom` (screen: `VoiceSession` / `useVoiceLauncher`) | A spoken conversation, full duplex, turn detection and barge-in on the server | `GET /v1/voice/session` (WebSocket) |
+| Voice call | `useVoiceRoom` (screen: `VoiceSession` / `useVoiceLauncher`) | A spoken conversation, full duplex; the voice detects turns, the chat route answers them | `GET /v1/voice/session` (WebSocket) |
 | Dictation | `useDictation` (in `GemieComposer`) | The composer's microphone: one recorded clip becomes text in the draft | `POST /v1/audio/transcriptions` |
 | Read aloud | `useTTS` | A message, spoken on request (unchanged) | `POST /v1/audio/speech` |
 
-## Status (ADR 0017 phase 1)
+## Status
 
-Alia reaches Kaana's one canonical API (Kaana ADR 0003) through `@kaana.ai/sdk` 3.0.0
-and `@kaana.ai/contracts` 6.0.0. `packages/api/src/lib/kaana/port.ts` is a narrow port
+Gemies reaches Kaana's one canonical API (Kaana ADR 0003) through `@kaana.ai/sdk` and
+`@kaana.ai/contracts` (the versions `packages/api/package.json` pins). `packages/api/src/lib/kaana/port.ts` is a narrow port
 whose members are the `Kaana` client's own (function properties, so a mismatch fails
 the typecheck); every shape is the SDK's and the contract's, none restated. It is
 tested against `@kaana.ai/sdk/testing`: the same client against Kaana's own schemas,
 checks and voice catalogue in memory, so a request the tests accept is one Kaana
 accepts.
 `lib/kaana/transport.ts` is the one place the client is constructed: the real SDK,
-whose credential is Alia's Oxy service token with `aud: kaana.ai`
-(`oxyServiceTokenFor`, @oxy.so/core 4.9.1), minted from the same identity as every
-other Alia call to Oxy. A process with no Oxy service identity has no client, and
-then a call ends `realtime-unavailable` and dictation answers
-`TRANSCRIPTION_UNAVAILABLE` — typed, never a stand-in. So does every call while
-Kaana's public API is off (`KAANA_PUBLIC_API_ENABLED`, oxy-infra runbook 48).
+whose credential is Alia's Oxy service token with `aud: kaana.ai`, minted from the
+same identity as every other Gemies call to Oxy. A process with no Oxy service
+identity has no client, and then a call ends `realtime-unavailable` and dictation
+answers `TRANSCRIPTION_UNAVAILABLE` — typed, never a stand-in.
 
-What production still needs, outside Alia, is in [What is left](#what-is-left).
+A call opens a Kaana `live` session (Kaana ADR 0012). Production serves voice only
+once Kaana serves a `live` line there (its phases K2–K5); until then a call ends
+`realtime-unavailable`. What is left is in [What is left](#what-is-left).
 
 ## A call
 
 ```text
-app / SDK ──WSS /v1/voice/session──▶ Alia API ──@kaana.ai/sdk realtime.connect──▶ kaana.ai/v1/realtime ──▶ provider
-  PCM16 24 kHz binary frames             │  instructions, tools, memory,
-  + Alia's JSON events                   │  tool execution, persistence,
-                                         │  credits, typed errors
+app / SDK ──WSS /v1/voice/session──▶ Gemies API ──@kaana.ai/sdk realtime.connect (kind: live)──▶ kaana.ai/v1/realtime ──▶ voice
+  PCM16 24 kHz binary frames             │   persona, credits per minute, typed errors
+  + Gemies' JSON events                  │
+                                         └─ delegation.requested ──▶ POST /alia/chat (loopback) ──▶ the typed-turn pipeline
+                                            delegation.reply ◀── the answer, sentence by sentence
 ```
 
-Alia is the only client of the Kaana session. The device sends microphone audio and
-receives the answer's audio, transcripts and a few events for the call UI; it never
-sees an instruction, a tool schema, tool arguments or a tool result. Alia connects
-under its service token (`aud: kaana.ai`) with the person as delegated attribution
-(`onBehalfOfUserId`): lane `service_token`, relationship `alia-kaana`.
+Gemies is the only client of the Kaana session. The device sends microphone audio and
+receives the voice's audio, transcripts and a few events for the call UI; it never
+sees the persona, a tool's arguments or its result. Gemies connects under its service
+token (`aud: kaana.ai`) with the person as delegated attribution (`onBehalfOfUserId`):
+lane `service_token`, relationship `alia-kaana`.
 
 ### The socket
 
@@ -58,25 +61,26 @@ own copy in `src/lib/voice-protocol.ts`; `VOICE_PROTOCOL_VERSION` makes a mismat
 refusal):
 
 ```text
-client: auth { token }                       an Oxy session of Alia's own apps
-alia:   auth.ok
+client: auth { token, appAssertion? }        an Oxy session of Oxy's own apps, and the app it is in
+gemies: auth.ok
 client: session.start { protocol: 2, conversationId, agentId?, voice, locale }
         | session.resume { protocol: 2, voiceSessionId, afterSeq }
-alia:   session.accepted { voiceSessionId, callId }     still connecting
-alia:   session.ready { model, maxDurationMs, … }       Kaana created the session
+gemies: session.accepted { voiceSessionId, callId }     still connecting
+gemies: session.ready { model, maxDurationMs, … }       Kaana created the session
 client: <binary PCM16 24 kHz mono, ~40 ms frames>
-alia:   input.ready                                     the first frame was appended
-alia:   user.speech_started / user.speech_stopped, transcript.delta|done { role, messageId, itemId },
-        <binary [u8 n][item id][PCM16]>, assistant.audio_done, assistant.done,
-        tool.started / tool.finished { messageId, name }, messages.saved,
+gemies: input.ready                                     the first frame was appended
+gemies: user.speech_started / user.speech_stopped (when the voice reports them),
+        transcript.delta|done { role, messageId, itemId }, <binary [u8 n][item id][PCM16]>,
+        tool.started / tool.finished { messageId, name }, assistant.done, messages.saved,
         session.warning { ending-soon }, session.reconnecting, session.resumed,
         error { code, retryable, reference }, session.closed { reason }
-client: playback.interrupted { itemId, playedMs }, session.end, auth { token } (refresh)
+client: session.end, auth { token, appAssertion? } (refresh)
 ```
 
 Every event after `session.accepted` carries `seq`, which is what a resume replays
 from. **Only a person's session is accepted**; an `oxy_sk_` machine credential is
-refused with `credential-not-supported` (third parties are a later decision).
+refused with `credential-not-supported`. The SDK re-sends the app assertion with every
+token refresh: it lives five minutes, and a call's turns carry it to the chat route.
 
 ### Opening, in order
 
@@ -85,114 +89,98 @@ gemie and a group's turns are its members', so a call there would answer as Alia
 write her transcript into their conversation. It is refused first, as `agent-unavailable`,
 and `GemieChatContent` offers no call there. Then:
 
-1. The turn's inputs from the identity — memory, Oxy profile, entitlements and the
-   agent — through `prefetchTurnInputs` (`lib/chat/turn-inputs.ts`), the same reads
-   a typed turn makes (extracted from `buildChatRequestContext`).
+1. The turn's inputs from the identity — entitlements and the gemie — through
+   `prefetchTurnInputs` (`lib/chat/turn-inputs.ts`), the same reads a typed turn makes.
 2. **`voice-mode` is enforced by the server** (`plan-required`), not only by the app.
-3. The agent: one the person can open (`loadTurnAgent`), from the app the call is in
-   (an agent Oxy confines elsewhere is `agent-unavailable`, ADR 0021).
-4. The realtime model, computed (below). No candidate: `realtime-unavailable`.
+3. The gemie: one the person can open (`loadTurnAgent`), from the app the call is in
+   (a gemie Oxy confines elsewhere is `agent-unavailable`, ADR 0021).
+4. The line, from the catalogue (below). None: `realtime-unavailable`.
 5. The first credit block (below). Refused: `credits-exhausted`.
 6. **One call per person** (below): this call takes over any other.
-7. The conversation's stored messages, the tools and the instructions.
+7. The persona, from the gemie, the language and the stored conversation.
 8. Kaana. The client stays `connecting` until `session.created` (`session.ready`).
 
-### The model is computed; power levels do not choose it
+### The line is the catalogue's default
 
-`rankRealtimeCandidates` (`lib/models/voice-models.ts`) reads Kaana's catalogue at
-open: a `conversation` session over `websocket`, tools, audio in and out, and the
-model's own input transcription (`capabilities.realtime.inputAudioTranscription`); a
-voice of the product gender (`male` | `female`); active. The cheapest
-`pricePerMinute` first. No model is chosen or excluded for its language: the person's
-BCP 47 locale is sent as it is (`inputAudioTranscription.language`), and Kaana gives
-every model the language. Nor does Alia set the silence that ends a turn: that is
-Kaana's default (`REALTIME_DEFAULT_SILENCE_DURATION_MS`), the same on every provider.
-The upstream voice id is
-sent to Kaana and never shown or returned. The open is tried on at most two
-candidates, and only when the model itself refused (`model_not_found`,
+`liveVoiceLines` (`lib/models/voice-models.ts`) reads Kaana's catalogue at open: the
+active line whose `capabilities.realtime.defaultKinds` names `live` (Kaana ADR 0012 §4)
+first, then every other active `live` line over `websocket` that takes 24 kHz PCM16, in
+the catalogue's own order. Gemies names no model and ranks none by price: which
+provider speaks is one reviewed change of `defaultKinds` in Kaana's catalogue. The voice
+is the line's catalogue voice of the product gender (`male` | `female`); a line without
+one is passed over. The upstream voice id is sent to Kaana and never shown or returned.
+A later line is tried only when the model itself refused the open (`model_not_found`,
 `unsupported_modality`, `no_route_available`, `invalid_request` on `voice`/`config`);
 authentication, credit and rate refusals fail at once. The served revision
-(`session.created`) is what the call is priced with and what `chat_analytics`
-records (`platform: 'voice'`, never anybody's default chat model). Model and publisher
-names may be shown; the operator never.
+(`session.created`) is what the call's minutes are priced with and what `chat_analytics`
+records (`platform: 'voice'`). Model and publisher names may be shown; the operator never.
 
-The person's power level still governs the inference a tool runs during the call.
+The person's power level does not pick the line: the turns follow it like any typed turn.
 
 ### What the session is opened with
 
-- **Instructions:** `SystemPromptBuilder.buildMeasured({ responseMode: 'voice' })` —
-  `prompts/voice.md` and no question card — plus the recent conversation as one text
-  section (never one billable item per message) and the session language
-  (`lib/voice/turn.ts`). Within the contract's 32 768 characters: the history shrinks
-  to fit; if the base prompt alone does not fit, the
-  call refuses to open (`realtime-rejected`) rather than cut it.
-- **Memory per actor:** an Alia call has the person's Nilo memory
-  tools (`oxy_nilo_memories__*`) and recalls on demand; an agent's call has
-  `agent_memory_documents` and its `memory` tool.
-- **Tools:** `ToolPipeline.forUser` with the person on the socket as
-  `requesterAccountId`, so an agent's `oxy_*` tools reach its owner's apps only when
-  the owner is the one talking (ADR 0015). Serialized with
-  `asSchema(...).jsonSchema`, at most 128, starting from the routed active set; a
-  `loadTools` call widens the session with `session.update { tools }`.
-- **Turn detection:** `server_vad` with `createResponse` and `interruptResponse` (the
-  one mode every provider accepts); `inputAudioTranscription { language }`; PCM16
-  24 kHz both ways.
-- **Limits** (Alia product rules, not capacity): 30 min, 2 min idle, 500 responses,
-  no text items, audio bytes for 30 min each way.
+`kind: 'live'` and:
 
-### Tools run in Alia
+- **`instructions`: the persona only** (`lib/voice/persona.ts`): who speaks, from the
+  identity guard (`buildVoiceIdentity`, the same identity a typed turn states), a
+  speaking style, the person's language and the recent conversation as text, within the
+  contract's 32 768 characters (the history shrinks to fit). No backend instructions and
+  no tools reach the voice.
+- **`voice`**, `pcm16_24khz` both ways, `turnDetection: server_vad` (the voice decides
+  when a turn ends), `inputAudioTranscription { language }` in the person's BCP 47
+  locale, and `delegation { acknowledgement: 'auto' }`, so the voice says a short "one
+  moment" while a turn is answered.
+- **Limits** (Gemies product rules, not capacity): 30 min, 2 min idle, audio bytes for
+  30 min each way.
 
-On a complete `tool_call`, `runTool` (`lib/voice/tool-bridge.ts`) executes the tool
-by name in Alia, bounded by 60 s; the result goes back as
-`conversation.item.create { function_call_output }`, then `response.create`. A failure,
-unknown tool, bad arguments or timeout is a typed tool error the model reads — never
-an invented result. The client gets `tool.started` / `tool.finished` with the tool's
-name, for the call UI. Nothing in a call asks for approval (ADR 0020 §3): a tool
-effect runs under the actor's Oxy authority, as in chat.
+### Every turn is the chat route's
 
-### Barge-in
+`delegation.requested { delegationId, text }` carries the person's words since the last
+turn, assembled by Kaana. Each one is one turn of the conversation through `POST /alia/chat`
+(`lib/voice/delegated-turn.ts`), asked over this process's own loopback port so it is the
+very handler a typed turn and a Telegram person turn reach, middleware included: the
+person's session and the app's assertion, the same gemie, `ToolPipeline`, memory, skills,
+model selection through Kaana, credits and rate limit. The request is the SDK's for a
+typed turn — the stored history with its ids plus the person's words, `assistantMessageId`,
+a `turnId` — with `responseMode: 'voice'`, so `prompts/voice.md` shapes the answer for
+speech. There is no voice brain and no voice tool list.
 
-The provider detects the turns. On `input_audio.speech_started` Alia forwards
-`user.speech_started`; the client flushes its playback and reports how many
-milliseconds of the current item it actually played (`playback.interrupted`); Alia
-sends `conversation.item.truncate { audioEndMs }`, so the model remembers what was
-heard. There is no end-of-utterance timer and no echo heuristic anywhere.
+The answer streams back as `delegation.reply` (`lib/voice/speech-chunks.ts`): one chunk
+per sentence, markdown dropped, the last one `final: true` (the latest complete sentence
+is held until the next begins or the answer ends, because only the end says which is
+last). Each chunk marks its numbers, times, prices, phone numbers, codes, emails, URLs
+and names as `verbatim` spans — exact substrings, at most 32 — which the voice says
+exactly (Kaana ADR 0012 §9.2). While a tool runs the device gets `tool.started` /
+`tool.finished` with its name, and the voice a silent `delegation.context`.
 
-### Transcripts become messages
+- **Supersession.** `delegation.superseded` aborts that turn's signal and stops it the
+  way the app's Stop does (`POST /v1/chat/turns/:id/cancel`). Words the stop kept from
+  being stored open the next turn; a tool that already ran is reported by it, never
+  retried. Each turn waits for the one before it to settle (5 s at most) before it reads
+  the conversation, so the history it sends is the one stored.
+- **Failure.** A turn the chat route refuses or fails is a typed failure: the voice is
+  told in silent context that it could not be answered (so it can say so in its own
+  words) and the delegation is dropped (`delegation.cancel`). Nothing is stored, and
+  never a filler answer. The call goes on.
+- **Hang-up.** The answer being given finishes and is stored, as a typed turn's does
+  when its client goes away.
 
-Each exchange is appended as it completes (`appendConversationMessages`,
-`lib/conversation-saver.ts`, the next `seq`, retried on a concurrent append): the
-person's words from the session's own input transcription, and the answer from its
-output transcript with the tool round trips. An interrupted answer is stored whole,
-with `messages.interrupted_after_ms` = what was heard. A response with no output
-stores nothing. The open client is told twice: `messages.saved` on the call's socket
-and a `conversation` frame on the realtime connection ([Realtime](./realtime.mdx)), which
-appends to the open thread on every device. The first
-words of a new conversation title it.
+### Messages
 
-**One id per message, from the first word.** Every `transcript.delta|done` and
-`tool.started|finished` names `messageId`, the id the message is stored and announced
-under; the client draws one message per `messageId` (an assistant turn's items and its
-tools are one message, as stored). So the stored copy that the `conversation` frame
-brings is the message already on screen, never a second one, and once a message is
-saved the thread shows the stored copy (`lib/call-thread.ts`): the one a reload or a
-resume shows, with its tools' arguments and results, which the call's socket never
-carries. That wire is protocol 2; a protocol-1 client (one bubble per audio item) is
-refused with `invalid-request` rather than served wrongly.
-
-**When the person's words are final.** A provider may send several `transcript.done`
-for one input item: xAI sends a growing transcript at every pause, repeats it, reuses
-the item across pauses and sends its final one only after the item is committed
-(measured 2026-10-16); OpenAI commits first and sends one. Each `done` replaces the
-last, the first `done` after `input_audio.committed` is final, and an item is stored
-once: a later event of it is never a second message. An item with no final transcript
-is stored as it stands `userTranscriptWaitMs` (8 s) after its last event.
+The chat route stores the person's words (`text`) and the answer, as it stores a typed
+turn's, before it ends its stream; the call then sends `messages.saved`. There is no
+second writer. Every `transcript.delta|done` and `tool.started|finished` names
+`messageId`, the id the message is stored and announced under: the person's transcript
+names the user message the next turn stores, the voice's transcript and the turn's tools
+name the answer. The client draws one message per `messageId`, so the stored copy is the
+message already on screen. The voice may paraphrase; the stored answer is the chat
+route's text. That wire is protocol 2; a protocol-1 client is refused with
+`invalid-request`.
 
 ### One call per person
 
-`voice_calls` (`db/schema/voice.ts`, migration `0094_voice_calls`, pre phase) with a
-partial unique index on `oxy_user_id WHERE status = 'active'`.
-`lib/voice/call-registry.ts`:
+`voice_calls` (`db/schema/voice.ts`, migration `0094_voice_calls`) with a partial unique
+index on `oxy_user_id WHERE status = 'active'`. `lib/voice/call-registry.ts`:
 
 - A start takes over in one transaction under
   `pg_advisory_xact_lock(hashtextextended('alia:voice-call:' || user, 0))`: the
@@ -201,63 +189,76 @@ partial unique index on `oxy_user_id WHERE status = 'active'`.
   channel `alia:voice-call`. Without Redis, the 10 s lease renewal that matches no
   active row hangs the old call up — the worst overlap is one renewal, and it is
   billed.
-- The old call stores its messages, closes its Kaana session and announces `ended`;
-  the new call waits for it at most 2 s before reading the conversation.
 - The old device ends with `session.closed { reason: 'call-moved-elsewhere' }`, a
   reason, not an error. Dictation is not a call. A resume is the same call.
 
 ### Reconnection and ending
 
-- **Client ↔ Alia:** a dropped socket keeps the call for 30 s and the last 500 events;
+- **Client ↔ Gemies:** a dropped socket keeps the call for 30 s and the last 500 events;
   `session.resume { afterSeq }` replays them. Sticky routing on the ALB brings the
-  resume to the task that holds the call; elsewhere it is `resume-unavailable`.
-- **Alia ↔ Kaana:** `RealtimeSession.resume()` within Kaana's window; if that fails, or
-  Kaana's task shuts down, a new session under the same call with fresh instructions
-  from the stored messages (twice at most). The client shows `reconnecting`, never
-  `listening`.
+  resume to the task that holds the call; a peer task relays it otherwise
+  (`lib/voice/peer-relay.ts`).
+- **Gemies ↔ Kaana:** `RealtimeSession.resume()` within Kaana's window; if that fails, or
+  Kaana's task shuts down, a new session on the same line under the same call, with a
+  fresh persona from the stored messages (twice at most); the old session's turns are
+  stopped. The client shows `reconnecting`, never `listening`.
 - A call ends on hang-up, the screen losing focus or changing conversation or account,
   `call-moved-elsewhere`, `max-duration` (with a warning a minute before),
   `idle-timeout`, `credits-exhausted`, a typed error, or `server-shutdown`. Each
-  closes the Kaana session (which settles exactly once), stores what is left, settles
-  the credits and ends the row.
+  closes the Kaana session (which settles exactly once), settles the credits and ends
+  the row.
 
 ### Typed failures
 
-Every failure is `error { code, retryable, reference }` and then `session.closed` — the
-realtime `failTurn`. Never a spoken "sorry", never text Alia did not hear. Kaana's
-errors are recognized by their public `code` (`kaanaErrorOf`), so the real SDK's
-classes and the fake's read the same:
+Every failure of the call is `error { code, retryable, reference }` and then
+`session.closed` — the realtime `failTurn`. Never a spoken "sorry" made up by Gemies,
+never text nobody said. Kaana's errors are recognized by their public `code`
+(`kaanaErrorOf`), so the real SDK's classes and the fake's read the same:
 
 | Error | `VoiceErrorCode` |
 |---|---|
-| unavailable, no model, Alia's credential refused | `realtime-unavailable` |
+| unavailable, no line, Gemies' credential refused | `realtime-unavailable` |
 | rate, balance, spend, quota | `realtime-limited` |
 | invalid or permission | `realtime-rejected` |
 | provider failure, lost connection, contract violation | `realtime-failed` |
-| Alia's own | `plan-required`, `credits-exhausted`, `not-authenticated`, `credential-not-supported`, `agent-unavailable`, `resume-unavailable`, `invalid-request` |
+| Gemies' own | `plan-required`, `credits-exhausted`, `not-authenticated`, `credential-not-supported`, `agent-unavailable`, `resume-unavailable`, `invalid-request` |
 | the device (SDK) | `mic-denied`, `mic-unavailable`, `connection-lost`, `voice-unavailable` |
 
-The app says each in its own language (`voice.errors.*`, `voice.ended.*`).
+A failed turn is not a failed call: see [Every turn is the chat route's](#every-turn-is-the-chat-routes).
+The app says each code in its own language (`voice.errors.*`, `voice.ended.*`).
 
 ### Credits
 
-A call is a paid-plan feature (`voice-mode`) and costs credits per minute at the
-**real cost** of the model that serves it: the session's minutes, silence included,
-at its catalogue `pricePerMinute`, converted with `creditsForCost`
-(`lib/voice/credits.ts`). A block of five minutes is
-held at open, the next one a minute before the held one runs out; a refused block
-ends the call with `credits-exhausted` after the answer being spoken. At the end the
-call is settled from the sessions' minutes. Silence costs too on a session-time
-model; the idle timeout bounds it. Alia sets **no** concurrency or spend cap of its
-own: those are the Alia app's policy in Oxy Console. No `voice-minutes` allowance
-returns (ADR 0013, ADR 0005).
+A call is a paid-plan feature (`voice-mode`). The **voice minute** is the line's
+catalogue `pricePerMinute`, silence included, metered by `VoiceCreditMeter`
+(`lib/voice/credits.ts`) and converted with `creditsForCost`: a block of five minutes is
+held at open, the next one a minute before the held one runs out; a refused block ends
+the call with `credits-exhausted` after the turn being answered. **Each turn is a typed
+turn** and is charged by the chat route as one. The call's duration ceiling stays Oxy's.
+Gemies sets **no** concurrency or spend cap of its own: those are Oxy Console policy.
 
 The backend constructs `kaanaForOxyService` once per voice call or dictation
 operation, with the authenticated person's immutable inference attribution.
-HTTP and realtime share core's v2 workload mint and audience cache. Attribution
-does not authorize private user data or change the workload's payer. The client
-is disposed when the operation finishes, including failed calls. Text inference
-continues through Oxy's inference endpoint with its own v2 platform credential.
+Attribution does not authorize private user data or change the workload's payer. The
+client is disposed when the operation finishes, including failed calls.
+
+### The production canary
+
+`production-voice-canary.yml` (`workflow_dispatch`, main only) runs
+`packages/api/dist/scripts/production-voice-canary.js` as a private ECS one-shot of the
+exact live image, like the chat canary: it starts that image's API and enters its
+loopback `/alia/chat` as the QA account through Alia's workload transport and the QA
+account's Oxy automation task (`ALIA_CANARY_OXY_USER_ID`, `ALIA_CANARY_OXY_TASK_ID`).
+It drives the production `VoiceCall` with the production environment one layer below
+the socket, whose `auth` admits only a person's own session. It streams a recorded
+request for a reminder (`src/scripts/fixtures/voice-canary-reminder.pcm`, 24 kHz PCM16
+mono) in real time, then silence, and passes when the voice handed over a turn, exactly
+one turn was answered and stored and it called `createAutomation`, the answer was
+spoken, and the call settled (Kaana's usage, the minutes charged, the `voice_calls` row
+ended `hangup`). It then stops the reminder as `DELETE /automations/:id` does and removes
+its conversation. The one result line is `ALIA_VOICE_CANARY {json}`: the call id, Kaana's
+session and request ids, the line, counts and settlements, never the QA identity, the
+prompt or the answer.
 
 ### The client
 
@@ -388,7 +389,7 @@ alia:   error { code, message, retryable }, dictation.closed { reason }
 
 Unchanged by ADR 0017: `POST /v1/audio/speech` in the product voice, `male` or
 `female` (no upstream voice name is ever sent or shown), through
-`lib/synthesize-speech.ts`. A call no longer uses it: the realtime model speaks.
+`lib/synthesize-speech.ts`. A call does not use it: the `live` session's voice speaks.
 
 ### When speech fails
 
@@ -493,25 +494,16 @@ dictation to Google's recognizer.
 
 ## What is left
 
-Outside Alia, before calls and dictation can be switched on in production
-(ADR 0017 §6):
-
 - **Dictation's server chain is done** (above): Kaana measures an upload's duration
-  before the grant, Oxy's `alia-kaana` `audio_transcriptions` terms are in policy
-  `oxy-inference-economics/2026-10-15.2`, and `kaana.ai/v1/audio/transcriptions` is public.
-- **Kaana phase 1:** enable and meter `inputAudioTranscription` inside realtime
-  sessions (today refused) and publish the catalogue flag that says a realtime model
-  does it (Alia reads `capabilities.realtime.inputAudioTranscription`; rename here if
-  Kaana chooses another name); publish `audio` (voices with `gender`, languages) for
-  realtime models; `capabilities.realtime` from Kaana's inventory.
-- **Oxy phase 2:** grant terms for `alia-kaana` `realtime_session`; session
-  concurrency and spend as Console policy; service tokens with `aud: kaana.ai`.
-- **Kaana phase 3 / oxy-infra:** `/v1/realtime` public and `@kaana.ai/sdk` 1.0.0
-  published; ALB cookie stickiness and a deregistration delay of at least 31 min on
-  Alia's target group; WebSocket idle timeouts that cover a 30-minute call.
-- **Alia phase 4:** the switch in `lib/kaana/transport.ts` is done (usage units now come
-  from `@kaana.ai/contracts`); left are the release gates: Chrome echo cancellation with Web
-  Audio playback (fallback: an `RTCPeerConnection` loopback), Android echo
-  cancellation with `react-native-audio-api` (fallback: a small Expo module of Alia's
-  own over `AudioRecord(VOICE_COMMUNICATION)`), iOS on a Mac, dictation latency end to
-  end — recorded in [Native validation](./native-validation.mdx#9-voice-through-kaana-to-validate).
+  before the grant, Oxy's `alia-kaana` `audio_transcriptions` terms are in policy, and
+  `kaana.ai/v1/audio/transcriptions` is public.
+- **Calls need Kaana to serve `live`** (Kaana ADR 0012 §8): the GPT-Live adapter and its
+  catalogue line with `defaultKinds: ["live"]` (K2), Grok's emulated delegation as the
+  fallback line (K3), Oxy's grants and duration-only ceiling for kind `live` (K4), and
+  the key, rate card and deploy with its signed canary (K5). Gemies' side (G1) is this
+  page; its gate is the production voice canary above.
+- **The device release gates:** Chrome echo cancellation with Web Audio playback
+  (fallback: an `RTCPeerConnection` loopback), Android echo cancellation with
+  `react-native-audio-api` (fallback: a small Expo module over
+  `AudioRecord(VOICE_COMMUNICATION)`), iOS on a Mac, dictation latency end to end —
+  recorded in [Native validation](./native-validation.mdx#9-voice-through-kaana-to-validate).

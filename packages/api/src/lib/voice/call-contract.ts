@@ -6,17 +6,17 @@
  */
 import type { VoiceCallEndReason } from '../../db/schema/voice.js';
 import type { PrefetchedTurnInputs, TurnIdentity } from '../chat/turn-inputs.js';
-import type { AppendedMessage } from '../conversation-saver.js';
 import type { KaanaClient } from '../kaana/port.js';
 import type { startCall } from './call-registry.js';
 import type { VoiceCreditDeps } from './credits.js';
+import type { VoiceTurnRunner } from './delegated-turn.js';
+import type { HistoryMessage } from './persona.js';
 import {
   type ProductVoice,
   type SequencedVoiceEvent,
   VOICE_BYTES_PER_MS,
   type VoiceCloseReason,
 } from './protocol.js';
-import type { HistoryMessage, VoiceTurnContext, VoiceTurnInput } from './turn.js';
 
 /**
  * Alia's product rules for every call (ADR 0017 §3, "Limits"). Not capacity
@@ -29,15 +29,12 @@ export interface VoiceCallLimits {
   readonly warningBeforeMs: number;
   /** A dropped socket may resume within this. */
   readonly resumeWindowMs: number;
-  /** How long an interrupted answer waits for the client's played milliseconds. */
-  readonly interruptWaitMs: number;
   /**
-   * How long a person's turn waits, after its last event, for its transcript
-   * before what it has is stored (nothing, when it has none): a transcription
-   * that failed sends no `transcript.done`, and the turn must not hold the
-   * exchange behind it.
+   * How long a delegated turn waits for the one it superseded to settle before
+   * it reads the stored conversation, so it never sends a history that a
+   * finishing turn is still writing to.
    */
-  readonly userTranscriptWaitMs: number;
+  readonly settleWaitMs: number;
   readonly creditCheckMs: number;
   /** New upstream sessions one call may open after the first. */
   readonly maxReopens: number;
@@ -50,8 +47,7 @@ export const VOICE_CALL_LIMITS: VoiceCallLimits = {
   idleTimeoutMs: 2 * 60_000,
   warningBeforeMs: 60_000,
   resumeWindowMs: 30_000,
-  interruptWaitMs: 1_500,
-  userTranscriptWaitMs: 8_000,
+  settleWaitMs: 5_000,
   creditCheckMs: 15_000,
   maxReopens: 2,
   replayEvents: 500,
@@ -103,15 +99,8 @@ export interface VoiceCallEnvironment {
    * write her transcript into their conversation.
    */
   groupMembers(oxyUserId: string, conversationId: string): Promise<readonly string[]>;
-  buildTurn(input: VoiceTurnInput): Promise<VoiceTurnContext>;
-  persist(params: {
-    userId: string;
-    conversationId: string;
-    messages: readonly AppendedMessage[];
-    agentId?: string;
-    titleOnInsert: string;
-  }): Promise<void>;
-  titleConversation(oxyUserId: string, conversationId: string, firstUserText: string): void;
+  /** Every delegated turn runs, and is stored, through the chat route (ADR 0041 §2). */
+  readonly turns: VoiceTurnRunner;
   recordAnalytics(record: {
     oxyUserId: string;
     conversationId: string;

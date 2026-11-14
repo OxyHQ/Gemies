@@ -534,6 +534,6 @@ out.
 | Echo: speaker at full volume, Alia does not hear herself | same | not run |
 | Android AEC: 0.13.6 opens the default input preset, not `VOICE_COMMUNICATION`; if echo leaks, the fallback is an Expo module of Alia's own over `AudioRecord(VOICE_COMMUNICATION)` | Pixel 8a | not run |
 | Chrome AEC with Web Audio playback; fallback: an `RTCPeerConnection` loopback | Chrome | not run |
-| Barge-in while Alia speaks: playback stops, the stored answer is marked with the heard ms | all | not run |
+| Barge-in while the voice speaks: playback stops and the voice listens (ADR 0041: the stored answer is the chat route's text) | all | not run |
 | Bluetooth headset; the first seconds of a call while AEC converges | Pixel 8a, iPhone | not run |
 | Dictation: record, the remaining time in the last 30 s, text in the draft; latency end to end | all | not run |

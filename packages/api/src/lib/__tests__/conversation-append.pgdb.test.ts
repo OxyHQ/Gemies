@@ -9,14 +9,17 @@ vi.mock('ai', async (importOriginal) => ({
 }));
 
 const { closePostgres, connectPostgres, getDb } = await import('../../db/index.js');
-const { listMessages, toStoredMessage } = await import('../../db/chat/messageRepository.js');
+const { insertMessages, listMessages, toStoredMessage } = await import(
+  '../../db/chat/messageRepository.js'
+);
 const { findConversation } = await import('../../db/chat/conversationRepository.js');
 const { appendConversationMessages, saveConversation } = await import('../conversation-saver.js');
 
 /**
- * A voice call appends its exchanges at the end of the conversation, by `seq`,
- * without a client history (ADR 0017 §3), and what it records about an
- * interrupted answer survives a later full rewrite by a typed turn.
+ * An exchange only the server saw is appended at the end of the conversation,
+ * by `seq`, without a client history, and what an answer of a call from before
+ * ADR 0041 recorded about its interruption survives a later full rewrite by a
+ * typed turn.
  */
 
 beforeAll(() => {
@@ -25,7 +28,7 @@ beforeAll(() => {
 afterAll(closePostgres);
 
 describe('appendConversationMessages', () => {
-  it('creates the conversation, appends in order, concurrently, and keeps the interruption', async () => {
+  it('creates the conversation and appends in order, concurrently', async () => {
     const userId = `voice-append-${randomUUID()}`;
     const conversationId = randomUUID();
     await appendConversationMessages({
@@ -35,7 +38,7 @@ describe('appendConversationMessages', () => {
       titleOnInsert: 'Hola',
       messages: [
         { id: 'v-u1', role: 'user', content: 'Hola' },
-        { id: 'v-a1', role: 'assistant', content: 'Hola, ¿qué tal?', interruptedAfterMs: 640 },
+        { id: 'v-a1', role: 'assistant', content: 'Hola, ¿qué tal?' },
       ],
     });
     // Two exchanges completing at once claim the same seq: one retries.
@@ -61,8 +64,7 @@ describe('appendConversationMessages', () => {
       ['v-u1', 'user'],
       ['v-a1', 'assistant'],
     ]);
-    expect(toStoredMessage(rows[1]!).interruptedAfterMs).toBe(640);
-    expect(toStoredMessage(rows[0]!).interruptedAfterMs).toBeUndefined();
+    expect(toStoredMessage(rows[1]!).interruptedAfterMs).toBeUndefined();
     const conversation = await findConversation(getDb(), userId, conversationId);
     expect(conversation?.title).toBe('Hola');
   });
@@ -75,11 +77,20 @@ describe('appendConversationMessages', () => {
       userId,
       conversationId,
       titleOnInsert: 'Hola',
-      messages: [
-        { id: 'v-u1', role: 'user', content: 'Hola' },
-        { id: 'v-a1', role: 'assistant', content: 'Respuesta larga', interruptedAfterMs: 1200 },
-      ],
+      messages: [{ id: 'v-u1', role: 'user', content: 'Hola' }],
     });
+    // An answer stored by a call from before ADR 0041, with what of it was heard.
+    await insertMessages(getDb(), [
+      {
+        conversationId,
+        oxyUserId: userId,
+        clientMessageId: 'v-a1',
+        role: 'assistant',
+        content: 'Respuesta larga',
+        seq: 1,
+        interruptedAfterMs: 1200,
+      },
+    ]);
     // A client whose copy diverges (an edited first message) forces the full rewrite.
     await saveConversation({
       agentId: ALIA_GEMIE_ID,

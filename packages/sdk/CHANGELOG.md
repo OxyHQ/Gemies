@@ -1,5 +1,16 @@
 # @gemies/sdk
 
+## 6.5.0
+
+- **A voice call's turns are typed turns** (Gemies ADR 0041): the server opens a Kaana `live`
+  session and answers every turn the voice hands over through the chat route, with the same gemie,
+  tools and memory as text. The protocol stays version 2; what the call sends changes:
+  - every `auth` refresh carries a fresh app assertion (`getAppAssertion`), which lives five
+    minutes, so a long call's turns stay in the app the call is in;
+  - barge-in still drops the rest of the interrupted answer, and no longer sends
+    `playback.interrupted`: a `live` session takes no truncation;
+  - `assistant.audio_done` is gone from the events: a `live` session never sends it.
+
 ## 6.4.0
 
 - **Stop no longer cancels an answer that had already finished.** The stop endpoint answers

@@ -26,6 +26,7 @@ const read = (relative: string) =>
 const dockerfile = read('../../Dockerfile');
 const deploy = read('../../../../.github/workflows/deploy-aws.yml');
 const canary = read('../../../../.github/workflows/production-chat-canary.yml');
+const voiceCanary = read('../../../../.github/workflows/production-voice-canary.yml');
 
 /** The images the build and runtime stages start FROM, and the command it runs. */
 const builderStage = dockerfile.match(/^FROM (\S+) AS builder$/m)?.[1];
@@ -55,14 +56,17 @@ describe('the API image and the commands that run it agree on Bun', () => {
     expect(deploy).toContain("MIGRATE='bun packages/api/dist/db/migrate.js");
   });
 
-  it('runs the live-image one-shot with bun', () => {
+  it('runs the live-image one-shots with bun', () => {
     expect(canary).toContain(
       'command:["bun","packages/api/dist/scripts/production-chat-canary.js"]',
+    );
+    expect(voiceCanary).toContain(
+      'command:["bun","packages/api/dist/scripts/production-voice-canary.js"]',
     );
   });
 
   it('names no API entrypoint with node anywhere in those workflows', () => {
-    for (const workflow of [deploy, canary]) {
+    for (const workflow of [deploy, canary, voiceCanary]) {
       expect(workflow).not.toMatch(/\bnode packages\/api\/dist\//);
       expect(workflow).not.toMatch(/"node",\s*"packages\/api\/dist\//);
     }

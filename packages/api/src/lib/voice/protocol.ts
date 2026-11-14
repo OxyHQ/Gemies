@@ -1,9 +1,10 @@
 /**
- * Alia's voice-call protocol, `GET /v1/voice/session` (ADR 0017 §3, §4).
+ * Gemies' voice-call protocol, `GET /v1/voice/session` (ADR 0017 §3, §4; ADR 0041).
  *
- * A WebSocket the client opens on Alia. Alia is the only client of the Kaana
- * realtime session behind it: the device never sees an instruction, a tool
- * schema or a tool result, only audio, transcripts and the few events a call
+ * A WebSocket the client opens on Gemies. Gemies is the only client of the
+ * Kaana `live` session behind it, and answers every turn the voice hands over
+ * through the chat route: the device never sees an instruction, a tool's
+ * arguments or its result, only audio, transcripts and the few events a call
  * UI draws.
  *
  * ## Frames
@@ -11,9 +12,9 @@
  * - **Binary, client → Alia:** microphone audio, PCM16 little-endian, 24 kHz,
  *   mono, about 40 ms per frame. At most {@link MAX_CLIENT_AUDIO_FRAME_BYTES}.
  * - **Binary, Alia → client:** the assistant's audio, same format, prefixed by
- *   a header naming the assistant item it belongs to
- *   ({@link encodeAssistantAudioFrame}), so the client knows exactly how many
- *   milliseconds of WHICH item it played when it is interrupted.
+ *   a header naming the voice's item it belongs to
+ *   ({@link encodeAssistantAudioFrame}), so the client drops exactly that
+ *   item's queued audio when the person talks over it.
  * - **Text:** one JSON event per frame. Every server event after
  *   `session.accepted` carries `seq`, monotonic per voice session, which is
  *   what `session.resume { afterSeq }` replays from.
@@ -31,8 +32,8 @@
  * The SDK says "listening" only after `session.ready`, its own first captured
  * buffer and `input.ready` (ADR 0017 §4, "Honest states").
  *
- * `auth` may be sent again at any time with a fresher token for the same
- * person; Alia then uses it for the tools that act with the person's bearer.
+ * `auth` may be sent again at any time with a fresher token (and assertion)
+ * for the same person; the call's turns run with them from then on.
  * `appAssertion` is the `X-Oxy-App-Assertion` an HTTP request would carry: a
  * socket cannot set a header, so it travels here, and decides whether an agent
  * Oxy confines to an app opens on this call (ADR 0021).
@@ -83,11 +84,6 @@ export type VoiceClientEvent =
       locale: string;
     }
   | { type: 'session.resume'; protocol: number; voiceSessionId: string; afterSeq: number }
-  /**
-   * After `user.speech_started`, the client flushed its playback queue: this
-   * is how much of `itemId` the person actually heard.
-   */
-  | { type: 'playback.interrupted'; itemId: string; playedMs: number }
   /** The person hung up, or the screen that held the call went away. */
   | { type: 'session.end' };
 
@@ -149,15 +145,13 @@ export type VoiceSessionEvent =
    */
   | { type: 'transcript.delta'; role: VoiceRole; messageId: string; itemId: string; text: string }
   | { type: 'transcript.done'; role: VoiceRole; messageId: string; itemId: string; text: string }
-  /** No more audio will come for this assistant item. */
-  | { type: 'assistant.audio_done'; itemId: string }
-  /** A response ended; `itemId` is its audio item, when it spoke. */
+  /** A turn's answer ended; `itemId` is the voice's last audio item of it, when it spoke. */
   | {
       type: 'assistant.done';
       itemId: string | null;
       status: 'completed' | 'cancelled' | 'incomplete' | 'failed';
     }
-  /** A tool runs in Alia. `name` is the tool's name, for the call UI's label only. */
+  /** A tool runs in the turn's chat route. `name` is the tool's name, for the call UI's label only. */
   | { type: 'tool.started'; messageId: string; callId: string; name: string }
   | { type: 'tool.finished'; messageId: string; callId: string; name: string; ok: boolean }
   /** Messages of the call were stored in the conversation. */
@@ -284,15 +278,6 @@ export function parseVoiceClientEvent(raw: string): VoiceClientEvent | null {
             voiceSessionId: event.voiceSessionId,
             afterSeq: event.afterSeq as number,
           }
-        : null;
-    case 'playback.interrupted':
-      return typeof event.itemId === 'string' &&
-        event.itemId.length > 0 &&
-        event.itemId.length <= 128 &&
-        typeof event.playedMs === 'number' &&
-        Number.isFinite(event.playedMs) &&
-        event.playedMs >= 0
-        ? { type: 'playback.interrupted', itemId: event.itemId, playedMs: event.playedMs }
         : null;
     case 'session.end':
       return { type: 'session.end' };
