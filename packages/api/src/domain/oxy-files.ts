@@ -19,27 +19,6 @@
 export const OXY_FILE_ENTITY_TYPES = ['library_file', 'speech_clip', 'skill_file'] as const;
 export type OxyFileEntityType = (typeof OXY_FILE_ENTITY_TYPES)[number];
 
-/**
- * Entity classes Alia no longer uses, whose references Oxy may still hold until
- * the outbox has RELEASED them. Nothing writes, reads or reconciles them; the
- * reference outbox only admits them, so a release the deploy enqueued can still
- * be delivered by the image that replaced their last writer.
- *
- * - The cover of a generated podcast series. Podcast generation moved to Syra;
- *   migration 0176 dropped the series and enqueued the release of each cover
- *   Alia referenced (Syra holds its own reference to the same file). Remove
- *   it, with a migration narrowing the outbox's CHECK, once production's
- *   `oxy_file_reference_sync` holds no row of it.
- */
-export const RELEASE_ONLY_OXY_FILE_ENTITY_TYPES = ['show_series'] as const;
-
-/** Every entity class a pending reference sync may name: those in use, and those only released. */
-export const OXY_FILE_REFERENCE_ENTITY_TYPES = [
-  ...RELEASE_ONLY_OXY_FILE_ENTITY_TYPES,
-  ...OXY_FILE_ENTITY_TYPES,
-] as const;
-export type OxyFileReferenceEntityType = (typeof OXY_FILE_REFERENCE_ENTITY_TYPES)[number];
-
 /** What a pending reference sync wants Oxy to hold: the reference, or its absence. */
 export const OXY_FILE_REFERENCE_STATES = ['present', 'absent'] as const;
 export type OxyFileReferenceState = (typeof OXY_FILE_REFERENCE_STATES)[number];

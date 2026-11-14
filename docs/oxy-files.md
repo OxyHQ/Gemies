@@ -25,8 +25,8 @@ the code is `packages/api/src/lib/files/`.
   Syra (a gemie reaches it through the Syra connector), so Gemies draws and
   stores no cover. Migration `0176` dropped the series and released, through the
   outbox below, each cover reference Gemies held; Syra keeps its own reference
-  on the same file. The outbox still admits that entity class
-  (`RELEASE_ONLY_OXY_FILE_ENTITY_TYPES`) until production holds no row of it.
+  on the same file. Once the outbox had delivered them, migration `0178`
+  narrowed its CHECK to the classes in use.
 
 ## How a use reaches Oxy
 

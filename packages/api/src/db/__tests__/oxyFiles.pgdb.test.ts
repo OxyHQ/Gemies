@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { constraintNameOf, isCheckViolation, uuidv7 } from '@oxy.so/db';
@@ -20,16 +19,11 @@ import {
   ReferenceOutsideTransactionError,
   referenceInventory,
 } from '../files/oxyFileRepository';
-import {
-  oxyFileReconcileRuns,
-  oxyFileReferenceSync,
-  storageGcCandidates,
-} from '../schema/oxy-files';
+import { oxyFileReferenceSync, storageGcCandidates } from '../schema/oxy-files';
 import { libraryFiles } from '../schema/library';
 import { skillFiles } from '../schema/skills';
 import { speechClips } from '../schema/speech';
 import { createLibraryFile, deleteLibraryFile } from '../library/libraryFileRepository';
-import { RELEASE_ONLY_OXY_FILE_ENTITY_TYPES } from '../../domain/oxy-files';
 import { createSkill, deleteOwnedSkill, insertSkillVersion } from '../agents/skillRepository';
 import {
   collectLegacyGarbageOnce,
@@ -87,6 +81,19 @@ async function expectCheck(promise: Promise<unknown>, constraint: string): Promi
 }
 
 describe('the reference outbox', () => {
+  it('admits only the entity classes Alia uses', async () => {
+    // A retired class (migration 0178 narrowed the CHECK) is refused like any unknown one.
+    await expectCheck(
+      db.insert(oxyFileReferenceSync).values({
+        fileId: `${RUN}-f-class`,
+        entityType: 'not_an_entity_class' as never,
+        entityId: 'e',
+        desired: 'absent',
+      }),
+      'oxy_file_reference_sync_entity_type_check',
+    );
+  });
+
   it('refuses to be written outside a transaction', async () => {
     await expect(
       recordFileReferences(db, [
@@ -196,96 +203,6 @@ describe('the reference outbox', () => {
         (call) => call.method === 'remove' && call.references.some((r) => r.entityId === 'b'),
       ),
     ).toBe(true);
-  });
-
-  it('still delivers the release of an entity class Alia no longer uses, and nothing else of it', async () => {
-    const [released] = RELEASE_ONLY_OXY_FILE_ENTITY_TYPES;
-    const file = `${RUN}-f5`;
-    // What a migration that retires an entity class leaves in the outbox: its
-    // releases, written in SQL, since no code may record one any more.
-    await db
-      .insert(oxyFileReferenceSync)
-      .values({ fileId: file, entityType: released, entityId: 'retired-1', desired: 'absent' });
-    type Reference = { fileId: string; entityType: string; entityId: string };
-    const sent: { method: string; reference: Reference }[] = [];
-    // Other files' rows may be due too, and are answered like any Oxy would.
-    const answer = (method: string, result: string) => async (references: Reference[]) => {
-      for (const reference of references) sent.push({ method, reference });
-      return references.map((reference) => ({ ...reference, result }));
-    };
-    setOxyFileSyncClientForTests(
-      () =>
-        ({
-          assets: {
-            references: { add: answer('add', 'created'), remove: answer('remove', 'removed') },
-          },
-        }) as unknown as OxyServer,
-    );
-    for (let pass = 0; pass < 20 && (await intentsFor(file)).length > 0; pass += 1) {
-      await drainReferenceSyncOnce(db);
-    }
-    expect(await intentsFor(file)).toEqual([]);
-    expect(sent.filter(({ reference }) => reference.fileId === file)).toEqual([
-      {
-        method: 'remove',
-        reference: { fileId: file, entityType: released, entityId: 'retired-1' },
-      },
-    ]);
-    // The nightly reconciliation no longer knows it: its ledger refuses the class.
-    await expectCheck(
-      db.insert(oxyFileReconcileRuns).values({ entityType: released as never }),
-      'oxy_file_reconcile_runs_entity_type_check',
-    );
-  });
-
-  it('the retiring migration never lets its release overtake an add still in flight', async () => {
-    const [released] = RELEASE_ONLY_OXY_FILE_ENTITY_TYPES;
-    const file = `${RUN}-f6`;
-    await db
-      .insert(oxyFileReferenceSync)
-      .values({ fileId: file, entityType: released, entityId: 'in-flight', desired: 'present' });
-    // Worker A holds the `present` intent: its `references.add` is on the wire.
-    const owner = `${RUN}-adder`;
-    const [held] = (
-      await claimReferenceSyncs(db, { leaseOwner: owner, limit: 1000, leaseSeconds: 60 })
-    ).filter((row) => row.fileId === file);
-    if (held === undefined) throw new Error('worker A claimed nothing');
-
-    // Migration 0176's own UPDATE, read from the file the migrator applies.
-    const migration = readFileSync(
-      new URL('../../../drizzle/0176_podcasts_belong_to_syra.sql', import.meta.url),
-      'utf8',
-    );
-    const update = migration
-      .split('--> statement-breakpoint')
-      .map((statement) => statement.replace(/^\s*(--[^\n]*\n)*/u, '').trim())
-      .find((statement) => statement.startsWith('UPDATE "oxy_file_reference_sync"'));
-    expect(update).toBeDefined();
-    await db.execute(sql.raw(update ?? ''));
-
-    const [row] = await db
-      .select({
-        desired: oxyFileReferenceSync.desired,
-        leaseOwner: oxyFileReferenceSync.leaseOwner,
-        generation: oxyFileReferenceSync.generation,
-      })
-      .from(oxyFileReferenceSync)
-      .where(eq(oxyFileReferenceSync.fileId, file));
-    // Now a release, still under A's lease, one generation on.
-    expect(row).toEqual({ desired: 'absent', leaseOwner: owner, generation: held.generation + 1 });
-    // So no other worker can send the release while A's add is outstanding…
-    const overtaking = await claimReferenceSyncs(db, {
-      leaseOwner: `${RUN}-remover`,
-      limit: 1000,
-      leaseSeconds: 60,
-    });
-    expect(overtaking.some((claimed) => claimed.fileId === file)).toBe(false);
-    // …and A, when its add returns, can neither forget nor fail the release.
-    expect(await completeReferenceSync(db, held, owner)).toBe(false);
-    await failReferenceSync(db, held, owner, 'late', 1);
-    expect(await intentsFor(file)).toEqual([
-      { entityId: 'in-flight', desired: 'absent', generation: held.generation + 1 },
-    ]);
   });
 });
 
