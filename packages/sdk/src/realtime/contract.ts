@@ -6,7 +6,7 @@
  * Pure data: no React, no socket, so a test on either side can import it.
  */
 
-import type { Message } from '../runtime/types';
+import type { Message, MessageReactionEntry } from '../runtime/types';
 
 /** The one server → client event. */
 export const REALTIME_EVENT = 'rt';
@@ -125,6 +125,7 @@ export interface RealtimeData {
     readonly conversationId: string;
     readonly messageId: string;
     readonly reactions: readonly string[];
+    readonly reactionEntries?: readonly MessageReactionEntry[];
     readonly revision: number;
     readonly mutationId: string;
   };

@@ -150,3 +150,47 @@ describe('sending', () => {
     ).toBe('una pregunta');
   });
 });
+
+describe('an attributed reaction account event', () => {
+  it('preserves independent authors on replay and ignores an older revision', () => {
+    const key = gemieQueryKeys.conversations.detail('c');
+    client.setQueryData(
+      key,
+      conversation('c', 10, {
+        messages: [
+          { id: 'message', role: 'user', content: 'Gracias', reactions: [], reactionRevision: 0 },
+        ],
+      }),
+    );
+    const reactionEntries = [
+      { emoji: '❤️', author: { kind: 'user', id: 'person' } },
+      { emoji: '❤️', author: { kind: 'agent', id: 'actor', name: 'Salella' } },
+    ];
+    const snapshot = {
+      conversationId: 'c',
+      messageId: 'message',
+      reactions: ['❤️'],
+      reactionEntries,
+      revision: 2,
+      mutationId: 'mutation',
+    };
+    applyRealtimeToCache(client, event(snapshot, 'message.reaction'));
+    applyRealtimeToCache(client, event(snapshot, 'message.reaction'));
+    applyRealtimeToCache(
+      client,
+      event({ ...snapshot, revision: 1, reactionEntries: [], reactions: [] }, 'message.reaction'),
+    );
+    expect(client.getQueryData<Conversation>(key)?.messages[0]).toMatchObject({
+      reactionEntries,
+      reactionRevision: 2,
+    });
+    applyRealtimeToCache(
+      client,
+      event({ ...snapshot, revision: 3, reactionEntries: [], reactions: [] }, 'message.reaction'),
+    );
+    expect(client.getQueryData<Conversation>(key)?.messages[0]).toMatchObject({
+      reactionEntries: [],
+      reactionRevision: 3,
+    });
+  });
+});
