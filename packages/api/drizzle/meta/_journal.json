@@ -1247,6 +1247,13 @@
       "when": 1794659717123,
       "tag": "0177_channel_tasks_renew_before_they_lapse",
       "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1794660485132,
+      "tag": "0178_outbox_admits_only_classes_in_use",
+      "breakpoints": true
     }
   ]
 }

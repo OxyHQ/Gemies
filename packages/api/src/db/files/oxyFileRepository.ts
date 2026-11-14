@@ -14,7 +14,6 @@ import type {
   LegacyReadKind,
   LegacyStoredObjectKind,
   OxyFileEntityType,
-  OxyFileReferenceEntityType,
   OxyFileReferenceState,
 } from '../../domain/oxy-files.js';
 import type { ApiDatabase, Executor } from '../index';
@@ -96,13 +95,7 @@ export async function recordFileReferences(
     });
 }
 
-/**
- * A claimed intent. Its entity class may be one Alia only releases now
- * (`RELEASE_ONLY_OXY_FILE_ENTITY_TYPES`): the outbox delivers whatever a
- * transaction or a migration left in it.
- */
-export interface ClaimedReferenceSync extends Omit<FileReferenceIntent, 'entityType'> {
-  readonly entityType: OxyFileReferenceEntityType;
+export interface ClaimedReferenceSync extends FileReferenceIntent {
   readonly generation: number;
   readonly attempts: number;
 }
