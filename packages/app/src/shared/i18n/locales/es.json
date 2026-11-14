@@ -1404,7 +1404,9 @@
         "forgetDescription": "{{name}} dejará de recordarlo. No se puede deshacer.",
         "forgotten": "Olvidado",
         "forgetFailed": "No se pudo olvidar. Inténtalo de nuevo.",
-        "changedMeanwhile": "El Gemie cambió esta nota mientras la editabas. Se muestra su última versión."
+        "changedMeanwhile": "Esta nota cambió mientras la editabas. Tu edición se conserva; su versión más reciente es:",
+        "saveMineOverIt": "Guardar la mía encima",
+        "discardMine": "Descartar la mía"
       },
       "telegramBot": {
         "title": "Bot de Telegram",

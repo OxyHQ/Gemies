@@ -7,6 +7,7 @@ import {
 import { errorStatus } from '@/shared/api/error-utils';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { SettingsSkeletonRows } from '@/shared/ui/skeletons';
+import { Admonition } from '@oxy.so/bloom/admonition';
 import { AgentCreatorField, AgentCreatorSection } from '@oxy.so/bloom/agent-creator';
 import { Button } from '@oxy.so/bloom/button';
 import { ButtonGroup, ButtonGroupItem } from '@oxy.so/bloom/button-group';
@@ -15,7 +16,7 @@ import { confirm } from '@oxy.so/bloom/surfaces';
 import { Textarea } from '@oxy.so/bloom/textarea';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { View } from 'react-native';
 
 /** This section's own strings. */
@@ -28,7 +29,18 @@ function sortFiles(files: AgentMemoryFile[]): AgentMemoryFile[] {
   );
 }
 
-/** One file: read, edit in place, save with the hash it was read at, or forget. */
+/** The person's unsaved edit and the version of the file (its hash) it was started from. */
+interface MemoryEdit {
+  draft: string;
+  baseHash: string;
+}
+
+/**
+ * One file: read, edit in place, save with the hash the edit started from, or forget. A clean
+ * file follows what the agent holds; an edit is the person's until they save or discard it, so
+ * neither a refetch nor a conflicting save ever replaces it. When the file changed under the
+ * edit, the newest version is shown beside it: the person saves theirs over it or discards it.
+ */
 function MemoryFileRow({
   agentId,
   path,
@@ -43,24 +55,33 @@ function MemoryFileRow({
   const { t } = useTranslation();
   const { data: document, isPending, refetch } = useAgentMemoryDocument(agentId, path);
   const { save } = useAgentMemoryMutations(agentId);
-  const [draft, setDraft] = useState('');
-  useEffect(() => {
-    if (document) setDraft(document.content);
-  }, [document]);
+  const [edit, setEdit] = useState<MemoryEdit | null>(null);
 
-  const dirty = document !== undefined && draft !== document.content;
+  const dirty = document !== undefined && edit !== null && edit.draft !== document.content;
+  // The agent (or another device) wrote to the file after the edit began.
+  const conflict = dirty && edit.baseHash !== document.hash;
+
+  const handleChange = (text: string) => {
+    if (!document) return;
+    // Back to what the file holds: clean again, following the file.
+    if (text === document.content) setEdit(null);
+    else setEdit((current) => ({ draft: text, baseHash: current?.baseHash ?? document.hash }));
+  };
 
   const handleSave = async () => {
-    if (!document) return;
+    if (!document || !edit) return;
     try {
-      await save.mutateAsync({ path, content: draft, expectedHash: document.hash });
+      // Without a conflict this is the hash the edit started from; with one, the newest
+      // version the person is looking at, so their save lands on top of it knowingly.
+      await save.mutateAsync({ path, content: edit.draft, expectedHash: document.hash });
       await refetch();
+      setEdit(null);
       toast.success(t('settings.saveSuccess'));
     } catch (error) {
-      // 409: the agent wrote to it meanwhile. Show what it holds now.
+      // 409: the file changed meanwhile. Fetch its newest version; the edit stays and the
+      // conflict notice shows both.
       if (errorStatus(error) === 409) {
         await refetch();
-        toast.error(t(`${K}.changedMeanwhile`));
         return;
       }
       toast.error(t('settings.saveFailed'));
@@ -69,24 +90,34 @@ function MemoryFileRow({
 
   return (
     <AgentCreatorField label={path} multiline divider={divider}>
-      {isPending ? (
+      {isPending || !document ? (
         <SettingsSkeletonRows control="none" rows={2} />
       ) : (
         <View className="gap-2">
           <Textarea
             accessibilityLabel={path}
             size="sm"
-            value={draft}
-            onChangeText={setDraft}
+            value={edit?.draft ?? document.content}
+            onChangeText={handleChange}
             autoResize
             rows={3}
             maxRows={12}
           />
+          {conflict ? (
+            <Admonition type="warning" size="sm">
+              {[t(`${K}.changedMeanwhile`), document.content].join('\n\n')}
+            </Admonition>
+          ) : null}
           <View className="flex-row justify-end">
             <ButtonGroup size="sm" accessibilityLabel={path}>
               <ButtonGroupItem onPress={handleSave} disabled={!dirty || save.isPending}>
-                {t('settings.saveButton')}
+                {conflict ? t(`${K}.saveMineOverIt`) : t('settings.saveButton')}
               </ButtonGroupItem>
+              {conflict ? (
+                <ButtonGroupItem onPress={() => setEdit(null)} disabled={save.isPending}>
+                  {t(`${K}.discardMine`)}
+                </ButtonGroupItem>
+              ) : null}
               <ButtonGroupItem
                 iconOnly
                 leadingIcon={RiDeleteBinLine}

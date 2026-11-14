@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type React from 'react';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import en from '@/shared/i18n/locales/en.json';
 
 /**
  * What an agent has beyond who it is, as the editor draws it: how it works on its own, what it
@@ -175,6 +176,8 @@ let alerts = {
   agents: [{ agentId: 'agent-1', name: 'Scout', handle: 'scout', color: null, enabled: false }],
 };
 let documents: { path: string }[] = [];
+/** What the agent's file holds now, as `GET /agents/:id/memory?path=` answers. */
+let memoryFile = { content: '- likes tea\n', hash: 'h1' };
 let telegramBot: { bot: unknown; available: boolean } = { bot: null, available: true };
 
 beforeEach(() => {
@@ -184,6 +187,7 @@ beforeEach(() => {
   items = [];
   lastHeartbeatAt = null;
   documents = [];
+  memoryFile = { content: '- likes tea\n', hash: 'h1' };
 
   alerts = {
     alia: { enabled: true },
@@ -200,12 +204,7 @@ beforeEach(() => {
       if (url.endsWith('/memory'))
         return config?.params?.path
           ? {
-              data: {
-                path: config.params.path,
-                content: '- likes tea\n',
-                hash: 'h1',
-                exists: true,
-              },
+              data: { path: config.params.path, ...memoryFile, exists: true },
             }
           : {
               data: {
@@ -534,6 +533,66 @@ describe('what the agent remembers', () => {
     expect(api.delete).toHaveBeenCalledWith('/agents/agent-1/memory', {
       params: { path: 'MEMORY.md' },
     });
+  });
+
+  it('keeps the edit through a conflicting save, shows the newest version, and saves over it', async () => {
+    documents = [{ path: 'MEMORY.md' }];
+    const tree = await render();
+    const button = (label: string) =>
+      all(tree, 'ButtonGroupItem').find((node) => node.props.children === label);
+
+    await act(async () => all(tree, 'Textarea')[0]?.props.onChangeText('- likes coffee\n'));
+    // The agent wrote to the file meanwhile: the save names the old hash and loses.
+    memoryFile = { content: '- likes tea\n- lives in Madrid\n', hash: 'h2' };
+    api.put.mockRejectedValueOnce({ response: { status: 409 } });
+    await act(async () => button(en.settings.saveButton)?.props.onPress());
+    await settle();
+
+    expect(api.put).toHaveBeenLastCalledWith('/agents/agent-1/memory', {
+      path: 'MEMORY.md',
+      content: '- likes coffee\n',
+      expectedHash: 'h1',
+    });
+    expect(all(tree, 'Textarea')[0]?.props.value).toBe('- likes coffee\n');
+    const notice = String(all(tree, 'Admonition')[0]?.props.children);
+    expect(notice).toContain('This note changed while you were editing it.');
+    expect(notice).toContain('- lives in Madrid');
+    expect(toast.error).not.toHaveBeenCalled();
+
+    // Saving again lands on top of the version the person was shown.
+    api.put.mockImplementationOnce(async () => {
+      memoryFile = { content: '- likes coffee\n', hash: 'h3' };
+      return { data: {} };
+    });
+    await act(async () => button('Save mine over it')?.props.onPress());
+    await settle();
+    expect(api.put).toHaveBeenLastCalledWith('/agents/agent-1/memory', {
+      path: 'MEMORY.md',
+      content: '- likes coffee\n',
+      expectedHash: 'h2',
+    });
+    expect(all(tree, 'Admonition')).toHaveLength(0);
+    expect(all(tree, 'Textarea')[0]?.props.value).toBe('- likes coffee\n');
+    expect(button(en.settings.saveButton)?.props.disabled).toBe(true);
+  });
+
+  it('discards the edit for the newest version only when the person asks', async () => {
+    documents = [{ path: 'MEMORY.md' }];
+    const tree = await render();
+    const button = (label: string) =>
+      all(tree, 'ButtonGroupItem').find((node) => node.props.children === label);
+
+    await act(async () => all(tree, 'Textarea')[0]?.props.onChangeText('- likes coffee\n'));
+    memoryFile = { content: '- likes tea\n- lives in Madrid\n', hash: 'h2' };
+    api.put.mockRejectedValueOnce({ response: { status: 409 } });
+    await act(async () => button(en.settings.saveButton)?.props.onPress());
+    await settle();
+    expect(all(tree, 'Textarea')[0]?.props.value).toBe('- likes coffee\n');
+
+    await act(async () => button('Discard mine')?.props.onPress());
+    expect(all(tree, 'Textarea')[0]?.props.value).toBe('- likes tea\n- lives in Madrid\n');
+    expect(all(tree, 'Admonition')).toHaveLength(0);
+    expect(button('Discard mine')).toBeUndefined();
   });
 
   it('forgets everything only after the person confirms', async () => {

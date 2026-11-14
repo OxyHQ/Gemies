@@ -127,6 +127,18 @@ export interface AgentInfo {
   handle: string;
 }
 
+/**
+ * Another agent's answer within a turn (a consultation), stored as that agent's own message: its
+ * words, who spoke, and the tool calls of its work that outlive the turn (the canvas artifacts it
+ * drew, `lib/tools/agent-turn.ts`).
+ */
+export interface AgentMessage {
+  role: 'assistant';
+  content: string;
+  agentInfo: AgentInfo;
+  toolInvocations?: ToolInvocation[];
+}
+
 /** One element of a multi-part message body. The shape is the AI SDK's. */
 export interface MessageContentPart {
   type: string;

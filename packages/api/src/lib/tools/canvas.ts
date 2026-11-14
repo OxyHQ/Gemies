@@ -111,6 +111,9 @@ const SHAPES: Partial<Record<(typeof CANVAS_TYPES)[number], z.ZodType>> = {
   dashboard: dashboardData,
 };
 
+/** The canvas tool's name, as the pipeline grants it and a turn's tool calls carry it. */
+export const CANVAS_TOOL = 'canvas';
+
 export const canvasTool = tool({
   description:
     'Show rich content the person can open and export: a report (markdown), slide deck, dashboard, chart, table, code, form or image. Not for a simple text answer. To revise one, call again with the same title and type.',
