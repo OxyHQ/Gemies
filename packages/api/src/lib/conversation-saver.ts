@@ -5,7 +5,7 @@
  */
 
 import { generateText } from 'ai';
-import { isUniqueViolation } from '@oxy.so/db';
+import { isUniqueViolation, uuidv7 } from '@oxy.so/db';
 import { turnContentText } from '@gemies/server/internal';
 import { getDb } from '../db/index.js';
 import {
@@ -14,9 +14,9 @@ import {
   upsertConversation,
 } from '../db/chat/conversationRepository.js';
 import {
-  clientMessageExists,
   countMessages,
   countMessagesInConversation,
+  existingClientMessageIds,
   rewriteMessages,
   findLastMessage,
   insertMessages,
@@ -27,6 +27,7 @@ import {
 import {
   channelReplyMessageId,
   isAgentWrittenMessageId,
+  isMessageRole,
   usableMessageId,
   type AgentInfo,
   type ConversationSource,
@@ -53,6 +54,8 @@ interface InputMessage {
   toolInvocations?: ToolInvocation[];
   agentInfo?: AgentInfo;
   id?: string;
+  /** The id is new, drawn here for a message that came without one: nothing was left on it yet. */
+  minted?: true;
 }
 
 /** Extract or generate a conversation title from the AI response, with fallbacks. */
@@ -145,6 +148,17 @@ function sameMessage(a: { role: string; content: unknown }, b: InputMessage): bo
 const APPEND_SEQ_INDEX = 'messages_oxy_user_conversation_seq_key';
 
 /**
+ * The index that stores a message once per thread: a writer that appends a message already stored
+ * (a channel's retried delivery, a concurrent save of the same turn) collides on it.
+ */
+const CLIENT_MESSAGE_INDEX = 'messages_oxy_user_conversation_client_message_key';
+
+/** A conflict that a fresh read of the thread resolves: a seq or a message another writer took. */
+function isAppendConflict(err: unknown): boolean {
+  return isUniqueViolation(err, APPEND_SEQ_INDEX) || isUniqueViolation(err, CLIENT_MESSAGE_INDEX);
+}
+
+/**
  * Save or update a conversation in the database.
  * Handles title extraction, tag stripping, and message assembly.
  *
@@ -183,7 +197,11 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
    * client's id, answered 404 for every reply of the session until a reload.
    */
   const clientHistory = messages
-    .filter((m) => m != null && m.role && m.content !== undefined)
+    // A conversation holds what its person and its gemie said. A system message is the prompt of
+    // the turn (a channel's "The user is chatting via telegram…", an embedding app's context):
+    // the request's context, never a message of the conversation. Stored, it was served to every
+    // client as the conversation's first message (2026-11-14).
+    .filter((m) => m != null && isMessageRole(m.role) && m.content !== undefined)
     .map((m) => {
       const id = usableMessageId(m.id);
       return {
@@ -273,8 +291,8 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
       );
       return { appendedFromSeq: storedCount };
     } catch (err) {
-      // Concurrent append claimed the same seq → converge via full rewrite below.
-      if (!isUniqueViolation(err, APPEND_SEQ_INDEX)) throw err;
+      // Concurrent append claimed the same seq or message → converge via full rewrite below.
+      if (!isAppendConflict(err)) throw err;
     }
   }
 
@@ -283,7 +301,10 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
   // kept, in place: the client's copy is authoritative for what IT sent, not
   // for what arrived while it was away.
   await rewriteMessages(getDb(), userId, conversationId, (stored) => {
-    const allMessages = [...keepAgentOutreach(stored, clientHistory), ...turnTail];
+    const allMessages = withStoredIds(stored, [
+      ...keepAgentOutreach(stored, clientHistory),
+      ...turnTail,
+    ]);
     return allMessages.map((message, index) =>
       buildStoredMessage(message, userId, conversationId, index),
     );
@@ -346,47 +367,60 @@ export async function appendConversationMessages<Content extends MessageContent 
     source: params.source ?? 'app',
     agentId: params.agentId,
   });
-  const next = await appendAtEnd(userId, conversationId, (from) =>
-    messages.map((message, index) => ({
-      conversationId,
-      oxyUserId: userId,
-      clientMessageId: message.id,
-      role: message.role,
-      content: message.content,
-      seq: from + index,
-      createdAt: new Date(),
-      ...(message.toolInvocations && message.toolInvocations.length > 0
-        ? { toolInvocations: message.toolInvocations }
-        : {}),
-      ...(message.interruptedAfterMs === undefined
-        ? {}
-        : { interruptedAfterMs: Math.round(message.interruptedAfterMs) }),
-    })),
+  const next = await appendAtEnd(
+    userId,
+    conversationId,
+    messages.map((message) => message.id),
+    (from, kept) =>
+      messages
+        .filter((message) => kept.has(message.id))
+        .map((message, index) => ({
+          conversationId,
+          oxyUserId: userId,
+          clientMessageId: message.id,
+          role: message.role,
+          content: message.content,
+          seq: from + index,
+          createdAt: new Date(),
+          ...(message.toolInvocations && message.toolInvocations.length > 0
+            ? { toolInvocations: message.toolInvocations }
+            : {}),
+          ...(message.interruptedAfterMs === undefined
+            ? {}
+            : { interruptedAfterMs: Math.round(message.interruptedAfterMs) }),
+        })),
   );
-  void publishConversation(userId, conversationId, { appendedFromSeq: next });
+  if (next !== null) void publishConversation(userId, conversationId, { appendedFromSeq: next });
 }
 
 /**
  * Insert rows at the END of a conversation: from the `seq` after its last message, retried on
- * exactly the conflict a concurrent append claiming the same `seq` produces. Returns that `seq`.
+ * exactly the conflicts a concurrent append produces (the same `seq`, the same message). A message
+ * the thread already holds is not stored again: `rowsFrom` receives the ids still to store, so a
+ * retried delivery of a channel's message is kept once. Returns the first `seq` written, or `null`
+ * when every message was already there.
  */
 async function appendAtEnd(
   userId: string,
   conversationId: string,
-  rowsFrom: (seq: number) => NewMessage[],
-): Promise<number> {
+  ids: readonly string[],
+  rowsFrom: (seq: number, kept: ReadonlySet<string>) => NewMessage[],
+): Promise<number | null> {
   for (let attempt = 1; ; attempt++) {
-    const [stored, count] = await Promise.all([
+    const [stored, count, existing] = await Promise.all([
       findLastMessage(getDb(), userId, conversationId),
       countMessages(getDb(), userId, conversationId),
+      existingClientMessageIds(getDb(), userId, conversationId, ids),
     ]);
+    const kept = new Set(ids.filter((id) => !existing.has(id)));
+    if (kept.size === 0) return null;
     // A legacy thread without `seq` continues after its last position.
     const next = stored?.seq == null ? count : stored.seq + 1;
     try {
-      await insertMessages(getDb(), rowsFrom(next));
+      await insertMessages(getDb(), rowsFrom(next, kept));
       return next;
     } catch (err) {
-      if (attempt >= MAX_APPEND_ATTEMPTS || !isUniqueViolation(err, APPEND_SEQ_INDEX)) throw err;
+      if (attempt >= MAX_APPEND_ATTEMPTS || !isAppendConflict(err)) throw err;
     }
   }
 }
@@ -407,16 +441,43 @@ async function appendChannelTurn(
   sent: InputMessage | undefined,
   turnTail: readonly InputMessage[],
 ): Promise<ConversationChange> {
-  const kept =
-    sent?.id !== undefined && (await clientMessageExists(getDb(), userId, conversationId, sent.id));
-  const messages = [...(sent && !kept ? [sent] : []), ...turnTail];
-  if (messages.length === 0) return {};
-  const appendedFromSeq = await appendAtEnd(userId, conversationId, (from) =>
-    messages.map((message, index) =>
-      buildStoredMessage(message, userId, conversationId, from + index),
-    ),
+  const messages = withStoredIds([], [...(sent ? [sent] : []), ...turnTail]);
+  const appendedFromSeq = await appendAtEnd(
+    userId,
+    conversationId,
+    messages.map((message) => message.id as string),
+    (from, kept) =>
+      messages
+        .filter((message) => kept.has(message.id as string))
+        .map((message, index) => buildStoredMessage(message, userId, conversationId, from + index)),
   );
-  return { appendedFromSeq };
+  return appendedFromSeq === null ? {} : { appendedFromSeq };
+}
+
+/**
+ * Every message with its id: its own, or else the id of the stored message it is (same role and
+ * content, in order), or else a new one. The id is the message's identity for good, what a vote,
+ * a reaction and a read-aloud clip find it by: it was `msg-<seq>`, its position, so a rewrite
+ * that moved it renamed it and the same name later meant another message.
+ */
+function withStoredIds(
+  stored: readonly MessageRow[],
+  list: readonly InputMessage[],
+): InputMessage[] {
+  const named = new Set(list.flatMap((message) => (message.id === undefined ? [] : [message.id])));
+  let cursor = 0;
+  return list.map((message) => {
+    if (message.id !== undefined) return message;
+    for (const [index, row] of stored.entries()) {
+      if (index < cursor) continue;
+      const id = row.clientMessageId;
+      if (id === null || named.has(id) || !sameMessage(row, message)) continue;
+      cursor = index + 1;
+      named.add(id);
+      return { ...message, id };
+    }
+    return { ...message, id: uuidv7(), minted: true };
+  });
 }
 
 /**
@@ -602,9 +663,9 @@ function buildStoredMessage(
     createdAt: new Date(),
     ...(message.toolInvocations ? { toolInvocations: message.toolInvocations } : {}),
     ...(message.agentInfo ? { agentInfo: message.agentInfo } : {}),
-    // seq is the absolute position, so the id fallback stays globally consistent
-    // whether the message was written via append or full rewrite.
-    clientMessageId: message.id ? message.id : `msg-${seq}`,
-    retainFeedback: message.id !== undefined,
+    clientMessageId: message.id ?? uuidv7(),
+    // A message's feedback follows its id when the id is its own: the client's, or the stored
+    // message it was matched to. A new id names a new message.
+    retainFeedback: message.id !== undefined && message.minted !== true,
   };
 }

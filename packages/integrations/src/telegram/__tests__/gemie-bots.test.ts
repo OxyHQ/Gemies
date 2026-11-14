@@ -13,7 +13,12 @@ const asked = vi.hoisted(() => ({
   reaction: null as string | null,
   retryLater: false,
   personTurn: null as null | { conversationId: string; messageId: string; content: unknown[] },
-  chats: [] as Array<{ identity: unknown; messages: unknown[]; conversationId?: string }>,
+  chats: [] as Array<{
+    identity: unknown;
+    messages: unknown[];
+    conversationId?: string;
+    clientContext?: string;
+  }>,
 }));
 vi.mock('../../shared/api-client', () => ({
   APIClient: class {
@@ -38,9 +43,14 @@ vi.mock('../../shared/api-client', () => ({
     async chatCompletion(
       identity: unknown,
       messages: unknown[],
-      options: { conversationId?: string },
+      options: { conversationId?: string; clientContext?: string },
     ) {
-      asked.chats.push({ identity, messages, conversationId: options.conversationId });
+      asked.chats.push({
+        identity,
+        messages,
+        conversationId: options.conversationId,
+        clientContext: options.clientContext,
+      });
       return { content: 'Tienes 3 correos nuevos.', finishReason: 'stop' };
     }
   },
@@ -235,8 +245,9 @@ describe('a gemie bot’s update', () => {
           // The API verifies it again from the bot and the sender, never from anything else.
           identity: { kind: 'gemie_bot', botId: BOT_ID, platformUserId: '570038640' },
           conversationId: `telegram:${BOT_ID}:570038640`,
+          // Where the turn happens is the request's context, never a message it stores.
+          clientContext: expect.stringContaining('The user is chatting via telegram'),
           messages: [
-            expect.objectContaining({ role: 'system' }),
             { role: 'user', content: 'Hey' },
             { role: 'assistant', content: 'Hey Nate' },
             { id: 'telegram:570038640:10', role: 'user', content: prepared },

@@ -88,15 +88,6 @@ beforeAll(async () => {
       ],
       seq: 2,
     },
-    {
-      // A role a person does not search. Its text is unique so its exclusion is
-      // observable rather than incidental.
-      conversationId: THREAD,
-      oxyUserId: OWNER,
-      role: 'system' as MessageRole,
-      content: 'you are a helpful assistant named cormorant',
-      seq: 3,
-    },
   ]);
 });
 
@@ -148,7 +139,18 @@ describe('what a search must NOT find', () => {
     expect(hits[0].text).toBe('I looked it up.');
   });
 
-  it('does not find a system prompt', async () => {
+  it('cannot hold a system prompt to find: a conversation stores only what was said', async () => {
+    await expect(
+      insertMessages(db, [
+        {
+          conversationId: THREAD,
+          oxyUserId: OWNER,
+          role: 'system' as MessageRole,
+          content: 'you are a helpful assistant named cormorant',
+          seq: 3,
+        },
+      ]),
+    ).rejects.toThrow();
     expect(await found('cormorant')).toEqual([]);
   });
 

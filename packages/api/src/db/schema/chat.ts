@@ -177,11 +177,10 @@ export const conversations = pgTable(
  * dedicated index is a performance decision with numbers attached, and this port
  * is not the place to guess at one.
  *
- * It is nullable because `routes/webhooks.ts` appends bot turns without one:
- * both `routes/conversations.ts` (from the client's `id`) and
- * `lib/conversation-saver.ts` (the client's `id`, or `assistantMessageId` for
- * the reply, falling back to `msg-<seq>`) always write one, so
- * the webhook path is the only producer of a NULL here.
+ * It is nullable because `routes/webhooks.ts` appended bot turns without one:
+ * `lib/conversation-saver.ts` always writes one (the client's `id`, the id of
+ * the stored message it is, or a new UUIDv7, never a position), and it is
+ * unique per thread (`messages_oxy_user_conversation_client_message_key`).
  *
  * ## No `updated_at`, on purpose
  *
@@ -266,6 +265,17 @@ export const messages = pgTable(
     uniqueIndex('messages_oxy_user_conversation_seq_key')
       .on(t.oxyUserId, t.conversationId, t.seq)
       .where(sql`${t.seq} is not null`),
+    /**
+     * A message is stored once per thread. A channel's retried delivery appended the same Telegram
+     * message again, each copy answered anew (`telegram:570038640:22` three times, 2026-11-14):
+     * writers append only the ids a thread lacks, and this is what makes a concurrent second copy
+     * a conflict they retry instead of a duplicate. NULL ids (a legacy webhook's rows) are distinct.
+     */
+    uniqueIndex('messages_oxy_user_conversation_client_message_key').on(
+      t.oxyUserId,
+      t.conversationId,
+      t.clientMessageId,
+    ),
     checkOneOf('messages_role_check', t.role, MESSAGE_ROLES),
     checkOneOf('messages_vote_check', t.vote, MESSAGE_VOTES),
     /**

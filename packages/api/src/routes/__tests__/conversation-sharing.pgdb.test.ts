@@ -137,7 +137,6 @@ beforeEach(async () => {
     agentId: AGENT_ID,
   });
   await replaceMessages(db, ALICE.id, 'c-sindi', [
-    { role: 'system', content: 'You are Sindi.' },
     {
       role: 'user',
       content: [

@@ -37,6 +37,7 @@ import { generateAnswered } from './tool-synthesis.js';
 import { emptyResponseError, toOpenAIFinishReason } from './finish-reason.js';
 import { servedModelId } from '../models/power-levels.js';
 import { withoutToolMarkup } from './tool-markup.js';
+import { clientToolResult } from '../tools/result-truncation.js';
 
 export interface NonStreamingParams {
   req: Request;
@@ -144,7 +145,7 @@ export async function runNonStreaming(params: NonStreamingParams): Promise<void>
         toolName: toolNameMapping.get(tc.toolName) || tc.toolName,
         state: toolResult ? ('result' as const) : ('call' as const),
         args: tc.input,
-        ...(toolResult && { result: toolResult.output }),
+        ...(toolResult && { result: clientToolResult(toolResult.output) }),
       };
     });
 

@@ -10,8 +10,20 @@
  * whitelist in `routes/conversations.ts` that admits them.
  */
 
-export const MESSAGE_ROLES = ['user', 'assistant', 'system'] as const;
+/**
+ * Who said a message of a conversation: its person, or its gemie. Nothing else is a message of a
+ * conversation, and `messages_role_check` holds the table to it. A system message is the prompt of
+ * a turn (a channel's, an embedding app's context): the saver stored it once, as the first message
+ * of a gemie bot's Telegram chat, and every client was served it (2026-11-14; migration 0172 removed
+ * those rows, 0173 narrowed the check).
+ */
+export const MESSAGE_ROLES = ['user', 'assistant'] as const;
 export type MessageRole = (typeof MESSAGE_ROLES)[number];
+
+/** Whether a role is one a conversation's message has. */
+export function isMessageRole(role: unknown): role is MessageRole {
+  return (MESSAGE_ROLES as readonly unknown[]).includes(role);
+}
 export const MESSAGE_VOTES = ['up', 'down'] as const;
 export type MessageVote = (typeof MESSAGE_VOTES)[number];
 /**

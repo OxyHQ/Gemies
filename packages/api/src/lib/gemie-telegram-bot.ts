@@ -399,7 +399,6 @@ async function answerAsThirdParty(
     const reach = `In this turn your person's apps (email, calendar, files, connected accounts, memory, scheduling) are not reachable. When someone asks for any of them, call ${PERSONAL_ACCESS_TOOL} and tell them what it answers; never say the capability does not exist.`;
     const personalAccess = buildPersonalAccessTool({
       name: agentPromptName(agent),
-      linkSteps: saidTo(message.from).steps(agentPromptName(agent)),
       personLinked: bot.linkedTelegramUserId !== null && bot.oxyTaskId !== null,
       chatKind: message.chatKind,
     });

@@ -380,7 +380,7 @@ export class APIClient {
   async chatCompletion(
     identity: GemieChannelIdentity,
     messages: Array<{ id?: string; role: string; content: MessageContent }>,
-    options: { model?: string; conversationId?: string } = {},
+    options: { model?: string; conversationId?: string; clientContext?: string } = {},
   ): Promise<{ content: string; finishReason: string }> {
     const response = await aliaApiFetch(`/alia/chat`, {
       method: 'POST',
@@ -398,6 +398,7 @@ export class APIClient {
         model: options.model,
         stream: true,
         conversationId: options.conversationId,
+        clientContext: options.clientContext,
         max_tokens: 2048,
       }),
       signal: AbortSignal.timeout(CHAT_TURN_TIMEOUT_MS),

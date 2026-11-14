@@ -6,6 +6,7 @@
  */
 
 import type { ToolSet } from 'ai';
+import { withoutHostImageData } from '../chat/host-image-result.js';
 import { log } from '../logger.js';
 
 const DEFAULT_MAX_CHARS = 6000; // ~1500 tokens at 4 chars/token
@@ -51,6 +52,8 @@ export function getToolResultBudget(contextTokens: number): number {
 const CONTENT_FIELDS = new Set(['content', 'text', 'output', 'result']);
 /** An array longer than this keeps its head and says how many it dropped. */
 const MAX_ARRAY_ITEMS = 50;
+/** The fewest items a list keeps while it is cut to fit: a result is never emptied of them. */
+const MIN_ARRAY_ITEMS = 3;
 
 function serializedLength(value: unknown): number {
   try {
@@ -60,25 +63,66 @@ function serializedLength(value: unknown): number {
   }
 }
 
-/** Every string leaf at most `leafChars`, every array at most {@link MAX_ARRAY_ITEMS}. */
-function boundLeaves(value: unknown, leafChars: number): unknown {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** A value that says nothing: absent, an empty string, an empty list or an empty object. */
+function isEmptyValue(value: unknown): boolean {
+  return (
+    value === null ||
+    value === undefined ||
+    value === '' ||
+    (Array.isArray(value) && value.length === 0) ||
+    (isPlainObject(value) && Object.keys(value).length === 0)
+  );
+}
+
+/**
+ * A result without the fields that say nothing, at every depth: `null`, `''`, `[]` and `{}`
+ * values, and an `_id` that repeats the record's own `id` (a store's key echoed beside it). A
+ * list of twenty emails from Inbox is mostly that (`cc: []`, `inReplyTo: null`, `labels: []`, …):
+ * dropped, it costs half as much and loses nothing a reader or a model could use. A top-level
+ * `card` is a UI payload rendered as-is and is never touched.
+ */
+export function compactToolResult(value: unknown): unknown {
+  const compact = (entry: unknown): unknown => {
+    if (Array.isArray(entry)) return entry.map(compact);
+    if (!isPlainObject(entry)) return entry;
+    const kept: Record<string, unknown> = {};
+    for (const [key, field] of Object.entries(entry)) {
+      if (key === '_id' && entry.id !== undefined && field === entry.id) continue;
+      const compacted = compact(field);
+      if (!isEmptyValue(compacted)) kept[key] = compacted;
+    }
+    return kept;
+  };
+  if (!isPlainObject(value)) return compact(value);
+  const { card, ...rest } = value;
+  const compacted = compact(rest) as Record<string, unknown>;
+  return card === undefined ? compacted : { ...compacted, card };
+}
+
+/** Every string leaf at most `leafChars`, every array at most `maxItems`. */
+function boundLeaves(value: unknown, leafChars: number, maxItems = MAX_ARRAY_ITEMS): unknown {
   if (typeof value === 'string') return truncateToolResult(value, leafChars);
   if (Array.isArray(value)) {
-    const kept = value.slice(0, MAX_ARRAY_ITEMS).map((item) => boundLeaves(item, leafChars));
-    if (value.length > MAX_ARRAY_ITEMS)
-      kept.push(`[truncated — ${value.length - MAX_ARRAY_ITEMS} more items omitted]`);
+    const kept = value.slice(0, maxItems).map((item) => boundLeaves(item, leafChars, maxItems));
+    if (value.length > maxItems)
+      kept.push(`[truncated — ${value.length - maxItems} more items omitted]`);
     return kept;
   }
-  if (value && typeof value === 'object') {
+  if (isPlainObject(value)) {
     return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [key, boundLeaves(entry, leafChars)]),
+      Object.entries(value).map(([key, entry]) => [key, boundLeaves(entry, leafChars, maxItems)]),
     );
   }
   return value;
 }
 
 /**
- * Bound what a tool hands the model to `maxChars` of JSON, whatever its shape.
+ * Bound what a tool hands the model to `maxChars` of JSON, whatever its shape, and keep it JSON a
+ * model can read.
  *
  * This used to rewrite only TOP-LEVEL string fields named content/text/output/
  * result and pass everything else through, so an app result shaped
@@ -86,19 +130,25 @@ function boundLeaves(value: unknown, leafChars: number): unknown {
  * `readEmail` calls in one turn overran the inference edge's input ceiling and
  * the turn failed (`context_length_exceeded`, production 2026-10-08/10).
  *
- * A top-level `card` is a UI payload stored and rendered as-is, so it is never
- * touched and never counted. Everything else is kept as it is when it fits;
- * otherwise its string leaves and arrays are shortened, and if even that is
- * too large the rest becomes one truncated JSON preview.
+ * Then a list too long for the budget became ONE string, `{ truncated, preview }`, the first
+ * `maxChars` of its JSON escaped inside another: twenty unread emails were mostly ids and empty
+ * fields, and a follow-up run read only the head of that string, saw no email it could summarise,
+ * and listed them again until its token budget was spent (production 2026-11-14). Now the result
+ * is compacted first ({@link compactToolResult}); what still does not fit has its string leaves
+ * shortened, then its lists cut to their head, with a marker saying how many items were left out.
+ * The preview remains only for a result with nothing left to cut.
+ *
+ * A top-level `card` is a UI payload stored and rendered as-is, so it is never touched and never
+ * counted.
  */
 function boundObject(obj: Record<string, unknown>, maxChars: number): Record<string, unknown> {
   const { card, ...rest } = obj;
   const withCard = (body: Record<string, unknown>) =>
     card === undefined ? body : { ...body, card };
 
-  // First the historical, shape-preserving pass: top-level prose fields only.
+  // First the shape-preserving passes: nothing that says nothing, and top-level prose bounded.
   const trimmed: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(rest)) {
+  for (const [key, value] of Object.entries(compactToolResult(rest) as Record<string, unknown>)) {
     trimmed[key] =
       typeof value === 'string' && CONTENT_FIELDS.has(key)
         ? truncateToolResult(value, maxChars)
@@ -107,8 +157,11 @@ function boundObject(obj: Record<string, unknown>, maxChars: number): Record<str
   if (serializedLength(trimmed) <= maxChars + 64) return withCard(trimmed);
 
   const leafChars = Math.min(maxChars, Math.max(200, Math.floor(maxChars / 8)));
-  const shortened = boundLeaves(trimmed, leafChars) as Record<string, unknown>;
-  if (serializedLength(shortened) <= maxChars) return withCard(shortened);
+  for (let items = MAX_ARRAY_ITEMS; ; items = Math.floor(items / 2)) {
+    const shortened = boundLeaves(trimmed, leafChars, items) as Record<string, unknown>;
+    if (serializedLength(shortened) <= maxChars) return withCard(shortened);
+    if (items <= MIN_ARRAY_ITEMS) break;
+  }
 
   log.general.info(
     { original: serializedLength(rest), maxChars },
@@ -116,8 +169,36 @@ function boundObject(obj: Record<string, unknown>, maxChars: number): Record<str
   );
   return withCard({
     truncated: true,
-    preview: truncateToolResult(JSON.stringify(shortened), maxChars),
+    preview: truncateToolResult(
+      JSON.stringify(boundLeaves(trimmed, leafChars, MIN_ARRAY_ITEMS)),
+      maxChars,
+    ),
   });
+}
+
+/**
+ * A tool result bounded to `maxChars` of JSON, whatever it is: the one bound for the model
+ * ({@link wrapToolsWithTruncation}) and for what an autonomous run keeps of an observation.
+ */
+export function boundToolResult(result: unknown, maxChars: number = DEFAULT_MAX_CHARS): unknown {
+  if (typeof result === 'string') return truncateToolResult(result, maxChars);
+  if (Array.isArray(result)) {
+    const bounded = boundObject({ items: result }, maxChars);
+    return 'items' in bounded ? bounded.items : bounded;
+  }
+  if (isPlainObject(result)) return boundObject(result, maxChars);
+  return result;
+}
+
+/**
+ * A stored or streamed tool result as a client receives it: the live `alia.tool_result` frame and
+ * every conversation read (`lib/chat/client-message.ts`) carry exactly this. An image's bytes are
+ * left out (`host-image-result.ts`) and so is every field that says nothing
+ * ({@link compactToolResult}); what the thread draws from a result (a card, its sources, a host
+ * app's own drawing of its tool) is kept.
+ */
+export function clientToolResult(result: unknown): unknown {
+  return compactToolResult(withoutHostImageData(result));
 }
 
 /**
@@ -139,20 +220,11 @@ export function wrapToolsWithTruncation(
     const originalExecute = tool.execute;
     wrapped[name] = {
       ...tool,
-      execute: async (...args: any[]) => {
-        const result = await (originalExecute as (...args: unknown[]) => unknown)(...args);
-        if (typeof result === 'string') {
-          return truncateToolResult(result, maxChars);
-        }
-        if (Array.isArray(result)) {
-          const bounded = boundObject({ items: result }, maxChars);
-          return 'items' in bounded ? bounded.items : bounded;
-        }
-        if (result && typeof result === 'object') {
-          return boundObject(result as Record<string, unknown>, maxChars);
-        }
-        return result;
-      },
+      execute: async (...args: any[]) =>
+        boundToolResult(
+          await (originalExecute as (...args: unknown[]) => unknown)(...args),
+          maxChars,
+        ),
     };
   }
 

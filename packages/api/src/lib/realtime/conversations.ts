@@ -16,7 +16,8 @@
 
 import { getDb } from '../../db/index.js';
 import { findConversation, unreadPerAgent } from '../../db/chat/conversationRepository.js';
-import { listMessagesFromSeq, toStoredMessage } from '../../db/chat/messageRepository.js';
+import { listMessagesFromSeq } from '../../db/chat/messageRepository.js';
+import { toClientMessages } from '../chat/client-message.js';
 import { publicAgentId } from '../../domain/alia-gemie.js';
 import { summarizeConversations } from '../chat/conversation-summary.js';
 import { log } from '../logger.js';
@@ -53,7 +54,7 @@ export async function publishConversation(
         ? Promise.resolve(null)
         : listMessagesFromSeq(db, oxyUserId, conversationId, change.appendedFromSeq),
     ]);
-    let messages = appended?.map(toStoredMessage) ?? null;
+    let messages = appended === null ? null : toClientMessages(appended);
     let reload = change.reload === true;
     if (
       messages !== null &&

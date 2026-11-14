@@ -159,21 +159,14 @@ export async function answerThroughChat(
     messages = messages.slice(0, kept + 1);
   }
 
-  // Platform instructions as first system message —
-  // the API extracts this as clientContext and merges it into the full system prompt
-  const apiMessages = [
-    {
-      role: 'system',
-      content: `The user is chatting via ${platform}. Be concise and friendly.${platformContext ? ` ${platformContext}` : ''}`,
-    },
-    ...messages,
-  ];
-
-  const result = await apiClient.chatCompletion(identity, apiMessages, {
+  const result = await apiClient.chatCompletion(identity, messages, {
     // Unset, or no longer in the catalogue, means the request names no
     // model and the server's default applies. See `./catalogue.ts`.
     model: await apiClient.requestModel(undefined),
     conversationId,
+    // Where the turn happens, as the request's context: the API merges it into the system prompt.
+    // Never a message: a system message in the history was stored as the conversation's first.
+    clientContext: `The user is chatting via ${platform}. Be concise and friendly.${platformContext ? ` ${platformContext}` : ''}`,
   });
 
   if (result.content) {

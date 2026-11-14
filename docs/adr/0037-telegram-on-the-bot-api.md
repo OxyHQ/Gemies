@@ -245,3 +245,28 @@ requester. Oxy does not take that task as a read proof, and a channel turn has n
   - The reply is stored as `reply:<message id>`. A retried delivery of the message is answered
     already when that id is stored, not when the conversation happens to end with a reply.
 - **The gemie shows as typing in the app** while a channel turn runs.
+
+## Amendment (2026-11-14): a channel conversation holds only what was said, once, at its own time
+
+The Telegram conversation of Eusebio's bot, read as the app reads it, served the channel's prompt as
+its first message (`role: "system"`), positional ids (`msg-31`), one instant for thirty-one
+messages, the same Telegram message three times with a different answer after each, two steps of a
+reply glued together ("…de verdad.Tienes…") and every Inbox field of the tool results. The saver's
+full rewrite had stored the history the channel sent, prompt included, stamping every row anew.
+
+- **A channel's context is the request's, never a message.** The integrations send it as
+  `clientContext` on `/alia/chat`; the API still reads the first system message of an
+  OpenAI-shaped request the same way. The saver keeps only `user` and `assistant` messages, and
+  `messages_role_check` admits nothing else (0173).
+- **A message is stored once, under an id that is its own, at the time it was written.** An id is
+  unique per conversation (0171); writers append only the ids a conversation lacks. A message
+  without an id keeps the stored one it is, or gets a UUIDv7. A rewrite keeps `createdAt`.
+- **A client receives one shape** (`lib/chat/client-message.ts`, `docs/chat-runtime.mdx`): the app's
+  chat and a channel's conversation are served alike, tool results in the client's form.
+- **How the bot's person links their Telegram is said in the sender's language.** The model
+  describes the steps (`personalAppsAccess`), never quoting the editor's labels in English, and
+  only in a turn whose bot has no linked person.
+- **What production held was cleaned** (0170, 0172): the copies of a message and their replies, the
+  stored system messages (one Telegram chat and 48 app conversations), and the real time of every
+  flattened message whose time the database still records (a UUIDv7 id, the gemie bot turn, the
+  notification of a gemie's own message).

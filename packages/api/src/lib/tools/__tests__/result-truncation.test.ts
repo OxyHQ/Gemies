@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { tool } from 'ai';
 import { z } from 'zod';
-import { wrapToolsWithTruncation } from '../result-truncation.js';
+import {
+  boundToolResult,
+  clientToolResult,
+  compactToolResult,
+  wrapToolsWithTruncation,
+} from '../result-truncation.js';
 
 /**
  * What survives the truncation wrapper, and what does not.
@@ -12,10 +17,8 @@ import { wrapToolsWithTruncation } from '../result-truncation.js';
  * `[truncated — N chars omitted]` glued into them would render as garbage, and
  * nothing upstream would report a failure.
  *
- * The wrapper only rewrites TOP-LEVEL string fields named content/text/output/
- * result — it does not descend into nested objects. That is why a card can live
- * under `card` untouched, and this file is the thing that keeps that property
- * from being changed by accident.
+ * A top-level `card` is never touched: everything else is compacted, then bounded, and this file
+ * is the thing that keeps the card's property from being changed by accident.
  */
 
 const LIMIT = 40;
@@ -134,5 +137,62 @@ describe('a result too large for the model, whatever its shape', () => {
       {},
     )) as Record<string, unknown>;
     expect(out.card).toEqual(card);
+  });
+});
+
+/**
+ * Twenty unread emails as Inbox returns them (production 2026-11-14): a follow-up run that read
+ * them as `{ truncated, preview }`, one escaped string of ids, could not summarise anything and
+ * listed them again until its token budget ran out.
+ */
+describe('a list of app records too large for the budget', () => {
+  const email = (index: number) => ({
+    _id: `e${index}`,
+    id: `e${index}`,
+    from: { name: `Sender ${index}`, address: `s${index}@example.com` },
+    subject: `Subject ${index}`,
+    cc: [],
+    bcc: [],
+    attachments: [],
+    labels: [],
+    inReplyTo: null,
+    aliasTag: null,
+    snoozedUntil: null,
+    references: [],
+    headers: 'h'.repeat(600),
+    date: '2026-11-14T01:08:57.000Z',
+  });
+
+  it('stays JSON a model reads: compacted, then cut to its head, with a marker', () => {
+    const bounded = boundToolResult({ data: Array.from({ length: 20 }, (_, i) => email(i)) }, 4000);
+    expect(bounded).not.toHaveProperty('preview');
+    const data = (bounded as { data: unknown[] }).data;
+    const records = data.filter((item) => typeof item === 'object') as Record<string, unknown>[];
+    expect(records.length).toBeGreaterThanOrEqual(3);
+    expect(records[0]).toMatchObject({ id: 'e0', subject: 'Subject 0' });
+    expect(records[0]).not.toHaveProperty('_id');
+    expect(records[0]).not.toHaveProperty('cc');
+    expect(records[0]).not.toHaveProperty('inReplyTo');
+    expect(data.at(-1)).toMatch(/more items omitted/);
+    expect(JSON.stringify(bounded).length).toBeLessThanOrEqual(4000);
+  });
+
+  it('keeps what fits whole, with only the empty fields gone', () => {
+    expect(compactToolResult({ data: [email(1)].map(({ headers: _, ...rest }) => rest) })).toEqual({
+      data: [
+        {
+          id: 'e1',
+          from: { name: 'Sender 1', address: 's1@example.com' },
+          subject: 'Subject 1',
+          date: '2026-11-14T01:08:57.000Z',
+        },
+      ],
+    });
+  });
+
+  it('serves a client the same form, without an image’s bytes', () => {
+    expect(
+      clientToolResult({ card: { type: 'x', data: { list: [] } }, note: '', items: [] }),
+    ).toEqual({ card: { type: 'x', data: { list: [] } } });
   });
 });

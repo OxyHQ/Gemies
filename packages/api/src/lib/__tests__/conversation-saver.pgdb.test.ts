@@ -275,9 +275,10 @@ describe('saveConversation (append-only)', () => {
 
   it('re-throws a non-duplicate failure instead of destroying the thread', async () => {
     /**
-     * A CHECK violation, not a fabricated error: `messages_role_check` refuses a
-     * role outside the tuple, and `saveConversation`'s callers are server-side
-     * so the role is not validated on the way in.
+     * A real failure, not a fabricated error: `jsonb` refuses a NUL character
+     * (`unsupported Unicode escape sequence`), and nothing on the way in strips one.
+     * (A role outside the tuple used to be the failure here; the saver now keeps
+     * only the roles a conversation has, so it never reaches the CHECK.)
      *
      * The second assertion is the one that matters. Porting a duplicate-key
      * catch as a general exception handler answers "already done" to an
@@ -301,7 +302,7 @@ describe('saveConversation (append-only)', () => {
         messages: [
           { role: 'user', content: 'U1' },
           { role: 'assistant', content: 'A1' },
-          { role: 'moderator', content: 'not a role this schema has' },
+          { role: 'user', content: 'a NUL \u0000 jsonb refuses' },
         ],
         assistantResponse: 'A2',
       }),
@@ -334,12 +335,13 @@ describe('saveConversation (append-only)', () => {
     ]);
   });
 
-  it('names a message the client did not name by its position', async () => {
+  it('names a message the client did not name with a new id, never its position', async () => {
     /**
      * Not decoration: `packages/app` puts `Message.id` in the vote URL and
      * `routes/conversations.ts` matches on `client_message_id`, so a message
      * stored without one cannot be voted on. A caller that sends no ids — an
-     * OpenAI-shaped `/v1` client — still gets one per message, `msg-<seq>`.
+     * OpenAI-shaped `/v1` client — still gets one per message: a UUIDv7, never
+     * `msg-<seq>`, which a rewrite that moved the message gave to another one.
      */
     await saveConversation({
       agentId: ALIA_GEMIE_ID,
@@ -349,9 +351,111 @@ describe('saveConversation (append-only)', () => {
       assistantResponse: 'A1',
     });
 
-    expect((await stored()).map((row) => row.clientMessageId)).toEqual(['msg-0', 'msg-1']);
+    const ids = (await stored()).map((row) => row.clientMessageId);
+    expect(ids).toHaveLength(2);
+    for (const id of ids) expect(id).toMatch(UUID_V7);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it('never stores a system message, whatever the client sent', async () => {
+    // A channel's context and an embedding app's are the turn's prompt, not the conversation's.
+    await saveConversation({
+      agentId: ALIA_GEMIE_ID,
+      userId: USER,
+      conversationId: CONV,
+      messages: [
+        { role: 'system', content: 'The user is chatting via telegram. Be concise and friendly.' },
+        { role: 'user', content: 'U1', id: 'u-1' },
+      ],
+      assistantResponse: 'A1',
+      assistantMessageId: 'a-1',
+    });
+    // The rewrite path too: a history that diverges from what is stored.
+    await saveConversation({
+      agentId: ALIA_GEMIE_ID,
+      userId: USER,
+      conversationId: CONV,
+      messages: [
+        { role: 'system', content: 'You are in the Inbox app.' },
+        { role: 'user', content: 'U1, reworded', id: 'u-1' },
+      ],
+      assistantResponse: 'A2',
+      assistantMessageId: 'a-2',
+    });
+
+    expect((await stored()).map((row) => [row.role, row.clientMessageId])).toEqual([
+      ['user', 'u-1'],
+      ['assistant', 'a-2'],
+    ]);
+  });
+
+  it('keeps each message’s own time through every rewrite', async () => {
+    await saveConversation({
+      agentId: ALIA_GEMIE_ID,
+      userId: USER,
+      conversationId: CONV,
+      messages: [{ role: 'user', content: 'U1', id: 'u-1' }],
+      assistantResponse: 'A1',
+      assistantMessageId: 'a-1',
+    });
+    const first = await stored();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // A diverging history forces the full rewrite, which used to stamp every row with its own time.
+    await saveConversation({
+      agentId: ALIA_GEMIE_ID,
+      userId: USER,
+      conversationId: CONV,
+      messages: [
+        { role: 'user', content: 'U1', id: 'u-1' },
+        { role: 'assistant', content: 'A1, as the client drew it', id: 'a-1' },
+        { role: 'user', content: 'U2', id: 'u-2' },
+      ],
+      assistantResponse: 'A2',
+      assistantMessageId: 'a-2',
+    });
+
+    const rows = await stored();
+    expect(rows.map((row) => row.clientMessageId)).toEqual(['u-1', 'a-1', 'u-2', 'a-2']);
+    expect(rows[0]?.createdAt).toEqual(first[0]?.createdAt);
+    expect(rows[1]?.createdAt).toEqual(first[1]?.createdAt);
+    expect(rows[2]!.createdAt.getTime()).toBeGreaterThan(first[1]!.createdAt.getTime());
+  });
+
+  it('keeps the id and the time of a message the client sent without its id', async () => {
+    await saveConversation({
+      agentId: ALIA_GEMIE_ID,
+      userId: USER,
+      conversationId: CONV,
+      messages: [{ role: 'user', content: 'U1' }],
+      assistantResponse: 'A1',
+    });
+    const first = await stored();
+
+    // An id-less client edits its last message: the rewrite finds U1 and A1 as stored.
+    await saveConversation({
+      agentId: ALIA_GEMIE_ID,
+      userId: USER,
+      conversationId: CONV,
+      messages: [
+        { role: 'user', content: 'U1' },
+        { role: 'assistant', content: 'A1' },
+        { role: 'user', content: 'U2' },
+        { role: 'assistant', content: 'stale' },
+        { role: 'user', content: 'U3' },
+      ],
+      assistantResponse: 'A3',
+    });
+
+    const rows = await stored();
+    expect(rows.slice(0, 2).map((row) => [row.clientMessageId, row.createdAt])).toEqual(
+      first.map((row) => [row.clientMessageId, row.createdAt]),
+    );
+    expect(new Set(rows.map((row) => row.clientMessageId)).size).toBe(rows.length);
   });
 });
+
+const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 /**
  * One identity per message: the one the client drew it under.
@@ -421,26 +525,22 @@ describe('saveConversation keeps the client’s message ids', () => {
       messages: [{ role: 'user', content: 'U1' }],
       assistantResponse: 'A1',
     });
-    // A reload hands the client `msg-0` / `msg-1`; the next turn echoes them.
+    // A reload hands the client the ids the server drew; the next turn echoes them.
+    const [u1, a1] = (await stored()).map((row) => row.clientMessageId as string);
     await saveConversation({
       agentId: ALIA_GEMIE_ID,
       userId: USER,
       conversationId: CONV,
       messages: [
-        { role: 'user', content: 'U1', id: 'msg-0' },
-        { role: 'assistant', content: 'A1', id: 'msg-1' },
+        { role: 'user', content: 'U1', id: u1 },
+        { role: 'assistant', content: 'A1', id: a1 },
         { role: 'user', content: 'U2', id: 'u-2' },
       ],
       assistantResponse: 'A2',
       assistantMessageId: 'a-2',
     });
 
-    expect((await stored()).map((row) => row.clientMessageId)).toEqual([
-      'msg-0',
-      'msg-1',
-      'u-2',
-      'a-2',
-    ]);
+    expect((await stored()).map((row) => row.clientMessageId)).toEqual([u1, a1, 'u-2', 'a-2']);
   });
 
   it('keeps a vote across the rewrite an edit forces', async () => {
@@ -491,9 +591,8 @@ describe('saveConversation keeps the client’s message ids', () => {
     ]);
   });
 
-  it('does not lend a vote to a different message that inherits a position name', async () => {
-    // No ids from the client, so the rewrite names by position — and position
-    // 1 is now a different answer. Its vote must not follow the name.
+  it('does not lend a vote to a different message the client sent without an id', async () => {
+    // No ids from the client, and the answer is a different one: a new message, with no vote.
     await saveConversation({
       agentId: ALIA_GEMIE_ID,
       userId: USER,
@@ -501,7 +600,8 @@ describe('saveConversation keeps the client’s message ids', () => {
       messages: [{ role: 'user', content: 'U1' }],
       assistantResponse: 'A1',
     });
-    await voteMessage(db, USER, CONV, 'msg-1', 'up');
+    const [, a1] = (await stored()).map((row) => row.clientMessageId as string);
+    await voteMessage(db, USER, CONV, a1!, 'up');
 
     await saveConversation({
       agentId: ALIA_GEMIE_ID,
@@ -511,10 +611,9 @@ describe('saveConversation keeps the client’s message ids', () => {
       assistantResponse: 'another answer',
     });
 
-    expect((await stored()).map((row) => [row.clientMessageId, row.vote])).toEqual([
-      ['msg-0', null],
-      ['msg-1', null],
-    ]);
+    const rows = await stored();
+    expect(rows.map((row) => row.vote)).toEqual([null, null]);
+    expect(rows.map((row) => row.clientMessageId)).not.toContain(a1);
   });
 
   it('ignores an id that is not a usable name', async () => {
@@ -526,7 +625,28 @@ describe('saveConversation keeps the client’s message ids', () => {
       assistantResponse: 'A1',
     });
 
-    expect((await stored()).map((row) => row.clientMessageId)).toEqual(['msg-0', 'msg-1']);
+    for (const row of await stored()) expect(row.clientMessageId).toMatch(UUID_V7);
+  });
+
+  it('stores a message once when a history repeats it', async () => {
+    await saveConversation({
+      agentId: ALIA_GEMIE_ID,
+      userId: USER,
+      conversationId: CONV,
+      messages: [
+        { role: 'user', content: 'y ahora?', id: 'telegram:1:22' },
+        { role: 'assistant', content: 'A', id: 'a-22' },
+        { role: 'user', content: 'y ahora?', id: 'telegram:1:22' },
+      ],
+      assistantResponse: 'B',
+      assistantMessageId: 'a-23',
+    });
+
+    expect((await stored()).map((row) => row.clientMessageId)).toEqual([
+      'telegram:1:22',
+      'a-22',
+      'a-23',
+    ]);
   });
 });
 
@@ -737,6 +857,19 @@ describe('saveConversation (a channel turn)', () => {
     await reply([{ id: 'telegram:1:2', role: 'user', content: 'U2' }], 'A2');
 
     expect((await stored()).map((row) => row.content)).toEqual(['U1', 'A1', 'U2', 'A2']);
+  });
+
+  it('keeps a retried delivery of a message once, and answers it once', async () => {
+    await keep('telegram:1:22', 'y ahora?');
+    await keep('telegram:1:22', 'y ahora?');
+    await reply([{ id: 'telegram:1:22', role: 'user', content: 'y ahora?' }], 'A');
+    // The retry of a turn whose reply is stored adds nothing.
+    await reply([{ id: 'telegram:1:22', role: 'user', content: 'y ahora?' }], 'A, again');
+
+    expect((await stored()).map((row) => [row.seq, row.clientMessageId, row.content])).toEqual([
+      [0, 'telegram:1:22', 'y ahora?'],
+      [1, 'reply:telegram:1:22', 'A'],
+    ]);
   });
 
   it('appends its person’s message too when the channel did not keep it', async () => {
