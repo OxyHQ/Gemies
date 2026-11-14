@@ -1,5 +1,15 @@
 /**
- * Production canary of streaming dictation (Alia ADR 0024, Kaana ADR 0006 §6):
+ * Production canary of dictation, in two modes.
+ *
+ * `--mode upload` (the default) is what the Alia and Gemies apps do: the
+ * composer records a clip and uploads it to `POST /v1/audio/transcriptions`,
+ * whose handler is `transcribeDictation` (lib/voice/transcribe.ts). The canary
+ * calls that same function with the same Kaana transport, so it picks the
+ * model the apps get from the catalogue and is admitted by the same terms. It
+ * uploads the recording's first seconds as a WAV clip and judges the text
+ * (word recall >= 0.8) and the model that served it.
+ *
+ * `--mode stream` is streaming dictation (Alia ADR 0024, Kaana ADR 0006 §6):
  * one signed Kaana `transcription` session opened exactly as `DictationStream`
  * opens it, through Alia's own Kaana transport (Oxy workload identity, the
  * `alia-kaana` terms), attributed to the QA account. It streams 60 s of a
@@ -55,7 +65,10 @@ const FINAL_WAIT_MS = 10_000;
 const BILLED_SLACK_MS = 2_000;
 const MAX_AUDIO_SECONDS = 120;
 
+export type CanaryMode = 'upload' | 'stream';
+
 export interface CanaryOptions {
+  readonly mode: CanaryMode;
   readonly dryRun: boolean;
   readonly seconds: number;
   readonly model: string;
@@ -66,6 +79,7 @@ export interface CanaryOptions {
 
 export function parseArgs(argv: readonly string[]): CanaryOptions {
   const options = {
+    mode: 'upload' as CanaryMode,
     dryRun: false,
     seconds: 60,
     model: CANARY_MODEL,
@@ -82,7 +96,12 @@ export function parseArgs(argv: readonly string[]): CanaryOptions {
       return next;
     };
     if (flag === '--dry-run') options.dryRun = true;
-    else if (flag === '--seconds') options.seconds = Number(value());
+    else if (flag === '--mode') {
+      const mode = value();
+      if (mode !== 'upload' && mode !== 'stream')
+        throw new Error('--mode must be upload or stream');
+      options.mode = mode;
+    } else if (flag === '--seconds') options.seconds = Number(value());
     else if (flag === '--model') options.model = value();
     else if (flag === '--language') options.language = value() || undefined;
     else if (flag === '--audio-file') options.audioFile = value();
@@ -147,6 +166,7 @@ export function recall(reference: string, transcript: string): number {
 }
 
 export interface CanaryReport {
+  mode: 'stream';
   model: string;
   sessionId: string | null;
   audioMs: number;
@@ -179,10 +199,12 @@ export function judge(report: CanaryReport): string[] {
   return failures;
 }
 
+/** The recording's first `seconds` as mono 24 kHz: raw PCM16 to stream, a WAV clip to upload. */
 function ffmpegDecode(
   ffmpeg: string,
   input: string | Uint8Array,
   seconds: number,
+  container: 's16le' | 'wav' = 's16le',
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -199,8 +221,9 @@ function ffmpegDecode(
         '1',
         '-ar',
         String(SAMPLE_RATE),
+        ...(container === 'wav' ? ['-c:a', 'pcm_s16le'] : []),
         '-f',
-        's16le',
+        container,
         'pipe:1',
       ],
       { stdio: ['pipe', 'pipe', 'pipe'] },
@@ -240,15 +263,73 @@ async function fetchRecording(): Promise<Uint8Array> {
   throw new Error(`fetching the recording answered ${status} three times`);
 }
 
-/** 24 kHz PCM16 mono of the recording's first `seconds`. */
+/** 24 kHz mono of the recording's first `seconds`: PCM16 to stream, a WAV clip to upload. */
 async function loadAudio(options: CanaryOptions): Promise<Buffer> {
   const ffmpeg = await ffmpegPath();
+  const container = options.mode === 'upload' ? 'wav' : 's16le';
   if (options.audioFile !== undefined)
-    return ffmpegDecode(ffmpeg, options.audioFile, options.seconds);
+    return ffmpegDecode(ffmpeg, options.audioFile, options.seconds, container);
   const bytes = await fetchRecording();
   const digest = createHash('sha256').update(bytes).digest('hex');
   if (digest !== CANARY_AUDIO.sha256) throw new Error(`the recording's SHA-256 is ${digest}`);
-  return ffmpegDecode(ffmpeg, bytes, options.seconds);
+  return ffmpegDecode(ffmpeg, bytes, options.seconds, container);
+}
+
+export interface UploadReport {
+  mode: 'upload';
+  /** The model that served the clip, as Kaana answered; empty when none did. */
+  model: string;
+  audioMs: number;
+  wallMs: number;
+  finalText: string;
+  recall: number;
+  /** The dictation failure code, as the upload route would answer it. */
+  fatal: string | null;
+}
+
+/** Every reason an upload report fails; empty means the canary passed. */
+export function judgeUpload(report: UploadReport): string[] {
+  const failures: string[] = [];
+  if (report.fatal !== null) failures.push(`fatal: ${report.fatal}`);
+  else if (report.model === '') failures.push('no model served the clip');
+  if (report.recall < MIN_RECALL)
+    failures.push(`final text recall ${report.recall.toFixed(2)} < ${MIN_RECALL}`);
+  return failures;
+}
+
+/** One clip through the upload route's own transcription, as the apps dictate. */
+export async function runUploadCanary(
+  options: CanaryOptions,
+  wav: Uint8Array,
+  deps: { readonly kaana: KaanaClient; readonly account: string; readonly now?: () => number },
+): Promise<UploadReport> {
+  const now = deps.now ?? Date.now;
+  const { transcribeDictation, TranscriptionError } = await import('../lib/voice/transcribe.js');
+  const report: UploadReport = {
+    mode: 'upload',
+    model: '',
+    audioMs: options.seconds * 1000,
+    wallMs: 0,
+    finalText: '',
+    recall: 0,
+    fatal: null,
+  };
+  const startedAt = now();
+  try {
+    const result = await transcribeDictation(deps.kaana, deps.account, {
+      audio: wav,
+      mediaType: 'audio/wav',
+      durationMs: report.audioMs,
+      ...(options.language === undefined ? {} : { language: options.language }),
+    });
+    report.model = result.model;
+    report.finalText = result.text;
+  } catch (error) {
+    report.fatal = error instanceof TranscriptionError ? error.code : 'TRANSCRIPTION_FAILED';
+  }
+  report.wallMs = now() - startedAt;
+  report.recall = recall(options.reference, report.finalText);
+  return report;
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -272,6 +353,7 @@ export async function runCanary(
   const frameDelayMs = deps.frameDelayMs ?? FRAME_MS;
   const audioMs = Math.floor(pcm.byteLength / BYTES_PER_MS);
   const report: CanaryReport = {
+    mode: 'stream',
     model: options.model,
     sessionId: null,
     audioMs,
@@ -382,7 +464,16 @@ export async function runCanary(
 }
 
 export function plan(options: CanaryOptions): string {
+  if (options.mode === 'upload')
+    return [
+      `mode             upload: POST /v1/audio/transcriptions's own transcribeDictation, as the apps dictate`,
+      `model            the catalogue's transcription line the apps get (cheapest that takes audio/wav)`,
+      `audio            ${options.audioFile ?? CANARY_AUDIO.url} (first ${options.seconds} s, WAV PCM16 24 kHz mono)`,
+      `identity         Alia's Oxy workload transport, attributed to ALIA_CANARY_OXY_USER_ID`,
+      `asserts          a model served it, no failure, recall >= ${MIN_RECALL} of: "${options.reference}"`,
+    ].join('\n');
   return [
+    `mode             stream: a Kaana transcription session, as streaming dictation opens it`,
     `model            ${options.model} (kind transcription, pcm16_24khz, server_vad, interimResults)`,
     `audio            ${options.audioFile ?? CANARY_AUDIO.url} (first ${options.seconds} s, PCM16 24 kHz mono, streamed in ${FRAME_MS} ms frames in real time)`,
     `identity         Alia's Oxy workload transport (alia-kaana terms), attributed to ALIA_CANARY_OXY_USER_ID`,
@@ -404,9 +495,12 @@ async function main(): Promise<void> {
   if (!kaana)
     throw new Error('Alia has no Kaana transport (Oxy service identity is not configured)');
   try {
-    const pcm = await loadAudio(options);
-    const report = await runCanary(options, pcm, { kaana, account });
-    const failures = judge(report);
+    const audio = await loadAudio(options);
+    const report =
+      options.mode === 'upload'
+        ? await runUploadCanary(options, audio, { kaana, account })
+        : await runCanary(options, audio, { kaana, account });
+    const failures = report.mode === 'upload' ? judgeUpload(report) : judge(report);
     process.stdout.write(
       `${RESULT_MARKER} ${JSON.stringify({ schemaVersion: 1, passed: failures.length === 0, failures, ...report })}\n`,
     );
