@@ -265,7 +265,11 @@ export async function prepareChannelTurn(input: {
   const { message } = input;
   const keep = input.keep !== false;
   const { before, after } = describe(message);
+  // What the model reads: every line. What the conversation shows as words: the lines of what was
+  // not kept as a file; a kept file carries its own line (`description`), so the app draws the
+  // media itself, as an attachment, and not a line about it.
   const lines = [...before];
+  const words = [...before];
   const files: GemieTurnContentPart[] = [];
   const shown: ChannelModelPart[] = [];
 
@@ -274,6 +278,8 @@ export async function prepareChannelTurn(input: {
     const bytes = keep ? shownBytes(media) : null;
     if (!bytes) {
       lines.push(line);
+      // An edit reads no media: its line stays with the file the message already keeps.
+      if (keep) words.push(line);
       continue;
     }
     const audio = media.kind === 'voice' || media.kind === 'audio';
@@ -311,9 +317,16 @@ export async function prepareChannelTurn(input: {
           file_id: fileId,
           filename: bytes.name,
           mime: bytes.mime,
+          description: line.slice(1, -1),
+          kind: media.kind,
+          ...(media.durationSeconds !== undefined
+            ? { durationSeconds: media.durationSeconds }
+            : {}),
           ...(transcript ? { transcript } : {}),
         },
       });
+    } else {
+      words.push(line);
     }
 
     if (audio) {
@@ -337,11 +350,15 @@ export async function prepareChannelTurn(input: {
     }
   }
   lines.push(...after);
+  words.push(...after);
 
-  const words = lines.join('\n');
-  const text = input.speaker ? `${input.speaker}: ${words}` : words;
+  const said = (all: string[]) => {
+    const joined = all.join('\n');
+    return input.speaker ? `${input.speaker}: ${joined}`.trimEnd() : joined;
+  };
+  const shownWords = said(words);
   return {
-    content: [{ type: 'text', text }, ...files],
-    modelParts: [{ type: 'text', text }, ...shown],
+    content: [...(shownWords ? [{ type: 'text' as const, text: shownWords }] : []), ...files],
+    modelParts: [{ type: 'text', text: said(lines) }, ...shown],
   };
 }

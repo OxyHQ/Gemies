@@ -22,7 +22,8 @@ import type { ReadAloudState } from '../../hooks/useReadAloud';
 import type { Vote } from '../../hooks/useMessageVote';
 import { readAgentCharacter } from '../../lib/agent-character';
 import { useBubbles } from '../../lib/bubbles';
-import { getImagesFromContent, messageText } from '../../lib/content-utils';
+import { messageText } from '../../lib/content-utils';
+import { hasAttachments, TurnAttachments } from './TurnAttachments';
 import { ANCHORS, useGemieFlights } from '../../lib/flights';
 import { useLabels } from '../../lib/labels';
 import { canvasResultOf } from '../../lib/canvas-result';
@@ -32,7 +33,6 @@ import { isWebInvocation, taskListLog, webSearchLog } from '../../lib/work-log';
 import { useGemieRuntime } from '../../runtime/config';
 import { type Message, cardOf, formatElapsed, getToolPillLabel } from '../../runtime/model';
 import type { OpenThought } from '../../hooks/useOpenThought';
-import { Image } from '../Image';
 import { PlanPreviewCard } from '../PlanPreviewCard';
 import { AskedQuestions } from '../QuestionCard';
 import { CanvasComponent } from '../canvas/CanvasComponent';
@@ -127,8 +127,8 @@ export const ThreadRow = memo(function ThreadRow({
 }: ThreadRowProps) {
   const { t } = useLabels();
   const text = messageText(message);
-  const images = message.content ? getImagesFromContent(message.content) : [];
   const isReply = message.role === 'assistant';
+  const attached = !isReply && hasAttachments(message.content);
   const storedIn = message.unsaved === true ? undefined : conversationId;
   const hasText = text.length > 0;
 
@@ -161,7 +161,7 @@ export const ThreadRow = memo(function ThreadRow({
     const questionActions = [copyAction, editAction].filter(isPresent);
     return (
       <Animated.View onLayout={onLayout}>
-        {text.length === 0 && images.length === 0 ? null : (
+        {text.length === 0 && !attached ? null : (
           // Bloom's user turn, with the breathing room above it the thread has always had.
           <View className="mt-2 w-full flex-col items-end">
             <TurnMenu actions={questionActions} label={t('chat.turnActions')}>
@@ -171,40 +171,23 @@ export const ThreadRow = memo(function ThreadRow({
                 <ChatBubble side="user" menu={questionActions} onReply={onQuestionReply}>
                   {(foreground) => (
                     <>
-                      {images.length > 0 && (
-                        <View className="flex-row flex-wrap gap-2">
-                          {images.map((url) => (
-                            <View key={url} className="size-[120px] overflow-hidden rounded-xl">
-                              <Image
-                                source={{ uri: url }}
-                                className="h-full w-full"
-                                contentFit="cover"
-                              />
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                      <Text variant="body-regular" selectable style={{ color: foreground }}>
-                        {text}
-                      </Text>
+                      <TurnAttachments
+                        content={message.content}
+                        tone="outgoing"
+                        onColor={foreground}
+                      />
+                      {text.length > 0 ? (
+                        <Text variant="body-regular" selectable style={{ color: foreground }}>
+                          {text}
+                        </Text>
+                      ) : null}
                     </>
                   )}
                 </ChatBubble>
               ) : (
                 <AiChatUserMessage animate={isNew} actions={questionActions}>
-                  {images.length > 0 && (
-                    <View className="flex-row flex-wrap gap-2">
-                      {images.map((url) => (
-                        <View key={url} className="size-[120px] overflow-hidden rounded-xl">
-                          <Image
-                            source={{ uri: url }}
-                            className="h-full w-full"
-                            contentFit="cover"
-                          />
-                        </View>
-                      ))}
-                    </View>
-                  )}
+                  {/* Bloom's user turn sits on a neutral surface, not the accent. */}
+                  <TurnAttachments content={message.content} tone="incoming" />
                   {text}
                 </AiChatUserMessage>
               )}

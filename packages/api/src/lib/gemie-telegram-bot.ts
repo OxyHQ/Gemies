@@ -116,8 +116,8 @@ async function onEdited(bot: GemieBotRow, message: GemieTelegramBotMessage): Pro
     speaker: message.chatKind === 'group' ? speakerOf(message) : undefined,
     keep: false,
   });
-  const words = turn.content[0];
-  if (words?.type !== 'text') return;
+  const besideFiles = turn.content[0]?.type === 'text' ? turn.content[0].text : '';
+  const alone = turn.modelParts[0]?.type === 'text' ? turn.modelParts[0].text : besideFiles;
   const conversationId = botConversationId(bot, message.chatId);
   const changed = await replaceChannelMessageWords(
     getDb(),
@@ -126,7 +126,7 @@ async function onEdited(bot: GemieBotRow, message: GemieTelegramBotMessage): Pro
       conversationId,
       clientMessageId: botMessageClientId(message.chatId, message.messageId),
     },
-    words.text,
+    { alone, besideFiles },
   );
   if (changed) void publishConversation(bot.userId, conversationId, { reload: true });
 }

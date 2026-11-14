@@ -22,6 +22,11 @@ export interface FilePartRef {
   mime?: string;
   /** What an audio file says, read instead of the audio by a model that does not hear. */
   transcript?: string;
+  /** What a channel's media is, in words: said to the model beside the file itself. */
+  description?: string;
+  /** What it was on its channel (`GemieChannelMediaKind`), for the app to draw it. */
+  kind?: string;
+  durationSeconds?: number;
 }
 
 /**

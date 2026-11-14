@@ -262,13 +262,15 @@ export async function listRecentTurns(
 }
 
 /**
- * A person edited a message they sent on a channel: its words become `text`, and whatever media
- * it carries (its `file` parts) stays. False when the message is not stored.
+ * A person edited a message they sent on a channel: its words become the new ones, and whatever
+ * media it carries (its `file` parts) stays. A message whose media was kept says it in its files,
+ * so it takes `words.besideFiles`; one whose media was not kept says it in its words
+ * (`words.alone`). False when the message is not stored.
  */
 export async function replaceChannelMessageWords(
   db: ApiDatabase,
   key: { oxyUserId: string; conversationId: string; clientMessageId: string },
-  text: string,
+  words: { readonly alone: string; readonly besideFiles: string },
 ): Promise<boolean> {
   const [row] = await db
     .select({ id: messages.id, content: messages.content })
@@ -283,8 +285,12 @@ export async function replaceChannelMessageWords(
     )
     .limit(1);
   if (!row) return false;
+  const files = Array.isArray(row.content)
+    ? row.content.filter((part) => part.type !== 'text')
+    : [];
+  const text = files.length > 0 ? words.besideFiles : words.alone;
   const content: MessageContent = Array.isArray(row.content)
-    ? [{ type: 'text', text }, ...row.content.filter((part) => part.type !== 'text')]
+    ? [...(text ? [{ type: 'text', text }] : []), ...files]
     : text;
   await db.update(messages).set({ content }).where(eq(messages.id, row.id));
   return true;
