@@ -112,6 +112,22 @@ describe('a turn’s attachments', () => {
     });
   });
 
+  it('keeps the order they were sent in: a document between two photos stays between them', () => {
+    const tree = render([
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,A' } },
+      document,
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,B' } },
+    ]);
+    const drawn = tree.root.findAll(
+      (node) => (node.type as unknown) === 'Image' || (node.type as unknown) === 'FileMessage',
+    );
+    expect(drawn.map((node) => node.props.source?.uri ?? node.props.name)).toEqual([
+      'data:image/png;base64,A',
+      'plan.pdf',
+      'data:image/png;base64,B',
+    ]);
+  });
+
   it('draws nothing for a turn of words', () => {
     expect(render('hola').toJSON()).toBeNull();
     expect(render([{ type: 'text', text: 'hola' }]).toJSON()).toBeNull();

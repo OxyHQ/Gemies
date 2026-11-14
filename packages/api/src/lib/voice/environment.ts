@@ -5,6 +5,7 @@
  */
 
 import { getDb } from '../../db/index.js';
+import { listGroupMembers } from '../../db/chat/conversationMemberRepository.js';
 import { insertChatAnalytics } from '../../db/usage/chatAnalyticsRepository.js';
 import { prefetchTurnInputs } from '../chat/turn-inputs.js';
 import { appendConversationMessages, generateConversationTitle } from '../conversation-saver.js';
@@ -20,6 +21,8 @@ export function createVoiceEnvironment(accountId: string): VoiceCallEnvironment 
     startCall,
     finishCall,
     loadHistory: loadConversationHistory,
+    groupMembers: (oxyUserId, conversationId) =>
+      listGroupMembers(getDb(), oxyUserId, conversationId),
     buildTurn: buildVoiceTurn,
     persist: appendConversationMessages,
     titleConversation: (oxyUserId, conversationId, firstUserText) => {

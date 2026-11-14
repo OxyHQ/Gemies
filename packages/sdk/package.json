@@ -1,6 +1,6 @@
 {
   "name": "@gemies/sdk",
-  "version": "6.3.0",
+  "version": "6.3.1",
   "description": "The Gemies SDK: the conversation runtime, chat UI, voice calls and dictation for Oxy apps that talk to a gemie",
   "main": "src/index.ts",
   "react-native": "src/index.ts",

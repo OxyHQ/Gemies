@@ -1,4 +1,4 @@
-import { parseReaction } from '../domain/message-reactions.js';
+import { parseHeldReaction, parseReaction } from '../domain/message-reactions.js';
 import { ReactionMutationConflict } from '../db/chat/reactionRepository.js';
 import { applyConversationReaction } from '../lib/chat/reactions/mutation.js';
 import { publishConversationReaction } from '../lib/chat/reactions/bus.js';
@@ -582,17 +582,21 @@ router.post(
       if (!req.user?.id) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
-      const emoji = parseReaction(req.body?.emoji);
       if (req.serviceApp || req.machineCredential) {
         return res.status(403).json({ error: 'A person session is required to react' });
-      }
-      if (emoji === null) {
-        return res.status(400).json({ error: 'emoji must be a single emoji' });
       }
       const mutation = z
         .object({ active: z.boolean().optional(), mutationId: z.string().uuid().optional() })
         .safeParse(req.body);
       if (!mutation.success) return res.status(400).json({ error: 'Invalid reaction mutation' });
+      // Adding is one emoji; taking one back also takes what was stored before that rule.
+      const emoji =
+        mutation.data.active === false
+          ? parseHeldReaction(req.body?.emoji)
+          : parseReaction(req.body?.emoji);
+      if (emoji === null) {
+        return res.status(400).json({ error: 'emoji must be a single emoji' });
+      }
       const limit = await checkWindowLimit(`rl:reactions:${req.user.id}`, 60, {
         onUnavailable: 'local',
       });

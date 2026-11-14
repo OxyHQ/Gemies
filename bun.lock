@@ -38,7 +38,7 @@
         "@oxy.so/contracts": "7.1.0",
         "@oxy.so/core": "7.50.0",
         "@oxy.so/db": "^1.5.0",
-        "@oxy.so/mcp": "1.4.2",
+        "@oxy.so/mcp": "1.4.3",
         "@oxy.so/telemetry": "^2.2.0",
         "@oxy.so/utils": "^1.5.2",
         "@socket.io/redis-adapter": "^8.3.0",
@@ -238,7 +238,7 @@
     },
     "packages/sdk": {
       "name": "@gemies/sdk",
-      "version": "6.3.0",
+      "version": "6.3.1",
       "dependencies": {
         "clsx": "^2.1.1",
         "socket.io-client": "^4.8.3",
@@ -304,7 +304,7 @@
   "overrides": {
     "@oxy.so/contracts": "7.1.0",
     "@oxy.so/core": "7.50.0",
-    "@oxy.so/mcp": "1.4.2",
+    "@oxy.so/mcp": "1.4.3",
     "@oxy.so/protocol": "1.11.1",
     "@oxy.so/services": "14.21.0",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -881,7 +881,7 @@
 
     "@oxy.so/expo-splash": ["@oxy.so/expo-splash@1.1.0", "", { "dependencies": { "@expo/image-utils": ">=0.7.0", "xml2js": "^0.6.2" }, "peerDependencies": { "expo": ">=51.0.0", "expo-splash-screen": ">=0.27.0", "react": ">=18.0.0", "react-native": ">=0.74.0" } }, "sha512-oLlRHLc0pzEIsujaPiOOAJqrAXo41pNxT4zN3WxkvwU0VNWj8AQ+h+KxPPvSmWqnck1F/pCUfFYAfftHtp4ATw=="],
 
-    "@oxy.so/mcp": ["@oxy.so/mcp@1.4.2", "", { "dependencies": { "@modelcontextprotocol/sdk": "^1.32.2", "@oxy.so/contracts": "^6.14.0", "zod": "^4.6.7" } }, "sha512-msmeHTLvfys25fnVizcAxEzD6lcZwbi7E3t2m2dDRSWq1BYzkHTNVy2KrJ0CVlJ+I94bdvKCVOT8XaOA3pQmhQ=="],
+    "@oxy.so/mcp": ["@oxy.so/mcp@1.4.3", "", { "dependencies": { "@modelcontextprotocol/sdk": "^1.32.2", "@oxy.so/contracts": "^7.0.0", "zod": "^4.6.7" } }, "sha512-/ArztBwr2vfdZ18uYZZTnBZnWLnESY0dPe/QrShZClPM/MzZjPD5onCmt1I6DSJ52oLWtZPN43yBHbMDl9vEoQ=="],
 
     "@oxy.so/protocol": ["@oxy.so/protocol@1.11.1", "", { "dependencies": { "@noble/curves": "^2.4.0", "@oxy.so/contracts": "^7.0.0" }, "peerDependencies": { "@react-native-async-storage/async-storage": "<4.0.0", "expo-crypto": "<59.0.0", "expo-modules-core": "<59.0.0", "expo-secure-store": "<59.0.0", "express": "^4.18.0 || ^5.0.0" }, "optionalPeers": ["@react-native-async-storage/async-storage", "expo-crypto", "expo-secure-store", "express"] }, "sha512-x1rVo+EJjQnnvQ5bRlPAovIqP2YkPGEeNQRWfHIxvu9RViBSSRW3C+03W4Yhcm3S9XsJvunvzm5yO5LmqRE91w=="],
 

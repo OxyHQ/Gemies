@@ -507,10 +507,11 @@ function GemieConversationView({
     },
     [composer],
   );
-  // Without a call handed down (a text-only entry), the chat is text-only whatever `voice` says.
+  // Without a call handed down (a text-only entry), the chat is text-only whatever `voice` says. A
+  // group is too: a call has one gemie, and a group's turns are its members' (the server refuses it).
   const VoiceCall = useContext(VoiceCallContext);
   const voice = useChatVoice({
-    options: VoiceCall === null ? false : voiceOptions,
+    options: VoiceCall === null || group !== undefined ? false : voiceOptions,
     conversationId,
     agentId,
     isFocused,

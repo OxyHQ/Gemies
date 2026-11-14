@@ -1,5 +1,12 @@
 # @gemies/sdk
 
+## 6.3.1
+
+- **A turn's attachments keep the order they were sent in** (`TurnAttachments`): a document sent
+  between two photos is drawn between them. Pictures next to each other still share a row.
+- **No voice call in a group**: `GemieChatContent` offers none when `group` is set. A call has one
+  gemie and a group's turns are its members'; the API refuses one there too.
+
 ## 6.3.0
 
 - **A turn's attachments are drawn as media** (`TurnAttachments`, used by every user turn in the

@@ -68,6 +68,7 @@ import { closePostgres, connectPostgres, type ApiDatabase } from '../../db/index
 import { conversations, messages } from '../../db/schema/chat.js';
 import { speechClips } from '../../db/schema/speech.js';
 import conversationsRouter from '../conversations.js';
+import { mutateMessageReaction } from '../../db/chat/reactionRepository.js';
 
 let db: ApiDatabase;
 
@@ -658,6 +659,26 @@ describe('every stage of the lifecycle is scoped to the owner (#139 ws6)', () =>
     });
     expect(removed.body).toMatchObject({ messageId: 'msg-1', reactions: [], revision: 2 });
     expect(reactionNotifications()).toHaveLength(3);
+  });
+
+  it('adds one emoji at a time, and still takes back one stored before that rule', async () => {
+    const conversationId = await seed();
+    const react = (body: Record<string, unknown>) =>
+      call('post', '/:id/messages/:messageId/reactions', {
+        user: ALICE,
+        params: { id: conversationId, messageId: 'msg-1' },
+        body,
+      });
+    expect((await react({ emoji: '👍🎉', active: true })).status).toBe(400);
+
+    // Stored when two emoji passed as one: it is still hers to remove.
+    await mutateMessageReaction(db, ALICE.id, conversationId, 'msg-1', {
+      emoji: '👍🎉',
+      active: true,
+    });
+    const removed = await react({ emoji: '👍🎉', active: false });
+    expect(removed.status).toBe(200);
+    expect(removed.body).toMatchObject({ reactions: [] });
   });
 
   it('does not let a second user write into it', async () => {

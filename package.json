@@ -88,6 +88,6 @@
     "@oxy.so/contracts": "7.1.0",
     "@oxy.so/protocol": "1.11.1",
     "@oxy.so/services": "14.21.0",
-    "@oxy.so/mcp": "1.4.2"
+    "@oxy.so/mcp": "1.4.3"
   }
 }
