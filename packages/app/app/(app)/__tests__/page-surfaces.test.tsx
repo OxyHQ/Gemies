@@ -34,7 +34,7 @@ describe('the same opener on every top-level page', () => {
     expect(source).not.toContain('<DrawerToggle');
   });
 
-  for (const name of ['shows']) {
+  for (const name of ['connectors']) {
     it(`${name}.tsx leaves the opener, the title and the surface to the layout`, () => {
       const source = page(name);
       expect(source).not.toMatch(/drawer-toggle/);
@@ -58,7 +58,7 @@ describe('the same opener on every top-level page', () => {
     const layout = page('_layout');
     expect(layout).toContain('screenLayout={screenLayout}');
     expect(layout).toMatch(/<AiChatContainer[\s\S]*header=\{\s*<ShellPageHeader/);
-    expect(layout).toMatch(/shows: 'sidebar\.shows'/);
+    expect(layout).toMatch(/agents: 'sidebar\.agents'/);
   });
 
   it('notifications.tsx already has its own way out (a back control)', () => {

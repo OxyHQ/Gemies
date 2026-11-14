@@ -3,16 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * The copy into Oxy Files (`lib/files/migrate-to-oxy.ts`): a preview writes
- * nothing, an apply copies the EXACT bytes and records the file only once
- * Oxy's hash matches, a row that changed meanwhile is skipped, and the private
- * kinds — library uploads as the person's private files, spoken clips as
- * Alia's, skill files by their owner — move with no switch, paced to Oxy's
+ * nothing, an apply records the file only once Oxy's hash matches, a row that
+ * changed meanwhile is skipped, and the private kinds — library uploads as the
+ * person's private files, spoken clips as Alia's, skill files by their owner —
+ * move with no switch, paced to Oxy's
  * upload budget and resumed after a 429. The repository writes are
  * `db/__tests__/oxyFiles.pgdb.test.ts`.
  */
 
 const H = vi.hoisted(() => ({
-  series: [] as { id: string; syraPodcastId: string; coverImageAssetId: string | null }[],
   skills: [] as {
     id: string;
     path: string;
@@ -29,19 +28,12 @@ const H = vi.hoisted(() => ({
     name: string;
   }[],
   speech: [] as { cacheKey: string; objectKey: string | null }[],
-  stored: vi.fn(),
-  adopted: vi.fn(),
   adoptedLibrary: vi.fn(),
   adoptedSpeech: vi.fn(),
   copied: vi.fn(),
   adoptedSkill: vi.fn(),
 }));
 
-vi.mock('../../../db/shows/showRepository.js', () => ({
-  listSeriesOnLegacyCover: async (_db: unknown, after: string) =>
-    H.series.filter((row) => row.id > after),
-  adoptSeriesCoverFile: async (...args: unknown[]) => H.adopted(...args),
-}));
 vi.mock('../../../db/library/libraryFileRepository.js', () => ({
   listLibraryFilesOnLegacyStorage: async (_db: unknown, after: string) =>
     H.library.filter((row) => row.id > after),
@@ -59,27 +51,17 @@ vi.mock('../../../db/agents/skillRepository.js', () => ({
 }));
 vi.mock('../oxy-files.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../oxy-files.js')>();
-  return {
-    ...actual,
-    storeShowCover: async (bytes: Uint8Array, mime: string) => {
-      H.stored(bytes, mime);
-      return { fileId: 'oxy-cover', sha256: actual.sha256Hex(bytes) };
-    },
-    copyIntoOxy: async (input: unknown) => H.copied(input),
-  };
+  return { ...actual, copyIntoOxy: async (input: unknown) => H.copied(input) };
 });
 vi.mock('../../s3.js', () => ({ readS3Object: vi.fn() }));
 
 const { migrateKind, MIGRATION_UPLOADS_PER_MINUTE, RATE_LIMITED_MAX_WAITS, RATE_LIMITED_WAIT_MS } =
   await import('../migrate-to-oxy.js');
 
-const COVER = Buffer.from('the exact png bytes Syra serves');
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 const deps = {
   db: {} as never,
-  fetchSyraImage: vi.fn(async () => ({ bytes: COVER, mime: 'image/png' })),
-  oxySha256: vi.fn(async () => new Map<string, string>()),
   readLegacy: vi.fn(async () => Buffer.from('#!/bin/sh')),
   sleep: vi.fn(async (_ms: number) => {}),
   now: () => 0,
@@ -93,60 +75,10 @@ async function collect(kind: Parameters<typeof migrateKind>[0], apply: boolean) 
 
 beforeEach(() => {
   vi.clearAllMocks();
-  H.series = [
-    { id: 's1', syraPodcastId: 'p1', coverImageAssetId: 'img-1' },
-    { id: 's2', syraPodcastId: 'p2', coverImageAssetId: 'img-2' },
-  ];
   H.skills = [];
   H.library = [];
   H.speech = [];
-  H.adopted.mockResolvedValue(true);
   H.copied.mockResolvedValue('oxy-file');
-});
-
-describe('show covers', () => {
-  it('preview: reads and hashes every legacy cover, writes nothing', async () => {
-    const lines = await collect('show-covers', false);
-    expect(lines).toEqual([
-      {
-        kind: 'show-covers',
-        entityId: 's1',
-        outcome: 'would_copy',
-        sha256: sha(COVER),
-        bytes: COVER.length,
-      },
-      {
-        kind: 'show-covers',
-        entityId: 's2',
-        outcome: 'would_copy',
-        sha256: sha(COVER),
-        bytes: COVER.length,
-      },
-    ]);
-    expect(H.stored).not.toHaveBeenCalled();
-    expect(H.adopted).not.toHaveBeenCalled();
-    // A report carries hashes, never addresses.
-    expect(JSON.stringify(lines)).not.toMatch(/https?:/);
-  });
-
-  it('apply: uploads the exact bytes Syra serves, then adopts the file for that legacy cover', async () => {
-    const lines = await collect('show-covers', true);
-    expect(H.stored).toHaveBeenCalledWith(COVER, 'image/png');
-    expect(H.adopted).toHaveBeenCalledWith({}, 's1', 'img-1', 'oxy-cover');
-    expect(lines.map((line) => line.outcome)).toEqual(['copied', 'copied']);
-  });
-
-  it('skips a series that changed during the copy', async () => {
-    H.adopted.mockResolvedValueOnce(false);
-    const [first] = await collect('show-covers', true);
-    expect(first).toMatchObject({ outcome: 'skipped', reason: 'row changed during the copy' });
-  });
-
-  it('reports a cover Syra could not serve as failed and carries on', async () => {
-    deps.fetchSyraImage.mockRejectedValueOnce(new Error('Syra answered 404 for the legacy cover'));
-    const lines = await collect('show-covers', true);
-    expect(lines.map((line) => line.outcome)).toEqual(['failed', 'copied']);
-  });
 });
 
 describe('private kinds', () => {
@@ -309,6 +241,30 @@ describe('library uploads and spoken clips', () => {
     );
     expect(H.adoptedSpeech).toHaveBeenCalledWith({}, 'c1', 'oxy-file');
     expect(lines.map((line) => line.outcome)).toEqual(['copied']);
+  });
+
+  it('preview: reads and hashes every legacy object, writes nothing', async () => {
+    const clip = Buffer.from('#!/bin/sh');
+    const lines = await collect('speech', false);
+    expect(lines).toEqual([
+      {
+        kind: 'speech',
+        entityId: 'c1',
+        outcome: 'would_copy',
+        sha256: sha(clip),
+        bytes: clip.length,
+      },
+    ]);
+    expect(H.copied).not.toHaveBeenCalled();
+    expect(H.adoptedSpeech).not.toHaveBeenCalled();
+    // A report carries hashes, never addresses.
+    expect(JSON.stringify(lines)).not.toMatch(/https?:/);
+  });
+
+  it('skips a row that changed during the copy', async () => {
+    H.adoptedSpeech.mockResolvedValueOnce(false);
+    const [line] = await collect('speech', true);
+    expect(line).toMatchObject({ outcome: 'skipped', reason: 'row changed during the copy' });
   });
 
   it('leaves an item Oxy does not take on legacy storage and reports it', async () => {

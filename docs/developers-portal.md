@@ -7,7 +7,7 @@ Three products, three roles, one console
 - **Oxy** is the platform and **Oxy Console** — accounts, applications, **every** API key
   in the ecosystem (Alia's, Kaana's, Mention's), billing.
 - **Alia** is the assistant, with its own **permanent product API** at `api.alia.onl`:
-  `/v1/*` and `/alia/chat` (one handler), plus `/conversations`, `/shows`, `/skills`,
+  `/v1/*` and `/alia/chat` (one handler), plus `/conversations`, `/skills`,
   `/agents` and `/catalogue`. Three groups call it, all authorized by Oxy: Alia's own
   surfaces — the app (the VS Code extension and the CLI), which are Alia
   products and use `/alia/chat` with the user's Oxy session; other applications in the

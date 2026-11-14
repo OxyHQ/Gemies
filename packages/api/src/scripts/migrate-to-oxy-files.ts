@@ -4,17 +4,10 @@
  * report where the move stands. `docs/oxy-files.md` is the runbook.
  *
  *   --target-database <name>   REQUIRED: the database this run may touch.
- *   --kind <k>                 show-covers | library | speech | skills
+ *   --kind <k>                 library | speech | skills
  *   --apply                    copy; without it nothing is written (preview)
  *   --limit <n>                stop after n items (a canary batch)
  *   --report <path>            write one JSON line per item there (default stdout)
- *   --syra-mapping <path>      (show-covers) write the operator's record of the
- *                              handover, one JSON line per podcast:
- *                              {syraPodcastId, legacyImageAssetId, fileId, sha256}.
- *                              A record, not an input: Syra's `migrate:alia-covers`
- *                              finds each cover in Oxy by the sha256 of its own
- *                              legacy object, so this must run (with --apply)
- *                              BEFORE Syra's step and upload the exact bytes.
  *   --status                   the bucket-retirement gate: legacy reads per kind
  *                              in the last --window-days (default 14), rows still
  *                              on legacy storage, and the reference outbox backlog
@@ -25,7 +18,6 @@
  */
 
 import { createWriteStream, type WriteStream } from 'node:fs';
-import { createSyraClient } from '@syra.fm/sdk';
 import { readTargetDatabase } from '@oxy.so/db/migrate';
 import { assertTargetDatabase } from '../db/assertTargetDatabase.js';
 import { closePostgres, connectPostgres, getDb } from '../db/index.js';
@@ -37,36 +29,14 @@ import {
 import {
   MIGRATION_KINDS,
   migrateKind,
-  syraCoverMapping,
   type MigrationDeps,
   type MigrationKind,
 } from '../lib/files/migrate-to-oxy.js';
 import { reconcileReferencesOnce } from '../lib/files/oxy-file-sync.js';
-import { oxy } from '../lib/oxy.js';
 
 function flag(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);
   return index === -1 ? undefined : argv[index + 1];
-}
-
-/** A Syra cover's bytes, from Syra's public image route, refused unless it is an image. */
-async function fetchSyraImage(imageAssetId: string): Promise<{ bytes: Buffer; mime: string }> {
-  const syra = createSyraClient({
-    baseURL: process.env.SYRA_API_URL?.trim() || 'https://api.syra.fm',
-  });
-  const url = syra.artworkUrl(imageAssetId);
-  if (url === undefined) throw new Error('Syra builds no URL for that image id');
-  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) throw new Error(`Syra answered ${response.status} for the legacy cover`);
-  const mime = (response.headers.get('content-type') ?? '').split(';')[0]?.trim() ?? '';
-  if (!mime.startsWith('image/'))
-    throw new Error(`Syra answered ${mime || 'no type'}, not an image`);
-  return { bytes: Buffer.from(await response.arrayBuffer()), mime };
-}
-
-async function oxySha256(fileIds: string[]): Promise<Map<string, string>> {
-  const metadata = await oxy.assets.metadataByIds(fileIds);
-  return new Map(metadata.map((entry) => [entry.id, entry.sha256]));
 }
 
 function writer(path: string | undefined): {
@@ -124,7 +94,7 @@ async function main(): Promise<number> {
     }
     const apply = argv.includes('--apply');
     const limitFlag = flag(argv, '--limit');
-    const deps: MigrationDeps = { db, fetchSyraImage, oxySha256 };
+    const deps: MigrationDeps = { db };
     const report = writer(flag(argv, '--report'));
     const counts: Record<string, number> = {};
     try {
@@ -137,15 +107,6 @@ async function main(): Promise<number> {
       }
     } finally {
       await report.close();
-    }
-
-    const mappingPath = flag(argv, '--syra-mapping');
-    if (kind === 'show-covers' && mappingPath !== undefined) {
-      const mapping = writer(mappingPath);
-      const lines = await syraCoverMapping(deps);
-      for (const line of lines) mapping.write(line);
-      await mapping.close();
-      counts.syraMappingLines = lines.length;
     }
 
     process.stderr.write(

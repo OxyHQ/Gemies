@@ -1,7 +1,7 @@
 /**
  * Retired vocabulary cannot return.
  *
- * Two retirements, each a clean cut with no compatibility code, so any trace of
+ * Three retirements, each a clean cut with no compatibility code, so any trace of
  * them in the tree is either dead code or a lane coming back:
  *
  *  1. The retired product routes (`<kaana|alia>-lite`, `<kaana|alia>-v1-*`).
@@ -10,6 +10,12 @@
  *     tools `consultAgent` replaced, the negotiated stream features, and an
  *     application binding on an agent (ADR 0021 keeps it deleted: where an
  *     agent opens is Oxy's fact, read live, never an Alia column).
+ *  3. Generated podcasts ("shows", 2026-11-14): podcast generation belongs to
+ *     Syra, which a gemie reaches through the Syra connector. Their tables,
+ *     routes, modules, realtime event, variables and Syra SDK cannot return.
+ *     The one survivor is the release-only Oxy file entity class in
+ *     `domain/oxy-files.ts`, allowed exactly once until the outbox has
+ *     released it.
  *
  * Records of the past keep their words: ADRs, audits, migration inventories,
  * changelogs and applied migrations are history, not code. Every pattern is
@@ -55,6 +61,36 @@ const retiredLane = new RegExp(
   'g',
 );
 
+const retiredShows = new RegExp(
+  [
+    `show_${'(?:series|episodes|preferences)'}`,
+    `[sS]how${'(?:Series|Episodes?)'}\\b`,
+    `lib/${'show/'}`,
+    `db/${'shows/'}`,
+    `schema/${'shows'}`,
+    `features/${'shows'}`,
+    `routes/${'shows'}`,
+    `${'shows'}\\.mdx`,
+    `show[.:]${'progress'}`,
+    `SYRA_${'(?:API_URL|COVER_FILE_IDS)'}`,
+    `@syra\\.fm/${'sdk'}`,
+    `['"]/${'shows'}\\b`,
+    `/${'shows'}/(?:series|episodes|voices|preferences)`,
+  ].join('|'),
+  'g',
+);
+
+/**
+ * The Oxy file entity class podcast covers were referenced under: the outbox
+ * still admits it, so the releases migration 0170 enqueued can be delivered,
+ * and nothing else may name it. Exact, so it leaves in a visible edit.
+ */
+const releaseOnlyEntityClass = {
+  file: 'packages/api/src/domain/oxy-files.ts',
+  match: `show_${'series'}`,
+  count: 1,
+};
+
 /** What an agent is, on the server and on the wire: no application binding. */
 const agentSchemas = [
   'packages/api/src/db/schema/agents.ts',
@@ -93,6 +129,20 @@ for (const file of tracked) {
   }
   if (!laneHistory.some((history) => history.test(file))) {
     report(file, source, retiredLane, 'retired native-product-agent lane, ADR 0020 §8');
+  }
+  if (!laneHistory.some((history) => history.test(file))) {
+    const why = 'retired generated podcasts: they are Syra’s';
+    if (file === releaseOnlyEntityClass.file) {
+      const found = source.split(releaseOnlyEntityClass.match).length - 1;
+      if (found !== releaseOnlyEntityClass.count) {
+        failures.push(
+          `${file}: names ${releaseOnlyEntityClass.match} ${found} times, expected ${releaseOnlyEntityClass.count} (the release-only entity class)`,
+        );
+      }
+      report(file, source.replaceAll(releaseOnlyEntityClass.match, ''), retiredShows, why);
+    } else {
+      report(file, source, retiredShows, why);
+    }
   }
   if (agentSchemas.includes(file)) {
     report(file, source, applicationBinding, 'an agent has no application binding, ADR 0021');

@@ -416,17 +416,17 @@ async function settleCredits(
  * ## Why this exists, rather than another conversion
  *
  * `finalizeCredits` takes tokens, because that is the unit a chat turn is
- * measured in. A generated show is not: it is priced from the DURATION of the
- * audio it produced, by a formula that belongs to the show module.
+ * measured in. A voice call is not: it is priced from its DURATION, by a
+ * formula that belongs to the voice module (`lib/voice/credits.ts`).
  *
- * Before this existed, the show pipeline bridged the gap by inventing a token
- * count — `finalizeCredits(reservation, { totalTokens: credits * 50 })` — which
- * is not a conversion but a coincidence. `calculateCredits` divides by
- * `TOKENS_PER_CREDIT`, which is 1000, so `credits * 50` tokens settles as
- * `ceil(credits / 20)`: a show intending to charge 8 credits charged 1. The
- * factor and the divisor were never related, so nothing about the
- * expression looked wrong, and no test could catch it — both sides typecheck
- * and both are integers.
+ * A caller that bridged the gap by inventing a token count —
+ * `finalizeCredits(reservation, { totalTokens: credits * 50 })` — would not be
+ * converting but coinciding. `calculateCredits` divides by `TOKENS_PER_CREDIT`,
+ * which is 1000, so `credits * 50` tokens settles as `ceil(credits / 20)`: a
+ * charge intended as 8 credits charged 1, and it shipped that way once. The
+ * factor and the divisor were never related, so nothing about the expression
+ * looked wrong, and no test could catch it — both sides typecheck and both are
+ * integers.
  *
  * A caller that knows its own price should say the price. That is all this is:
  * the same refund-if-over, charge-if-under adjustment every other finalizer
@@ -445,9 +445,9 @@ async function settleCredits(
  *
  * `creditsCharged` is what was SETTLED, after the floor and the rounding below.
  * A caller that records a cost must record THIS, not the number it asked for.
- * The show pipeline stored its intended figure while the ledger moved a
- * different one, and the two disagreed for as long as that code existed because
- * nothing ever compared them.
+ * One that stored its intended figure while the ledger moved a different one
+ * would disagree with the ledger for as long as it existed, because nothing
+ * ever compares them.
  *
  * `label` names the domain in the ledger logs, exactly as `'chat'` does.
  */

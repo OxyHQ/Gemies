@@ -34,7 +34,6 @@
 
 import type { Readable } from 'node:stream';
 import type { ApiDatabase } from '../../db/index.js';
-import { adoptSeriesCoverFile, listSeriesOnLegacyCover } from '../../db/shows/showRepository.js';
 import {
   adoptLibraryOxyFile,
   listLibraryFilesOnLegacyStorage,
@@ -47,12 +46,10 @@ import {
   adoptSkillFileOxyFile,
   listSkillFilesOnLegacyStorage,
 } from '../../db/agents/skillRepository.js';
-import { showSeries } from '../../db/schema/shows.js';
-import { and, isNotNull } from 'drizzle-orm';
-import { copyIntoOxy, errorStatus, sha256Hex, storeShowCover, uploadRoute } from './oxy-files.js';
+import { copyIntoOxy, errorStatus, sha256Hex, uploadRoute } from './oxy-files.js';
 import { readS3Object } from '../s3.js';
 
-export const MIGRATION_KINDS = ['show-covers', 'library', 'speech', 'skills'] as const;
+export const MIGRATION_KINDS = ['library', 'speech', 'skills'] as const;
 export type MigrationKind = (typeof MIGRATION_KINDS)[number];
 
 /** One line of the report: what was (or would be) copied, by hash. */
@@ -66,26 +63,8 @@ export interface MigrationLine {
   readonly reason?: string;
 }
 
-/**
- * One line of the operator's record of the cover handover: a podcast whose
- * legacy Syra cover is now Alia's Oxy file. Syra does not read it — its
- * `migrate:alia-covers` hashes its own legacy object, finds the Oxy file with
- * that sha256 and repoints only to one ALIA owns — which is why the copy must
- * upload the exact bytes Syra serves, never a re-encoding.
- */
-export interface SyraCoverMappingLine {
-  readonly syraPodcastId: string;
-  readonly legacyImageAssetId: string;
-  readonly fileId: string;
-  readonly sha256: string;
-}
-
 export interface MigrationDeps {
   readonly db: ApiDatabase;
-  /** The bytes of a legacy Syra cover, from Syra's public image route. */
-  readonly fetchSyraImage: (imageAssetId: string) => Promise<{ bytes: Buffer; mime: string }>;
-  /** Oxy's sha256 for files Alia owns — for the handoff of covers copied by an earlier run. */
-  readonly oxySha256: (fileIds: string[]) => Promise<Map<string, string>>;
   readonly readLegacy?: (key: string) => Promise<Buffer | null>;
   /** Waits — injectable so a test does not. */
   readonly sleep?: (ms: number) => Promise<void>;
@@ -109,8 +88,7 @@ export const RATE_LIMITED_WAIT_MS = 60_000;
 export const RATE_LIMITED_MAX_WAITS = 10;
 
 /** How many of Oxy's uploads storing these bytes spends: a large upload is two calls. */
-function uploadCalls(kind: MigrationKind, mime: string, size: number): number {
-  if (kind === 'show-covers') return 1;
+function uploadCalls(mime: string, size: number): number {
   return uploadRoute(mime, size) === 'large' ? 2 : 1;
 }
 
@@ -181,19 +159,6 @@ interface WorkItem {
 
 async function workPage(kind: MigrationKind, db: ApiDatabase, after: string): Promise<WorkItem[]> {
   switch (kind) {
-    case 'show-covers':
-      return (await listSeriesOnLegacyCover(db, after, PAGE)).flatMap((row) =>
-        row.coverImageAssetId === null
-          ? []
-          : [
-              {
-                cursor: row.id,
-                entityId: row.id,
-                legacy: row.coverImageAssetId,
-                owner: { kind: 'alia' } as const,
-              },
-            ],
-      );
     case 'library':
       return (await listLibraryFilesOnLegacyStorage(db, after, PAGE)).flatMap((row) =>
         row.url === null
@@ -252,10 +217,7 @@ async function migrateItem(
     return { ...base, outcome: 'skipped', reason: PERSON_FILE_NEEDS_REQUESTER };
   }
   try {
-    const read =
-      kind === 'show-covers'
-        ? await deps.fetchSyraImage(item.legacy)
-        : await readLegacyBytes(deps, item.legacy, item.mime ?? 'application/octet-stream');
+    const read = await readLegacyBytes(deps, item.legacy, item.mime ?? 'application/octet-stream');
     if (read === null) return { ...base, outcome: 'failed', reason: 'legacy object missing' };
     const sha256 = sha256Hex(read.bytes);
     if (item.expectedSha256 !== undefined && item.expectedSha256 !== sha256) {
@@ -267,34 +229,25 @@ async function migrateItem(
       };
     }
     if (!apply) return { ...base, outcome: 'would_copy', sha256, bytes: read.bytes.length };
-    await pace(uploadCalls(kind, read.mime, read.bytes.length));
+    await pace(uploadCalls(read.mime, read.bytes.length));
 
-    let fileId: string;
-    let adopted: boolean;
-    if (kind === 'show-covers') {
-      const stored = await storeShowCover(read.bytes, read.mime);
-      fileId = stored.fileId;
-      adopted = await adoptSeriesCoverFile(deps.db, item.entityId, item.legacy, fileId);
-    } else {
-      // `copyIntoOxy` refuses unless Oxy stored exactly these bytes.
-      fileId = await copyIntoOxy({
-        kind:
-          kind === 'library' ? 'library_file' : kind === 'speech' ? 'speech_clip' : 'skill_file',
-        owner: item.owner,
-        bytes: read.bytes,
-        mime: read.mime,
-        name: item.name ?? 'file',
-      });
-      adopted =
-        kind === 'library'
-          ? await adoptLibraryOxyFile(deps.db, item.entityId, fileId)
-          : kind === 'speech'
-            ? await adoptSpeechClipOxyFile(deps.db, item.entityId, fileId)
-            : await adoptSkillFileOxyFile(deps.db, item.entityId, fileId);
-    }
+    // `copyIntoOxy` refuses unless Oxy stored exactly these bytes.
+    const fileId = await copyIntoOxy({
+      kind: kind === 'library' ? 'library_file' : kind === 'speech' ? 'speech_clip' : 'skill_file',
+      owner: item.owner,
+      bytes: read.bytes,
+      mime: read.mime,
+      name: item.name ?? 'file',
+    });
+    const adopted =
+      kind === 'library'
+        ? await adoptLibraryOxyFile(deps.db, item.entityId, fileId)
+        : kind === 'speech'
+          ? await adoptSpeechClipOxyFile(deps.db, item.entityId, fileId)
+          : await adoptSkillFileOxyFile(deps.db, item.entityId, fileId);
     if (!adopted) {
-      // Changed meanwhile (a regenerated cover, a deleted row): nothing named
-      // the new file, and Oxy collects an unreferenced application file.
+      // Changed meanwhile (a deleted row): nothing named the new file, and Oxy
+      // collects an unreferenced application file.
       return { ...base, outcome: 'skipped', sha256, fileId, reason: 'row changed during the copy' };
     }
     return { ...base, outcome: 'copied', sha256, bytes: read.bytes.length, fileId };
@@ -325,38 +278,4 @@ async function defaultReadLegacy(key: string): Promise<Buffer | null> {
   const chunks: Buffer[] = [];
   for await (const chunk of object.body as Readable) chunks.push(Buffer.from(chunk as Uint8Array));
   return Buffer.concat(chunks);
-}
-
-/**
- * The Syra handoff for EVERY series whose cover moved and whose legacy Syra
- * cover is still recorded — not only those copied by this run — so the mapping
- * is complete whenever it is produced, however many runs the copy took. The
- * sha256 is Oxy's, for the file Oxy holds.
- */
-export async function syraCoverMapping(deps: MigrationDeps): Promise<SyraCoverMappingLine[]> {
-  const rows = await deps.db
-    .select({
-      syraPodcastId: showSeries.syraPodcastId,
-      legacyImageAssetId: showSeries.coverImageAssetId,
-      fileId: showSeries.coverFileId,
-    })
-    .from(showSeries)
-    .where(and(isNotNull(showSeries.coverFileId), isNotNull(showSeries.coverImageAssetId)))
-    .orderBy(showSeries.id);
-  const hashes = await deps.oxySha256(
-    rows.flatMap((row) => (row.fileId === null ? [] : [row.fileId])),
-  );
-  return rows.flatMap((row) => {
-    if (row.fileId === null || row.legacyImageAssetId === null) return [];
-    const sha256 = hashes.get(row.fileId);
-    if (sha256 === undefined) return [];
-    return [
-      {
-        syraPodcastId: row.syraPodcastId,
-        legacyImageAssetId: row.legacyImageAssetId,
-        fileId: row.fileId,
-        sha256,
-      },
-    ];
-  });
 }

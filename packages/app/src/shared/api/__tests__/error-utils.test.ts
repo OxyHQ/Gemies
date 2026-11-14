@@ -10,17 +10,17 @@ describe('errorBodyText', () => {
   it('reads the OpenAI-compatible object error body', () => {
     expect(
       errorBodyText({
-        error: { message: 'Show not found', type: 'invalid_request_error' },
+        error: { message: 'Skill not found', type: 'invalid_request_error' },
       }),
-    ).toBe('Show not found');
+    ).toBe('Skill not found');
   });
 
   it('falls through to the body message and then the caller fallback', () => {
     expect(errorBodyText({ error: { type: 'server_error' }, message: 'Try again' })).toBe(
       'Try again',
     );
-    expect(errorBodyText({ error: { type: 'server_error' } }, 'Could not delete show')).toBe(
-      'Could not delete show',
+    expect(errorBodyText({ error: { type: 'server_error' } }, 'Could not delete skill')).toBe(
+      'Could not delete skill',
     );
   });
 });
@@ -30,12 +30,12 @@ describe('errorMessage', () => {
     const error = {
       response: {
         data: {
-          error: { message: 'Show not found', type: 'invalid_request_error' },
+          error: { message: 'Skill not found', type: 'invalid_request_error' },
         },
       },
     };
 
-    expect(errorMessage(error)).toBe('Show not found');
+    expect(errorMessage(error)).toBe('Skill not found');
     expect(typeof errorMessage(error)).toBe('string');
   });
 

@@ -5,7 +5,7 @@
  * inbound session or service token (`middleware/auth.ts`, the socket
  * handshake), reading a profile, the service lane (Oxy Files, agency, tasks,
  * capability tickets), and another Oxy product (Kaana, Clarity, CrowdSource,
- * Syra, integrations) through `oxy.createServiceClient(...)` or that product's
+ * integrations) through `oxy.createServiceClient(...)` or that product's
  * `*ForOxyService(oxy)` SDK. A call made AS the person behind a request is
  * `oxy.withUser(req, …)`; the shared session here is never given a token.
  *

@@ -327,15 +327,15 @@ it('settles fixed show/voice work from its immutable period, supports replay and
   const held = await reserveCredits(f.userId, 5, f.admission);
   if (!held) throw new Error('Expected');
   held.refreshProductCreditSnapshot = async () => f.snapshot;
-  expect(await finalizeFixedCredits(held, 8, 'show-voice')).toEqual({
+  expect(await finalizeFixedCredits(held, 8, 'voice')).toEqual({
     creditsCharged: 8,
     creditsRemaining: 12,
   });
-  expect(await finalizeFixedCredits(held, 8, 'show-voice')).toEqual({
+  expect(await finalizeFixedCredits(held, 8, 'voice')).toEqual({
     creditsCharged: 8,
     creditsRemaining: 12,
   });
-  await expect(finalizeFixedCredits(held, 9, 'show-voice')).rejects.toThrow('replay');
+  await expect(finalizeFixedCredits(held, 9, 'voice')).rejects.toThrow('replay');
   await expect(
     finalizeCredits(held, { promptTokens: 0, completionTokens: 0, totalTokens: 0 }),
   ).rejects.toThrow('replay');
@@ -343,7 +343,7 @@ it('settles fixed show/voice work from its immutable period, supports replay and
   canceled.snapshot.grants = [];
   canceled.snapshot.access.quotas = [];
   held.refreshProductCreditSnapshot = async () => canceled;
-  expect(await finalizeFixedCredits(held, 8, 'show-voice')).toEqual({
+  expect(await finalizeFixedCredits(held, 8, 'voice')).toEqual({
     creditsCharged: 8,
     creditsRemaining: 0,
   });

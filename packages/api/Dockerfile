@@ -78,7 +78,8 @@ COPY packages/gemies-os-protocol/package.json ./packages/gemies-os-protocol/
 # Stagehand (its `browser` tool is Clarity-only); PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
 # stays so no workspace's postinstall downloads a browser.
 # ffmpeg-static (declared in packages/api "trustedDependencies") still fetches its
-# arch-specific binary so audio features work on the target architecture.
+# arch-specific binary: the dictation canary (`src/scripts/dictation-stream-canary.ts`)
+# decodes its speech with it on the target architecture.
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PUPPETEER_SKIP_DOWNLOAD=1

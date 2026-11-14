@@ -74,10 +74,9 @@ comprobable; aquí está el texto completo. Antes de tocar un área lee su doc
   es 404. Nunca otro `server.on('upgrade')`: en Bun, engine.io cerraba al segundo todo socket ajeno.
   `test:bun-runtime` lo prueba en el runtime real.
 - `Relay` es un nombre retirado; el único origen de Kaana es `https://kaana.ai`.
-- **Shows** (podcasts en Syra): la ruta acuña un ticket de ingesta de un solo
-  uso y el worker lo canjea; jamás un token de servicio. `title`/`topic` son
-  overrides opcionales y por eso admiten NULL; `topic` se envía entero —
-  `shows.mdx`.
+- **Los pódcasts son de Syra**: Gemies no genera ni guarda programas; un gemie llega a Syra por su
+  conector (el MCP de `api.syra.fm/mcp`). `scripts/check-retired-vocabulary.mjs` impide que
+  vuelvan sus tablas, rutas y variables.
 - **Ninguna pantalla espera detrás de un spinner ni de un «Loading...»** (`instant-loading.md`):
   lo que se espera se dibuja con el esqueleto de Bloom, con la forma del contenido
   (`src/shared/ui/skeletons`, `ThreadSkeleton` del SDK). El spinner es solo para acciones en
