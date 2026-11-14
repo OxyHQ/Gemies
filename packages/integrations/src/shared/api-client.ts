@@ -55,6 +55,61 @@ export interface Conversation {
   [key: string]: unknown;
 }
 
+/** The longest a channel turn may run, start to end (the stream keeps it open meanwhile). */
+const CHAT_TURN_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Read a `/alia/chat` stream to its end: the answer's text, and how it finished. An error the
+ * turn sent after the stream opened (`data: {"error": …}`) is thrown, like a refused request.
+ */
+export async function readChatStream(
+  body: ReadableStream<Uint8Array>,
+): Promise<{ content: string; finishReason: string }> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+  let finishReason = 'stop';
+  const take = (line: string): boolean => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) return false;
+    const data = trimmed.slice(5).trim();
+    if (data === '[DONE]') return true;
+    let frame: {
+      error?: { message?: string; code?: unknown };
+      choices?: Array<{ delta?: { content?: unknown }; finish_reason?: string | null }>;
+    };
+    try {
+      frame = JSON.parse(data);
+    } catch {
+      return false;
+    }
+    if (frame.error) {
+      throw Object.assign(new Error(`Alia turn failed: ${frame.error.message ?? 'error'}`), {
+        code: frame.error.code,
+      });
+    }
+    const choice = frame.choices?.[0];
+    if (typeof choice?.delta?.content === 'string') content += choice.delta.content;
+    if (choice?.finish_reason) finishReason = choice.finish_reason;
+    return false;
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) if (take(line)) return { content, finishReason };
+    }
+    if (buffer) take(buffer);
+  } finally {
+    reader.releaseLock();
+  }
+  return { content, finishReason };
+}
+
 /** How long a catalogue is reused before it is asked for again. */
 const CATALOGUE_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -209,7 +264,8 @@ export class APIClient {
     const response = await this.client.post(
       `/channel-bots/telegram/${encodeURIComponent(botId)}/messages`,
       message,
-      { headers: this.authHeaders, timeout: 150_000 },
+      // The API keeps the answer's connection alive while the turn runs, and runs it once.
+      { headers: this.authHeaders, timeout: 5 * 60_000 },
     );
     return response.data as GemieTelegramBotAnswer;
   }
@@ -313,7 +369,14 @@ export class APIClient {
   // Chat completions — route AI calls through the main API
   // ---------------------------------------------------------------------------
 
-  /** Shared product chat transport; channel identity is resolved live by Alia. */
+  /**
+   * Shared product chat transport; channel identity is resolved live by Alia.
+   *
+   * Streamed, and read to the end here: the stream's keep-alive comments hold the connection open
+   * however long the turn takes. A JSON answer could not outlast the load balancer's 60 s idle
+   * timeout, which answered 504 while the turn went on and was saved, so its caller apologised (or
+   * retried) for a turn that had in fact answered.
+   */
   async chatCompletion(
     identity: GemieChannelIdentity,
     messages: Array<{ id?: string; role: string; content: MessageContent }>,
@@ -333,12 +396,12 @@ export class APIClient {
         // into this service, one no catalogue change could ever reach.
         messages,
         model: options.model,
-        stream: false,
+        stream: true,
         conversationId: options.conversationId,
         temperature: 0.7,
         max_tokens: 2048,
       }),
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.timeout(CHAT_TURN_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -350,12 +413,7 @@ export class APIClient {
       err.code = body.error?.code;
       throw err;
     }
-
-    const data = await response.json();
-    const choice = data.choices?.[0];
-    return {
-      content: choice?.message?.content || '',
-      finishReason: choice?.finish_reason || 'stop',
-    };
+    if (!response.body) throw new Error('Alia answered no stream');
+    return readChatStream(response.body);
   }
 }

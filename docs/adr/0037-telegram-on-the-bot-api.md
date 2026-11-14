@@ -174,3 +174,28 @@ WhatsApp carry the same things the same way:
   gemie may react to a message with an emoji (`setMessageReaction`), and an image its answer shows is
   sent as a photo.
 
+
+## Amendment (2026-11-14): a turn runs once, whatever its length, and never says a capability is missing
+
+In production Eusebio's bot answered "no tengo acceso a tu email" and "no puedo programar mensajes",
+and then sent three weather answers nobody asked for. The bot's person had not linked their Telegram,
+so every turn was a third party's. Each turn outlasted the load balancer's 60-second idle timeout, so
+the integrations process got a 504 while the API went on and answered. It then retried the update,
+and every retry ran the turn again and posted again.
+
+- **A message's turn runs once** (`gemie_bot_turns`, keyed by bot, chat and Telegram message id,
+  migration `0168`).
+  - A retry while the turn runs waits for it. A retry after it gets the same answer and delivers it
+    (the attempt it repeats delivered nothing).
+  - A turn that failed keeps its apology.
+  - A claim older than ten minutes belongs to a dead instance and is taken over.
+  - A person's turn already stored by the chat route is not run again.
+- **A long turn keeps its connection.** The bot's answer route sends a space every 15 seconds before
+  its JSON. Channel turns through `/alia/chat` (a connected account's, a bot's person's) are
+  streamed, so its keep-alives hold them open.
+- **A capability is never "not available".** A third party's turn has `personalAppsAccess`: asked for
+  email, calendar, files, accounts, memory or something scheduled, the gemie calls it and passes on
+  what it answers.
+  - While nobody has linked the bot: how its person links their Telegram.
+  - On a linked bot: that only its person can, in their own private chat.
+  - In a group: never there.

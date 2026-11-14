@@ -442,3 +442,59 @@ describe('what a gemie bot’s conversation keeps of a message', () => {
     ]);
   });
 });
+
+describe('a message’s turn on a gemie bot runs once, whatever is retried', () => {
+  it('a retry while it runs waits for it, and one after it gets the same answer', async () => {
+    const ownerId = await account(100, 0);
+    const bot = await gemieBot(ownerId);
+    const message: GemieTelegramBotMessage = { ...botMessage, messageId: '501' };
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(generateText).mockClear();
+    vi.mocked(generateText).mockImplementationOnce(async () => {
+      await gate;
+      return {
+        text: 'the only answer',
+        usage: { inputTokens: 10, outputTokens: 10 },
+        steps: [{ toolResults: [] }],
+      } as never;
+    });
+
+    // The first attempt runs; the integrations process gave up on it and retries meanwhile.
+    const first = answerGemieTelegramMessage(bot, message);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const retry = answerGemieTelegramMessage(bot, message);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    release();
+
+    expect(await first).toMatchObject({ reply: 'the only answer' });
+    expect(await retry).toMatchObject({ reply: 'the only answer' });
+    // A later retry (its answer never reached Telegram) gets it again, without another turn.
+    expect(await answerGemieTelegramMessage(bot, message)).toMatchObject({
+      reply: 'the only answer',
+    });
+    expect(generateText).toHaveBeenCalledTimes(1);
+    // One turn charged, and one exchange kept.
+    expect(await balanceOf(ownerId)).toEqual({ free: 99, paid: 0 });
+    const kept = await db
+      .select({ role: messages.role })
+      .from(messages)
+      .where(eq(messages.oxyUserId, ownerId));
+    expect(kept.map((row) => row.role).sort()).toEqual(['assistant', 'user']);
+  });
+
+  it('a turn that failed keeps its apology, so a retry says it rather than run it again', async () => {
+    const ownerId = await account(100, 0);
+    const bot = await gemieBot(ownerId);
+    const message: GemieTelegramBotMessage = { ...botMessage, messageId: '502' };
+    vi.mocked(generateText).mockClear();
+    vi.mocked(generateText).mockRejectedValueOnce(new Error('No available route'));
+    await expect(answerGemieTelegramMessage(bot, message)).rejects.toThrow('No available route');
+    expect(await answerGemieTelegramMessage(bot, message)).toEqual({
+      reply: 'Sorry, something went wrong. Please try again.',
+    });
+    expect(generateText).toHaveBeenCalledTimes(1);
+  });
+});

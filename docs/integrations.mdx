@@ -476,7 +476,9 @@ Telegram runs on its official Bot API only, in one layer in `packages/integratio
   (`POST /channel-bots/telegram/:botId/messages`); the integrations process reads the bots it
   speaks as (`GET /channel-bots/telegram`). A private chat is always answered; a group only when the
   bot is mentioned, named in a command or replied to (`group_replies`), and in privacy mode a bot
-  sees only replies and commands. Each chat is one of the gemie's conversations. The gemie's
+  sees only replies and commands. Each chat is one of the gemie's conversations. Each message's turn
+  runs once (`gemie_bot_turns`): a retry waits for it or gets its answer, and a long turn keeps its
+  connection (keep-alive spaces before the JSON; streamed `/alia/chat` for channel turns). The gemie's
   balance pays first, then the person who connected the bot if they allowed it.
 - **The bot recognises its person** (ADR 0037, amendment). In the editor, the person who connected
   the bot taps *Link my Telegram* (`POST /agents/:id/telegram-bot/link`): it mints, with their

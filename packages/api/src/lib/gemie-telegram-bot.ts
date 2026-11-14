@@ -41,17 +41,27 @@ import { getOrCreateUserCredits } from './user-credits-helpers.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { GemieTelegramBotAnswer, GemieTelegramBotMessage } from '@gemies/server/internal';
 import { findAgentById } from '../db/agents/agentRepository.js';
-import { listRecentTurns, replaceChannelMessageWords } from '../db/chat/messageRepository.js';
+import {
+  clientMessageExists,
+  listRecentTurns,
+  replaceChannelMessageWords,
+} from '../db/chat/messageRepository.js';
 import type { MessageContent } from '../domain/conversation.js';
 import { prepareChannelTurn } from './channel-messages.js';
+import { buildPersonalAccessTool, PERSONAL_ACCESS_TOOL } from './channels/personal-access-tool.js';
 import { buildReactionTool, REACT_TOOL } from './channels/reaction-tool.js';
 import { publishConversation } from './realtime/conversations.js';
 import { appendConversationMessages } from './conversation-saver.js';
 import { getDb } from '../db/index.js';
 import {
   claimGemieBotLinkCode,
-  recordGemieBotMessage,
+  claimGemieBotTurn,
   type GemieBotRow,
+  type GemieBotTurnClaim,
+  type GemieBotTurnKey,
+  readGemieBotTurn,
+  recordGemieBotMessage,
+  settleGemieBotTurn,
 } from '../db/integrations/gemieBotRepository.js';
 import { botConversationId, isPersonTurn } from '../domain/gemie-bot-person.js';
 
@@ -166,7 +176,23 @@ export function saidTo(from: Pick<GemieTelegramBotMessage['from'], 'languageCode
   return from.languageCode?.toLowerCase().startsWith('es') ? SAID.es : SAID.en;
 }
 
-/** What the gemie answers: a reply, the person's own turn, or nothing (`reply: null`). */
+/** How long one attempt holds a message's turn before another instance may take it over. */
+const TURN_LEASE_MS = 10 * 60_000;
+/** How long a retry waits for an attempt still running before it answers nothing. */
+const TURN_WAIT_MS = 200_000;
+const TURN_POLL_MS = 1_000;
+
+/** Said when a turn failed; kept as its answer, so a retry says it too rather than run again. */
+export const TURN_FAILED_REPLY = 'Sorry, something went wrong. Please try again.';
+
+/**
+ * What the gemie answers: a reply, the person's own turn, or nothing (`reply: null`).
+ *
+ * A message's turn runs ONCE (`gemie_bot_turns`): the integrations process retries a delivery it
+ * did not get an answer to (a timeout, a restart), and every retry used to run the turn again and
+ * post another reply. A retry while it runs waits for it; one after it gets the same answer, which
+ * that retry then delivers, since the attempt it repeats delivered nothing.
+ */
 export async function answerGemieTelegramMessage(
   bot: GemieBotRow,
   message: GemieTelegramBotMessage,
@@ -176,6 +202,58 @@ export async function answerGemieTelegramMessage(
     await onEdited(bot, message);
     return { reply: null };
   }
+  const db = getDb();
+  const key = { botId: bot.botId, chatId: message.chatId, messageId: message.messageId };
+  const claim = await claimGemieBotTurn(db, key, TURN_LEASE_MS);
+  if (claim.kind !== 'claimed') return earlierAnswer(bot, key, claim);
+  let answer: GemieTelegramBotAnswer;
+  try {
+    answer = await runTurn(bot, message);
+  } catch (error: unknown) {
+    await settleGemieBotTurn(db, key, { reply: TURN_FAILED_REPLY }).catch(() => undefined);
+    throw error;
+  }
+  await settleGemieBotTurn(db, key, answer as unknown as Record<string, unknown>);
+  return answer;
+}
+
+/**
+ * A retry's answer: the earlier attempt's, once it settles. A person's turn ran through the chat
+ * route, which stored their message under its id: if it did, it is not run again.
+ */
+async function earlierAnswer(
+  bot: GemieBotRow,
+  key: GemieBotTurnKey,
+  claim: GemieBotTurnClaim,
+): Promise<GemieTelegramBotAnswer> {
+  const db = getDb();
+  let state = claim;
+  const deadline = Date.now() + TURN_WAIT_MS;
+  while (state.kind === 'running' && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, TURN_POLL_MS));
+    state = await readGemieBotTurn(db, key);
+  }
+  if (state.kind !== 'answered') return { reply: null };
+  const answer = state.answer as unknown as GemieTelegramBotAnswer;
+  if (
+    answer.personTurn &&
+    (await clientMessageExists(
+      db,
+      bot.userId,
+      answer.personTurn.conversationId,
+      answer.personTurn.messageId,
+    ))
+  ) {
+    return { reply: null };
+  }
+  return answer;
+}
+
+/** The turn itself, run once per message. */
+async function runTurn(
+  bot: GemieBotRow,
+  message: GemieTelegramBotMessage,
+): Promise<GemieTelegramBotAnswer> {
   if (isSenderRateLimited(bot.botId, message.from.id)) {
     log.channels.info({ botId: bot.botId }, 'A Telegram sender was rate limited');
     return { reply: null };
@@ -276,7 +354,15 @@ async function answerAsThirdParty(
         ? `You are in the Telegram group "${message.chatTitle ?? 'a group'}", where you answer only when someone mentions you or replies to you. Each message says who wrote it.`
         : `You are in a private Telegram chat with ${speaker}, who may be anyone.`;
     // Honest about what is missing here, and how the one person who can change it does so.
-    const reach = `Here you act only as yourself: you cannot reach anybody's email, calendar, files, connected accounts or memory, and you cannot schedule anything. If someone asks for that, do not just say you have no access: say that ${agentPromptName(agent)} uses its person's apps only in their own private chat, once they link their Telegram (${SAID.en.steps(agentPromptName(agent))}), and answer in their language.${message.chatKind === 'group' ? ' In a group it never does, because everybody reads the answer.' : ''}`;
+    // Honest about how it becomes possible, from a tool rather than a sentence the model may not
+    // follow: asked for "mi email", it used to answer that the capability does not exist.
+    const reach = `In this turn your person's apps (email, calendar, files, connected accounts, memory, scheduling) are not reachable. When someone asks for any of them, call ${PERSONAL_ACCESS_TOOL} and tell them what it answers; never say the capability does not exist.`;
+    const personalAccess = buildPersonalAccessTool({
+      name: agentPromptName(agent),
+      linkSteps: saidTo(message.from).steps(agentPromptName(agent)),
+      personLinked: bot.linkedTelegramUserId !== null && bot.oxyTaskId !== null,
+      chatKind: message.chatKind,
+    });
 
     const { tools, routing, appCatalogPrompt } = await ToolPipeline.forUser({
       userId: bot.userId,
@@ -301,7 +387,11 @@ async function answerAsThirdParty(
         })),
         { role: 'user' as const, content: turn.modelParts },
       ],
-      tools: { ...tools, [REACT_TOOL]: reaction.tool },
+      tools: {
+        ...tools,
+        [REACT_TOOL]: reaction.tool,
+        [PERSONAL_ACCESS_TOOL]: personalAccess,
+      },
       ...routing,
       temperature: 0.7,
       maxOutputTokens: 2048,

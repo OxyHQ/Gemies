@@ -19,7 +19,16 @@
  * integrations process (`telegram/webhook.ts` there), so it is never stored.
  */
 
-import { boolean, index, integer, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { createdAt, generatedId, timestamptz, updatedAt } from '@oxy.so/db';
 import type { ChannelInboundMessage } from '../../lib/channels/types';
@@ -244,5 +253,37 @@ export const channelInbound = pgTable(
       .where(sql`${t.status} in ('received', 'processing')`),
     checkOneOf('channel_inbound_kind_check', t.kind, CHANNEL_INBOUND_KINDS),
     checkOneOf('channel_inbound_status_check', t.status, CHANNEL_INBOUND_STATUSES),
+  ],
+);
+
+export const GEMIE_BOT_TURN_STATUSES = ['running', 'answered'] as const;
+export type GemieBotTurnStatus = (typeof GEMIE_BOT_TURN_STATUSES)[number];
+
+/**
+ * One Telegram message a gemie's bot answers, by the bot, the chat and Telegram's message id: the
+ * turn runs once, whatever the integrations process retries (ADR 0037). A retry while it runs waits
+ * for it; a retry after it gets the same `answer` (`GemieTelegramBotAnswer`), so a reply is never
+ * written twice. A `running` row older than the claim lease belongs to an instance that died and is
+ * taken over. Rows are kept two days, for the retries, and then pruned.
+ */
+export const gemieBotTurns = pgTable(
+  'gemie_bot_turns',
+  {
+    botId: text().notNull(),
+    chatId: text().notNull(),
+    messageId: text().notNull(),
+    status: text({ enum: GEMIE_BOT_TURN_STATUSES as unknown as [string, ...string[]] })
+      .$type<GemieBotTurnStatus>()
+      .notNull()
+      .default('running'),
+    /** What the turn answered, once it did. */
+    answer: jsonb().$type<Record<string, unknown>>(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.botId, t.chatId, t.messageId] }),
+    index('gemie_bot_turns_created_idx').on(t.createdAt),
+    checkOneOf('gemie_bot_turns_status_check', t.status, GEMIE_BOT_TURN_STATUSES),
   ],
 );
