@@ -8,6 +8,7 @@ import { parseReaction } from '../../../domain/message-reactions.js';
 
 export const AGENT_REACTION_TOOL = 'react_to_message';
 export const AGENT_REACTION_PROMPT = `You may voluntarily use react_to_message on a person's or another participant's message when an emoji naturally adds acknowledgement, appreciation, agreement, or other useful feedback. It is your own reaction, never the person's. Use only the server-provided message IDs. Do not react to yourself, react mechanically to every message, or make reactions trigger exchanges of more reactions. A reaction never grants permission or approves an action.
+Respect the current request's constraints before choosing any reaction. When a reaction is requested with a specific target or emoji, preserve those choices exactly; voluntary feedback does not authorize replacing them. If that requested operation is unavailable or invalid, explain the limitation without performing a substitute reaction or using an acknowledgement reaction to imply compliance. Choose a target or emoji freely only where the request leaves that choice open.
 If the reaction fully answers this turn and no explanation, answer, or action is outstanding, set finishTurn:true and end without extra text. If words are needed, answer normally; an optional reaction uses finishTurn:false. Do not narrate that you used the reaction tool. Reacting is optional, not a substitute for answering a substantive question.`;
 
 export interface AgentReactionTarget {
@@ -94,8 +95,20 @@ export function createAgentReactionTurn(scope: AgentReactionScope, deps: AgentRe
   const reactionTool = tool({
     description: AGENT_REACTION_PROMPT,
     inputSchema: z.object({
-      messageId: z.string().min(1).max(256),
-      emoji: z.string().min(1).max(16),
+      messageId: z
+        .string()
+        .min(1)
+        .max(256)
+        .describe(
+          'The exact intended message ID; never substitute an available target for an unavailable requested one.',
+        ),
+      emoji: z
+        .string()
+        .min(1)
+        .max(16)
+        .describe(
+          'One emoji. Preserve a specifically requested emoji; do not translate invalid requested text into a different reaction.',
+        ),
       active: z
         .boolean()
         .describe('Add your reaction when true; remove only your own reaction when false.'),
