@@ -2,6 +2,8 @@ import { uuidv7 } from '@oxy.so/db';
 import { ALIA_GEMIE_ID } from '../../domain/alia-gemie.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  automationRunIsOpen,
+  cancelOpenAutomationRuns,
   countEnabledAutomationDefinitions,
   automationRunProgressForSession,
   claimAutomationConversation,
@@ -42,6 +44,68 @@ const resource = {
 };
 
 describe('normalized automation definitions', () => {
+  it('ends every open run of a task its owner stops, for good', async () => {
+    const automationId = uuidv7();
+    const actionId = uuidv7();
+    const runId = uuidv7();
+    const automation = await createAutomationDefinition(db, {
+      id: automationId,
+      ownerAccountId: 'aut-owner-stop',
+      objective: 'Reply to a message',
+      triggerKind: 'event',
+      eventAppId: 'inbox',
+      eventType: 'email_needs_response',
+      actorMode: 'fixed',
+      fixedAgentId: 'aut-agent-stop',
+      eligibleAgentIds: [],
+      executionMode: 'execute',
+      actions: [{ id: actionId, resource, tool: 'replyToEmail', input: {}, limits: [] }],
+      inputs: {},
+      resources: [resource],
+      dataFlow: { sources: [resource], destinations: [resource] },
+      maximumAutonomy: 'autonomous',
+      limits: [],
+      enabled: true,
+    });
+    await claimAutomationRunPlan({
+      db,
+      runId,
+      automationId,
+      requesterAccountId: 'aut-owner-stop',
+      triggerEventId: `event-${uuidv7()}`,
+      stages: [
+        {
+          stage: 0,
+          selectedAgentId: 'aut-agent-stop',
+          selectedActorAccountId: 'aut-bot-stop',
+          resource,
+          taskInput: { objective: automation.objective },
+          actions: automation.actions,
+        },
+      ],
+    });
+    const stage = await createAutomationStageSession(db, {
+      agentId: 'aut-agent-stop',
+      oxyUserId: 'aut-owner-stop',
+      automationRunId: runId,
+      automationStage: 0,
+      task: 'reply',
+    });
+    expect(await automationRunIsOpen(db, runId)).toBe(true);
+
+    expect(await cancelOpenAutomationRuns(db, automationId)).toEqual([runId]);
+    expect(await automationRunIsOpen(db, runId)).toBe(false);
+    expect((await findAutomationRunById(db, runId))?.status).toBe('cancelled');
+    expect(
+      (await listAutomationRunSteps(db, runId)).every((step) => step.status === 'cancelled'),
+    ).toBe(true);
+    // Its session, still running, cannot move a stopped run on (or back to running).
+    await markAutomationRunForSession(db, stage.session.id, 'running');
+    await markAutomationRunForSession(db, stage.session.id, 'succeeded');
+    expect((await findAutomationRunById(db, runId))?.status).toBe('cancelled');
+    expect(await cancelOpenAutomationRuns(db, automationId)).toEqual([]);
+  });
+
   it('persists exact actions and materializes fresh run and step correlation', async () => {
     const automationId = uuidv7();
     const actionId = uuidv7();

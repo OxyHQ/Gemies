@@ -217,6 +217,8 @@ export interface ForUserOptions {
   oxyAutonomy?: OxyToolAutonomy;
   /** Exact durable Oxy authorizations for a normalized background run. */
   oxyRunScope?: Readonly<Record<string, OxyRunScopeEntry>>;
+  /** Whether a structured run may still act; asked before each scoped Oxy call. */
+  oxyRunIsOpen?: () => Promise<boolean>;
   onOxyStepStatus?: (
     stepId: string,
     status: 'running' | 'succeeded' | 'failed',
@@ -448,6 +450,7 @@ export class ToolPipeline {
       runId,
       oxyAutonomy,
       oxyRunScope,
+      oxyRunIsOpen,
       onOxyStepStatus,
       editorToolDefinitions,
       host,
@@ -519,6 +522,7 @@ export class ToolPipeline {
               runId: runId ?? requestId,
               autonomy: oxyAutonomy,
               runScope: oxyRunScope,
+              ...(oxyRunIsOpen ? { runIsOpen: oxyRunIsOpen } : {}),
               onStepStatus: onOxyStepStatus,
             });
       const tools: ToolSet = {
@@ -809,6 +813,7 @@ export class ToolPipeline {
             runId: runId ?? requestId,
             autonomy: oxyAutonomy,
             runScope: oxyRunScope,
+            ...(oxyRunIsOpen ? { runIsOpen: oxyRunIsOpen } : {}),
             onStepStatus: onOxyStepStatus,
           }).catch(bulkFailure('oxy-service')),
       // A gemie writes to another from the person's own chat (`gemieChat`, which only a

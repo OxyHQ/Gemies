@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   dispatch: vi.fn(),
   find: vi.fn(),
   setEnabled: vi.fn(),
+  cancelRuns: vi.fn(async () => []),
   update: vi.fn(),
   reload: vi.fn(),
   scheduleError: vi.fn(),
@@ -56,6 +57,7 @@ vi.mock('../../db/agents/agentRepository.js', async () => {
   };
 });
 vi.mock('../../db/automation/automationDefinitionRepository.js', () => ({
+  cancelOpenAutomationRuns: state.cancelRuns,
   countEnabledAutomationDefinitions: state.enabledCount,
   createAutomationDefinition: state.create,
   findAutomationDefinition: state.find,
@@ -532,7 +534,7 @@ describe('structured automation control plane', () => {
     expect(state.setEnabled).not.toHaveBeenCalled();
   });
 
-  it('stops the task: disabling it is the off switch, with nothing held at Oxy', async () => {
+  it('stops the task: disabling it is the off switch, and its open runs end now', async () => {
     state.find.mockResolvedValue({
       id: 'automation-1',
       ownerAccountId: 'owner-1',
@@ -542,6 +544,8 @@ describe('structured automation control plane', () => {
     const response = await send('DELETE', '/automations/automation-1');
     expect(response.status).toBe(200);
     expect(state.setEnabled).toHaveBeenCalledWith(database, 'automation-1', 'owner-1', false);
+    // Each call is authorized as it is made, so ending its runs is what stops one already queued.
+    expect(state.cancelRuns).toHaveBeenCalledWith(database, 'automation-1');
     expect(state.reload).toHaveBeenCalledWith('automation-1');
     expect(response.body).toEqual({
       automation: { id: 'automation-1', enabled: false },

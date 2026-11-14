@@ -427,6 +427,48 @@ describe('an Alia task run', () => {
     );
   });
 
+  it('authorizes nothing once the owner stopped the task, even mid-run', async () => {
+    state.agency.createFirstPartyExecutionAuthorization.mockClear();
+    const resource = {
+      appId: 'inbox',
+      effectiveAccountId: 'owner-1',
+      resourceType: 'email_account',
+      resourceId: 'owner-1',
+    };
+    const binding = {
+      resource,
+      suffix: null,
+      compiled: {
+        definition: { name: 'sendEmail', effect: 'write' },
+        catalogBinding: { registrationId: 'reg-1', version: '1.0.0', digest: 'a'.repeat(64) },
+        catalog: { appId: 'inbox' },
+      },
+    } as unknown as BoundTool;
+    const context: OxyToolExecutionContext = {
+      requesterAccountId: 'owner-1',
+      ownerAccountId: 'owner-1',
+      actor: { type: 'alia', ownerAccountId: 'owner-1' },
+      runId: 'run-1',
+      runScope: { [oxyRunScopeKey(resource, 'sendEmail')]: { stepId: 'step-2' } },
+      runIsOpen: async () => false,
+    };
+    await expect(callBoundTool(binding, { to: 'a@b.c' }, context)).rejects.toThrow(/stopped/);
+    expect(state.agency.createFirstPartyExecutionAuthorization).not.toHaveBeenCalled();
+  });
+
+  it('gives back the hold of a run its owner stopped before it ran, and runs nothing', async () => {
+    state.findRun.mockResolvedValueOnce({
+      id: 'run-1',
+      automationId: 'automation-1',
+      selectedActorType: 'alia',
+      selectedAgentId: ALIA_GEMIE_ID,
+      status: 'cancelled',
+    });
+    await expect(runAliaTask(job, { finalAttempt: false })).resolves.toBe('skipped');
+    expect(state.refund).toHaveBeenCalledWith(RESERVATION, 'Alia task stopped by its owner');
+    expect(state.generate).not.toHaveBeenCalled();
+  });
+
   it('charges a watch run but posts nothing when the change is not worth telling', async () => {
     state.listSteps.mockResolvedValueOnce([
       {

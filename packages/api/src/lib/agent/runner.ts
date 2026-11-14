@@ -58,6 +58,7 @@ import { compactContext } from './context-compaction.js';
 import { redactSecrets } from './secret-scanner.js';
 import { readCapabilityGrants } from '../../domain/capability-grants.js';
 import {
+  automationRunIsOpen,
   listAutomationRunActionSteps,
   markAutomationActionStep,
   markAutomationRunForSession,
@@ -351,7 +352,12 @@ async function driveAgentSession(
     oxyAutonomy: 'autonomous',
     // An automation stage runs exactly its declared steps. Any other run is the
     // agent working on its own for the session's person.
-    ...(oxyRunScope ? { oxyRunScope } : {}),
+    ...(oxyRunScope && session.automationRunId
+      ? {
+          oxyRunScope,
+          oxyRunIsOpen: () => automationRunIsOpen(getDb(), session.automationRunId as string),
+        }
+      : {}),
     toolScope: session.automationRunId ? 'automation_run_scope' : 'standard',
     onOxyStepStatus: async (stepId, status, auditEventId) => {
       try {

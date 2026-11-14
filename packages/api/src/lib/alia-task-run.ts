@@ -37,6 +37,7 @@ import { getDb } from '../db/index.js';
 import { findAgentById } from '../db/agents/agentRepository.js';
 import { attachAgentIdentity, type HydratedAgent } from './agent-identity.js';
 import {
+  automationRunIsOpen,
   findAutomationDefinitionById,
   findAutomationRunById,
   listAutomationRunActionSteps,
@@ -185,6 +186,11 @@ export async function runAliaTask(
     await safeRefund(data.creditReservation, 'Alia task run not found');
     return 'skipped';
   }
+  // Stopped by its owner before it ran: nobody else gives its hold back.
+  if (run.status === 'cancelled') {
+    await safeRefund(data.creditReservation, 'Alia task stopped by its owner');
+    return 'skipped';
+  }
   if (run.status !== 'planned' && run.status !== 'running') return 'skipped';
 
   const automation = await findAutomationDefinitionById(getDb(), run.automationId);
@@ -211,13 +217,15 @@ export async function runAliaTask(
     if (!control) throw new Error('Alia task run has no control step');
     const task = renderAutomationStageTask(control.input);
     const watchRun = isWatchRun(control.input);
-    // Also renews the lease on a retry. False: the reaper already closed it.
+    // Also renews the lease on a retry. False: the reaper already closed it, or its owner stopped it.
     if (
       !(await markAliaAutomationRun(getDb(), data.runId, 'running', {
         leaseMs: ALIA_TASK_LEASE_MS,
       }))
     ) {
       settled = true;
+      if (await stoppedByOwner(data.runId))
+        await safeRefund(data.creditReservation, 'Alia task stopped by its owner');
       return 'skipped';
     }
 
@@ -242,6 +250,7 @@ export async function runAliaTask(
       oxyAutonomy: automation.maximumAutonomy,
       // Exactly the run's scope; `{}` (none) builds no Oxy tools.
       oxyRunScope: runScope,
+      oxyRunIsOpen: () => automationRunIsOpen(getDb(), data.runId),
       onOxyStepStatus: async (stepId, status, auditEventId) => {
         try {
           await markAutomationActionStep(getDb(), stepId, status, auditEventId);
@@ -297,8 +306,16 @@ export async function runAliaTask(
     if (!closed) {
       log.agents.warn(
         { runId: data.runId },
-        'Alia task finished after it was reaped; result dropped',
+        'Alia task finished after it was closed; result dropped',
       );
+      // Stopped by its owner while it ran: what it spent is settled here, since nobody else will.
+      if (await stoppedByOwner(data.runId)) {
+        await finalizeCredits(
+          data.creditReservation,
+          usage,
+          servedModelId(resolved.modelId, servedReferenceOf(answered.last)),
+        ).catch(() => safeRefund(data.creditReservation, 'Alia task settlement failed'));
+      }
       return 'skipped';
     }
     try {
@@ -341,9 +358,16 @@ export async function runAliaTask(
     if (await markAliaAutomationRun(getDb(), data.runId, 'failed')) {
       await safeRefund(data.creditReservation, 'Alia task failed');
       await notifyFailure(data, automation, gemie._id);
+    } else if (await stoppedByOwner(data.runId)) {
+      await safeRefund(data.creditReservation, 'Alia task stopped by its owner');
     }
     throw err;
   }
+}
+
+/** Whether the run's owner stopped it (`cancelOpenAutomationRuns`), rather than it finishing. */
+async function stoppedByOwner(runId: string): Promise<boolean> {
+  return (await findAutomationRunById(getDb(), runId))?.status === 'cancelled';
 }
 
 async function notifyFailure(

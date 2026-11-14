@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import {
+  cancelOpenAutomationRuns,
   findAutomationDefinition,
   listAutomationDefinitions,
   listAutomationRuns,
@@ -36,7 +37,10 @@ function userId(request: Request): string | null {
   return request.user?.id ?? null;
 }
 
-/** Stopping is the off switch: a disabled task never runs again, and nothing is held at Oxy. */
+/**
+ * Stopping is the off switch: a disabled task never runs again, and its runs still open end now,
+ * so not one more call is made for it (each is authorized as it is made). Nothing is held at Oxy.
+ */
 async function stopAutomation(input: { ownerAccountId: string; automation: AutomationRecord }) {
   const stopped = await setAutomationEnabled(
     getDb(),
@@ -44,6 +48,7 @@ async function stopAutomation(input: { ownerAccountId: string; automation: Autom
     input.ownerAccountId,
     false,
   );
+  await cancelOpenAutomationRuns(getDb(), input.automation.id);
   await refreshAutomationSchedule(input.automation.id);
   return stopped;
 }

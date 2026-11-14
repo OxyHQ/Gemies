@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { ALIA_GEMIE_ID } from '../../domain/alia-gemie';
 import { uuidv7 } from '@oxy.so/db';
 import type { ApiDatabase, Executor } from '../index';
@@ -828,6 +828,58 @@ export async function markAutomationActionStep(
     .where(eq(automationSteps.id, stepId));
 }
 
+/**
+ * The owner stopped the task (deleted it, or turned it off): every run of it still open ends now,
+ * `cancelled`, with its open steps. Its calls already in flight are refused at their next
+ * authorization (`automationRunIsOpen`), since each one is authorized as it is made.
+ */
+export async function cancelOpenAutomationRuns(
+  db: ApiDatabase,
+  automationId: string,
+): Promise<string[]> {
+  return db.transaction(async (transaction) => {
+    const now = new Date();
+    const runs = await transaction
+      .update(automationRuns)
+      .set({ status: 'cancelled', completedAt: now, leaseExpiresAt: null })
+      .where(
+        and(
+          eq(automationRuns.automationId, automationId),
+          inArray(automationRuns.status, ['planned', 'running']),
+        ),
+      )
+      .returning({ id: automationRuns.id });
+    const ids = runs.map((run) => run.id);
+    if (ids.length > 0) {
+      await transaction
+        .update(automationSteps)
+        .set({ status: 'cancelled', completedAt: now })
+        .where(
+          and(
+            inArray(automationSteps.runId, ids),
+            inArray(automationSteps.status, ['planned', 'running']),
+          ),
+        );
+    }
+    return ids;
+  });
+}
+
+/** Whether a run may still act: neither finished nor stopped by its owner. */
+export async function automationRunIsOpen(db: Executor, runId: string): Promise<boolean> {
+  const [run] = await db
+    .select({ status: automationRuns.status })
+    .from(automationRuns)
+    .where(eq(automationRuns.id, runId))
+    .limit(1);
+  return run?.status === 'planned' || run?.status === 'running';
+}
+
+/** A run its owner has not stopped: a stopped run is never moved on, or back, by its sessions. */
+function runNotCancelled(runId: string) {
+  return and(eq(automationRuns.id, runId), ne(automationRuns.status, 'cancelled'));
+}
+
 export async function markAutomationRunForSession(
   db: ApiDatabase,
   sessionId: string,
@@ -859,7 +911,7 @@ export async function markAutomationRunForSession(
         await transaction
           .update(automationRuns)
           .set({ status: 'running' })
-          .where(eq(automationRuns.id, runId));
+          .where(runNotCancelled(runId));
         await transaction
           .update(automationSteps)
           .set({ status: 'running', startedAt: now })
@@ -871,7 +923,7 @@ export async function markAutomationRunForSession(
         await transaction
           .update(automationRuns)
           .set({ status, completedAt: now })
-          .where(eq(automationRuns.id, runId));
+          .where(runNotCancelled(runId));
         await transaction
           .update(automationSteps)
           .set({ status, completedAt: now })
@@ -899,7 +951,7 @@ export async function markAutomationRunForSession(
         await transaction
           .update(automationRuns)
           .set({ status: 'failed', completedAt: now })
-          .where(eq(automationRuns.id, runId));
+          .where(runNotCancelled(runId));
         await transaction
           .update(automationSteps)
           .set({ status: 'failed', completedAt: now })
@@ -937,7 +989,7 @@ export async function markAutomationRunForSession(
       await transaction
         .update(automationRuns)
         .set(nextStage ? { status: 'running' } : { status: 'succeeded', completedAt: now })
-        .where(eq(automationRuns.id, runId));
+        .where(runNotCancelled(runId));
     });
     return;
   }

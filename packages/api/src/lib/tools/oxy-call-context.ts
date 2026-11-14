@@ -69,6 +69,11 @@ export interface OxyToolExecutionContext {
    * (`oxyRunScopeKey`): only these are built, each authorized per call.
    */
   runScope?: Readonly<Record<string, OxyRunScopeEntry>>;
+  /**
+   * Whether the run may still act, asked before each scoped call is authorized: a task its owner
+   * stopped acts no more, even mid-run (`cancelOpenAutomationRuns`).
+   */
+  runIsOpen?: () => Promise<boolean>;
   onStepStatus?: (
     stepId: string,
     status: 'running' | 'succeeded' | 'failed',

@@ -4,6 +4,7 @@ import { findAgentById } from '../db/agents/agentRepository.js';
 import { ALIA_GEMIE_ID } from '../domain/alia-gemie.js';
 import type { AgentTaskAuthority } from '../domain/agent.js';
 import {
+  cancelOpenAutomationRuns,
   countEnabledAutomationDefinitions,
   createAutomationDefinition,
   updateAutomationDefinition,
@@ -467,6 +468,8 @@ export async function updateStructuredAutomation(input: {
       automationId: input.existing.id,
     });
   }
+  // Turned off by its owner: its runs still open end now, as when it is deleted.
+  if (input.patch.enabled === false) await cancelOpenAutomationRuns(getDb(), automation.id);
 
   await refreshAutomationSchedule(automation.id);
   return { automation, receipt: automationReceipt(automation) };

@@ -107,6 +107,8 @@ async function createDirectExecutionAuthorization(
 ): Promise<string> {
   const tool = binding.compiled.definition.name;
   const scoped = context.runScope?.[oxyRunScopeKey(binding.resource, tool)];
+  if (context.runScope !== undefined && context.runIsOpen && !(await context.runIsOpen()))
+    throw new OxyAuthorityUnavailableError('The task was stopped; nothing was done');
   const terms = firstPartyExecutionAuthorizationInputSchema.parse({
     authority: 'first_party' as const,
     kind: 'direct_request' as const,
