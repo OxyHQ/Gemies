@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
 import { agents } from '../schema/agents';
 import { conversationMembers, gemieConversations, messages } from '../schema/chat';
@@ -34,6 +34,12 @@ import {
 import { lockMessageThread } from '../chat/messageLock';
 import { TEST_CHARACTER } from './support/agent-character';
 import { ROOM_GEMIE_ID } from '../../domain/alia-gemie';
+import {
+  processGemieStep,
+  type GemieEngineDeps,
+  type GemieStepData,
+} from '../../lib/chat/gemies/engine';
+import { gemieReplyIdOf } from '../../lib/chat/gemies/policy';
 import { agentReactionTurnId } from '../../lib/chat/reactions/agent-tool';
 
 let db: ApiDatabase;
@@ -133,6 +139,7 @@ describe('authored agent reactions', () => {
           f.first.id,
           'admitted-turn',
           { kind: 'person', message: { id: 'person', content: 'Gracias' } },
+          42,
         ),
       ).toBe(true);
     }
@@ -169,6 +176,7 @@ describe('authored agent reactions', () => {
         f.first.id,
         'admitted-turn',
         { kind: 'person', message: { id: 'person', content: 'Gracias' } },
+        42,
       ),
     ).toBe(true);
     await insertMessages(
@@ -526,6 +534,7 @@ describe('authored agent reactions', () => {
         f.first.id,
         'admitted-turn',
         { kind: 'person', message: { id: 'person', content: 'Gracias' } },
+        42,
       ),
     ).toBe(false);
     await f.react('done');
@@ -546,6 +555,7 @@ describe('authored agent reactions', () => {
         f.second.id,
         'admitted-turn',
         { kind: 'person', message: { id: 'person', content: 'Gracias' } },
+        42,
       ),
     ).toBe(false);
     expect(
@@ -556,6 +566,7 @@ describe('authored agent reactions', () => {
         f.first.id,
         'different-content-turn',
         { kind: 'person', message: { id: 'person', content: 'Gracias' } },
+        42,
       ),
     ).toBe(false);
     expect(
@@ -568,6 +579,7 @@ describe('authored agent reactions', () => {
             f.first.id,
             'admitted-turn',
             { kind: 'person', message: { id: 'person', content: 'Gracias' } },
+            42,
           ),
         ),
       ),
@@ -615,10 +627,18 @@ it('keeps canonical direct retry completion distinct from edits reusing the same
   expect(retry).toBe(first);
   await f.react('first-operation', true, '❤️', 'person', f.first, first);
   expect(
-    await markAgentReactionTurnComplete(db, f.userId, f.conversationId, f.first.id, first, {
-      kind: 'person',
-      message: snapshot,
-    }),
+    await markAgentReactionTurnComplete(
+      db,
+      f.userId,
+      f.conversationId,
+      f.first.id,
+      first,
+      {
+        kind: 'person',
+        message: snapshot,
+      },
+      42,
+    ),
   ).toBe(true);
   expect(
     await findAgentReactionTurnComplete(db, f.userId, f.conversationId, f.first.id, retry),
@@ -664,11 +684,167 @@ async function peerFixture(reply = false) {
       active: true,
     });
   const complete = () =>
-    markAgentReactionTurnComplete(db, f.userId, f.conversationId, f.first.id, 'peer-turn', trigger);
+    markAgentReactionTurnComplete(
+      db,
+      f.userId,
+      f.conversationId,
+      f.first.id,
+      'peer-turn',
+      trigger,
+      42,
+    );
   return { ...f, id, trigger, react, complete };
 }
 
 describe('peer-message reaction admission', () => {
+  it('recovers committed peer usage after enqueue loss without another turn or a larger budget', async () => {
+    const f = await peerFixture();
+    if (f.trigger.kind !== 'peer') throw new Error('Expected peer');
+    const turnId = agentReactionTurnId(gemieReplyIdOf(f.trigger.chainId, 1), {
+      id: f.id,
+      content: { content: 'Listo', actorId: f.second.id, chainId: f.trigger.chainId },
+    });
+    await mutateAgentMessageReaction(db, f.userId, f.conversationId, f.id, {
+      actor: f.first,
+      turnId,
+      trigger: f.trigger,
+      expectedTarget: { content: 'Listo', role: 'assistant', actorId: f.second.id },
+      mutationId: 'committed-reply',
+      emoji: '❤️',
+      active: true,
+    });
+    expect(
+      await markAgentReactionTurnComplete(
+        db,
+        f.userId,
+        f.conversationId,
+        f.first.id,
+        turnId,
+        f.trigger,
+        42,
+      ),
+    ).toBe(true);
+    const job: GemieStepData = {
+      kind: 'gemies',
+      phase: 'reply',
+      userId: f.userId,
+      conversationId: f.conversationId,
+      originConversationId: 'origin',
+      chainId: f.trigger.chainId,
+      triggerId: f.id,
+      initiator: { info: { ...f.second, handle: 'peer', color: null, character: null } },
+      recipient: { info: { ...f.first, handle: 'peer', color: null, character: null } },
+      turn: 1,
+      messages: 1,
+      tokens: 8,
+      surfaceApplicationId: null,
+    };
+    const runTurn = vi.fn<GemieEngineDeps['room']['runTurn']>(async (input) => {
+      // At the recovered 50-token ceiling, the initiator can report back but cannot
+      // react or send another peer request. No recipient inference is repeated.
+      expect(input.agent._id).toBe(f.second.id);
+      expect(input.gemieChain).toBeUndefined();
+      expect(input.conversationReaction).toBeUndefined();
+      return { response: 'Done.', tokensUsed: 3, creditsCharged: 0 };
+    });
+    const queue: GemieStepData[] = [];
+    const enqueue = vi
+      .fn<GemieEngineDeps['enqueue']>()
+      .mockRejectedValueOnce(new Error('Lost enqueue'))
+      .mockImplementation(async (next) => {
+        queue.push(next);
+      });
+    const deps: GemieEngineDeps = {
+      bounds: { maxMessages: 8, maxTokens: 50 },
+      enqueue,
+      tellPerson: async () => ({ messageId: 'reported' }),
+      toldIdOf: () => 'reported',
+      room: {
+        lock: { run: async (_key, work) => work() },
+        publish: () => undefined,
+        enqueue: async () => undefined,
+        latestPersonMessageId: async () => null,
+        loadTranscript: async (_owner, conversation) =>
+          conversation === f.conversationId
+            ? (await listMessages(db, f.userId, f.conversationId)).map((row) => ({
+                id: row.id,
+                clientMessageId: row.clientMessageId,
+                role: row.role,
+                content: row.content,
+                agentId: row.agentInfoId,
+                agentName: row.agentInfoName,
+                seq: row.seq,
+              }))
+            : [],
+        reactionCompletion: async (owner, conversation, actor, turn) => {
+          const receipt = await findAgentReactionTurnComplete(db, owner, conversation, actor, turn);
+          return receipt ? { tokensUsed: receipt.tokensUsed } : null;
+        },
+        repliesSince: async () => 0,
+        now: () => Date.now(),
+        loadAgent: async () =>
+          ({ _id: f.second.id }) as Awaited<ReturnType<GemieEngineDeps['room']['loadAgent']>>,
+        runTurn,
+        storeReply: async () => ({ id: 'unused', seq: 1, createdAt: new Date() }),
+      },
+    };
+    await expect(processGemieStep(job, deps)).rejects.toThrow('Lost enqueue');
+    expect(await processGemieStep(job, deps)).toBe('continued');
+    expect(runTurn).not.toHaveBeenCalled();
+    expect(queue[0]).toMatchObject({ tokens: 50, messages: 2 });
+    expect(await processGemieStep(queue.shift()!, deps)).toBe('ended');
+    expect(runTurn).toHaveBeenCalledOnce();
+    expect(queue).toEqual([]);
+    expect(
+      await findAgentReactionTurnComplete(db, f.userId, f.conversationId, f.first.id, turnId),
+    ).toMatchObject({ tokensUsed: 42 });
+  });
+
+  it('persists exact completion usage immutably across a lost enqueue and rejects invalid usage', async () => {
+    const f = await peerFixture();
+    await f.react();
+    expect(await f.complete()).toBe(true);
+    // The caller may lose its enqueue after this database commit. Recovery reads the receipt,
+    // rather than guessing usage from emoji or performing another inference.
+    const receipt = await findAgentReactionTurnComplete(
+      db,
+      f.userId,
+      f.conversationId,
+      f.first.id,
+      'peer-turn',
+    );
+    expect(receipt).toMatchObject({ tokensUsed: 42 });
+    expect(await f.complete()).toBe(true);
+    expect(
+      await markAgentReactionTurnComplete(
+        db,
+        f.userId,
+        f.conversationId,
+        f.first.id,
+        'peer-turn',
+        f.trigger,
+        43,
+      ),
+    ).toBe(false);
+    for (const invalid of [-1, NaN, Infinity, 0.5, 2_147_483_648]) {
+      await expect(
+        markAgentReactionTurnComplete(
+          db,
+          f.userId,
+          f.conversationId,
+          f.first.id,
+          'peer-turn',
+          f.trigger,
+          invalid,
+        ),
+      ).rejects.toThrow('Invalid reaction completion usage');
+    }
+    expect(
+      await findAgentReactionTurnComplete(db, f.userId, f.conversationId, f.first.id, 'peer-turn'),
+    ).toMatchObject({ tokensUsed: 42 });
+    expect(await countAgentReactionTurnsSince(db, f.userId, f.conversationId, new Date(0))).toBe(1);
+  });
+
   it.each([false, true])(
     'persists and replays a peer contribution without a person trigger or a new wake (reply=%s)',
     async (reply) => {
@@ -716,6 +892,7 @@ describe('peer-message reaction admission', () => {
         f.first.id,
         'peer-turn',
         f.trigger,
+        42,
       ),
     ).toBe(false);
     const trigger = f.trigger;
@@ -816,6 +993,7 @@ it('only exposes clean reaction contributions for exact request-derived turn ids
     f.first.id,
     previous,
     trigger,
+    42,
   );
   expect(await listAgentReactionContributions(db, f.userId, f.conversationId, [current])).toEqual(
     [],
@@ -825,7 +1003,15 @@ it('only exposes clean reaction contributions for exact request-derived turn ids
   expect(await listAgentReactionContributions(db, f.userId, f.conversationId, [current])).toEqual(
     [],
   );
-  await markAgentReactionTurnComplete(db, f.userId, f.conversationId, f.first.id, current, trigger);
+  await markAgentReactionTurnComplete(
+    db,
+    f.userId,
+    f.conversationId,
+    f.first.id,
+    current,
+    trigger,
+    42,
+  );
   const expected = [
     {
       id: current,

@@ -603,7 +603,10 @@ describe('v2 room participation: selection before execution', () => {
   it('replays durable reaction completion without another model/tool turn, then selects remaining work', async () => {
     const h = harness({ script: () => 'must not run', select: async () => idle, agentsGone: true });
     const replay = vi.fn(async () => undefined);
-    Object.assign(h.deps, { reactionCompleted: vi.fn(async () => true), replayReactions: replay });
+    Object.assign(h.deps, {
+      reactionCompletion: vi.fn(async () => ({ tokensUsed: 10 })),
+      replayReactions: replay,
+    });
     await h.drain(
       h.first({
         ...v2,

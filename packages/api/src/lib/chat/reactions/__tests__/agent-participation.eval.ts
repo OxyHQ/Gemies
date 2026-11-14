@@ -393,7 +393,13 @@ async function evaluateTool(testCase: ToolCase, iteration: number): Promise<Reco
       .join('')
       .trim();
     const clean = result.finishReason === 'stop' || result.finishReason === 'tool-calls';
-    const reactionOnly = clean && (await turn.complete(text, reactionStepCalls(result.steps)));
+    const reactionOnly =
+      clean &&
+      (await turn.complete(
+        text,
+        reactionStepCalls(result.steps),
+        result.totalUsage.totalTokens ?? 0,
+      ));
     const outcome = reactionOnly ? 'reaction-only' : text ? 'text' : 'quiet';
     const own = (id: string, emoji: string) =>
       entries

@@ -91,7 +91,7 @@ describe('hosted reaction identity', () => {
       }),
     );
     expect(
-      await turn.complete('', [{ toolName: 'react_to_message', state: 'result', result }]),
+      await turn.complete('', [{ toolName: 'react_to_message', state: 'result', result }], 42),
     ).toBe(true);
     expect(h.complete).toHaveBeenCalledOnce();
   });
@@ -107,7 +107,7 @@ describe('hosted reaction identity', () => {
     const result = await execute(turn);
     h.find.mockResolvedValue(local());
     await expect(
-      turn.complete('', [{ toolName: 'react_to_message', state: 'result', result }]),
+      turn.complete('', [{ toolName: 'react_to_message', state: 'result', result }], 42),
     ).rejects.toThrow('Reaction turn completion unavailable');
     expect(h.complete).not.toHaveBeenCalled();
   });

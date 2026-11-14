@@ -238,11 +238,17 @@ async function reply(data: GemieStepData, deps: GemieEngineDeps): Promise<GemieS
     return 'continued';
   }
 
-  if (await room.reactionCompleted?.(userId, conversationId, recipient.info.id, reactionTurnId)) {
+  const completedReaction = await room.reactionCompletion?.(
+    userId,
+    conversationId,
+    recipient.info.id,
+    reactionTurnId,
+  );
+  if (completedReaction) {
     await room.replayReactions?.(userId, conversationId, recipient.info.id, reactionTurnId);
     await emit('alia.agent_start', { consultId: replyId, agent: recipient.info });
     await emit('alia.agent_end', { consultId: replyId, status: 'completed', reactionOnly: true });
-    await next(true, data.tokens);
+    await next(true, data.tokens + completedReaction.tokensUsed);
     return 'continued';
   }
 
@@ -435,7 +441,12 @@ async function continueChain(
     : undefined;
   if (
     reactionTurnId &&
-    (await room.reactionCompleted?.(userId, data.conversationId, initiator.info.id, reactionTurnId))
+    (await room.reactionCompletion?.(
+      userId,
+      data.conversationId,
+      initiator.info.id,
+      reactionTurnId,
+    ))
   ) {
     await room.replayReactions?.(userId, data.conversationId, initiator.info.id, reactionTurnId);
     await emit('alia.agent_start', { consultId: reportId, agent: initiator.info, lead: true });

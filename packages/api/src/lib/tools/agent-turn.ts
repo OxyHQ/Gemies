@@ -453,7 +453,7 @@ export async function runAgentTurn(input: {
 
     const reactionOnly =
       reactionFinished && input.conversationReaction
-        ? await input.conversationReaction.complete(response, allReactionCalls)
+        ? await input.conversationReaction.complete(response, allReactionCalls, tokensUsed)
         : false;
     return {
       response,

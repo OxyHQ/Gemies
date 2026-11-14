@@ -822,7 +822,10 @@ export async function markAgentReactionTurnComplete(
   actorId: string,
   turnId: string,
   trigger: AgentReactionTrigger,
+  tokensUsed: number,
 ): Promise<boolean> {
+  if (!Number.isSafeInteger(tokensUsed) || tokensUsed < 0 || tokensUsed > 2_147_483_647)
+    throw new Error('Invalid reaction completion usage');
   return db.transaction(async (tx) => {
     await lockMessageThread(tx, userId, conversationId);
     if (!(await reactionTriggerMatches(tx, userId, conversationId, actorId, trigger))) return false;
@@ -844,9 +847,17 @@ export async function markAgentReactionTurnComplete(
     if (!receipt) return false;
     await tx
       .insert(agentReactionTurns)
-      .values({ oxyUserId: userId, conversationId, actorId, turnId })
+      .values({ oxyUserId: userId, conversationId, actorId, turnId, tokensUsed })
       .onConflictDoNothing();
-    return true;
+    // Retry accepts the same immutable usage; a different value never overwrites the receipt.
+    const completion = await findAgentReactionTurnComplete(
+      tx,
+      userId,
+      conversationId,
+      actorId,
+      turnId,
+    );
+    return completion?.tokensUsed === tokensUsed;
   });
 }
 

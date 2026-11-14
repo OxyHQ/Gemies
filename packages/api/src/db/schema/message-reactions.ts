@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   foreignKey,
   index,
   integer,
@@ -8,6 +9,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { createdAt, generatedId, timestamptz } from '@oxy.so/db';
 import { REACTION_EVENT_PHASES, REACTION_EVENT_STATUSES } from '../../domain/reaction-events';
 import { checkOneOf } from './columns';
@@ -116,9 +118,11 @@ export const agentReactionTurns = pgTable(
     conversationId: text().notNull(),
     actorId: text().notNull(),
     turnId: text().notNull(),
+    tokensUsed: integer().notNull(),
     completedAt: createdAt(),
   },
   (t) => [
+    check('agent_reaction_turns_tokens_check', sql`${t.tokensUsed} >= 0`),
     foreignKey({
       name: 'agent_reaction_turns_conversation_fk',
       columns: [t.oxyUserId, t.conversationId],

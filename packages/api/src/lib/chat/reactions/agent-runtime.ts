@@ -63,7 +63,7 @@ export async function prepareAgentReactionTurn(input: {
         ...snapshot,
         conversationId: input.conversationId,
       }),
-    complete: async () =>
+    complete: async (tokensUsed) =>
       (await reachable(input.agent._id)) &&
       markAgentReactionTurnComplete(
         db,
@@ -72,6 +72,7 @@ export async function prepareAgentReactionTurn(input: {
         input.agent._id,
         input.turnId,
         input.trigger,
+        tokensUsed,
       ),
   });
 }

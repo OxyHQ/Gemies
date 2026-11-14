@@ -30,15 +30,19 @@ export function roomRuntime(): RoomRuntime {
   const deps: RoomEngineDeps = {
     prepareReaction: async (input) =>
       (await import('../reactions/agent-runtime.js')).prepareAgentReactionTurn(input),
-    reactionCompleted: async (userId, conversationId, actorId, turnId) => {
+    reactionCompletion: async (userId, conversationId, actorId, turnId) => {
       const { getDb } = await import('../../../db/index.js');
       const { findAgentReactionTurnComplete } = await import(
         '../../../db/chat/reactionRepository.js'
       );
-      return (
-        (await findAgentReactionTurnComplete(getDb(), userId, conversationId, actorId, turnId)) !==
-        null
+      const completion = await findAgentReactionTurnComplete(
+        getDb(),
+        userId,
+        conversationId,
+        actorId,
+        turnId,
       );
+      return completion ? { tokensUsed: completion.tokensUsed } : null;
     },
     replayReactions: async (userId, conversationId, actorId, turnId) => {
       const { getDb } = await import('../../../db/index.js');

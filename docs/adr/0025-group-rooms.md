@@ -158,6 +158,12 @@ receipts and contribution limits as other hosted turns.
 Persist a reaction-only turn completion separately from its mutation receipts, only after a clean
 model finish. Queued room retries replay that completion and current snapshots for its touched
 targets before continuing selection; direct retries retain existing turn admission semantics.
+The clean completion also stores its exact nonnegative token usage. A peer-chain retry after a
+lost enqueue adds that immutable usage to the original job's prior total, without another
+inference or charge; repeated delivery cannot overwrite the receipt with different usage.
+This closes the new reaction-only path's budget gap. The older text-message replay path does
+not persist token usage on messages and still resumes with the job's prior total; correcting
+that existing limitation requires a separate durable text-usage design, not an estimated amount.
 The versioned `alia.turn_state` event reports durable admission/completion without inventing an
 agent session or empty assistant message. See the [runtime contract](../chat-runtime.mdx#gemies-can-author-reactions-during-a-turn)
 for wire fields and the clean-terminal requirement. These completions count against the room's
