@@ -112,6 +112,9 @@ vi.mock('../../../src/hooks/useFailedTurnToast', () => ({
 vi.mock('../../../src/components/thread/MessageBlockBoundary', async () => ({
   MessageBlockBoundary: await stub('Boundary')(),
 }));
+vi.mock('../../../src/components/thread/GemieConversationCard', async () => ({
+  GemieConversationCard: await stub('GemieConversationCard')(),
+}));
 vi.mock('../../../src/components/thread/ToolResultCard', async () => ({
   ToolResultCard: await stub('ToolCard')(),
 }));

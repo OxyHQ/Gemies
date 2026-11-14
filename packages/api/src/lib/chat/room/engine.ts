@@ -121,7 +121,7 @@ export interface RoomEngineDeps {
     readonly agentInfo: AgentInfo;
     /**
      * What the member drew while answering: its finished `canvas` calls (`AgentTurnResult.canvas`),
-     * kept on its own message as a consulted agent's are, so a reload and a share show them where
+     * kept on its own message as a gemie's answer to another gemie is (ADR 0042), so a reload and a share show them where
      * they were seen live. Never its other tools: their results are the person's data.
      */
     readonly toolInvocations?: readonly ToolInvocation[];
@@ -281,7 +281,7 @@ async function runStep(data: RoomJobData, deps: RoomEngineDeps): Promise<RoomSte
     reply = textOf(alreadyStored.content);
     if (data.version === 2 && member) {
       // The database commit may have preceded a lost event or failed next-job enqueue. Replay the
-      // SAME consultation and stored message so every subscriber converges, without another turn.
+      // SAME turn and stored message so every subscriber converges, without another turn.
       await emit('alia.agent_start', {
         consultId: replyId,
         agent: member.info,
@@ -482,11 +482,7 @@ async function speak(input: {
     const passed = data.version !== 2 && gate.finish();
 
     if (outcome.error !== undefined || outcome.response.trim() === '') {
-      return await fail(
-        outcome.refusal
-          ? { code: outcome.refusal.code, feature: outcome.refusal.feature }
-          : { code: 'agent_unavailable' },
-      );
+      return await fail({ code: 'agent_unavailable' });
     }
     if (data.version !== 2 && (passed || isPass(outcome.response))) {
       await emit('alia.agent_end', { consultId, status: 'declined' });

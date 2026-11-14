@@ -36,6 +36,7 @@ const STOPPER_FOR: Readonly<Record<string, string>> = {
   initTaskQueue: 'shutdownTaskQueue',
   initAliaTaskQueue: 'shutdownAliaTaskQueue',
   initRoomQueue: 'shutdownRoomQueue',
+  initGemieQueue: 'shutdownGemieQueue',
   // Fire-and-forget work with no running resource behind it. Each of these
   // is one call that settles; there is nothing left to stop.
   failOrphanedAudioJobs: '',
@@ -43,6 +44,7 @@ const STOPPER_FOR: Readonly<Record<string, string>> = {
   startWorker: 'shutdownTaskQueue',
   startAliaTaskWorker: 'shutdownAliaTaskQueue',
   startRoomWorker: 'shutdownRoomQueue',
+  startGemieWorker: 'shutdownGemieQueue',
   startSkillRegistrySync: 'stopSkillRegistrySync',
   startConnectorCatalogue: 'stopConnectorCatalogue',
 };
@@ -76,6 +78,9 @@ const shutdownAliaTaskQueue = traced('shutdownAliaTaskQueue');
 const initRoomQueue = traced('initRoomQueue');
 const startRoomWorker = traced('startRoomWorker');
 const shutdownRoomQueue = traced('shutdownRoomQueue');
+const initGemieQueue = traced('initGemieQueue');
+const startGemieWorker = traced('startGemieWorker');
+const shutdownGemieQueue = traced('shutdownGemieQueue');
 const startSkillRegistrySync = tracedSync('startSkillRegistrySync');
 const stopSkillRegistrySync = traced('stopSkillRegistrySync');
 const startConnectorCatalogue = tracedSync('startConnectorCatalogue');
@@ -105,6 +110,11 @@ vi.mock('../alia-task-queue.js', () => ({
   shutdownAliaTaskQueue,
 }));
 vi.mock('../chat/room/queue.js', () => ({ initRoomQueue, startRoomWorker, shutdownRoomQueue }));
+vi.mock('../chat/gemies/queue.js', () => ({
+  initGemieQueue,
+  startGemieWorker,
+  shutdownGemieQueue,
+}));
 vi.mock('../skills/scheduler.js', () => ({ startSkillRegistrySync, stopSkillRegistrySync }));
 vi.mock('../connector-catalogue/scheduler.js', () => ({
   startConnectorCatalogue,
@@ -153,6 +163,8 @@ describe('startBackgroundServices', () => {
     expect(startAgentRunReaper).toHaveBeenCalledTimes(1);
     expect(initRoomQueue).toHaveBeenCalledTimes(1);
     expect(startRoomWorker).toHaveBeenCalledTimes(1);
+    expect(initGemieQueue).toHaveBeenCalledTimes(1);
+    expect(startGemieWorker).toHaveBeenCalledTimes(1);
     expect(startSkillRegistrySync).toHaveBeenCalledTimes(1);
     expect(startConnectorCatalogue).toHaveBeenCalledTimes(1);
   });
@@ -201,6 +213,7 @@ describe('startBackgroundServices', () => {
       'initTaskQueue',
       'initAliaTaskQueue',
       'initRoomQueue',
+      'initGemieQueue',
       'failOrphanedAudioJobs',
       'startAgentRunReaper',
       'startSkillRegistrySync',
@@ -208,6 +221,7 @@ describe('startBackgroundServices', () => {
       'startWorker',
       'startAliaTaskWorker',
       'startRoomWorker',
+      'startGemieWorker',
     ]);
   });
 
@@ -254,6 +268,7 @@ describe('stopBackgroundServices', () => {
     expect(shutdownTaskQueue).toHaveBeenCalledTimes(1);
     expect(shutdownAliaTaskQueue).toHaveBeenCalledTimes(1);
     expect(shutdownRoomQueue).toHaveBeenCalledTimes(1);
+    expect(shutdownGemieQueue).toHaveBeenCalledTimes(1);
     expect(stopSkillRegistrySync).toHaveBeenCalledTimes(1);
     expect(stopConnectorCatalogue).toHaveBeenCalledTimes(1);
   });
@@ -278,7 +293,7 @@ describe('stopBackgroundServices', () => {
     await settle();
     const started = [...order];
     // Vacuity floor: an empty `started` would make the loop below assert nothing.
-    expect(started.length).toBe(13);
+    expect(started.length).toBe(15);
 
     order.length = 0;
     await stopBackgroundServices();
@@ -357,6 +372,7 @@ describe('stopBackgroundServices', () => {
       'shutdownTaskQueue',
       'shutdownAliaTaskQueue',
       'shutdownRoomQueue',
+      'shutdownGemieQueue',
     ]);
   });
 });

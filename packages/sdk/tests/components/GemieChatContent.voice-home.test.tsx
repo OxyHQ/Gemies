@@ -35,8 +35,7 @@ vi.mock('../../src/lib/flights', () => ({
 vi.mock('../../src/lib/agent-character', () => ({ readAgentCharacter: (value: unknown) => value }));
 vi.mock('../../src/lib/alia-character', () => ({ ALIA_AVATAR: { preset: 'alia' } }));
 vi.mock('../../src/components/GemieParticipants', () => ({
-  useParticipants: ({ lead }: { lead: unknown }) => ({ lead, joined: [] }),
-  groupParticipants: (group: unknown[]) => ({ lead: group[0], joined: group.slice(1) }),
+  GemieParticipants: () => null,
   groupFirstSend: () => [],
 }));
 vi.mock('../../src/runtime/agents', async (importOriginal) => ({
@@ -66,7 +65,11 @@ vi.mock('../../src/realtime/react', async (original) =>
 vi.mock('@oxy.so/bloom/toast', () => ({
   toast: { error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
-vi.mock('../../src/components/thread/AgentExchangeView', () => ({ AgentExchangeView: () => null }));
+vi.mock('../../src/components/GemieBetweenGemies', () => ({ GemieBetweenGemies: () => null }));
+vi.mock('../../src/components/GemieParticipants', () => ({
+  GemieParticipants: () => null,
+  groupFirstSend: () => [],
+}));
 vi.mock('../../src/components/InertWhen', () => ({
   InertWhen: ({ children }: { children?: unknown }) => children,
 }));

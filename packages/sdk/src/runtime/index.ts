@@ -66,8 +66,12 @@ export type {
   GemieHostTools,
   HostResultRecord as GemieHostResultRecord,
 } from './host-tools';
-export { FEATURE_ENTITLEMENT_REQUIRED, parseConsultEvent, parseHostAction } from './stream-events';
-export type { ConsultAgent, ConsultEvent } from './stream-events';
+export {
+  FEATURE_ENTITLEMENT_REQUIRED,
+  parseMemberTurnEvent,
+  parseHostAction,
+} from './stream-events';
+export type { MemberTurnAgent, MemberTurnEvent } from './stream-events';
 export {
   DEFAULT_SHARE_TTL_HOURS,
   readSharedConversation,

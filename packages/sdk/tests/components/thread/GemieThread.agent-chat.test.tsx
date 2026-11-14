@@ -112,6 +112,9 @@ vi.mock('../../../src/hooks/useFailedTurnToast', () => ({
 vi.mock('../../../src/components/thread/MessageBlockBoundary', async () => ({
   MessageBlockBoundary: await stub('Boundary')(),
 }));
+vi.mock('../../../src/components/thread/GemieConversationCard', async () => ({
+  GemieConversationCard: await stub('GemieConversationCard')(),
+}));
 vi.mock('../../../src/components/thread/ToolResultCard', async () => ({
   ToolResultCard: await stub('ToolCard')(),
 }));
@@ -208,24 +211,30 @@ afterEach(() => {
   renderer = null;
 });
 
-const SINDI = { id: 'sindi', name: 'Sindi' };
+const PEPE = { id: 'pepe', name: 'Pepe', handle: 'pepe' };
+const SINDI = { id: 'sindi', name: 'Sindi', handle: 'sindi' };
 const conversation: Message[] = [
   { id: 'u1', role: 'user', content: 'Find me a flat' },
   {
     id: 'a1',
     role: 'assistant',
-    content: 'Asking Sindi.',
+    content: 'I wrote to Sindi; I will tell you what she says.',
     toolInvocations: [
       {
         toolCallId: 'c1',
-        toolName: 'consultAgent',
+        toolName: 'sendMessage',
         state: 'result',
-        args: { agentId: 'sindi', task: 'Flats in Gracia under 1200' },
-        result: { agentId: 'sindi', agentName: 'Sindi', response: 'Three options.' },
+        args: { to: 'sindi', text: 'Flats in Gracia under 1200' },
+        result: {
+          status: 'sent',
+          conversationId: 'between',
+          chainId: 'chain-1',
+          from: PEPE,
+          to: SINDI,
+        },
       },
     ],
   },
-  { id: 'a2', role: 'assistant', content: 'Three options.', agentInfo: SINDI },
 ];
 
 function mount(props: Partial<Props>): ReactTestRenderer {
@@ -246,37 +255,24 @@ function mount(props: Partial<Props>): ReactTestRenderer {
 const buttons = (r: ReactTestRenderer) =>
   r.root.findAll((node) => (node.type as unknown) === 'Button');
 
-it('draws the line in the past tense and as a button that opens that agent exchange', () => {
-  const opened: unknown[] = [];
-  const r = mount({ onOpenAgentChat: (exchange) => opened.push(exchange) });
-  const [button] = buttons(r);
-  expect(buttons(r)).toHaveLength(1);
-  expect(button?.props.children).toBe('chat.chattedWith');
-  act(() => button?.props.onPress());
-  expect(opened).toEqual([
-    {
-      agent: SINDI,
-      pairs: [{ asker: null, task: 'Flats in Gracia under 1200', answer: 'Three options.' }],
-    },
-  ]);
-});
-
-it('keeps the line as plain text where there is nowhere to open it', () => {
-  expect(buttons(mount({}))).toHaveLength(0);
-});
-
 /** Every string the tree draws, in order. */
 const drawn = (r: ReactTestRenderer) => JSON.stringify(r.toJSON());
 
-it('draws nothing of what the consulted agent said under its line: the line opens it', () => {
-  const r = mount({ onOpenAgentChat: () => undefined });
-  expect(buttons(r)).toHaveLength(1);
-  expect(drawn(r)).toContain('Asking Sindi.');
-  expect(drawn(r)).not.toContain('Three options.');
-});
-
-it('still draws what the agent said where there is nowhere to open the exchange', () => {
-  expect(drawn(mount({}))).toContain('Three options.');
+it('draws the card of the conversation a gemie wrote in, and no generic step for it', () => {
+  const r = mount({});
+  const cards = r.root.findAll((node) => (node.type as unknown) === 'GemieConversationCard');
+  expect(cards).toHaveLength(1);
+  expect(cards[0]?.props.call).toEqual({
+    conversationId: 'between',
+    chainId: 'chain-1',
+    from: PEPE,
+    to: SINDI,
+    writing: false,
+    error: null,
+  });
+  expect(cards[0]?.props.startedLive).toBe(false);
+  expect(drawn(r)).toContain('I wrote to Sindi');
+  expect(drawn(r)).not.toContain('Flats in Gracia');
 });
 
 const EUSEBIO = { id: 'eusebio', name: 'Eusebio', handle: 'eusebiobot' };
@@ -307,41 +303,16 @@ const requestedGreeting: Message[] = [
 it('draws a scheduled reply in the direct conversation on arrival and after reloading', () => {
   const props: Props = {
     messages: requestedGreeting.slice(0, 2),
-    memberIds: new Set([EUSEBIO.id]),
     isLoading: false,
     threadRef: { current: null },
-    onOpenAgentChat: vi.fn(),
   };
   const r = mount(props);
   act(() => r.update(<GemieThread {...props} messages={requestedGreeting} />));
   expect(buttons(r)).toHaveLength(0);
   expect(drawn(r)).toContain('¡Hola! Ya pasaron tres minutos.');
-  expect(drawn(r)).not.toContain('chat.chattedWith');
   act(() => r.unmount());
   renderer = null;
   const reloaded = mount({ ...props, messages: structuredClone(requestedGreeting) });
   expect(buttons(reloaded)).toHaveLength(0);
   expect(drawn(reloaded)).toContain('¡Hola! Ya pasaron tres minutos.');
-});
-
-it('keeps a direct follow-up visible beside a real consultation with another agent', () => {
-  const r = mount({
-    messages: [...conversation, requestedGreeting[2] as Message],
-    memberIds: new Set([EUSEBIO.id]),
-    onOpenAgentChat: () => undefined,
-  });
-  expect(buttons(r)).toHaveLength(1);
-  expect(drawn(r)).not.toContain('Three options.');
-  expect(drawn(r)).toContain('¡Hola! Ya pasaron tres minutos.');
-});
-
-it('keeps group members inline and only opens exchanges with outside agents', () => {
-  const r = mount({
-    messages: [...requestedGreeting, ...conversation],
-    memberIds: new Set([EUSEBIO.id, 'another-member']),
-    onOpenAgentChat: () => undefined,
-  });
-  expect(buttons(r)).toHaveLength(1);
-  expect(drawn(r)).toContain('¡Hola! Ya pasaron tres minutos.');
-  expect(drawn(r)).not.toContain('Three options.');
 });

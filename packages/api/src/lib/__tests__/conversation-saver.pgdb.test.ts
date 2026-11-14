@@ -315,74 +315,7 @@ describe('saveConversation (append-only)', () => {
     expect((await stored()).map((row) => row.content)).toEqual(['U1', 'A1']);
   });
 
-  it('records the agent’s attribution on the turns it produced', async () => {
-    await saveConversation({
-      agentId: ALIA_GEMIE_ID,
-      userId: USER,
-      conversationId: CONV,
-      messages: [{ role: 'user', content: 'U1' }],
-      assistantResponse: 'the final answer',
-      agentMessages: [
-        {
-          role: 'assistant',
-          content: 'the specialist speaking',
-          agentInfo: { id: 'a1', name: 'Scout', color: 'teal', character: null, handle: 'scout' },
-        },
-      ],
-    });
-
-    const rows = await stored();
-    expect(rows.map((row) => [row.content, row.agentInfoHandle])).toEqual([
-      ['U1', null],
-      ['the specialist speaking', 'scout'],
-      ['the final answer', null],
-    ]);
-  });
-
-  it('keeps the canvas a consulted agent drew on its message, which its share then shows', async () => {
-    const drawn = {
-      toolCallId: 'c1',
-      toolName: 'canvas',
-      state: 'result',
-      args: { type: 'markdown', title: 'Gràcia' },
-      result: { type: 'markdown', title: 'Gràcia', data: { content: '# Pisos' } },
-    };
-    const listings = {
-      toolCallId: 'l1',
-      toolName: 'oxy_homiio__searchListings',
-      state: 'result',
-      result: { listings: ['private'] },
-    };
-    await saveConversation({
-      agentId: ALIA_GEMIE_ID,
-      userId: USER,
-      conversationId: CONV,
-      messages: [{ role: 'user', content: 'U1' }],
-      assistantResponse: 'the final answer',
-      agentMessages: [
-        {
-          role: 'assistant',
-          content: 'the specialist speaking',
-          agentInfo: { id: 'a1', name: 'Scout', color: 'teal', character: null, handle: 'scout' },
-          toolInvocations: [drawn, listings],
-        },
-      ],
-    });
-
-    const rows = await stored();
-    expect(rows[1]?.toolInvocations).toEqual([drawn, listings]);
-    // Shared by the lead's rule: the agent's canvas, under its name; never its other tools.
-    const shared = sharedMessagesOf(rows);
-    expect(shared[1]).toEqual({
-      role: 'assistant',
-      content: 'the specialist speaking',
-      agent: { id: 'a1', name: 'Scout', handle: 'scout', color: 'teal', character: null },
-      artifacts: [{ id: 'c1', type: 'markdown', title: 'Gràcia', data: { content: '# Pisos' } }],
-    });
-    expect(JSON.stringify(shared)).not.toContain('private');
-  });
-
-  it('names a message the client did not name with a new id, never its position', async () => {
+  it('names a message the client did not name by its position', async () => {
     /**
      * Not decoration: `packages/app` puts `Message.id` in the vote URL and
      * `routes/conversations.ts` matches on `client_message_id`, so a message
@@ -527,41 +460,6 @@ describe('saveConversation keeps the client’s message ids', () => {
     expect((await stored()).map((row) => row.clientMessageId)).toEqual(['u-1', 'a-1']);
     await expect(voteMessage(db, USER, CONV, 'a-1', 'up')).resolves.toEqual({ vote: 'up' });
     await expect(clientMessageExists(db, USER, CONV, 'a-1')).resolves.toBe(true);
-  });
-
-  it('names a delegated agent’s answers after the reply they came with, in order', async () => {
-    /**
-     * `alia.agent` carries no id — the published SDK refuses a key it does not
-     * know — so both sides derive it: the app names the n-th agent answer of a
-     * turn `<assistantMessageId>-agent-<n>`, and so does this.
-     */
-    await saveConversation({
-      agentId: ALIA_GEMIE_ID,
-      userId: USER,
-      conversationId: CONV,
-      messages: [{ role: 'user', content: 'U1', id: 'u-1' }],
-      assistantResponse: 'the final answer',
-      assistantMessageId: 'a-1',
-      agentMessages: [
-        {
-          role: 'assistant',
-          content: 'first',
-          agentInfo: { id: 'x', name: 'X', color: null, character: null, handle: 'x' },
-        },
-        {
-          role: 'assistant',
-          content: 'second',
-          agentInfo: { id: 'y', name: 'Y', color: null, character: null, handle: 'y' },
-        },
-      ],
-    });
-
-    expect((await stored()).map((row) => row.clientMessageId)).toEqual([
-      'u-1',
-      'a-1-agent-0',
-      'a-1-agent-1',
-      'a-1',
-    ]);
   });
 
   it('keeps the echoed ids through an append, including ones the server named', async () => {

@@ -85,7 +85,6 @@ function params(overrides: Partial<ProviderLoopParams> = {}) {
     convertedMessages: [],
     truncatedTools: {},
     toolNameMapping: new Map(),
-    agentMessages: [],
     systemPromptTokens: 5,
     requestedModel: 'acme/chat-1',
     autonomyRuntime: null,
@@ -158,7 +157,6 @@ describe('the provider loop after the global timeout', () => {
         tokenUsage: expect.objectContaining({ totalTokens: 210, systemPromptTokens: 5 }),
       }),
       'Hola',
-      [],
       [],
     );
     clearTimeout(loopParams.globalTimer);

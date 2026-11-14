@@ -55,7 +55,6 @@ import type { AutonomyRuntimeContext } from '../autonomy/runtime.js';
 import type { SSEWriter } from './sse-writer.js';
 import { buildBaseConfig, type TurnStepBounds } from './model-config.js';
 import { runNonStreaming } from './non-streaming.js';
-import type { AgentMessage } from '../../domain/conversation.js';
 import { runStream, type StreamRunnerState } from './stream-runner.js';
 import { runTextToolFallback } from './text-tool-fallback.js';
 import type { ToolRouting } from '../tool-budget.js';
@@ -124,8 +123,6 @@ export interface ProviderLoopParams {
    */
   toolRouting?: ToolRouting;
   toolNameMapping: Map<string, string>;
-  /** The consulted agents' answers, appended by `consultAgent` (`answers`); saved with the turn. */
-  agentMessages: AgentMessage[];
   systemPromptTokens: number;
   requestedModel: string;
   autonomyRuntime: AutonomyRuntimeContext | null;
@@ -187,7 +184,6 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
     truncatedTools,
     toolRouting,
     toolNameMapping,
-    agentMessages,
     systemPromptTokens,
     requestedModel,
     autonomyRuntime,
@@ -441,7 +437,6 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
           resolved,
           baseConfig,
           toolNameMapping,
-          agentMessages,
           toolCallCount,
           state: streamState,
           idle: watchdog,
@@ -510,12 +505,7 @@ export async function runProviderLoop(params: ProviderLoopParams): Promise<Provi
         const lifecycleCtx = lifecycleContext();
 
         // Save conversation
-        await saveConversationResult(
-          lifecycleCtx,
-          assistantResponse,
-          toolInvocations,
-          agentMessages,
-        );
+        await saveConversationResult(lifecycleCtx, assistantResponse, toolInvocations);
 
         // Send AI-generated title via SSE (generated in parallel with streaming)
         if (titlePromise && conversationId && req.user) {

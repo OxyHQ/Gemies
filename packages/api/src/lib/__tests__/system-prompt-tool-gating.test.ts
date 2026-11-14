@@ -19,7 +19,7 @@ describe('prompt text that names a tool', () => {
     const prompt = await SystemPromptBuilder.build({
       linkedAgent: aliaGemie(),
       isDirectUserSession: true,
-      toolNames: ['sendTelegramMessage', 'searchAgents', 'consultAgent', 'getCurrentDate'],
+      toolNames: ['sendTelegramMessage', 'searchAgents', 'sendMessage', 'getCurrentDate'],
     });
     for (const name of [
       'sendTelegramMessage',

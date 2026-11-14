@@ -10,11 +10,10 @@ export type {
   GemieChatContentProps,
   GemieChatState,
 } from './components/GemieChatContent';
-export { GemieParticipants, useParticipants } from './components/GemieParticipants';
-export type {
-  GemieParticipantsProps,
-  UseParticipantsOptions,
-} from './components/GemieParticipants';
+export { GemieParticipants } from './components/GemieParticipants';
+export type { GemieParticipantsProps } from './components/GemieParticipants';
+export { GemieBetweenGemies } from './components/GemieBetweenGemies';
+export type { GemieBetweenGemiesProps } from './components/GemieBetweenGemies';
 export { GemieParticipantsHeader } from './components/GemieParticipantsHeader';
 export {
   GemieActivityLine,
@@ -24,7 +23,7 @@ export {
 export type { GemieActivityLineProps } from './components/GemieActivityLine';
 export type { GemieParticipantsHeaderProps } from './components/GemieParticipantsHeader';
 export { ALIA_GEMIE_ID } from './lib/alia-gemie';
-export { ALIA_LEAD, leadOf } from './lib/participants';
+export { ALIA_LEAD, agentCharacterOf, leadOf } from './lib/participants';
 export type { GemieChatParticipants, GemieLead, GemieParticipant } from './lib/participants';
 export { ANCHORS, leadToProfile } from './lib/flights';
 export { parseCatalogueTool, toolRendererKey } from './lib/catalogue-tool';
