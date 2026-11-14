@@ -381,10 +381,11 @@ jobs:
           # Readiness validates the workload-backed inference path before traffic.
           TASK_SECRET_REMOVALS_JSON: '["SERVICE_SECRET","INTEGRATIONS_SECRET","DISCORD_BOT_SECRET","SLACK_BOT_SECRET","WHATSAPP_BOT_SECRET","WHATSAPP_GATEWAY_SECRET","SIGNAL_BOT_SECRET","AWS_ACCESS_KEY_ID","AWS_SECRET_ACCESS_KEY","KAANA_EDGE_SIGNING_PRIVATE_KEY","ALIA_RELAY_CREDENTIAL_KEY","ALIA_RELAY_CREDENTIAL_SECRET","ALIA_KAANA_CREDENTIAL_KEY","ALIA_KAANA_CREDENTIAL_SECRET","OXY_SERVICE_API_KEY","OXY_SERVICE_API_SECRET"]'
           # Remove every legacy plain Relay/direct-Kaana binding inherited from
-          # the live task definition. Keeping a removal here is harmless after
-          # the first clean revision and prevents a rollback descendant from
-          # silently reintroducing the obsolete contract.
-          TASK_CONFIGURATION_REMOVALS_JSON: '["ALIA_API_URL","RELAY_BASE_URL","ALIA_RELAY_APPLICATION_ID","ALIA_RELAY_ACCOUNT_ID","ALIA_RELAY_CREDENTIAL_ID","ALIA_RELAY_ENVIRONMENT","ALIA_RELAY_INFERENCE_SCOPES","KAANA_EDGE_KEY_ID","ALIA_KAANA_CLIENT_ENABLED","ALIA_KAANA_APPLICATION_ID","ALIA_KAANA_ACCOUNT_ID","ALIA_KAANA_CREDENTIAL_ID","ALIA_KAANA_ENVIRONMENT","ALIA_KAANA_INFERENCE_SCOPES","KAANA_BASE_URL","ALIA_INTERNAL_MCP_PILOT","ALIA_COMPUTER_HOST_URL","ALIA_COMPUTER_HOST_INSTANCE_ID"]'
+          # the live task definition, and the Syra settings of the retired
+          # generated podcasts (Syra's now). Keeping a removal here is harmless
+          # after the first clean revision and prevents a rollback descendant
+          # from silently reintroducing the obsolete contract.
+          TASK_CONFIGURATION_REMOVALS_JSON: '["ALIA_API_URL","RELAY_BASE_URL","ALIA_RELAY_APPLICATION_ID","ALIA_RELAY_ACCOUNT_ID","ALIA_RELAY_CREDENTIAL_ID","ALIA_RELAY_ENVIRONMENT","ALIA_RELAY_INFERENCE_SCOPES","KAANA_EDGE_KEY_ID","ALIA_KAANA_CLIENT_ENABLED","ALIA_KAANA_APPLICATION_ID","ALIA_KAANA_ACCOUNT_ID","ALIA_KAANA_CREDENTIAL_ID","ALIA_KAANA_ENVIRONMENT","ALIA_KAANA_INFERENCE_SCOPES","KAANA_BASE_URL","ALIA_INTERNAL_MCP_PILOT","ALIA_COMPUTER_HOST_URL","ALIA_COMPUTER_HOST_INSTANCE_ID","SYRA_API_URL","SYRA_COVER_FILE_IDS"]'
           TASK_ENV_OVERRIDES_JSON: ${{ steps.kaana.outputs.env_overrides }}
         run: |
           STATUS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$APP" --query 'services[0].status' --output text 2>/dev/null || echo NONE)

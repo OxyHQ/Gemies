@@ -35,7 +35,6 @@ export const REALTIME_SIGNAL_TYPES = [
   'room',
   'presence',
   'runtimes',
-  'show.progress',
   'agent.activity',
 ] as const;
 
@@ -143,7 +142,6 @@ export interface RealtimeData {
   };
   presence: { readonly agentId: string; readonly online: boolean };
   runtimes: Record<string, never>;
-  'show.progress': Record<string, unknown> & { readonly episodeId: string };
   'agent.activity': Record<string, unknown> & {
     readonly sessionId: string;
     readonly agentId: string;

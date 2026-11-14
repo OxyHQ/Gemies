@@ -166,7 +166,7 @@ Each store lives in the `runtime/` of the feature that owns it (`packages/app/sr
 | `projects-store`, `folders-store` | Workspace projects, conversation folders |
 | `favorites-store`, `pinned-store` | Favourited and pinned conversations |
 | `roles-store`, `skills-store` | User-created roles/personas, skills |
-| `library-store`, `show-store`, `create-collection-store` | Library, shows, collection creation |
+| `library-store`, `create-collection-store` | Library, collection creation |
 | `i18n-store` | Language selection |
 
 ### TanStack Query (server state, async)

@@ -40,7 +40,6 @@ import { failOrphanedAudioJobs } from '../db/notifications/audioJobRepository.js
 import { moderationOutboxDispatcher } from './crowdsource/dispatcher.js';
 import { log } from './logger.js';
 import { startAgentRunReaper, stopAgentRunReaper } from './agent/run-reaper.js';
-import { initShowQueue, shutdownShowQueue, startShowWorker } from './show/show-queue.js';
 import { initTaskQueue, shutdownTaskQueue, startWorker } from './task-queue.js';
 import {
   initAliaTaskQueue,
@@ -99,10 +98,6 @@ export function startBackgroundServices(): void {
    * not only across a restart. Not leader-gated; see `run-reaper.ts`.
    */
   startAgentRunReaper();
-  // Initialize show generation queue (non-blocking)
-  initShowQueue()
-    .then(() => startShowWorker())
-    .catch((err) => log.general.error({ err }, '[ShowQueue] Startup error'));
   // Keep the shared skill catalogue in step with the repositories it is synced
   // from. Leader-gated, because it writes rows every account reads.
   startSkillRegistrySync();
@@ -145,6 +140,5 @@ export async function stopBackgroundServices(): Promise<void> {
   await shutdownTaskQueue();
   await shutdownAliaTaskQueue();
   await shutdownRoomQueue();
-  await shutdownShowQueue();
   log.general.info('Task queues shut down');
 }

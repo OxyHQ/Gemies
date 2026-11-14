@@ -22,7 +22,6 @@ export * from './moderation';
 export * from './notifications';
 export * from './organizations';
 export * from './proactive';
-export * from './shows';
 export * from './skills';
 export * from './speech';
 export * from './telemetry';

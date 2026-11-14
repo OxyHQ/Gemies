@@ -225,12 +225,13 @@ const aliaChat = surface(aliaChatRouter, '/alia/chat');
  * The workstream 1 inventory had answered it. All five rows in
  * `docs/migration/inventories/product-api.json` carry `"proposedOwner": "alia"`
  * and `"targetPath": "keep-alia-product"` — an Alia product resource, not
- * generic inference. They now sit at `/shows`, beside `/conversations`,
- * `/skills`, `/agents` and `/library`.
+ * generic inference. They moved to `/shows`, beside `/conversations`,
+ * `/skills`, `/agents` and `/library` — and left Alia altogether later, with
+ * podcast generation, which belongs to Syra.
  *
  * **The per-route removal gate is satisfied, not waived.** Each of the five rows
- * records its gate as a line in `packages/app/src/features/shows/runtime/show-store.ts`, and
- * that file is rewritten against the new surface in the same change — so the
+ * records its gate as a line in the app's show store, and that file was
+ * rewritten against the new surface in the same change — so the
  * only consumer moved with the route rather than being left behind it. No
  * external caller is affected: the routes were `optionalAuth` and returned one
  * account's own generated audio, so nothing on this surface could reach them

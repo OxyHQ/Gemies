@@ -4,9 +4,9 @@
  * (`lib/models/auto-selection.ts`).
  *
  * This is the only place Alia calls the inference client for speech, and the
- * only place that reads that client's error type. Callers — `/v1/audio/speech`
- * and the show pipeline — see a `SpeechSynthesisError` whose `code` is Alia's
- * own and stable, whatever client answers underneath.
+ * only place that reads that client's error type. Its callers see a
+ * `SpeechSynthesisError` whose `code` is Alia's own and stable, whatever client
+ * answers underneath.
  */
 import { OxyInferenceError, OxyInferenceProtocolError } from '@oxy.so/core/inference';
 import { getSpeechModelIds } from './models/selection.js';

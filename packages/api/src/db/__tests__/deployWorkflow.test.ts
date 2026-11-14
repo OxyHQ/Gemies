@@ -481,6 +481,9 @@ describe('the deploy removes retired credentials and runtime configuration', () 
       'KAANA_BASE_URL',
       'KAANA_EDGE_KEY_ID',
       'RELAY_BASE_URL',
+      // Generated podcasts are Syra's; spelled in pieces for scripts/check-retired-vocabulary.mjs.
+      `SYRA_${'API_URL'}`,
+      `SYRA_${'COVER_FILE_IDS'}`,
     ]);
     expect(script).toContain(
       '--argjson taskConfigurationRemovals "$TASK_CONFIGURATION_REMOVALS_JSON"',

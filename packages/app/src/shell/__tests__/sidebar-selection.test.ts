@@ -14,7 +14,6 @@ describe('selectedItemForPath', () => {
     ['/agents/abc', 'agents'],
     ['/tasks', 'tasks'],
     ['/skills/create', undefined],
-    ['/shows/9', 'shows'],
     ['/notifications', 'notifications'],
   ])('%s selects %s', (path, key) => {
     expect(selectedItemForPath(path)).toBe(key);

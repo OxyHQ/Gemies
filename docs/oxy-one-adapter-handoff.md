@@ -92,7 +92,7 @@ cover these operations, concurrency and account isolation in throwaway PostgreSQ
 The additive draft migration was run only by the repository test harness.
 
 Still required before activation: publish/adopt the compatible Oxy SDK; complete
-Alia balance/plan UI and subscription read model; audit voice/show/background
+Alia balance/plan UI and subscription read model; audit voice/background
 funding and recovery (this draft wires metered chat only); verify full dependency
 install/CI once the documented GitHub denial is resolved; approve commercial
 price/provider and live configuration. No provider calls, live grants, charges,

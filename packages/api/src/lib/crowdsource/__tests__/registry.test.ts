@@ -50,7 +50,7 @@ describe('subject registry', () => {
    * necessarily discloses the user's own words.
    */
   it('has no provider for anything a model generated', () => {
-    for (const generated of ['conversation', 'message', 'show', 'chat.message']) {
+    for (const generated of ['conversation', 'message', 'chat.message']) {
       expect(subjectProviderFor(generated)).toBeUndefined();
     }
   });
