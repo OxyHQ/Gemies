@@ -32,7 +32,7 @@ vi.mock('@oxy.so/core', () => {
   return { OxyServices: MockOxyServices };
 });
 
-import { authenticateTokenOrApiKey, optionalAuth } from '../auth.js';
+import { authenticateTokenOrApiKey, optionalAuth, ownSessionProof } from '../auth.js';
 
 type MockFn = ReturnType<typeof vi.fn>;
 
@@ -132,5 +132,28 @@ describe('auth middleware', () => {
       expect(next).toHaveBeenCalled();
       expect(res.status).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('ownSessionProof', () => {
+  it('is the person’s own session bearer on a direct request', () => {
+    const req = mockReq({ user: { id: 'u1' }, accessToken: 'bearer-u1' } as Partial<Request>);
+    expect(ownSessionProof(req)).toEqual({ requesterToken: 'bearer-u1' });
+  });
+
+  it('is nothing for a service token, a channel message or a request with no session', () => {
+    const serviceCall = mockReq({
+      user: { id: 'u1' },
+      accessToken: 'service-jwt',
+      serviceApp: { appId: 'app' },
+    } as unknown as Partial<Request>);
+    const channel = mockReq({
+      user: { id: 'u1' },
+      accessToken: 'x',
+      channelContext: { kind: 'account' },
+    } as unknown as Partial<Request>);
+    expect(ownSessionProof(serviceCall)).toBeNull();
+    expect(ownSessionProof(channel)).toBeNull();
+    expect(ownSessionProof(mockReq())).toBeNull();
   });
 });

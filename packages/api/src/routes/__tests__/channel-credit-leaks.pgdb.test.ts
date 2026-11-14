@@ -95,6 +95,7 @@ import { resolveStoredModel } from '../../lib/chat-core.js';
 import type { BotUserRow } from '../../db/integrations/botRepository.js';
 import type { GemieBotRow } from '../../db/integrations/gemieBotRepository.js';
 import type { ChannelInboundMessage } from '../../lib/channels/types.js';
+import { storeChannelMedia } from '../../lib/files/oxy-files.js';
 import { answerGemieTelegramMessage } from '../../lib/gemie-telegram-bot.js';
 import type { GemieTelegramBotMessage } from '@gemies/server/internal';
 import { processChannelMessage } from '../webhooks.js';
@@ -373,7 +374,7 @@ describe("a gemie’s own Telegram bot — who pays for the gemie's turn", () =>
 });
 
 describe('what a gemie bot’s conversation keeps of a message', () => {
-  it('keeps a sticker as an attachment, and follows an edit of its words without answering', async () => {
+  it('shows a stranger’s sticker to the gemie, keeps it in words only, and follows an edit without answering', async () => {
     const ownerId = await account(100, 0);
     const bot = await gemieBot(ownerId);
     const sticker: GemieTelegramBotMessage = {
@@ -400,16 +401,13 @@ describe('what a gemie bot’s conversation keeps of a message', () => {
       .select({ role: messages.role, content: messages.content })
       .from(messages)
       .where(eq(messages.oxyUserId, ownerId));
+    // A third party's media is never stored as the bot person's file: the person's authority is
+    // for their own turns (`docs/integrations.mdx`), so the conversation keeps its words.
+    expect(storeChannelMedia).not.toHaveBeenCalled();
     expect(stored).toEqual([
       {
         role: 'user',
-        content: [
-          { type: 'text', text: '[Sticker 😂 from the set "HappyCats"]' },
-          {
-            type: 'file',
-            file: { file_id: 'oxy-file-1', filename: 'sticker.webp', mime: 'image/webp' },
-          },
-        ],
+        content: [{ type: 'text', text: '[Sticker 😂 from the set "HappyCats"]' }],
       },
       { role: 'assistant', content: 'an answer' },
     ]);
@@ -435,10 +433,6 @@ describe('what a gemie bot’s conversation keeps of a message', () => {
       .where(and(eq(messages.oxyUserId, ownerId), eq(messages.role, 'user')));
     expect(edited?.content).toEqual([
       { type: 'text', text: '[Sticker 😂 from the set "HappyCats"]\njaja' },
-      {
-        type: 'file',
-        file: { file_id: 'oxy-file-1', filename: 'sticker.webp', mime: 'image/webp' },
-      },
     ]);
   });
 });

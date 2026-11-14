@@ -25,9 +25,14 @@ const state = vi.hoisted(() => ({
   model: [] as Array<{ system: string; tools: Record<string, unknown> }>,
   claim: vi.fn(),
   appended: [] as unknown[],
+  storedMedia: vi.fn(async (_input: { oxyUserId: string; taskId: string }) => 'kept-file'),
 }));
 
 vi.mock('../../db/index.js', () => ({ getDb: () => ({}) }));
+vi.mock('../files/oxy-files.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../files/oxy-files.js')>()),
+  storeChannelMedia: state.storedMedia,
+}));
 vi.mock('../logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   return {
@@ -213,6 +218,40 @@ beforeEach(() => {
   state.model = [];
   state.appended = [];
   state.claim.mockReset();
+  state.storedMedia.mockClear();
+});
+
+const PHOTO = {
+  text: '',
+  media: [
+    {
+      kind: 'photo' as const,
+      file: { mime: 'image/jpeg', data: Buffer.from([0xff, 0xd8, 0xff]).toString('base64') },
+    },
+  ],
+};
+
+describe('media sent to the bot', () => {
+  it('from its person, in private, is kept as theirs under the task they granted the gemie there', async () => {
+    const answer = await answerGemieTelegramMessage(bot(), { ...message(), message: PHOTO });
+    expect(state.storedMedia).toHaveBeenCalledTimes(1);
+    expect(state.storedMedia.mock.calls[0]?.[0]).toMatchObject({
+      oxyUserId: 'owner-1',
+      taskId: 'bot-task',
+    });
+    expect(answer.personTurn?.content).toContainEqual(
+      expect.objectContaining({
+        type: 'file',
+        file: expect.objectContaining({ file_id: 'kept-file' }),
+      }),
+    );
+  });
+
+  it('from anybody else is never stored as the person’s: their authority is for their own turns', async () => {
+    await answerGemieTelegramMessage(bot(), { ...message({ from: stranger() }), message: PHOTO });
+    expect(state.storedMedia).not.toHaveBeenCalled();
+    expect(state.model).toHaveLength(1);
+  });
 });
 
 describe('the person who connected the bot', () => {

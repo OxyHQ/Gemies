@@ -40,6 +40,7 @@
  */
 
 import type { SkillSource, SkillVisibility } from '../../domain/skill.js';
+import type { RequesterProof } from '@oxy.so/core/server';
 import type { ApiDatabase } from '../../db/index.js';
 import {
   type NewSkillFile,
@@ -59,6 +60,8 @@ export interface StoreSkillOptions {
   source: SkillSource;
   /** NULL stores into the shared catalogue: built-ins and synced upstream skills. */
   ownerOxyUserId?: string | null;
+  /** The owner's own requester proof (their session), with which their files are stored as theirs. */
+  ownerRequester?: RequesterProof | null;
   visibility?: SkillVisibility;
   sourceRepo?: string | null;
   sourcePath?: string | null;
@@ -101,7 +104,9 @@ export async function storeSkillBundle(
   const files = await uploadBinaryFiles(
     bundle,
     existing?._id ?? frontmatter.name,
-    owner === null ? { kind: 'alia' } : { kind: 'person', oxyUserId: owner },
+    owner === null
+      ? { kind: 'alia' }
+      : { kind: 'person', oxyUserId: owner, requester: opts.ownerRequester ?? null },
   );
 
   // The skill (when new) and its version commit together: a version whose

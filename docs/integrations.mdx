@@ -512,6 +512,13 @@ and the API turns it into the turn's user message the same way for all of them
   size), a sticker (its image, emoji and set; an animated one by its still) and a document are the
   file; a video, a round video or a GIF is its first frame. Documents are read as attachments are
   (`readFileForModel`); a type no model reads is named, not kept.
+- **Kept only under the person's own task.** A channel message carries no session, and Oxy stores a
+  person's media for Gemies only into the account a verified session or task names
+  (`requireUserMediaOwner`). So media is kept with the channel's task — the connected account's, or
+  the one the person granted when linking their Telegram to a gemie bot — on their own turns only. A
+  third party's media on a gemie bot, or an account whose task lapsed, is shown to the gemie and
+  transcribed, but never stored as the person's: their authority is never inferred from owning the
+  bot.
 - **A voice note or audio is transcribed** on the dictation path (`transcribeDictation`, on the account
   whose turn it is), and its transcript travels with its file part (`transcript`), so a later turn
   reads it without the audio being heard again.

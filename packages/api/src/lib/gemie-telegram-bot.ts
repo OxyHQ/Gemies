@@ -110,7 +110,7 @@ function speakerOf(message: GemieTelegramBotMessage): string {
 async function onEdited(bot: GemieBotRow, message: GemieTelegramBotMessage): Promise<void> {
   const turn = await prepareChannelTurn({
     message: message.message,
-    ownerUserId: bot.userId,
+    owner: null,
     payerAccountId: bot.userId,
     speaker: message.chatKind === 'group' ? speakerOf(message) : undefined,
     keep: false,
@@ -283,10 +283,11 @@ async function runTurn(
   }
   if (isPersonTurn(bot, message)) {
     if (start) return { reply: said.hello(name) };
-    // Their turn, with what they sent kept and transcribed as theirs, as an attachment in the app.
+    // Their turn, with what they sent kept and transcribed as theirs, as an attachment in the app:
+    // kept under the task they granted the gemie here (`isPersonTurn` holds only while it stands).
     const turn = await prepareChannelTurn({
       message: message.message,
-      ownerUserId: bot.userId,
+      owner: bot.oxyTaskId ? { oxyUserId: bot.userId, taskId: bot.oxyTaskId } : null,
       payerAccountId: bot.userId,
     });
     return {
@@ -341,10 +342,12 @@ async function answerAsThirdParty(
         return [];
       },
     );
-    // In a group several people speak, so each message says who wrote it.
+    // In a group several people speak, so each message says who wrote it. Nothing they sent is
+    // stored as the bot's person's file: the person's authority is for their own turns, and is
+    // never inferred from owning the bot. The gemie sees it now; the conversation keeps its words.
     const turn = await prepareChannelTurn({
       message: message.message,
-      ownerUserId: bot.userId,
+      owner: null,
       payerAccountId: agentAccountId,
       speaker: message.chatKind === 'group' ? speaker : undefined,
       modelAcceptsFiles: resolved.catalogue?.inputModalities.includes('file') === true,
