@@ -191,12 +191,12 @@ export interface ForUserOptions {
   nested?: boolean;
   /**
    * The person's own chat with this gemie that this turn is in — narrower than `conversationId`,
-   * which a channel turn carries too. `sendMessage` exists only with it: a gemie that writes to
-   * another continues HERE when the answer comes, where the person watches it (ADR 0041). Only a
-   * caller that knows the chat is the person's own with this gemie hands it in — the person's own
-   * session (`routes/v1/chat-completions.ts`) and an external agent's tool lane after checking it
-   * (`lib/external-agents/tool-server.ts`). Absent (a channel, a voice call, an unattended run):
-   * the gemie cannot write to gemies on this turn.
+   * which a turn for a contact carries too. `sendMessage` exists only with it: a gemie that writes
+   * to another continues HERE when the answer comes, and tells the person there (ADR 0041). Only a
+   * caller that knows the person is the one in this chat hands it in — the chat route when the
+   * person is present (`personPresent`: the app, or their gemie's own Telegram bot) and an external
+   * agent's tool lane after checking it (`lib/external-agents/tool-server.ts`). Absent (a contact
+   * on a connected account, a voice call, an unattended run): the gemie cannot write to gemies.
    */
   gemieChat?: string;
   /**
@@ -911,7 +911,7 @@ export class ToolPipeline {
 
     // 6. The catalogue of gemies `sendMessage` can reach, for finding one to write to.
     if (actsForPerson && !nested && spacePeers === null && grants.allows('delegation')) {
-      tools.searchAgents = createSearchAgentsTool(surfaceApplicationId);
+      tools.searchAgents = createSearchAgentsTool(userId, surfaceApplicationId);
     }
 
     /**

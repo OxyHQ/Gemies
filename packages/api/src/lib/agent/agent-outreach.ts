@@ -97,6 +97,14 @@ export async function agentCheckInRefusal(
   });
 }
 
+/**
+ * The id a message is stored under: derived from its idempotency key when it has one, so a retried
+ * writer finds the message it already posted.
+ */
+export function outreachMessageIdOf(kind: AgentOutreachKind, idempotencyKey?: string): string {
+  return `${AGENT_OUTREACH_MESSAGE_ID_PREFIX}${kind === 'result' ? 'result-' : ''}${idempotencyKey ? createHash('sha256').update(idempotencyKey).digest('hex') : randomUUID()}`;
+}
+
 export async function postAgentMessage(input: AgentOutreachInput): Promise<AgentOutreachOutcome> {
   const content = input.content.trim().slice(0, MAX_OUTREACH_CHARS);
   if (!content) return { posted: false, reason: 'empty' };
@@ -106,7 +114,7 @@ export async function postAgentMessage(input: AgentOutreachInput): Promise<Agent
   const agent = await attachAgentIdentity(found);
   const name = agentPromptName(agent);
 
-  const messageId = `${AGENT_OUTREACH_MESSAGE_ID_PREFIX}${input.kind === 'result' ? 'result-' : ''}${input.idempotencyKey ? createHash('sha256').update(input.idempotencyKey).digest('hex') : randomUUID()}`;
+  const messageId = outreachMessageIdOf(input.kind, input.idempotencyKey);
   const agentInfo = {
     id: agent._id,
     name,

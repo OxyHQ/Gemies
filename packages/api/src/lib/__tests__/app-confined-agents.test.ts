@@ -269,7 +269,7 @@ describe('searchAgents offers only agents that open where the person is', () => 
   });
 
   async function search(surface: string | null) {
-    const tool = createSearchAgentsTool(surface);
+    const tool = createSearchAgentsTool(PERSON.userId, surface);
     const result = (await tool.execute?.({ query: 'help' }, { toolCallId: 't', messages: [] })) as {
       agents: Array<{ id: string }>;
     };

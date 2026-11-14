@@ -105,18 +105,16 @@ const COMMON = {
   agent: eusebio,
   sseEmitter: { emit: vi.fn() } as unknown as Options['sseEmitter'],
   conversationId: 'telegram:8988966019:570038640',
+  // The person is the one in this chat, in the app and on their gemie's bot alike (ADR 0041).
+  gemieChat: 'telegram:8988966019:570038640',
 } satisfies Partial<Options>;
 
-/**
- * The structural preconditions only the app meets: a bearer to mint under, a card to draw, and the
- * person's own chat where a gemie that writes to another continues live (`gemieChat`, ADR 0041).
- */
+/** The structural preconditions only the app meets: a bearer to mint under, a card to draw. */
 const APP_ONLY = [
   'askUserQuestion',
   'createAgent',
   'listMyAgents',
   'planPreview',
-  'sendMessage',
   'suggestNewConversation',
   'updateAgent',
 ];
@@ -134,7 +132,6 @@ describe('the person on their gemie’s Telegram bot', () => {
       ...COMMON,
       accessToken: 'bearer',
       isDirectSession: true,
-      gemieChat: 'app-chat',
       runtime: runtime(),
     });
     const appOxy = asked.oxy.at(-1);
@@ -162,6 +159,8 @@ describe('the person on their gemie’s Telegram bot', () => {
       'searchThread',
       'createAutomation',
       'scheduleFollowUp',
+      // Writing to the person's other gemies and agents, external ones included (ADR 0041).
+      'sendMessage',
       'run_computer_command',
     ]) {
       expect(telegramTools).toContain(name);

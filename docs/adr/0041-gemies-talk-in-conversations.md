@@ -59,17 +59,26 @@ to }`. It never waits for an answer and never returns one. Then, on the room que
 2. **The answer wakes the gemie that wrote**, as a turn of its own *in the person's chat with it*,
    where it was working when it wrote. It reads the exchange and continues: it writes again
    (`sendMessage`, now bound to the same gemie), and/or tells the person what it found. What it
-   says there is its ordinary reply in that chat — stored without a guest's identity, streamed live
-   with `lead: true` on its room events.
+   says there is posted the way a gemie posts in its chat on its own (`postAgentMessage`): stored
+   under its name, live on every surface, relayed to the Telegram chat that conversation is, and
+   notified — while it writes, it streams with `lead: true` on its room events.
 3. A continuation that does not write again ends the chain.
 
-The tool exists only where the writer can continue: a turn in the person's own chat with that gemie
-(`conversationId`, handed to the assembler only by a caller that knows it is that chat). Two callers
-do: the person's own session (`POST /v1/chat/completions`) and an external agent's tool lane (ADR
-0039), whose run names its chat in the `X-Gemies-Conversation` header and which checks that it is the
-owner's chat with that gemie and not a conversation between gemies. A channel, a voice call and an
-unattended run do not have it. Writing spends nothing of the writer's turn — every turn of the chain
-reserves its own credits from the person — so a local-model turn and an external agent may write.
+The tool exists wherever the person is the one talking to the gemie, in their chat with it
+(`gemieChat`, handed to the assembler only by a caller that knows it): the chat route when the person
+is present (`personPresent`) — the app, and the gemie's own Telegram bot alike, so it works the same
+on every channel the person talks to their gemie on — and an external agent's tool lane (ADR 0039),
+whose run names its chat in the `X-Gemies-Conversation` header, checked to be the owner's chat with
+that gemie and not a conversation between gemies. A contact writing to a connected account is not the
+person, and a voice call and an unattended run have no chat to continue in: none has it. Writing
+spends nothing of the writer's turn — every turn of the chain reserves its own credits from the
+person — so a local-model turn and an external agent may write.
+
+**A gemie knows whom it can talk to.** `sendMessage` names, in its description, every gemie of the
+person it may write to — the gemies they made and the agents they connected (marked as an agent on
+their computer) — with their ids. `to` takes an id, an @handle or the name the person used ("Claude");
+a name that fits several is refused with their names, never guessed. `searchAgents` finds the
+person's own gemies and connected agents by name first, then the public directory.
 
 **External agents are participants like any gemie.** Written to, an external agent answers through
 its daemon (the relay, ADR 0030), as it answers in a room. Writing, it uses `sendMessage` from its
@@ -159,6 +168,10 @@ call into a `sendMessage` call whose card opens it.
   `app-confined-agents.test.ts`, `alia-gemie-guarantees.test.ts`: reach, grants, the space cut, the
   recipient's gates, no `sendMessage` in a nested turn, a channel or a local one.
 - `lib/tools/__tests__/agent-turn-alia-and-space.test.ts`: Alia's turns hold no memory tool.
+- `lib/tools/__tests__/talk-to-my-external-agent.test.ts`: on Telegram, a gemie knows it can talk
+  to the person's connected agent, finds "Claude" by name though the directory has no Claude, and
+  writes to it; `lib/__tests__/channel-turn-parity.test.ts`: the gemie's Telegram bot gets
+  `sendMessage` as the app does.
 - `lib/external-agents/__tests__/tool-lane.test.ts` and `tool-server-conversation.test.ts`: an
   external agent writes only from its owner's chat with it, never from a conversation it was not
   given, another gemie's chat or one between gemies.

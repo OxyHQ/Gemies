@@ -93,6 +93,23 @@ function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUN
     enqueue: async (job: GemieStepData) => {
       queue.push(job);
     },
+    // The person is told in their chat, as a gemie posts there on its own.
+    tellPerson: async (input: {
+      userId: string;
+      conversationId: string;
+      content: string;
+      key: string;
+    }) => {
+      const stored = await room.storeReply({
+        userId: input.userId,
+        conversationId: input.conversationId,
+        clientMessageId: `told-${input.key}`,
+        content: input.content,
+        agentInfo: null,
+      });
+      return { messageId: stored.id };
+    },
+    toldIdOf: (key: string) => `told-${key}`,
     bounds,
   };
   /** The first message, as `send.ts` stores it, and the chain it starts. */
@@ -217,8 +234,11 @@ describe('a conversation between two gemies', () => {
     ]);
     const chat = w.events.filter((event) => event.conversationId === 'chat');
     expect(chat[0]).toMatchObject({ event: 'alia.agent_start', data: { lead: true, agent: PEPE } });
-    const stored = chat.find((event) => event.event === 'group.message')!;
-    expect(stored.data.message).not.toHaveProperty('agentInfo');
+    // What it says is stored where the person is told (and published by that writer).
+    expect(chat.find((event) => event.event === 'alia.agent_end')?.data).toMatchObject({
+      status: 'completed',
+      messageId: 'told-group-reply-gemies-chain-2',
+    });
   });
 });
 

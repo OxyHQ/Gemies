@@ -479,8 +479,9 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
             // The app the person is in (ADR 0021), for `sendMessage` and `searchAgents`.
             surfaceApplicationId: ctx.surfaceApplicationId,
             // A gemie that writes to another continues in this chat when it answers (ADR 0041):
-            // only the person's own session's chat, never a channel's, which has no live surface.
-            ...(conversationId && isDirectUserSession ? { gemieChat: conversationId } : {}),
+            // wherever the person is the one talking to it — the app, or their gemie's Telegram bot
+            // — and never for a contact, who is not the person it works for.
+            ...(conversationId && personPresent ? { gemieChat: conversationId } : {}),
             requestId,
             // Where a task this turn creates delivers what it finds (`automation-create.ts`).
             ...(conversationId ? { conversationId } : {}),

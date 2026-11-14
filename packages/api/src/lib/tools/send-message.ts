@@ -22,7 +22,7 @@
 import { randomUUID } from 'node:crypto';
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
-import { findAgentById, listActiveAgentsByAuthor } from '../../db/agents/agentRepository.js';
+import { findAgentById } from '../../db/agents/agentRepository.js';
 import { getDb } from '../../db/index.js';
 import { canReachAgent } from '../agent-account.js';
 import {
@@ -31,15 +31,11 @@ import {
   spendGatedParts,
   type GatedPart,
 } from '../agent-features.js';
-import {
-  agentPromptName,
-  attachAgentIdentities,
-  attachAgentIdentity,
-  type HydratedAgent,
-} from '../agent-identity.js';
+import { agentPromptName, attachAgentIdentity, type HydratedAgent } from '../agent-identity.js';
 import { gemieInfo, sendGemieMessage } from '../chat/gemies/send.js';
 import { getErrorMessage } from '../errors/index.js';
 import { log } from '../logger.js';
+import { gemiesNamed, listOwnGemies, type OwnGemie } from './own-gemies.js';
 
 export const SEND_MESSAGE_TOOL = 'sendMessage';
 
@@ -80,18 +76,45 @@ export interface SendMessageOptions {
   readonly attachments?: readonly GatedPart[];
 }
 
-/** The person's own active gemies, named in the description so the model can pick one. */
-async function ownGemiesLine(options: SendMessageOptions): Promise<string> {
-  const owned = (await listActiveAgentsByAuthor(getDb(), options.person.oxyUserId)).filter(
-    (agent) =>
-      agent._id !== options.from._id &&
-      (options.allowedAgentIds === undefined || options.allowedAgentIds.includes(agent._id)),
+/** The person's gemies this one may write to: their own, external agents included. */
+async function writableGemies(options: SendMessageOptions): Promise<OwnGemie[]> {
+  return (await listOwnGemies(options.person.oxyUserId)).filter(
+    (gemie) =>
+      gemie.id !== options.from._id &&
+      (options.allowedAgentIds === undefined || options.allowedAgentIds.includes(gemie.id)),
   );
-  if (owned.length === 0) return '';
-  const named = await attachAgentIdentities(owned);
-  return `\n\nThe person's own gemies:\n${named
-    .map((agent) => `- ${agent._id} — ${agentPromptName(agent)}: ${agent.tagline}`)
+}
+
+/** The person's gemies, named in the description so the model knows whom it can write to. */
+function ownGemiesLine(gemies: readonly OwnGemie[]): string {
+  if (gemies.length === 0) return '';
+  return `\n\nThe person's own gemies and connected agents you can write to:\n${gemies
+    .map(
+      (gemie) =>
+        `- ${gemie.id} — ${gemie.name}${gemie.handle ? ` (@${gemie.handle})` : ''}${
+          gemie.external ? " [an agent on the person's computer]" : ''
+        }: ${gemie.tagline}`,
+    )
     .join('\n')}`;
+}
+
+/**
+ * The gemie `to` names: an id as it is, else one of the person's own gemies by @handle or name.
+ * A name that fits several is refused with their names, never guessed.
+ */
+async function resolveRecipient(
+  to: string,
+  options: SendMessageOptions,
+): Promise<{ id: string } | { error: string }> {
+  if ((await findAgentById(getDb(), to)) !== null) return { id: to };
+  const named = gemiesNamed(await writableGemies(options), to);
+  if (named.length === 1) return { id: named[0]!.id };
+  if (named.length > 1) {
+    return {
+      error: `Several gemies are called that: ${named.map((gemie) => `${gemie.name} (${gemie.id})`).join(', ')}. Ask the person which one.`,
+    };
+  }
+  return { error: 'Gemie not found' };
 }
 
 /** Why the recipient's gate refuses what the turn carries, in words the writer acts on; or null. */
@@ -127,7 +150,7 @@ export async function buildSendMessageTool(options: SendMessageOptions): Promise
   const own =
     'continues' in delivery
       ? ''
-      : await ownGemiesLine(options).catch((error: unknown) => {
+      : await writableGemies(options).then(ownGemiesLine, (error: unknown) => {
           log.general.warn(
             { err: error },
             "Could not list the person's own gemies for sendMessage",
@@ -144,11 +167,16 @@ export async function buildSendMessageTool(options: SendMessageOptions): Promise
       description:
         'continues' in delivery
           ? 'Write to the gemie you are talking to again, in your conversation with it. Its answer reaches you afterwards. Write once per turn, with everything it needs.'
-          : 'Write to another gemie, in your conversation with it, as a person writes to someone. It does not answer here: when it answers, you read its answer and continue — write to it again, or tell the person what you found. It cannot see this chat, so put everything it needs in `text`. After writing, tell the person briefly whom you wrote to and why; do not wait or guess its answer. ' +
-            'Find gemies with `searchAgents` (for example Sindi for anything about housing).' +
+          : "Talk to the person's other gemies and to the agents they connected (a coding agent such as Claude Code or Codex on their computer), and to public gemies: write to one in your conversation with it, as a person writes to someone. When the person asks you to talk to, ask or tell another gemie or agent, this is how. It does not answer here: when it answers, you read its answer and continue — write to it again, or tell the person what you found. It cannot see this chat, so put everything it needs in `text`. After writing, tell the person briefly whom you wrote to and why; do not wait or guess its answer. " +
+            'Find others with `searchAgents` (for example Sindi for anything about housing).' +
             own,
       inputSchema: z.object({
-        to: z.string().min(1).describe('The id of the gemie to write to'),
+        to: z
+          .string()
+          .min(1)
+          .describe(
+            'The gemie to write to: its id, its @handle, or its name as the person says it',
+          ),
         text: z
           .string()
           .min(1)
@@ -156,13 +184,16 @@ export async function buildSendMessageTool(options: SendMessageOptions): Promise
       }),
       execute: async ({ to, text }) => {
         try {
+          const resolved = await resolveRecipient(to, options);
+          if ('error' in resolved) return { error: resolved.error };
+          const { id } = resolved;
           if (
-            to === options.from._id ||
-            (options.allowedAgentIds !== undefined && !options.allowedAgentIds.includes(to))
+            id === options.from._id ||
+            (options.allowedAgentIds !== undefined && !options.allowedAgentIds.includes(id))
           ) {
             return { error: 'That is not a gemie you can write to' };
           }
-          const found = await findAgentById(getDb(), to);
+          const found = await findAgentById(getDb(), id);
           if (
             found === null ||
             (await canReachAgent(found, {
