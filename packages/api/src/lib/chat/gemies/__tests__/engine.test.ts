@@ -5,7 +5,7 @@
  * makes it live; the bounds belong to the chain.
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentInfo } from '../../../../domain/conversation.js';
+import type { AgentInfo, ToolInvocation } from '../../../../domain/conversation.js';
 import type { AgentTurnResult } from '../../../tools/agent-turn.js';
 import type { RoomEvent } from '../../room/bus.js';
 import type { RoomEngineDeps, TranscriptRow } from '../../room/engine.js';
@@ -28,7 +28,9 @@ const LUMEN: AgentInfo = {
 
 type Turn = Parameters<RoomEngineDeps['runTurn']>[0];
 /** What each gemie does on its turn: its words, and whether (and what) it writes on. */
-type Script = (turn: Turn) => Promise<{ text: string; write?: string; error?: string }>;
+type Script = (
+  turn: Turn,
+) => Promise<{ text: string; write?: string; error?: string; canvas?: ToolInvocation[] }>;
 
 function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUNDS) {
   const store = new Map<string, TranscriptRow[]>();
@@ -36,6 +38,7 @@ function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUN
   const queue: GemieStepData[] = [];
   const turns: Turn[] = [];
   const revoked: string[] = [];
+  const stores: Array<Parameters<RoomEngineDeps['storeReply']>[0]> = [];
   let seq = 0;
   const rowsOf = (conversationId: string) => {
     if (!store.has(conversationId)) store.set(conversationId, []);
@@ -67,9 +70,11 @@ function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUN
         tokensUsed: 100,
         creditsCharged: 1,
         ...(done.error ? { error: done.error } : {}),
+        ...(done.canvas ? { canvas: done.canvas } : {}),
       } as AgentTurnResult;
     },
     storeReply: async (input) => {
+      stores.push(input);
       const createdAt = new Date(seq * 1000);
       rowsOf(input.conversationId).push({
         id: input.clientMessageId,
@@ -105,7 +110,8 @@ function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUN
         conversationId: input.conversationId,
         clientMessageId: `told-${input.key}`,
         content: input.content,
-        agentInfo: null,
+        // Under its own name, as a gemie's post in its chat is.
+        agentInfo: PEPE,
       });
       return { messageId: stored.id };
     },
@@ -147,7 +153,7 @@ function world(script: Record<string, Script>, bounds = DEFAULT_GEMIE_CHAIN_BOUN
   };
   const said = (conversationId: string) =>
     rowsOf(conversationId).map((row) => `${row.agentName ?? 'lead'}: ${row.content as string}`);
-  return { store, events, queue, turns, revoked, deps, start, drain, said, rowsOf };
+  return { store, events, queue, turns, revoked, stores, deps, start, drain, said, rowsOf };
 }
 
 describe('a conversation between two gemies', () => {
@@ -180,7 +186,7 @@ describe('a conversation between two gemies', () => {
       'Lumen: Lumen answers And for two people?',
     ]);
     // What the person reads is the first gemie's own reply in its chat with them.
-    expect(w.said('chat')).toEqual(['lead: Lumen says it fits two, and the rent is fair.']);
+    expect(w.said('chat')).toEqual(['Pepe: Lumen says it fits two, and the rent is fair.']);
     // Both gemies' task authority goes back, and both conversations are told the chain is over.
     expect(w.revoked.sort()).toEqual(['task-lumen', 'task-pepe']);
     const idle = w.events.filter((event) => event.event === 'group.idle');
@@ -229,7 +235,6 @@ describe('a conversation between two gemies', () => {
       'alia.agent_start',
       'alia.agent_delta',
       'alia.agent_end',
-      'group.message',
       'group.idle',
     ]);
     const chat = w.events.filter((event) => event.conversationId === 'chat');
@@ -239,6 +244,35 @@ describe('a conversation between two gemies', () => {
       status: 'completed',
       messageId: 'told-group-reply-gemies-chain-2',
     });
+  });
+});
+
+describe('what a turn of the chain keeps', () => {
+  it('stores the canvas the answering gemie drew with its words', async () => {
+    const canvas: ToolInvocation = {
+      toolCallId: 'c1',
+      toolName: 'canvas',
+      state: 'result',
+      args: { type: 'markdown', title: 'Pisos' },
+      result: { type: 'markdown', title: 'Pisos', data: { content: '# Gràcia' } },
+    };
+    const w = world({
+      lumen: async () => ({ text: 'Here is the table.', canvas: [canvas] }),
+      pepe: async () => ({ text: 'Done.' }),
+    });
+    await w.start('Make me a table');
+    await w.drain();
+    expect(w.stores.find((input) => input.agentInfo.id === 'lumen')?.toolInvocations).toEqual([
+      canvas,
+    ]);
+  });
+
+  it('keeps the person’s personalization off on every turn of the chain', async () => {
+    const w = world({ lumen: async () => ({ text: 'x' }), pepe: async () => ({ text: 'y' }) });
+    await w.start('Hello?');
+    w.queue[0] = { ...w.queue[0]!, personalization: false };
+    await w.drain();
+    expect(w.turns.map((turn) => turn.person.personalization)).toEqual([false, false]);
   });
 });
 
@@ -262,7 +296,7 @@ describe('the chain’s bounds', () => {
     expect(last.agent._id).toBe('pepe');
     expect(last.gemieChain).toBeUndefined();
     expect(last.room?.instructions).toContain('has reached its limit');
-    expect(w.said('chat')).toEqual(['lead: Here is what I have.']);
+    expect(w.said('chat')).toEqual(['Pepe: Here is what I have.']);
   });
 
   it('stops at the token bound too', async () => {
@@ -278,7 +312,7 @@ describe('the chain’s bounds', () => {
     await w.start('Start');
     await w.drain();
     expect(w.rowsOf('between')).toHaveLength(2);
-    expect(w.said('chat')).toEqual(['lead: Enough.']);
+    expect(w.said('chat')).toEqual(['Pepe: Enough.']);
   });
 
   it('lets the first gemie write once per turn', async () => {
@@ -310,7 +344,7 @@ describe('failures and retries', () => {
     await w.start('Hello?');
     await w.drain();
     expect(w.said('between')).toEqual(['Pepe: Hello?']);
-    expect(w.said('chat')).toEqual(['lead: Lumen could not answer.']);
+    expect(w.said('chat')).toEqual(['Pepe: Lumen could not answer.']);
   });
 
   it('a retried answer step replays what it stored instead of answering twice', async () => {

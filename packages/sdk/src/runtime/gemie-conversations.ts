@@ -63,6 +63,22 @@ export function gemieConversationOf(call: ToolInvocation): GemieConversationCall
   };
 }
 
+/**
+ * The conversation's row moved (the realtime `conversation` frame every stored message is): its
+ * last line is the last thing either of them said — the first message included, which no turn
+ * streams.
+ */
+export function foldGemieConversationRow(
+  live: GemieConversationLive,
+  row: { readonly id: string; readonly lastMessage: string | null },
+  conversationId: string,
+): GemieConversationLive {
+  const line = row.lastMessage?.trim() ?? '';
+  return row.id !== conversationId || line === '' || line === live.lastLine
+    ? live
+    : { ...live, lastLine: line };
+}
+
 /** What the card knows of the conversation while it watches it. */
 export interface GemieConversationLive {
   /** The chain is running: one of them is writing, or the other is about to answer. */
@@ -89,12 +105,14 @@ export function foldGemieConversationEvent(
   switch (event.event) {
     case 'alia.agent_start':
       return { ...live, talking: true, speaking: agentOf(data.agent) };
-    case 'alia.agent_end':
-      return live.speaking === null ? live : { ...live, speaking: null };
-    case 'group.message': {
-      const message = isObject(data.message) ? data.message : null;
-      const content = typeof message?.content === 'string' ? message.content.trim() : '';
-      return content === '' ? live : { ...live, talking: true, lastLine: content };
+    case 'alia.agent_end': {
+      const content =
+        data.status === 'completed' && typeof data.content === 'string' ? data.content.trim() : '';
+      return content === ''
+        ? live.speaking === null
+          ? live
+          : { ...live, speaking: null }
+        : { ...live, speaking: null, lastLine: content };
     }
     case 'group.idle':
       return { ...live, talking: false, speaking: null };

@@ -85,31 +85,15 @@ export async function sendGemieMessage(input: {
   const chainId = randomUUID();
   const messageId = gemieMessageIdOf(chainId, 0);
   const { deps } = roomRuntime();
-  const stored = await deps.storeReply({
+  await deps.storeReply({
     userId,
     conversationId,
     clientMessageId: messageId,
     content: input.text,
     agentInfo: from.info,
   });
-  await Promise.resolve(
-    deps.publish({
-      userId,
-      conversationId,
-      chainId,
-      event: 'group.message',
-      data: {
-        message: {
-          id: stored.id,
-          role: 'assistant',
-          content: input.text,
-          agentInfo: from.info,
-          seq: stored.seq,
-          createdAt: stored.createdAt.toISOString(),
-        },
-      },
-    }),
-  ).catch((err: unknown) => log.general.warn({ err }, 'Could not publish a gemie message'));
+  // It reaches the person's surfaces as every stored message does: the realtime `conversation`
+  // frame the store publishes, serialized by `toClientMessages`.
 
   const authority = { userId, accessToken: input.accessToken, chainId };
   const [initiator, recipient] = await Promise.all([

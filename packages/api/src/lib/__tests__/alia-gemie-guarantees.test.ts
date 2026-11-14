@@ -169,7 +169,6 @@ describe('a gemie that was written to never writes on', () => {
     expect(await toolsFor(aliaGemie(), { gemieChat: 'chat-1' })).toContain('sendMessage');
     expect(await toolsFor(persona(), { gemieChat: 'chat-1' })).toContain('sendMessage');
   });
-
 });
 
 describe('a chat with Alia runs as it did', () => {

@@ -143,7 +143,7 @@ The API receiver ships first: migration `0109_chat_host_results` (pre-deploy, ad
 
 ### Personalization off for one turn
 
-`"personalization": false` on `POST /v1/chat/completions` (and `/alia/chat`, the same handler) turns personalization off for that turn: Alia reads no profile of the person, the model is offered no memory tools (Alia's `oxy_nilo_memories__*`, an agent's `memory` and `searchThread`) and an agent reads none of its own memory of them, an agent it consults (`consultAgent`, `askAlia`) reads none either, nor does any member of a group in the chain the turn starts (kept on the room job), nothing learned about them ("Priority learnings") reaches the prompt, and nothing is learned from the turn (writing style, proactive suggestions, run scoring and corrections). The conversation is stored as usual. Absent or `true` changes nothing; any other value is refused `400` with `param: "personalization"`. The SDK sends it from `GemieTurnRequest.personalization` (`host.turnRequest()`), only when `false`.
+`"personalization": false` on `POST /v1/chat/completions` (and `/alia/chat`, the same handler) turns personalization off for that turn: Alia reads no profile of the person, the model is offered no memory tools (Alia's `oxy_nilo_memories__*`, an agent's `memory` and `searchThread`) and an agent reads none of its own memory of them, a gemie it writes to (`sendMessage`) reads none either in any turn of that chain (ADR 0042), nor does any member of a group in the chain the turn starts (kept on the room job), nothing learned about them ("Priority learnings") reaches the prompt, and nothing is learned from the turn (writing style, proactive suggestions, run scoring and corrections). The conversation is stored as usual. Absent or `true` changes nothing; any other value is refused `400` with `param: "personalization"`. The SDK sends it from `GemieTurnRequest.personalization` (`host.turnRequest()`), only when `false`.
 
 ## 3. Tool results and renderers
 
@@ -166,22 +166,26 @@ gemies have for this person:
 ```
 
 The answer is not in this turn. It is written in that conversation, and the gemie that wrote then
-continues in this chat as a reply of its own. Both reach a client as `room` frames on the account's
-realtime socket (ADR 0040; the same events a group room uses, with `chainId`):
+continues in this chat as a reply of its own. While each is written it reaches a client as `room`
+frames on the account's realtime socket (ADR 0040; the same events a group room uses, with
+`chainId`):
 
 ```text
 alia.agent_start   {"consultId":"…","agent":{"id","name","handle","color","character"},"lead"?:true}
 alia.agent_delta   {"consultId":"…","content":"…"}
 alia.agent_tool    {"consultId":"…","phase":"call"|"result","toolCallId":"…","name":"…","input"?:{…},"output"?:{…}}
 alia.agent_end     {"consultId":"…","status":"completed"|"failed"|"declined","content"?:"…","messageId"?:"…"}
-group.message      {"message":{"id","role":"assistant","content","agentInfo"?,"seq","createdAt"}}
 group.idle         {"reason":"done"|"error"|"superseded"|"rate_limited"}
 ```
 
 `consultId` is the wire's name for one speaking turn. `lead: true` marks the conversation's own lead
 speaking in its chat — the gemie that wrote, telling the person what it found — so it is drawn as its
-ordinary reply, not under a guest's identity; its stored message carries no `agentInfo`. `group.idle`
-on the conversation between gemies, with the chain's `chainId`, is the chain's end.
+ordinary reply, not under a guest's identity. `group.idle` on the conversation between gemies, with
+the chain's `chainId`, is the chain's end. Each stored message — every message of the conversation
+between gemies, with the canvas a gemie drew answering, and what the first one tells the person,
+posted as a gemie's own post in its chat (`postAgentMessage`) — reaches a client as every stored
+message does: the realtime `conversation` frame's `appended`, in the one client shape
+(`toClientMessages`). `agent_end`'s `messageId` names it, so a live draft becomes it.
 
 The SDK draws the call as a card ("Pepe is talking to Lumen…", then "Pepe talked to Lumen") that
 follows the chain over those events and opens the whole conversation read-only (`GemieBetweenGemies`).

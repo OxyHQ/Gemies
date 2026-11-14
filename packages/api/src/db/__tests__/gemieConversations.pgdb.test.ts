@@ -205,7 +205,8 @@ describe('a chain of several turns, on Postgres', () => {
           conversationId: input.conversationId,
           clientMessageId: `told-${input.key}`,
           content: input.content,
-          agentInfo: null,
+          // Under its own name, as a gemie's post in its chat is.
+          agentInfo: PEPE,
         });
         return { messageId: stored.id };
       },
@@ -234,8 +235,8 @@ describe('a chain of several turns, on Postgres', () => {
     expect(new Set(between.map((m) => m.id)).size).toBe(6);
     // The person's chat holds what Pepe told them, as Pepe's own reply.
     const chat = (await listMessages(db, USER, 'chat')).map(toStoredMessage);
-    expect(chat.map((m) => [m.role, m.content, m.agentInfo])).toEqual([
-      ['assistant', 'Lumen and I agree: take it.', undefined],
+    expect(chat.map((m) => [m.role, m.content, m.agentInfo?.id])).toEqual([
+      ['assistant', 'Lumen and I agree: take it.', PEPE.id],
     ]);
     // Its preview and the conversation between gemies moved with what was said.
     const [row] = await db

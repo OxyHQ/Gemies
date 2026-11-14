@@ -12,8 +12,9 @@
  *    gemie), and/or tells the person what it found, as its ordinary reply in that chat.
  *
  * A continuation that does not write again ends the chain. Nothing here knows about HTTP: every
- * word reaches whoever is watching through the room bus (`room` frames on the person's realtime socket, ADR 0040), and
- * the stored message is the record.
+ * word reaches whoever is watching as it is written (`room` frames on the person's realtime socket,
+ * ADR 0040), and each stored message as the realtime `conversation` frame every stored message is
+ * (`toClientMessages`, `lib/chat/client-message.ts`): the stored message is the record.
  *
  * ## Bounds are the chain's, not a tool's
  *
@@ -82,6 +83,11 @@ export interface GemieStepData {
   readonly answered?: boolean;
   /** The app the person was in when the chain started (ADR 0021). */
   readonly surfaceApplicationId: string | null;
+  /**
+   * The person turned personalization off for the turn that started the chain: no turn of it reads
+   * what is remembered about them, as in a room (ADR 0025).
+   */
+  readonly personalization?: false;
 }
 
 export interface GemieEngineDeps {
@@ -175,22 +181,6 @@ const asInput = (row: TranscriptRow, lead?: AgentInfo): GroupInputMessage => ({
         : null,
 });
 
-const storedMessage = (
-  id: string,
-  content: string,
-  agentInfo: AgentInfo | null,
-  stored: { seq?: number | null; createdAt?: Date },
-) => ({
-  message: {
-    id,
-    role: 'assistant',
-    content,
-    ...(agentInfo === null ? {} : { agentInfo }),
-    ...(stored.seq == null ? {} : { seq: stored.seq }),
-    ...(stored.createdAt ? { createdAt: stored.createdAt.toISOString() } : {}),
-  },
-});
-
 /** Run one step, serialized with everything else written in the conversation it writes in. */
 export function processGemieStep(
   data: GemieStepData,
@@ -237,7 +227,6 @@ async function reply(data: GemieStepData, deps: GemieEngineDeps): Promise<GemieS
       content,
       messageId: replyId,
     });
-    await emit('group.message', storedMessage(replyId, content, recipient.info, already));
     await next(true, data.tokens);
     return 'continued';
   }
@@ -276,6 +265,7 @@ async function reply(data: GemieStepData, deps: GemieEngineDeps): Promise<GemieS
       isDirectSession: false,
       ...(recipient.oxyTaskId ? { taskId: recipient.oxyTaskId } : {}),
       surfaceApplicationId: data.surfaceApplicationId,
+      ...(data.personalization === false ? { personalization: false as const } : {}),
     },
     payerOxyUserId: userId,
     observer: {
@@ -315,6 +305,8 @@ async function reply(data: GemieStepData, deps: GemieEngineDeps): Promise<GemieS
     clientMessageId: replyId,
     content,
     agentInfo: recipient.info,
+    // The canvas it drew answering stays with its words, for a reload and a share.
+    ...(outcome.canvas?.length ? { toolInvocations: outcome.canvas } : {}),
   });
   await emit('alia.agent_end', {
     consultId: replyId,
@@ -322,7 +314,6 @@ async function reply(data: GemieStepData, deps: GemieEngineDeps): Promise<GemieS
     content,
     messageId: stored.id,
   });
-  await emit('group.message', storedMessage(stored.id, content, recipient.info, stored));
   await next(true, tokens);
   return 'continued';
 }
@@ -356,7 +347,6 @@ async function continueChain(
   const { room, bounds } = deps;
   const { userId, initiator, recipient } = data;
   const emit = emitterOf(deps, data, data.originConversationId);
-  const pair = emitterOf(deps, data, data.conversationId);
   const reportId = gemieReplyIdOf(data.chainId, data.turn);
   const nextMessageId = gemieMessageIdOf(data.chainId, data.turn);
 
@@ -407,7 +397,7 @@ async function continueChain(
           // Claimed before the write, so two calls in one step cannot both write; given back if
           // the write fails, so a failure is not mistaken for a message waiting for its answer.
           written = true;
-          const stored = await room
+          await room
             .storeReply({
               userId,
               conversationId: data.conversationId,
@@ -419,7 +409,6 @@ async function continueChain(
               written = false;
               throw error;
             });
-          await pair('group.message', storedMessage(stored.id, text, initiator.info, stored));
           return { conversationId: data.conversationId, chainId: data.chainId };
         },
       }
@@ -449,6 +438,7 @@ async function continueChain(
       isDirectSession: false,
       ...(initiator.oxyTaskId ? { taskId: initiator.oxyTaskId } : {}),
       surfaceApplicationId: data.surfaceApplicationId,
+      ...(data.personalization === false ? { personalization: false as const } : {}),
     },
     payerOxyUserId: userId,
     observer: {

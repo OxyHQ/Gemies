@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type GemieConversationLive,
   foldGemieConversationEvent,
+  foldGemieConversationRow,
   gemieConversationOf,
 } from '../../src/runtime/gemie-conversations';
 import type { RoomEvent } from '../../src/runtime/room-events';
@@ -70,10 +71,7 @@ describe('following the conversation live', () => {
     const writing = fold([on('alia.agent_start', { consultId: 'r', agent: LUMEN })]);
     expect(writing).toEqual({ talking: true, speaking: LUMEN, lastLine: null });
     const said = fold(
-      [
-        on('alia.agent_end', { consultId: 'r', status: 'completed' }),
-        on('group.message', { message: { id: 'r', content: ' It fits two. ' } }),
-      ],
+      [on('alia.agent_end', { consultId: 'r', status: 'completed', content: ' It fits two. ' })],
       writing,
     );
     expect(said).toEqual({ talking: true, speaking: null, lastLine: 'It fits two.' });
@@ -94,5 +92,17 @@ describe('following the conversation live', () => {
         'k',
       ),
     ).toBe(quiet);
+  });
+});
+
+describe('the conversation’s row', () => {
+  it('gives the card the last line of the conversation, the first message included', () => {
+    const quiet = { talking: true, speaking: null, lastLine: null };
+    expect(
+      foldGemieConversationRow(quiet, { id: 'between', lastMessage: 'Hola Lumen' }, 'between'),
+    ).toEqual({ talking: true, speaking: null, lastLine: 'Hola Lumen' });
+    expect(foldGemieConversationRow(quiet, { id: 'other', lastMessage: 'x' }, 'between')).toBe(
+      quiet,
+    );
   });
 });

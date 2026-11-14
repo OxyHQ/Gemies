@@ -10,10 +10,12 @@ import { useLabels } from '../../lib/labels';
 import { agentCharacterOf } from '../../lib/participants';
 import { useRealtimeEvent } from '../../realtime/react';
 import type { RoomEvent } from '../../runtime/room-events';
+import type { RealtimeData } from '../../realtime/contract';
 import {
   type GemieConversationCall,
   type GemieConversationLive,
   foldGemieConversationEvent,
+  foldGemieConversationRow,
 } from '../../runtime/gemie-conversations';
 
 /** The card's size for the two gemies' avatars together: a list row's leading box. */
@@ -40,6 +42,11 @@ function useGemieConversationLive(
     if (conversationId === null) return;
     const event = frame.data as RoomEvent;
     setLive((current) => foldGemieConversationEvent(current, event, conversationId, chainId));
+  });
+  useRealtimeEvent('conversation', (frame) => {
+    if (conversationId === null) return;
+    const { conversation } = frame.data as RealtimeData['conversation'];
+    setLive((current) => foldGemieConversationRow(current, conversation, conversationId));
   });
   return live;
 }
