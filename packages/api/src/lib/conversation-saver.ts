@@ -236,8 +236,10 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
 
   // Fast path: stored history is exactly the client history minus the new turn,
   // with a contiguous seq that matches the client's last echoed message.
+  // Or stored history is ALL of the client history: a channel stores the person's message the
+  // moment it arrives (so the app shows it at once), and the turn then appends only its reply.
   const canAppend =
-    storedCount === clientHistory.length - 1 &&
+    (storedCount === clientHistory.length - 1 || storedCount === clientHistory.length) &&
     (storedCount === 0 ||
       (lastStored?.seq === storedCount - 1 &&
         sameMessage(lastStored, clientHistory[storedCount - 1])));

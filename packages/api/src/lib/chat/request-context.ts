@@ -916,6 +916,7 @@ export async function buildChatRequestContext(
           person: {
             accountId: localAccountId,
             taskId: req.channelContext?.taskId,
+            channel: req.channelContext !== undefined,
             // The person's own bearer only: a service token is not them.
             accessToken: isDirectUserSession ? req.accessToken : undefined,
             runId: turnRequestId,

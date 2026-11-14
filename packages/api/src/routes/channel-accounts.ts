@@ -14,6 +14,8 @@ import {
   turnContentText,
 } from '@gemies/server/internal';
 import { channelMessageSchema, prepareChannelTurn } from '../lib/channel-messages.js';
+import { appendConversationMessages } from '../lib/conversation-saver.js';
+import type { MessageContent } from '../domain/conversation.js';
 import { getDb } from '../db/index.js';
 import {
   findConnectedAccount,
@@ -61,7 +63,12 @@ router.post('/inbound', authenticateToken, async (req: Request, res: Response) =
 });
 
 const incomingSchema = z
-  .object({ chatId: z.string().min(1).max(200), message: channelMessageSchema })
+  .object({
+    chatId: z.string().min(1).max(200),
+    message: channelMessageSchema,
+    conversationId: z.string().min(1).max(128).optional(),
+    messageId: z.string().min(1).max(256).optional(),
+  })
   .strict();
 
 /**
@@ -87,6 +94,19 @@ router.post('/messages', authenticateToken, async (req: Request, res: Response) 
     const content: GemieAccountTurnContent['content'] = context.taskId
       ? turn.content
       : [{ type: 'text', text: turnContentText(turn.content) }];
+    // Kept in its conversation the moment it arrives, so the app shows it before the gemie
+    // answers; the turn then appends only its reply (`conversation-saver.ts`).
+    const { conversationId, messageId } = parsed.data;
+    if (conversationId && messageId) {
+      await appendConversationMessages<MessageContent>({
+        userId: context.accountId,
+        conversationId,
+        agentId: context.gemieId,
+        titleOnInsert: `${context.platform === 'whatsapp' ? 'WhatsApp' : 'Telegram'} · ${parsed.data.chatId}`,
+        source: context.platform === 'whatsapp' ? 'whatsapp' : 'telegram',
+        messages: [{ id: messageId, role: 'user', content: [...content] }],
+      });
+    }
     res.json({ content } satisfies GemieAccountTurnContent);
   } catch (err: unknown) {
     log.channels.error({ err }, 'A connected account message could not be prepared');

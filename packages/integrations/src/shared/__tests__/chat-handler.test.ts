@@ -49,7 +49,7 @@ describe('a connected account’s turn', () => {
 
     expect(api.prepareAccountMessage).toHaveBeenCalledWith(
       { kind: 'account', sessionId: 's1' },
-      { chatId: 'c1', message },
+      { chatId: 'c1', message, conversationId: expect.stringMatching(/^[0-9a-f]{64}$/) },
     );
     const [, messages] = chatCompletion.mock.calls[0] as unknown as [unknown, unknown[]];
     expect(messages.slice(1)).toEqual([...stored, { role: 'user', content: prepared }]);
@@ -69,5 +69,39 @@ describe('a connected account’s turn', () => {
       { decideInbound: async () => ({ answer: false }) } as unknown as APIClient,
     );
     expect(readMessage).not.toHaveBeenCalled();
+  });
+
+  it('sends a message the API already kept once, as the history’s last, so only the reply is added', async () => {
+    const prepared = [{ type: 'text' as const, text: 'hola' }];
+    // The API kept the message the moment it arrived, under the platform's id.
+    const stored = [
+      { id: 'a1', role: 'assistant', content: 'Hey.' },
+      { id: 'whatsapp:c1:m1', role: 'user', content: prepared },
+    ];
+    const chatCompletion = vi.fn(async () => ({ content: 'Hola.', finishReason: 'stop' }));
+    const api = {
+      decideInbound: async () => ({ answer: true }),
+      prepareAccountMessage: vi.fn(async () => ({ content: prepared })),
+      getConversation: async () => ({ messages: stored }),
+      requestModel: async () => undefined,
+      chatCompletion,
+    } as unknown as APIClient;
+    await handleIncomingMessage(
+      {
+        platform: 'whatsapp',
+        sessionId: 's1',
+        messageId: 'm1',
+        inbound: { chatId: 'c1', chatKind: 'direct', mentionsAccount: false },
+        readMessage: async () => ({ text: 'hola' }),
+        sendResponse: async () => {},
+      },
+      api,
+    );
+    expect(api.prepareAccountMessage).toHaveBeenCalledWith(
+      { kind: 'account', sessionId: 's1' },
+      expect.objectContaining({ messageId: 'whatsapp:c1:m1' }),
+    );
+    const [, messages] = chatCompletion.mock.calls[0] as unknown as [unknown, unknown[]];
+    expect(messages.slice(1)).toEqual(stored);
   });
 });

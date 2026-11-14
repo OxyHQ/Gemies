@@ -42,7 +42,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { GemieTelegramBotAnswer, GemieTelegramBotMessage } from '@gemies/server/internal';
 import { findAgentById } from '../db/agents/agentRepository.js';
 import {
-  clientMessageExists,
+  findLastMessage,
   listRecentTurns,
   replaceChannelMessageWords,
 } from '../db/chat/messageRepository.js';
@@ -51,6 +51,7 @@ import { prepareChannelTurn } from './channel-messages.js';
 import { buildPersonalAccessTool, PERSONAL_ACCESS_TOOL } from './channels/personal-access-tool.js';
 import { buildReactionTool, REACT_TOOL } from './channels/reaction-tool.js';
 import { publishGemieChanged } from './realtime/account.js';
+import { startActorActivity, type ActorActivity } from './realtime/activity.js';
 import { publishConversation } from './realtime/conversations.js';
 import { appendConversationMessages } from './conversation-saver.js';
 import { getDb } from '../db/index.js';
@@ -236,16 +237,11 @@ async function earlierAnswer(
   }
   if (state.kind !== 'answered') return { reply: null };
   const answer = state.answer as unknown as GemieTelegramBotAnswer;
-  if (
-    answer.personTurn &&
-    (await clientMessageExists(
-      db,
-      bot.userId,
-      answer.personTurn.conversationId,
-      answer.personTurn.messageId,
-    ))
-  ) {
-    return { reply: null };
+  // A person's turn ran through the chat route if something follows their message, which is kept
+  // the moment it arrives: then it is not run again.
+  if (answer.personTurn) {
+    const last = await findLastMessage(db, bot.userId, answer.personTurn.conversationId);
+    if (last && last.role !== 'user') return { reply: null };
   }
   return answer;
 }
@@ -295,6 +291,9 @@ async function runTurn(
       owner: bot.oxyTaskId ? { oxyUserId: bot.userId, taskId: bot.oxyTaskId } : null,
       payerAccountId: bot.userId,
     });
+    // Shown in the app the moment it arrives, not once the gemie has answered: the chat route's
+    // turn then appends only its reply after it (`conversation-saver.ts`).
+    await keepArrivedMessage(bot, message, turn.content, agent._id, conversationId);
     return {
       reply: null,
       personTurn: {
@@ -338,6 +337,7 @@ async function answerAsThirdParty(
   }
   const reservation: CreditReservation = funding.reservation;
   let settled = false;
+  let activity: ActorActivity | null = null;
 
   try {
     const speaker = speakerOf(message);
@@ -357,6 +357,15 @@ async function answerAsThirdParty(
       speaker: message.chatKind === 'group' ? speaker : undefined,
       modelAcceptsFiles: resolved.catalogue?.inputModalities.includes('file') === true,
     });
+    // In the app the moment it arrives, with the gemie shown typing until its answer lands.
+    await keepArrivedMessage(bot, message, turn.content, agent._id, conversationId);
+    activity = startActorActivity({
+      oxyUserId: bot.userId,
+      conversationId,
+      agentId: agent._id,
+      name: agentPromptName(agent),
+    });
+    activity.set('thinking');
     const where =
       message.chatKind === 'group'
         ? `You are in the Telegram group "${message.chatTitle ?? 'a group'}", where you answer only when someone mentions you or replies to you. Each message says who wrote it.`
@@ -429,18 +438,33 @@ async function answerAsThirdParty(
       agentId: agent._id,
       titleOnInsert: `Telegram · ${message.chatKind === 'group' ? (message.chatTitle ?? 'Group') : speaker}`,
       source: 'telegram',
-      messages: [
-        {
-          id: botMessageClientId(message.chatId, message.messageId),
-          role: 'user',
-          content: turn.content,
-        },
-        ...(reply ? [{ id: randomUUID(), role: 'assistant' as const, content: reply }] : []),
-      ],
+      messages: reply ? [{ id: randomUUID(), role: 'assistant' as const, content: reply }] : [],
     });
     await recordGemieBotMessage(db, bot.id);
     return { reply: reply || null, reaction: reaction.chosen() };
   } finally {
+    activity?.end();
     if (!settled) await safeRefund(reservation, 'Telegram bot turn ended without charging');
   }
+}
+
+/** The message that arrived, stored in its conversation at once (and so on every open app). */
+async function keepArrivedMessage(
+  bot: GemieBotRow,
+  message: GemieTelegramBotMessage,
+  content: MessageContent,
+  agentId: string,
+  conversationId: string,
+): Promise<void> {
+  const speaker = speakerOf(message);
+  await appendConversationMessages<MessageContent>({
+    userId: bot.userId,
+    conversationId,
+    agentId,
+    titleOnInsert: `Telegram · ${message.chatKind === 'group' ? (message.chatTitle ?? 'Group') : speaker}`,
+    source: 'telegram',
+    messages: [
+      { id: botMessageClientId(message.chatId, message.messageId), role: 'user', content },
+    ],
+  });
 }
