@@ -235,6 +235,12 @@ function ffmpegDecode(
       err += chunk.toString();
     });
     child.on('error', reject);
+    // `-t` makes ffmpeg stop reading once it has the seconds it needs, so the
+    // rest of a piped recording meets a closed stdin: EPIPE is that, not a
+    // failure. Unhandled, it crashed the process after the report was written.
+    child.stdin.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code !== 'EPIPE') reject(error);
+    });
     child.on('close', (code) =>
       code === 0
         ? resolve(Buffer.concat(out))
