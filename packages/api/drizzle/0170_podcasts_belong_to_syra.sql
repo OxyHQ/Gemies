@@ -36,7 +36,11 @@
 --    claim does not delete the new one).
 -- 2. Every other `show_series` intent still in the outbox — a pending `present` the previous image
 --    wrote during the rollout, a dead letter — becomes a pending `absent` too, so nothing of the
---    class is ever added again and every reference Gemies may hold under it is removed.
+--    class is ever added again and every reference Gemies may hold under it is removed. Its LEASE
+--    is kept: a worker may be sending a `references.add` for it right now (the new image's workers
+--    run before `post`), and a release that overtook that request would be undone by it. Bumping
+--    `generation` stops that worker from deleting or failing the row, and the release is claimed
+--    only once its lease has lapsed (120 s, far longer than that request), i.e. after the add.
 -- 3. The `show_series` row of the reconciliation ledger goes, and its CHECK narrows: the nightly
 --    reconciliation only covers the classes in use (`OXY_FILE_ENTITY_TYPES`), so it can no longer
 --    re-add the cover, and with no inventory left it must not try to.
@@ -54,8 +58,6 @@ UPDATE "oxy_file_reference_sync" SET
 	"generation" = "generation" + 1,
 	"attempts" = 0,
 	"available_at" = now(),
-	"lease_owner" = NULL,
-	"lease_until" = NULL,
 	"last_error" = NULL,
 	"updated_at" = now()
 WHERE "entity_type" = 'show_series' AND ("desired" <> 'absent' OR "status" <> 'pending');--> statement-breakpoint

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { constraintNameOf, isCheckViolation, uuidv7 } from '@oxy.so/db';
@@ -235,6 +236,56 @@ describe('the reference outbox', () => {
       db.insert(oxyFileReconcileRuns).values({ entityType: released as never }),
       'oxy_file_reconcile_runs_entity_type_check',
     );
+  });
+
+  it('the retiring migration never lets its release overtake an add still in flight', async () => {
+    const [released] = RELEASE_ONLY_OXY_FILE_ENTITY_TYPES;
+    const file = `${RUN}-f6`;
+    await db
+      .insert(oxyFileReferenceSync)
+      .values({ fileId: file, entityType: released, entityId: 'in-flight', desired: 'present' });
+    // Worker A holds the `present` intent: its `references.add` is on the wire.
+    const owner = `${RUN}-adder`;
+    const [held] = (
+      await claimReferenceSyncs(db, { leaseOwner: owner, limit: 1000, leaseSeconds: 60 })
+    ).filter((row) => row.fileId === file);
+    if (held === undefined) throw new Error('worker A claimed nothing');
+
+    // Migration 0170's own UPDATE, read from the file the migrator applies.
+    const migration = readFileSync(
+      new URL('../../../drizzle/0170_podcasts_belong_to_syra.sql', import.meta.url),
+      'utf8',
+    );
+    const update = migration
+      .split('--> statement-breakpoint')
+      .map((statement) => statement.replace(/^\s*(--[^\n]*\n)*/u, '').trim())
+      .find((statement) => statement.startsWith('UPDATE "oxy_file_reference_sync"'));
+    expect(update).toBeDefined();
+    await db.execute(sql.raw(update ?? ''));
+
+    const [row] = await db
+      .select({
+        desired: oxyFileReferenceSync.desired,
+        leaseOwner: oxyFileReferenceSync.leaseOwner,
+        generation: oxyFileReferenceSync.generation,
+      })
+      .from(oxyFileReferenceSync)
+      .where(eq(oxyFileReferenceSync.fileId, file));
+    // Now a release, still under A's lease, one generation on.
+    expect(row).toEqual({ desired: 'absent', leaseOwner: owner, generation: held.generation + 1 });
+    // So no other worker can send the release while A's add is outstanding…
+    const overtaking = await claimReferenceSyncs(db, {
+      leaseOwner: `${RUN}-remover`,
+      limit: 1000,
+      leaseSeconds: 60,
+    });
+    expect(overtaking.some((claimed) => claimed.fileId === file)).toBe(false);
+    // …and A, when its add returns, can neither forget nor fail the release.
+    expect(await completeReferenceSync(db, held, owner)).toBe(false);
+    await failReferenceSync(db, held, owner, 'late', 1);
+    expect(await intentsFor(file)).toEqual([
+      { entityId: 'in-flight', desired: 'absent', generation: held.generation + 1 },
+    ]);
   });
 });
 
