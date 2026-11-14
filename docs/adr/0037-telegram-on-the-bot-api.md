@@ -267,6 +267,8 @@ full rewrite had stored the history the channel sent, prompt included, stamping 
   describes the steps (`personalAppsAccess`), never quoting the editor's labels in English, and
   only in a turn whose bot has no linked person.
 - **What production held was cleaned** (0170, 0172): the copies of a message and their replies, the
-  stored system messages (one Telegram chat and 48 app conversations), and the real time of every
+  stored system messages (one Telegram chat and 48 app conversations), and the real time of a
   flattened message whose time the database still records (a UUIDv7 id, the gemie bot turn, the
-  notification of a gemie's own message).
+  notification of a gemie's own message), where restoring it keeps the conversation in time order.
+- **Messages and their conversation are written together.** An append stores its messages and the
+  conversation row in one transaction, and an append that stored nothing (a retry) changes neither.

@@ -94,6 +94,38 @@ describe('0170–0174: what the saver’s rewrites left in a channel conversatio
           // Written after the rewrite, at its own time: untouched.
           row(9, `telegram:${CHAT}:53`, 'user', 'Salúdame', new Date('2026-11-14T09:19:42.666Z')),
         ]);
+        // A second chat whose every flattened message is recoverable: each gets its time back.
+        const OTHER = `telegram:${BOT}:42`;
+        await tx.insert(messages).values(
+          [
+            [0, 'telegram:42:1', 'user', 'Hola'],
+            [1, 'hola-reply', 'assistant', '¡Hola!'],
+            [2, 'telegram:42:3', 'user', '¿Qué tal?'],
+          ].map(([seq, id, role, content]) => ({
+            ...row(seq as number, id as string, role as string, content),
+            conversationId: OTHER,
+          })),
+        );
+        await tx.insert(gemieBotTurns).values([
+          {
+            botId: BOT,
+            chatId: '42',
+            messageId: '1',
+            status: 'answered',
+            answer: { reply: '¡Hola!' },
+            createdAt: new Date('2026-11-13T10:00:00.000Z'),
+            updatedAt: new Date('2026-11-13T10:00:02.000Z'),
+          },
+          {
+            botId: BOT,
+            chatId: '42',
+            messageId: '3',
+            status: 'answered',
+            answer: { reply: null },
+            createdAt: new Date('2026-11-13T10:05:00.000Z'),
+            updatedAt: new Date('2026-11-13T10:05:01.000Z'),
+          },
+        ]);
         await tx.insert(gemieBotTurns).values({
           botId: BOT,
           chatId: CHAT,
@@ -128,6 +160,11 @@ describe('0170–0174: what the saver’s rewrites left in a channel conversatio
           .from(messages)
           .where(and(eq(messages.oxyUserId, USER), eq(messages.conversationId, CONV)))
           .orderBy(messages.seq);
+        const other = await tx
+          .select()
+          .from(messages)
+          .where(and(eq(messages.oxyUserId, USER), eq(messages.conversationId, OTHER)))
+          .orderBy(messages.seq);
         // Each refused write in its own savepoint, so the transaction carries on to the assertions.
         const refused = (value: typeof messages.$inferInsert) =>
           tx
@@ -138,7 +175,7 @@ describe('0170–0174: what the saver’s rewrites left in a channel conversatio
             );
         const systemRefused = await refused(row(99, 'again', 'system', 'You are Eusebio.'));
         const copyRefused = await refused(row(98, `telegram:${CHAT}:22`, 'user', 'y ahora?'));
-        throw Object.assign(new Rollback(), { rows, systemRefused, copyRefused });
+        throw Object.assign(new Rollback(), { rows, other, systemRefused, copyRefused });
       })
       .catch((error: unknown) => {
         if (error instanceof Rollback) return error as Rollback & Record<string, unknown>;
@@ -163,11 +200,22 @@ describe('0170–0174: what the saver’s rewrites left in a channel conversatio
       // Nothing records when it was written: it keeps the instant it has.
       [`telegram:${CHAT}:22`]: FLAT.toISOString(),
       'first-reply': FLAT.toISOString(),
-      'agent-push-canva': '2026-11-14T01:34:43.647Z',
-      [`telegram:${CHAT}:33`]: '2026-11-14T01:52:10.300Z',
-      'sticker-reply': '2026-11-14T01:52:14.444Z',
+      // Recoverable, but after a message that kept the rewrite's instant: restored, it would come
+      // before it on a thread page, which orders by time. It keeps that instant too.
+      'agent-push-canva': FLAT.toISOString(),
+      [`telegram:${CHAT}:33`]: FLAT.toISOString(),
+      'sticker-reply': FLAT.toISOString(),
       [`telegram:${CHAT}:53`]: '2026-11-14T09:19:42.666Z',
     });
+    // So time order is the conversation's order.
+    const times = rows.map((message) => message.createdAt.getTime());
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+    const other = outcome.other as Array<typeof messages.$inferSelect>;
+    expect(other.map((message) => message.createdAt.toISOString())).toEqual([
+      '2026-11-13T10:00:00.000Z',
+      '2026-11-13T10:00:02.000Z',
+      '2026-11-13T10:05:00.000Z',
+    ]);
     expect(outcome.systemRefused).toBe(true);
     expect(outcome.copyRefused).toBe(true);
   });

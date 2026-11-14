@@ -643,7 +643,7 @@ export async function findClientMessageContent(
 
 /** How many messages this user holds in a thread. */
 export async function countMessages(
-  db: ApiDatabase,
+  db: Executor,
   oxyUserId: string,
   conversationId: string,
 ): Promise<number> {

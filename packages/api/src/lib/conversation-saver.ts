@@ -7,7 +7,7 @@
 import { generateText } from 'ai';
 import { isUniqueViolation, uuidv7 } from '@oxy.so/db';
 import { turnContentText } from '@gemies/server/internal';
-import { getDb } from '../db/index.js';
+import { getDb, type Executor } from '../db/index.js';
 import {
   findConversation,
   updateConversationTitle,
@@ -252,8 +252,8 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
   const preview = stripTitleTags(
     omitLeadReply ? (agentMessages?.at(-1)?.content ?? '') : assistantResponse,
   ).slice(0, 100);
-  const writeMetadata = () =>
-    upsertConversation(getDb(), {
+  const writeMetadata = (db: Executor = getDb()) =>
+    upsertConversation(db, {
       oxyUserId: userId,
       conversationId,
       // A group turn saved before its members answered has no reply to preview yet: the room
@@ -268,9 +268,7 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
   if (channelSource) {
     // A retried turn whose reply is stored adds nothing, and changes nothing: not the preview,
     // not the conversation's place in the list.
-    const change = await appendChannelTurn(userId, conversationId, channelMessage, turnTail);
-    if (change.appendedFromSeq !== undefined) await writeMetadata();
-    return change;
+    return appendChannelTurn(userId, conversationId, channelMessage, turnTail, writeMetadata);
   }
   await writeMetadata();
 
@@ -386,22 +384,24 @@ export async function appendConversationMessages<Content extends MessageContent 
             ? {}
             : { interruptedAfterMs: Math.round(message.interruptedAfterMs) }),
         })),
+    async (tx, kept) => {
+      const last = messages
+        .filter((message) => kept.has(message.id))
+        .reverse()
+        .map((message) => turnContentText(message.content))
+        .find((text) => text.trim() !== '');
+      await upsertConversation(tx, {
+        oxyUserId: userId,
+        conversationId,
+        ...(last ? { lastMessage: last.slice(0, 100) } : {}),
+        titleOnInsert: params.titleOnInsert,
+        source: params.source ?? 'app',
+        agentId: params.agentId,
+      });
+    },
   );
   // Every message was already there (a retried delivery): nothing changed, not even the preview.
   if (appended === null) return;
-  const last = messages
-    .filter((message) => appended.kept.has(message.id))
-    .reverse()
-    .map((message) => turnContentText(message.content))
-    .find((text) => text.trim() !== '');
-  await upsertConversation(getDb(), {
-    oxyUserId: userId,
-    conversationId,
-    ...(last ? { lastMessage: last.slice(0, 100) } : {}),
-    titleOnInsert: params.titleOnInsert,
-    source: params.source ?? 'app',
-    agentId: params.agentId,
-  });
   void publishConversation(userId, conversationId, { appendedFromSeq: appended.from });
 }
 
@@ -411,26 +411,34 @@ export async function appendConversationMessages<Content extends MessageContent 
  * the thread already holds is not stored again: `rowsFrom` receives the ids still to store, so a
  * retried delivery of a channel's message is kept once. Returns the first `seq` written and the ids
  * stored, or `null` when every message was already there.
+ *
+ * The messages and the conversation row they belong to (`withConversation`) are written in ONE
+ * transaction: a turn that stopped between the two would leave messages a retry finds stored, and
+ * so never writes the conversation they are read through.
  */
 async function appendAtEnd(
   userId: string,
   conversationId: string,
   ids: readonly string[],
   rowsFrom: (seq: number, kept: ReadonlySet<string>) => NewMessage[],
+  withConversation: (tx: Executor, kept: ReadonlySet<string>) => Promise<unknown>,
 ): Promise<{ from: number; kept: ReadonlySet<string> } | null> {
   for (let attempt = 1; ; attempt++) {
-    const [stored, count, existing] = await Promise.all([
-      findLastMessage(getDb(), userId, conversationId),
-      countMessages(getDb(), userId, conversationId),
-      existingClientMessageIds(getDb(), userId, conversationId, ids),
-    ]);
-    const kept = new Set(ids.filter((id) => !existing.has(id)));
-    if (kept.size === 0) return null;
-    // A legacy thread without `seq` continues after its last position.
-    const next = stored?.seq == null ? count : stored.seq + 1;
     try {
-      await insertMessages(getDb(), rowsFrom(next, kept));
-      return { from: next, kept };
+      return await getDb().transaction(async (tx) => {
+        const [stored, count, existing] = await Promise.all([
+          findLastMessage(tx, userId, conversationId),
+          countMessages(tx, userId, conversationId),
+          existingClientMessageIds(tx, userId, conversationId, ids),
+        ]);
+        const kept = new Set(ids.filter((id) => !existing.has(id)));
+        if (kept.size === 0) return null;
+        // A legacy thread without `seq` continues after its last position.
+        const next = stored?.seq == null ? count : stored.seq + 1;
+        await insertMessages(tx, rowsFrom(next, kept));
+        await withConversation(tx, kept);
+        return { from: next, kept };
+      });
     } catch (err) {
       if (attempt >= MAX_APPEND_ATTEMPTS || !isAppendConflict(err)) throw err;
     }
@@ -452,8 +460,11 @@ async function appendChannelTurn(
   conversationId: string,
   sent: InputMessage | undefined,
   turnTail: readonly InputMessage[],
+  writeMetadata: (tx: Executor) => Promise<unknown>,
 ): Promise<ConversationChange> {
   const messages = withStoredIds([], [...(sent ? [sent] : []), ...turnTail]);
+  // A retried turn whose reply is stored adds nothing, and changes nothing: not the preview, not
+  // the conversation's place in the list.
   const appended = await appendAtEnd(
     userId,
     conversationId,
@@ -462,6 +473,7 @@ async function appendChannelTurn(
       messages
         .filter((message) => kept.has(message.id as string))
         .map((message, index) => buildStoredMessage(message, userId, conversationId, from + index)),
+    writeMetadata,
   );
   return appended === null ? {} : { appendedFromSeq: appended.from };
 }

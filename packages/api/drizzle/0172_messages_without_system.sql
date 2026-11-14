@@ -16,13 +16,15 @@
 --         claimed (`gemie_bot_turns.created_at`), and the gemie's answer stored right after it,
 --         when that turn was answered (`updated_at`);
 --       - a gemie wrote it on its own (`agent-push-…`): when the person was notified of it.
---     Any other message keeps the instant it has: nothing records when it was written.
+--     Any other message keeps the instant it has: nothing records when it was written. A recovered
+--     time is applied only where it keeps the conversation in order (thread pages order by time).
 --  3. Positions are contiguous again (`seq` 0…n-1) in every conversation that lost a message
 --     here or in 0170, so the saver's append fast path keeps applying to it.
 --
 -- POST: the image being replaced still stores system messages and rewrites threads until it has
 -- drained.
 DELETE FROM "messages" WHERE "role" NOT IN ('user', 'assistant');--> statement-breakpoint
+CREATE TEMPORARY TABLE "recovered_message_times" ON COMMIT DROP AS
 WITH "flattened" AS (
   SELECT "m"."id", "m"."oxy_user_id", "m"."conversation_id", "m"."client_message_id", "m"."role",
     "m"."seq", "m"."content"
@@ -41,41 +43,69 @@ WITH "flattened" AS (
     ON "f"."conversation_id" = 'telegram:' || "t"."bot_id" || ':' || "t"."chat_id"
    AND "f"."client_message_id" = 'telegram:' || "t"."chat_id" || ':' || "t"."message_id"
   WHERE "f"."role" = 'user'
-),
-"recovered" AS (
-  SELECT "f"."id",
-    to_timestamp(
-      ('x' || substr(replace("f"."client_message_id", '-', ''), 1, 12))::bit(48)::bigint / 1000.0
-    ) AS "at"
-  FROM "flattened" AS "f"
-  WHERE "f"."client_message_id" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-  UNION ALL
-  SELECT "id", "created_at" FROM "turn_of"
-  UNION ALL
-  SELECT "a"."id", "t"."updated_at"
-  FROM "turn_of" AS "t"
-  JOIN "flattened" AS "u" ON "u"."id" = "t"."id"
-  JOIN "flattened" AS "a"
-    ON "a"."oxy_user_id" = "u"."oxy_user_id"
-   AND "a"."conversation_id" = "u"."conversation_id"
-   AND "a"."seq" = "u"."seq" + 1
-  WHERE "a"."role" = 'assistant'
-    AND jsonb_typeof("a"."content") = 'string'
-    AND "a"."content" #>> '{}' = "t"."answer" ->> 'reply'
-  UNION ALL
-  SELECT "f"."id", min("n"."created_at")
-  FROM "flattened" AS "f"
-  JOIN "notifications" AS "n"
-    ON "n"."oxy_user_id" = "f"."oxy_user_id"
-   AND "n"."conversation_id" = "f"."conversation_id"
-   AND "n"."data" ->> 'messageId' = "f"."client_message_id"
-  WHERE "f"."client_message_id" LIKE 'agent-push-%'
-  GROUP BY "f"."id"
 )
-UPDATE "messages" AS "m"
-SET "created_at" = "r"."at"
-FROM "recovered" AS "r"
-WHERE "m"."id" = "r"."id";--> statement-breakpoint
+SELECT "f"."id",
+  to_timestamp(
+    ('x' || substr(replace("f"."client_message_id", '-', ''), 1, 12))::bit(48)::bigint / 1000.0
+  ) AS "at"
+FROM "flattened" AS "f"
+WHERE "f"."client_message_id" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+UNION ALL
+SELECT "id", "created_at" FROM "turn_of"
+UNION ALL
+SELECT "a"."id", "t"."updated_at"
+FROM "turn_of" AS "t"
+JOIN "flattened" AS "u" ON "u"."id" = "t"."id"
+JOIN "flattened" AS "a"
+  ON "a"."oxy_user_id" = "u"."oxy_user_id"
+ AND "a"."conversation_id" = "u"."conversation_id"
+ AND "a"."seq" = "u"."seq" + 1
+WHERE "a"."role" = 'assistant'
+  AND jsonb_typeof("a"."content") = 'string'
+  AND "a"."content" #>> '{}' = "t"."answer" ->> 'reply'
+UNION ALL
+SELECT "f"."id", min("n"."created_at")
+FROM "flattened" AS "f"
+JOIN "notifications" AS "n"
+  ON "n"."oxy_user_id" = "f"."oxy_user_id"
+ AND "n"."conversation_id" = "f"."conversation_id"
+ AND "n"."data" ->> 'messageId' = "f"."client_message_id"
+WHERE "f"."client_message_id" LIKE 'agent-push-%'
+GROUP BY "f"."id";--> statement-breakpoint
+-- A recovered time is applied only where it keeps the conversation in order: never before a
+-- message that comes earlier in it. Thread pages and their cursors order by time, so a message
+-- whose recovered time would land before an earlier one that kept the rewrite's instant keeps that
+-- instant too.
+DO $$
+DECLARE
+  "msg" record;
+  "thread" text := NULL;
+  "latest" timestamptz;
+BEGIN
+  FOR "msg" IN
+    SELECT "m"."id", "m"."oxy_user_id" || ' ' || "m"."conversation_id" AS "thread",
+      "m"."created_at", "r"."at"
+    FROM "messages" AS "m"
+    LEFT JOIN "recovered_message_times" AS "r" ON "r"."id" = "m"."id"
+    WHERE ("m"."oxy_user_id", "m"."conversation_id") IN (
+      SELECT "oxy_user_id", "conversation_id"
+      FROM "messages"
+      WHERE "id" IN (SELECT "id" FROM "recovered_message_times")
+    )
+    ORDER BY "m"."oxy_user_id", "m"."conversation_id", "m"."seq" ASC NULLS FIRST, "m"."created_at"
+  LOOP
+    IF "thread" IS DISTINCT FROM "msg"."thread" THEN
+      "thread" := "msg"."thread";
+      "latest" := NULL;
+    END IF;
+    IF "msg"."at" IS NOT NULL AND ("latest" IS NULL OR "msg"."at" >= "latest") THEN
+      UPDATE "messages" SET "created_at" = "msg"."at" WHERE "id" = "msg"."id";
+      "latest" := "msg"."at";
+    ELSE
+      "latest" := greatest(coalesce("latest", "msg"."created_at"), "msg"."created_at");
+    END IF;
+  END LOOP;
+END $$;--> statement-breakpoint
 -- Two steps, because `messages_oxy_user_conversation_seq_key` is checked row by row: every
 -- position of a gapped conversation goes negative (and so out of the way) before it takes its
 -- final value.
