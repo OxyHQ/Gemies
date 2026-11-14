@@ -216,7 +216,7 @@ export async function answerGemieTelegramMessage(
   const db = getDb();
   const key = { botId: bot.botId, chatId: message.chatId, messageId: message.messageId };
   const claim = await claimGemieBotTurn(db, key, TURN_LEASE_MS);
-  if (claim.kind !== 'claimed') return earlierAnswer(bot, key, claim);
+  if (claim.kind !== 'claimed') return earlierAnswer(bot, message, key, claim);
   let answer: GemieTelegramBotAnswer;
   try {
     answer = await runTurn(bot, message);
@@ -236,6 +236,7 @@ export async function answerGemieTelegramMessage(
  */
 async function earlierAnswer(
   bot: GemieBotRow,
+  message: GemieTelegramBotMessage,
   key: GemieBotTurnKey,
   claim: GemieBotTurnClaim,
 ): Promise<GemieTelegramBotAnswer> {
@@ -254,11 +255,13 @@ async function earlierAnswer(
   // Answered is THIS message's reply being stored, never how the conversation ends: their next
   // message may already have arrived after it, and the conversation then ends in theirs again.
   const turn = answer.personTurn;
-  const replyId = turn ? channelReplyMessageId(turn.messageId) : undefined;
-  const replied =
-    turn && replyId
-      ? await findClientMessageContent(db, bot.userId, turn.conversationId, replyId)
-      : undefined;
+  if (!turn) return answer;
+  // Theirs only while they are still its person: a Telegram unlinked since gets nothing of it.
+  if (!isPersonTurn(bot, message)) return { reply: null };
+  const replyId = channelReplyMessageId(turn.messageId);
+  const replied = replyId
+    ? await findClientMessageContent(db, bot.userId, turn.conversationId, replyId)
+    : undefined;
   if (replied) {
     const text = turnContentText(replied.content).trim();
     return { reply: text || null };

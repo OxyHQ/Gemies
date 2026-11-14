@@ -443,6 +443,16 @@ describe('a retried delivery', () => {
     });
   });
 
+  it('of the person’s message gets nothing of their turn once they unlinked that Telegram', async () => {
+    earlier(`telegram:${PERSON}:101`);
+    state.storedReplies.set(`reply:telegram:${PERSON}:101`, 'Tu correo dice…');
+
+    const unlinked = bot({ linkedTelegramUserId: null, oxyTaskId: null });
+    expect(await answerGemieTelegramMessage(unlinked, message({ messageId: '101' }))).toEqual({
+      reply: null,
+    });
+  });
+
   it('of the person’s message runs again when its turn never stored a reply', async () => {
     earlier(`telegram:${PERSON}:101`);
 
