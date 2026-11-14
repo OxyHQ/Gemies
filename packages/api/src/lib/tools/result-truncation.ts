@@ -67,23 +67,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** A value that says nothing: absent, an empty string, an empty list or an empty object. */
-function isEmptyValue(value: unknown): boolean {
-  return (
-    value === null ||
-    value === undefined ||
-    value === '' ||
-    (Array.isArray(value) && value.length === 0) ||
-    (isPlainObject(value) && Object.keys(value).length === 0)
-  );
-}
-
 /**
- * A result without the fields that say nothing, at every depth: `null`, `''`, `[]` and `{}`
- * values, and an `_id` that repeats the record's own `id` (a store's key echoed beside it). A
- * list of twenty emails from Inbox is mostly that (`cc: []`, `inReplyTo: null`, `labels: []`, …):
- * dropped, it costs half as much and loses nothing a reader or a model could use. A top-level
- * `card` is a UI payload rendered as-is and is never touched.
+ * A result without the fields that hold nothing, at every depth: a `null` value, and an `_id` that
+ * repeats the record's own `id` (a store's key echoed beside it). A list of twenty emails from
+ * Inbox carries a dozen of them per email (`inReplyTo`, `aliasTag`, `snoozedUntil`…). An empty
+ * list, object or string is kept: a reader tells "none" from "absent" (`rows: []` is an empty
+ * table, `conditionGroups: []` a valid product of a host's card), so dropping one would break it.
+ * Run only on a result that does not fit (`boundObject`); a top-level `card` is never touched.
  */
 export function compactToolResult(value: unknown): unknown {
   const compact = (entry: unknown): unknown => {
@@ -92,8 +82,8 @@ export function compactToolResult(value: unknown): unknown {
     const kept: Record<string, unknown> = {};
     for (const [key, field] of Object.entries(entry)) {
       if (key === '_id' && entry.id !== undefined && field === entry.id) continue;
-      const compacted = compact(field);
-      if (!isEmptyValue(compacted)) kept[key] = compacted;
+      if (field === null || field === undefined) continue;
+      kept[key] = compact(field);
     }
     return kept;
   };
@@ -133,10 +123,10 @@ function boundLeaves(value: unknown, leafChars: number, maxItems = MAX_ARRAY_ITE
  * Then a list too long for the budget became ONE string, `{ truncated, preview }`, the first
  * `maxChars` of its JSON escaped inside another: twenty unread emails were mostly ids and empty
  * fields, and a follow-up run read only the head of that string, saw no email it could summarise,
- * and listed them again until its token budget was spent (production 2026-11-14). Now the result
- * is compacted first ({@link compactToolResult}); what still does not fit has its string leaves
- * shortened, then its lists cut to their head, with a marker saying how many items were left out.
- * The preview remains only for a result with nothing left to cut.
+ * and listed them again until its token budget was spent (production 2026-11-14). Now a result
+ * that does not fit is compacted first ({@link compactToolResult}); what still does not fit has its
+ * string leaves shortened, then its lists cut to their head, with a marker saying how many items
+ * were left out. The preview remains only for a result with nothing left to cut.
  *
  * A top-level `card` is a UI payload stored and rendered as-is, so it is never touched and never
  * counted.
@@ -146,7 +136,10 @@ function boundObject(obj: Record<string, unknown>, maxChars: number): Record<str
   const withCard = (body: Record<string, unknown>) =>
     card === undefined ? body : { ...body, card };
 
-  // First the shape-preserving passes: nothing that says nothing, and top-level prose bounded.
+  // A result that fits is the tool's, untouched.
+  if (serializedLength(rest) <= maxChars + 64) return obj;
+
+  // Then the shape-preserving passes: nothing that holds nothing, and top-level prose bounded.
   const trimmed: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(compactToolResult(rest) as Record<string, unknown>)) {
     trimmed[key] =
@@ -191,14 +184,14 @@ export function boundToolResult(result: unknown, maxChars: number = DEFAULT_MAX_
 }
 
 /**
- * A stored or streamed tool result as a client receives it: the live `alia.tool_result` frame and
- * every conversation read (`lib/chat/client-message.ts`) carry exactly this. An image's bytes are
- * left out (`host-image-result.ts`) and so is every field that says nothing
- * ({@link compactToolResult}); what the thread draws from a result (a card, its sources, a host
- * app's own drawing of its tool) is kept.
+ * A stored or streamed tool result as a client receives it: the live `alia.tool_result` frame, the
+ * stored call and every conversation read (`lib/chat/client-message.ts`) carry exactly this. What
+ * the thread draws from a result (a card, its sources, a host app's own drawing of its tool) is
+ * kept as the tool returned it, bounded like everything the model reads; an image's bytes are left
+ * out (`host-image-result.ts`).
  */
 export function clientToolResult(result: unknown): unknown {
-  return compactToolResult(withoutHostImageData(result));
+  return withoutHostImageData(result);
 }
 
 /**

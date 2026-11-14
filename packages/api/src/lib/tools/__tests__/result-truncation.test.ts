@@ -169,30 +169,50 @@ describe('a list of app records too large for the budget', () => {
     const data = (bounded as { data: unknown[] }).data;
     const records = data.filter((item) => typeof item === 'object') as Record<string, unknown>[];
     expect(records.length).toBeGreaterThanOrEqual(3);
-    expect(records[0]).toMatchObject({ id: 'e0', subject: 'Subject 0' });
+    expect(records[0]).toMatchObject({ id: 'e0', subject: 'Subject 0', cc: [] });
     expect(records[0]).not.toHaveProperty('_id');
-    expect(records[0]).not.toHaveProperty('cc');
     expect(records[0]).not.toHaveProperty('inReplyTo');
     expect(data.at(-1)).toMatch(/more items omitted/);
     expect(JSON.stringify(bounded).length).toBeLessThanOrEqual(4000);
   });
 
-  it('keeps what fits whole, with only the empty fields gone', () => {
+  it('drops only what holds nothing: an empty list is a reader’s "none"', () => {
     expect(compactToolResult({ data: [email(1)].map(({ headers: _, ...rest }) => rest) })).toEqual({
       data: [
         {
           id: 'e1',
           from: { name: 'Sender 1', address: 's1@example.com' },
           subject: 'Subject 1',
+          cc: [],
+          bcc: [],
+          attachments: [],
+          labels: [],
+          references: [],
           date: '2026-11-14T01:08:57.000Z',
         },
       ],
     });
   });
 
-  it('serves a client the same form, without an image’s bytes', () => {
-    expect(
-      clientToolResult({ card: { type: 'x', data: { list: [] } }, note: '', items: [] }),
-    ).toEqual({ card: { type: 'x', data: { list: [] } } });
+  it('leaves a result that fits as the tool returned it, an empty table included', async () => {
+    const table = {
+      type: 'table',
+      title: 'Empty',
+      data: { headers: ['Name'], rows: [] },
+      note: null,
+    };
+    expect(boundToolResult(table, 4000)).toBe(table);
+    const wrapped = wrapToolsWithTruncation(
+      {
+        canvas: tool({ description: 'c', inputSchema: z.object({}), execute: async () => table }),
+      },
+      4000,
+    );
+    const out = await (wrapped.canvas.execute as (a: unknown, o: unknown) => Promise<unknown>)(
+      {},
+      {},
+    );
+    expect(out).toEqual(table);
+    expect(clientToolResult(out)).toEqual(table);
   });
 });

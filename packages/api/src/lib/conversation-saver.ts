@@ -252,19 +252,27 @@ async function storeConversation(params: SaveConversationParams): Promise<Conver
   const preview = stripTitleTags(
     omitLeadReply ? (agentMessages?.at(-1)?.content ?? '') : assistantResponse,
   ).slice(0, 100);
-  await upsertConversation(getDb(), {
-    oxyUserId: userId,
-    conversationId,
-    // A group turn saved before its members answered has no reply to preview yet: the room
-    // writes the preview as each reply lands, and an empty one here would blank the last.
-    ...(omitLeadReply && preview === '' ? {} : { lastMessage: preview }),
-    titleOnInsert: title,
-    source: channelSource ?? source ?? 'app',
-    agentId,
-    ...(originApp ? { originApp } : {}),
-  });
+  const writeMetadata = () =>
+    upsertConversation(getDb(), {
+      oxyUserId: userId,
+      conversationId,
+      // A group turn saved before its members answered has no reply to preview yet: the room
+      // writes the preview as each reply lands, and an empty one here would blank the last.
+      ...(omitLeadReply && preview === '' ? {} : { lastMessage: preview }),
+      titleOnInsert: title,
+      source: channelSource ?? source ?? 'app',
+      agentId,
+      ...(originApp ? { originApp } : {}),
+    });
 
-  if (channelSource) return appendChannelTurn(userId, conversationId, channelMessage, turnTail);
+  if (channelSource) {
+    // A retried turn whose reply is stored adds nothing, and changes nothing: not the preview,
+    // not the conversation's place in the list.
+    const change = await appendChannelTurn(userId, conversationId, channelMessage, turnTail);
+    if (change.appendedFromSeq !== undefined) await writeMetadata();
+    return change;
+  }
+  await writeMetadata();
 
   const [storedCount, lastStored] = await Promise.all([
     countMessages(getDb(), userId, conversationId),
@@ -340,8 +348,9 @@ const MAX_APPEND_ATTEMPTS = 4;
  * `postAgentMessage` and Alia-outreach precedent). Each exchange is appended
  * as it completes, so the thread survives a dropped call.
  *
- * The conversation row is upserted first, so a call opened in a conversation
- * that did not exist yet creates it, owned by the person.
+ * The conversation row is upserted after the messages land (they have no foreign key to it), so a
+ * call opened in a conversation that did not exist yet creates it, owned by the person, and a
+ * retried append that stored nothing changes nothing.
  */
 export async function appendConversationMessages<Content extends MessageContent = string>(params: {
   readonly userId: string;
@@ -355,19 +364,7 @@ export async function appendConversationMessages<Content extends MessageContent 
 }): Promise<void> {
   const { userId, conversationId, messages } = params;
   if (messages.length === 0) return;
-  const last = [...messages]
-    .reverse()
-    .map((message) => turnContentText(message.content))
-    .find((text) => text.trim() !== '');
-  await upsertConversation(getDb(), {
-    oxyUserId: userId,
-    conversationId,
-    ...(last ? { lastMessage: last.slice(0, 100) } : {}),
-    titleOnInsert: params.titleOnInsert,
-    source: params.source ?? 'app',
-    agentId: params.agentId,
-  });
-  const next = await appendAtEnd(
+  const appended = await appendAtEnd(
     userId,
     conversationId,
     messages.map((message) => message.id),
@@ -390,22 +387,37 @@ export async function appendConversationMessages<Content extends MessageContent 
             : { interruptedAfterMs: Math.round(message.interruptedAfterMs) }),
         })),
   );
-  if (next !== null) void publishConversation(userId, conversationId, { appendedFromSeq: next });
+  // Every message was already there (a retried delivery): nothing changed, not even the preview.
+  if (appended === null) return;
+  const last = messages
+    .filter((message) => appended.kept.has(message.id))
+    .reverse()
+    .map((message) => turnContentText(message.content))
+    .find((text) => text.trim() !== '');
+  await upsertConversation(getDb(), {
+    oxyUserId: userId,
+    conversationId,
+    ...(last ? { lastMessage: last.slice(0, 100) } : {}),
+    titleOnInsert: params.titleOnInsert,
+    source: params.source ?? 'app',
+    agentId: params.agentId,
+  });
+  void publishConversation(userId, conversationId, { appendedFromSeq: appended.from });
 }
 
 /**
  * Insert rows at the END of a conversation: from the `seq` after its last message, retried on
  * exactly the conflicts a concurrent append produces (the same `seq`, the same message). A message
  * the thread already holds is not stored again: `rowsFrom` receives the ids still to store, so a
- * retried delivery of a channel's message is kept once. Returns the first `seq` written, or `null`
- * when every message was already there.
+ * retried delivery of a channel's message is kept once. Returns the first `seq` written and the ids
+ * stored, or `null` when every message was already there.
  */
 async function appendAtEnd(
   userId: string,
   conversationId: string,
   ids: readonly string[],
   rowsFrom: (seq: number, kept: ReadonlySet<string>) => NewMessage[],
-): Promise<number | null> {
+): Promise<{ from: number; kept: ReadonlySet<string> } | null> {
   for (let attempt = 1; ; attempt++) {
     const [stored, count, existing] = await Promise.all([
       findLastMessage(getDb(), userId, conversationId),
@@ -418,7 +430,7 @@ async function appendAtEnd(
     const next = stored?.seq == null ? count : stored.seq + 1;
     try {
       await insertMessages(getDb(), rowsFrom(next, kept));
-      return next;
+      return { from: next, kept };
     } catch (err) {
       if (attempt >= MAX_APPEND_ATTEMPTS || !isAppendConflict(err)) throw err;
     }
@@ -442,7 +454,7 @@ async function appendChannelTurn(
   turnTail: readonly InputMessage[],
 ): Promise<ConversationChange> {
   const messages = withStoredIds([], [...(sent ? [sent] : []), ...turnTail]);
-  const appendedFromSeq = await appendAtEnd(
+  const appended = await appendAtEnd(
     userId,
     conversationId,
     messages.map((message) => message.id as string),
@@ -451,7 +463,7 @@ async function appendChannelTurn(
         .filter((message) => kept.has(message.id as string))
         .map((message, index) => buildStoredMessage(message, userId, conversationId, from + index)),
   );
-  return appendedFromSeq === null ? {} : { appendedFromSeq };
+  return appended === null ? {} : { appendedFromSeq: appended.from };
 }
 
 /**

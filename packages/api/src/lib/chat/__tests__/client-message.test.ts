@@ -9,10 +9,10 @@ import type { MessageRow } from '../../../db/chat/messageRepository.js';
  * the proof that every client-facing read of a conversation serves exactly it.
  *
  * Why this exists: `GET /v1/conversations/telegram:8988966019:570038640` served the gemie bot's
- * channel prompt as its first message (`role: "system"`), and tool results as the backend stored
- * them (every Inbox field down to ids and sizes), because each read passed the stored row
- * through. The contract below is an allow-list: a field a writer adds to the row reaches no
- * client until this file says so.
+ * channel prompt as its first message (`role: "system"`) and the vote, because each read passed
+ * the stored row through. The contract below is an allow-list: a field a writer adds to the row
+ * reaches no client until this file says so. A tool's result is the tool's (a host app's card
+ * draws from it), bounded as the model read it and without an image's bytes.
  */
 
 const H = vi.hoisted(() => ({
@@ -172,8 +172,21 @@ describe('a client message', () => {
           toolName: 'oxy_inbox__getUnreadEmails',
           state: 'result',
           args: { limit: 20 },
-          // Nothing that says nothing, and no store key echoed beside the id.
-          result: { data: [{ id: 'e1', subject: 'Acción necesaria' }] },
+          // The result as the tool returned it and the model read it (bounded when it did not
+          // fit): a host app's card draws from it, an empty list included.
+          result: {
+            data: [
+              {
+                _id: 'e1',
+                id: 'e1',
+                subject: 'Acción necesaria',
+                cc: [],
+                inReplyTo: null,
+                aliasTag: null,
+                labels: [],
+              },
+            ],
+          },
         },
       ],
       reactions: ['❤️'],
@@ -218,7 +231,6 @@ describe('no client-facing conversation payload carries a system message', () =>
     expect(text).not.toContain('The user is chatting via');
     expect(text).not.toContain('"vote"');
     expect(text).not.toContain('interruptedAfterMs');
-    expect(text).not.toContain('"_id"');
     expect(messages).toEqual(
       ROWS.flatMap((row) => {
         const message = toClientMessage(row);

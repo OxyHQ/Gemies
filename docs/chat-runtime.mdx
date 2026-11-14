@@ -519,9 +519,12 @@ A message is `{ id, role, content, toolInvocations?, reactions?, reactionRevisio
 agentInfo?, seq?, createdAt }`: `role` is `user` or `assistant` (any other row is
 left out); `content` is a string or its `text`, `image_url` and `file` parts; each
 tool call is `{ toolCallId, toolName, state, args?, result? }` with its result in
-the client's form (`clientToolResult` in `lib/tools/result-truncation.ts`: no
-image bytes, no empty field, no `_id` echoing `id`), the same form the live
-`alia.tool_result` frame carries and the stored call keeps. The vote and an
+the client's form (`clientToolResult` in `lib/tools/result-truncation.ts`): the
+tool's own result as the model read it (a host app's card draws from it), never
+an image's bytes, the same form the live `alia.tool_result` frame carries and the
+stored call keeps. A result too large for the model's budget is compacted (no
+`null` field, no `_id` echoing `id`), then its lists are cut to their head with a
+marker; it stays JSON, never an escaped preview string. The vote and an
 interrupted answer's offset are the server's and are not sent.
 `lib/chat/__tests__/client-message.test.ts` pins the shape. A share link is
 narrower still (`lib/shared-conversation.ts`).

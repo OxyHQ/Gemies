@@ -870,6 +870,12 @@ describe('saveConversation (a channel turn)', () => {
       [0, 'telegram:1:22', 'y ahora?'],
       [1, 'reply:telegram:1:22', 'A'],
     ]);
+    // A retry that stored nothing changed nothing: the preview is still the stored reply's.
+    const [conversation] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.oxyUserId, USER));
+    expect(conversation?.lastMessage).toBe('A');
   });
 
   it('appends its person’s message too when the channel did not keep it', async () => {
