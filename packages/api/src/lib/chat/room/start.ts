@@ -3,9 +3,9 @@ import { roomRequestDigest } from './obligations.js';
  * Starting a room's chain, at the edge where the person's request still holds their bearer.
  *
  * Everything that needs the person's own session happens here, once: who of the members they may
- * reach (`canReachAgent`, including the app they are in), storing their message, and minting the Oxy
- * task each member's turns will act under. The queue then carries only ids — never a bearer — and
- * the worker runs `runAgentTurn` as a task turn, like a background agent session does.
+ * reach (`canReachAgent`, including the app they are in) and storing their message. The queue
+ * carries owner, actor and surface ids, never a bearer. First-party calls act for that person
+ * under Oxy's live registry authority, with no task grant to retain or renew.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -27,7 +27,7 @@ import { ROOM_GEMIE_ID } from '../../../domain/alia-gemie.js';
 
 type SaveParams = Parameters<typeof saveConversation>[0];
 
-/** A chain that has been prepared (the person's message stored, authority minted) and not yet queued. */
+/** A chain that has been prepared (the person's message stored, roster admitted) and not yet queued. */
 export interface PreparedRoom {
   /** The person message the chain answers; events of this chain carry it as `chainId`. */
   readonly chainId: string;
@@ -35,7 +35,7 @@ export interface PreparedRoom {
   readonly ready: boolean;
   /** Queues the first step. Subscribe to the bus BEFORE calling it. */
   start(): Promise<void>;
-  /** Gives the minted authority back when the chain will not run. */
+  /** Clears conversation activity when the chain will not run. */
   abandon(): Promise<void>;
 }
 

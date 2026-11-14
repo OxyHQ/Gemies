@@ -12,9 +12,10 @@ comprobable; aquí está el texto completo. Antes de tocar un área lee su doc
 - **Inferencia: `Gemies -> Kaana`**, también cuando habla el gemie Alia:
   `@kaana.ai/sdk` contra `https://kaana.ai/v1`, con el transporte compartido de
   `lib/kaana/transport.ts` y la identidad workload de Oxy de audiencia `kaana.ai`.
-  Oxy no recibe el contenido de la inferencia. Kaana todavía le pide autorización
-  y liquidación sin contenido: esa dependencia temporal no demuestra que la
-  migración de facturación de Kaana ADR 0010 esté implementada. Nunca claves de
+  Oxy no recibe el contenido de la inferencia. La población workload de este backend
+  usa admisión y liquidación nativas de Kaana con tratamiento `internal_metered`;
+  Oxy verifica identidad. Esto no demuestra que la facturación comercial de Kaana
+  ADR 0010 esté completada ni cambia la autoridad de poblaciones externas. Nunca claves de
   proveedor, claves de Kaana ni firma de grants en Gemies — ADR 0001, enmienda
   2026-11-13. Las claves externas conservan su propio payer y autoridad.
 - **Alia no emite ni acepta claves propias.** `alia_sk_*` está retirado: la API
