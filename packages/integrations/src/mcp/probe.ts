@@ -14,6 +14,10 @@
  *   whether the server takes Dynamic Client Registration (`registration_endpoint`), the only way
  *   Gemies signs in to a provider that issued it no client.
  * - Anything else, or no answer within the deadline, is a failure with its reason.
+ *
+ * A reason describes the failure (`answered HTTP 502 (content-type text/html)`, `answered with a
+ * body that is not JSON`), never quotes what the server sent: a server's bytes are not a message to
+ * store or show.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -45,6 +49,35 @@ export type ProbeResult =
   | { outcome: 'oauth'; registration: boolean }
   | { outcome: 'failed'; reason: string };
 
+/** The last answer's content type, which a failure's reason names. */
+interface Seen {
+  contentType: string | null;
+}
+
+/** `connectorFetch`, remembering each answer's content type in `seen`. */
+function watchedFetch(seen: Seen, signal?: AbortSignal): FetchLike {
+  return async (input, init) => {
+    const response = await connectorFetch(input, signal ? { ...init, signal } : init);
+    seen.contentType = response.headers.get('content-type');
+    return response;
+  };
+}
+
+function contentTypeNote(seen: Seen): string {
+  const contentType = seen.contentType?.split(';')[0].trim().slice(0, 80);
+  return contentType ? ` (content-type ${contentType})` : ' (no content-type)';
+}
+
+/** Why the check failed, in words of our own. */
+function failureReason(err: unknown, seen: Seen): string {
+  if (err instanceof SyntaxError)
+    return `answered with a body that is not JSON${contentTypeNote(seen)}`;
+  if ((err instanceof StreamableHTTPError || err instanceof SseError) && (err.code ?? 0) >= 400) {
+    return `answered HTTP ${err.code}${contentTypeNote(seen)}`;
+  }
+  return errorMessage(err).slice(0, 300);
+}
+
 function unauthorized(err: unknown): boolean {
   if (err instanceof UnauthorizedError) return true;
   if (err instanceof StreamableHTTPError) return err.code === 401;
@@ -53,7 +86,8 @@ function unauthorized(err: unknown): boolean {
 
 async function oauthRegistration(url: URL, timeoutMs: number): Promise<ProbeResult> {
   const signal = AbortSignal.timeout(timeoutMs);
-  const fetchFn: FetchLike = (input, init) => connectorFetch(input, { ...init, signal });
+  const seen: Seen = { contentType: null };
+  const fetchFn = watchedFetch(seen, signal);
   try {
     const info = await discoverOAuthServerInfo(url, { fetchFn });
     if (!info.authorizationServerMetadata) {
@@ -64,7 +98,7 @@ async function oauthRegistration(url: URL, timeoutMs: number): Promise<ProbeResu
       registration: Boolean(info.authorizationServerMetadata.registration_endpoint),
     };
   } catch (err: unknown) {
-    return { outcome: 'failed', reason: `OAuth metadata: ${errorMessage(err)}`.slice(0, 300) };
+    return { outcome: 'failed', reason: `OAuth metadata: ${failureReason(err, seen)}` };
   }
 }
 
@@ -75,7 +109,8 @@ export async function probeConnector(
 ): Promise<ProbeResult> {
   const url = new URL(rawUrl);
   const signal = AbortSignal.timeout(timeoutMs);
-  const options = { fetch: connectorFetch, requestInit: { signal } };
+  const seen: Seen = { contentType: null };
+  const options = { fetch: watchedFetch(seen), requestInit: { signal } };
   const clientTransport =
     transport === 'streamable-http'
       ? new StreamableHTTPClientTransport(url, options)
@@ -112,7 +147,7 @@ export async function probeConnector(
     if (unauthorized(err)) return oauthRegistration(url, timeoutMs);
     if (signal.aborted)
       return { outcome: 'failed', reason: `no answer within ${timeoutMs / 1000} s` };
-    return { outcome: 'failed', reason: errorMessage(err).slice(0, 300) };
+    return { outcome: 'failed', reason: failureReason(err, seen) };
   } finally {
     await client.close().catch(() => undefined);
   }

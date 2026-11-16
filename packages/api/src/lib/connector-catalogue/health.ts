@@ -15,7 +15,11 @@
  *   makes it `failing` (not offered) until a later check passes.
  *
  * A probe that cannot be asked (integrations unreachable, or older than this route) stops the round
- * and changes nothing: the catalogue's health is never judged by our own outage.
+ * and changes nothing: the catalogue's health is never judged by our own outage. One entry whose
+ * result cannot be recorded is logged and skipped; the round goes on with the others.
+ *
+ * Every `health_message` is plain, bounded text (`untrustedPlainText`): a failure's reason and a
+ * tool's name can carry the server's own characters, NUL included, which a text column refuses.
  */
 
 import { integrationsServiceFetch } from '../integrations-client.js';
@@ -29,7 +33,7 @@ import {
 import type { ConnectorIcon, McpServerTransport } from '../../db/schema/integrations.js';
 import { storeServerLogo } from '../connector-logos.js';
 import { log } from '../logger.js';
-import { hasInvisibleText } from '../untrusted-text.js';
+import { hasInvisibleText, untrustedPlainText } from '../untrusted-text.js';
 
 export type ProbeAnswer =
   | {
@@ -47,6 +51,8 @@ const PROBE_REQUEST_TIMEOUT_MS = 40_000;
 const CONCURRENCY = 16;
 const MAX_TOOLS = 500;
 const MAX_TOOL_DESCRIPTION = 8_000;
+const MAX_HEALTH_MESSAGE = 300;
+const MAX_TOOL_NAME_IN_MESSAGE = 64;
 
 /** Ask integrations to check one server; `null` when integrations cannot be asked. */
 export const probeThroughIntegrations: Probe = async (url, transport) => {
@@ -80,12 +86,13 @@ export function toolMetadataConcern(
   if (tools.length > MAX_TOOLS) return 'lists more tools than any connector needs';
   for (const tool of tools) {
     const text = `${tool.name}\n${tool.description}`;
-    if (hasInvisibleText(text)) return `tool ${tool.name.slice(0, 64)} hides characters`;
+    const name = untrustedPlainText(tool.name, MAX_TOOL_NAME_IN_MESSAGE);
+    if (hasInvisibleText(text)) return `tool ${name} hides characters`;
     if (tool.description.length > MAX_TOOL_DESCRIPTION) {
-      return `tool ${tool.name.slice(0, 64)} has an oversized description`;
+      return `tool ${name} has an oversized description`;
     }
     if (INSTRUCTION_TO_MODEL.test(text)) {
-      return `tool ${tool.name.slice(0, 64)} carries instructions to the model`;
+      return `tool ${name} carries instructions to the model`;
     }
   }
   return null;
@@ -118,7 +125,8 @@ export function healthAfter(row: McpCatalogueRow, answer: ProbeAnswer): Catalogu
   return {
     // One failure keeps what it was (offered or not) until the retry within the hour decides.
     health: failures >= 2 ? 'failing' : row.health,
-    healthMessage: answer.reason.slice(0, 300),
+    healthMessage:
+      untrustedPlainText(answer.reason, MAX_HEALTH_MESSAGE) || 'failed without a reason',
     consecutiveFailures: failures,
   };
 }
@@ -132,6 +140,8 @@ export interface HealthRoundReport {
   needsProviderApp: number;
   /** Failed reasons, by first words, for the report. */
   reasons: Record<string, number>;
+  /** Checked, but the result could not be stored: checked again next round. */
+  unrecorded: number;
   /** Integrations could not be asked: the round stopped there. */
   interrupted: boolean;
 }
@@ -159,6 +169,7 @@ export async function checkCatalogueHealth(
     failed: 0,
     needsProviderApp: 0,
     reasons: {},
+    unrecorded: 0,
     interrupted: false,
   };
   const due = await listCatalogueRowsDueForCheck(db, now(), limit);
@@ -174,7 +185,13 @@ export async function checkCatalogueHealth(
         return;
       }
       const record = healthAfter(row, answer);
-      await recordCatalogueHealth(db, row.id, record, now());
+      try {
+        await recordCatalogueHealth(db, row.id, record, now());
+      } catch (err: unknown) {
+        report.unrecorded += 1;
+        log.general.warn({ err, entry: row.id }, 'Connector health check could not be recorded');
+        continue;
+      }
       if (
         answer.outcome === 'open' &&
         record.health === 'healthy' &&

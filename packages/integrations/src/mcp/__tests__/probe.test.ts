@@ -129,6 +129,29 @@ describe('the store health check', () => {
       outcome: 'failed',
     });
 
+    // Bytes that are not JSON are described, never quoted into the reason.
+    routes.set(
+      'POST https://binary.test/mcp',
+      () =>
+        new Response(new Uint8Array([0x00, 0x1f, 0x8b, 0x08, 0x00]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        }),
+    );
+    expect(await probeConnector('https://binary.test/mcp', 'streamable-http')).toEqual({
+      outcome: 'failed',
+      reason: 'answered with a body that is not JSON (content-type application/json)',
+    });
+
+    routes.set(
+      'POST https://broken.test/mcp',
+      () => new Response('<html>\u0000 upstream exploded</html>', { status: 502 }),
+    );
+    expect(await probeConnector('https://broken.test/mcp', 'streamable-http')).toEqual({
+      outcome: 'failed',
+      reason: 'answered HTTP 502 (content-type text/plain)',
+    });
+
     routes.set(
       'POST https://slow.test/mcp',
       (request) =>
