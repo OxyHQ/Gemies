@@ -5,6 +5,7 @@ import { TypingDots } from '@oxy.so/bloom/chat-indicators';
 import { RiArrowRightSLine } from '@oxy.so/bloom/icons/RiArrowRightSLine';
 import { ListItem } from '@oxy.so/bloom/list';
 import { useRef, useState } from 'react';
+import { View } from 'react-native';
 import { useOpenGemieConversation } from '../../lib/gemie-conversation-opener';
 import { useLabels } from '../../lib/labels';
 import { agentCharacterOf } from '../../lib/participants';
@@ -92,17 +93,19 @@ export function GemieConversationCard({
       <Card>
         <ListItem
           leading={
-            <AvatarGroup
-              layout="conversation"
-              motion="always"
-              size={STACK_SIZE}
-              items={[from, to].map((agent) => ({
-                id: agent.id,
-                name: agent.name,
-                kind: 'bot' as const,
-                character: agentCharacterOf(agent),
-              }))}
-            />
+            <View pointerEvents="none">
+              <AvatarGroup
+                layout="conversation"
+                motion="always"
+                size={STACK_SIZE}
+                items={[from, to].map((agent) => ({
+                  id: agent.id,
+                  name: agent.name,
+                  kind: 'bot' as const,
+                  character: agentCharacterOf(agent),
+                }))}
+              />
+            </View>
           }
           title={title}
           supporting={subtitle}

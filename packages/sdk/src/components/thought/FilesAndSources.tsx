@@ -12,6 +12,7 @@ import { RiGlobalLine } from '@oxy.so/bloom/icons/RiGlobalLine';
 import { ListItem } from '@oxy.so/bloom/list';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { useState } from 'react';
+import { View } from 'react-native';
 
 /**
  * "Files and sources": what a turn produced and what it read, as two Bloom
@@ -80,7 +81,11 @@ export function FilesAndSources({
                 <ListItem
                   key={output.id}
                   role="listitem"
-                  leading={<RiFileTextLine size="md" fill={colors.textSecondary} />}
+                  leading={
+                    <View pointerEvents="none">
+                      <RiFileTextLine size="md" fill={colors.textSecondary} />
+                    </View>
+                  }
                   title={output.name}
                   label={openable ? t('thought.openOutput', { name: output.name }) : output.name}
                   onPress={openable ? () => outputActions?.open(output) : undefined}
@@ -101,7 +106,11 @@ export function FilesAndSources({
               <ListItem
                 key={source.url}
                 role="listitem"
-                leading={<RiGlobalLine size="sm" fill={colors.textSecondary} />}
+                leading={
+                  <View pointerEvents="none">
+                    <RiGlobalLine size="sm" fill={colors.textSecondary} />
+                  </View>
+                }
                 title={source.title}
                 supporting={source.domain}
                 label={t('thought.sourceLabel', { n: index + 1, title: source.title })}
