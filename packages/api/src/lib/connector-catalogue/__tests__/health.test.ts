@@ -83,6 +83,25 @@ describe('what a check makes of a server', () => {
     });
     expect(twice).toMatchObject({ health: 'failing', consecutiveFailures: 2 });
   });
+
+  it("stores a failure's reason and a tool's name as plain text, never a server's raw bytes", () => {
+    const failed = healthAfter(row(), {
+      outcome: 'failed',
+      reason: `Unexpected token '\u001f', "\u0000\u0003\u008b${'x'.repeat(400)}" is not valid JSON`,
+    });
+    const codes = [...(failed.healthMessage ?? '')].map((char) => char.codePointAt(0) ?? 0);
+    expect(codes.filter((code) => code < 0x20 || (code >= 0x7f && code <= 0x9f))).toEqual([]);
+    expect(failed.healthMessage?.length).toBeLessThanOrEqual(300);
+
+    const hidden = healthAfter(row(), {
+      outcome: 'open',
+      tools: [{ name: 'for\u0000cast', description: 'Forecasts' }],
+    });
+    expect(hidden).toMatchObject({
+      health: 'failing',
+      healthMessage: 'tool forcast hides characters',
+    });
+  });
 });
 
 describe('a round', () => {
@@ -108,6 +127,29 @@ describe('a round', () => {
       [{ src: 'https://weather.test/icon.svg' }],
       expect.any(Date),
     );
+  });
+
+  it('records every other entry when one cannot be stored', async () => {
+    vi.mocked(repository.recordCatalogueHealth).mockClear();
+    vi.mocked(repository.listCatalogueRowsDueForCheck).mockResolvedValue([
+      row({ id: 'a' }),
+      row({ id: 'b' }),
+      row({ id: 'c' }),
+    ] as never);
+    vi.mocked(repository.recordCatalogueHealth).mockImplementation(async (_db, id) => {
+      if (id === 'b') throw new Error('invalid byte sequence for encoding "UTF8": 0x00');
+    });
+    const report = await checkCatalogueHealth({} as never, {
+      concurrency: 1,
+      probe: async () => ({ outcome: 'failed', reason: 'timeout' }),
+    });
+    expect(report).toMatchObject({ checked: 2, failed: 2, unrecorded: 1, interrupted: false });
+    expect(vi.mocked(repository.recordCatalogueHealth).mock.calls.map((call) => call[1])).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
+    vi.mocked(repository.recordCatalogueHealth).mockImplementation(async () => undefined);
   });
 
   it('stops and records nothing when integrations cannot be asked', async () => {

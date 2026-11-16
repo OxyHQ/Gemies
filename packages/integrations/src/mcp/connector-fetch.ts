@@ -14,9 +14,16 @@
  * the request to `safeFetch` and its Node response back to a `Response`. The
  * body is streamed, not buffered: a streamable-HTTP or SSE connection is a
  * long-lived stream, and the caller's signal still ends it.
+ *
+ * Like a WHATWG `fetch`, it says which content codings it reads
+ * (`Accept-Encoding`) and hands the caller the decoded body: a server is free to
+ * compress (some do even when not asked), and `safeFetch` returns the bytes as
+ * they came. A coding it does not know leaves the body as it came, as `fetch`
+ * does.
  */
 
-import { Readable } from 'node:stream';
+import { pipeline, Readable, type Transform } from 'node:stream';
+import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import { safeFetch, SsrfRejection } from '@oxy.so/core/server';
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 
@@ -30,6 +37,28 @@ const CONNECTOR_HEADERS_TIMEOUT_MS = 120_000;
 /** Statuses a `Response` must be built without a body for. */
 const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304]);
 
+/** The content codings this fetch decodes, and what it asks for when the caller does not. */
+const DECODERS: Record<string, () => Transform> = {
+  gzip: createGunzip,
+  'x-gzip': createGunzip,
+  deflate: createInflate,
+  br: createBrotliDecompress,
+};
+const ACCEPT_ENCODING = 'gzip, deflate, br';
+
+/**
+ * The decoders for a `Content-Encoding`, in the order to apply them (the last coding applied comes
+ * off first), or `null` when the body is not encoded or carries a coding this fetch does not know.
+ */
+function decodersFor(contentEncoding: string | null): Transform[] | null {
+  const codings = (contentEncoding ?? '')
+    .split(',')
+    .map((coding) => coding.trim().toLowerCase())
+    .filter((coding) => coding && coding !== 'identity');
+  if (codings.length === 0 || !codings.every((coding) => coding in DECODERS)) return null;
+  return codings.reverse().map((coding) => DECODERS[coding]());
+}
+
 export const connectorFetch: FetchLike = async (input, init) => {
   const request = new Request(input, init);
   if (new URL(request.url).protocol !== 'https:') {
@@ -42,6 +71,7 @@ export const connectorFetch: FetchLike = async (input, init) => {
   request.headers.forEach((value, name) => {
     requestHeaders[name] = value;
   });
+  requestHeaders['accept-encoding'] ??= ACCEPT_ENCODING;
   const { response, status, headers } = await safeFetch(request.url, {
     method: request.method,
     headers: requestHeaders,
@@ -62,7 +92,17 @@ export const connectorFetch: FetchLike = async (input, init) => {
     response.destroy();
     return new Response(null, { status, headers: responseHeaders });
   }
-  return new Response(Readable.toWeb(response) as ReadableStream<Uint8Array>, {
+  let decoded: Readable = response;
+  const decoders =
+    request.method === 'HEAD' ? null : decodersFor(responseHeaders.get('content-encoding'));
+  if (decoders) {
+    // `pipeline` carries an error through: a broken coding, or the caller's signal ending the body.
+    pipeline([response, ...decoders], () => undefined);
+    decoded = decoders[decoders.length - 1];
+    responseHeaders.delete('content-encoding');
+    responseHeaders.delete('content-length');
+  }
+  return new Response(Readable.toWeb(decoded) as ReadableStream<Uint8Array>, {
     status,
     headers: responseHeaders,
   });
