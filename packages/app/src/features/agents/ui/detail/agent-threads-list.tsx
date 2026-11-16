@@ -1,6 +1,7 @@
-import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
 import type { AgentThreadSummary as AgentThread } from '@/features/agents/runtime/use-agent-threads';
 import { useTranslation } from '@/shared/i18n/use-translation';
+import { List } from '@oxy.so/bloom/list';
+import { Text } from '@oxy.so/bloom/typography';
 
 function formatRelativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -26,17 +27,22 @@ export function AgentThreadsList({
   if (threads.length === 0) return null;
 
   return (
-    <GroupedSection title={t('agents.threads')}>
-      {threads.slice(0, 8).map((thread) => (
-        <GroupedSectionItem
-          key={thread.id}
-          title={thread.title}
-          titleNumberOfLines={1}
-          description={t(thread.status === 'open' ? 'agents.threadOpen' : 'agents.threadClosed')}
-          value={formatRelativeTime(thread.updatedAt)}
-          onPress={() => onOpen(thread)}
-        />
-      ))}
-    </GroupedSection>
+    <List
+      sections={[
+        {
+          id: 'threads',
+          title: t('agents.threads'),
+          items: threads.slice(0, 8).map((thread) => ({
+            id: thread.id,
+            title: thread.title,
+            supporting: t(thread.status === 'open' ? 'agents.threadOpen' : 'agents.threadClosed'),
+            trailing: (
+              <Text variant="caption-1-regular">{formatRelativeTime(thread.updatedAt)}</Text>
+            ),
+            onPress: () => onOpen(thread),
+          })),
+        },
+      ]}
+    />
   );
 }

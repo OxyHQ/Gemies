@@ -1,4 +1,5 @@
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
+import { List } from '@oxy.so/bloom/list';
 import { Button } from '@oxy.so/bloom/button';
 import { RiArrowUpLine } from '@oxy.so/bloom/icons/RiArrowUpLine';
 import { RiFileTextLine } from '@oxy.so/bloom/icons/RiFileTextLine';
@@ -68,30 +69,16 @@ export function WorkspaceFiles({
       {listing && listing.entries.length === 0 ? (
         <Muted>{t('agents.computer.files.empty')}</Muted>
       ) : null}
-      {listing?.entries.map((entry) => {
-        const directory = entry.type === 'directory';
-        const Icon = directory ? RiFolderLine : RiFileTextLine;
-        const row = (
-          <View className="flex-row items-center gap-2 py-1.5">
-            <Icon size="sm" />
-            <Text variant="body-regular" numberOfLines={1} style={{ flex: 1 }}>
-              {entry.name}
-            </Text>
-            {entry.type === 'file' ? <Muted>{formatBytes(entry.size)}</Muted> : null}
-          </View>
-        );
-        return directory ? (
-          <Pressable
-            key={entry.path}
-            accessibilityRole="button"
-            onPress={() => onOpenDirectory(entry.path)}
-          >
-            {row}
-          </Pressable>
-        ) : (
-          <View key={entry.path}>{row}</View>
-        );
-      })}
+      <List
+        items={(listing?.entries ?? []).map((entry) => ({
+          id: entry.path,
+          title: entry.name,
+          leading:
+            entry.type === 'directory' ? <RiFolderLine size="sm" /> : <RiFileTextLine size="sm" />,
+          trailing: entry.type === 'file' ? <Muted>{formatBytes(entry.size)}</Muted> : undefined,
+          onPress: entry.type === 'directory' ? () => onOpenDirectory(entry.path) : undefined,
+        }))}
+      />
       {listing?.truncated ? <Muted>{t('agents.computer.files.truncated')}</Muted> : null}
       <Muted>{t('agents.computer.files.readOnly')}</Muted>
     </View>

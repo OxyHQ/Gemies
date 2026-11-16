@@ -9,10 +9,7 @@ import type { Agent } from '@/shared/contracts/agents';
 import type { Space } from '@/shared/contracts/spaces';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { agentChatRoute, agentDetailsRoute, agentEditRoute } from '@/shared/routing/agent-address';
-import { MoreTrigger } from '@/shell/sidebar-menus';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -139,7 +136,7 @@ export function useGemieRowHandlers(
  * are its owner's; a gemie connected from a computer (`external`) has no computer or schedule here
  * (its owner still renames and recolours it); one with no handle has no page to open or share.
  */
-export const GemieRowActions = React.memo(function GemieRowActions({
+export const GemieRowMenu = React.memo(function GemieRowMenu({
   agent,
   isOwner,
   spaces,
@@ -151,67 +148,61 @@ export const GemieRowActions = React.memo(function GemieRowActions({
   handlers: GemieRowHandlers;
 }) {
   const { t } = useTranslation();
-  const name = agentDisplayName(agent);
   const hasPage = agentDetailsRoute(agent) !== null;
   const external = Boolean(agent.external);
   const hasComputer = !external && (agent.capabilityGrants ?? []).includes('computer');
   const canPause = isOwner && !external && agent.status !== 'offline';
   const paused = agent.status === 'idle';
   return (
-    <DropdownMenu>
-      <MoreTrigger label={t('agents.options', { name })} />
-      <DropdownMenuContent minWidth={200}>
-        {hasPage ? (
-          <DropdownMenuItem onPress={() => handlers.openProfile(agent)}>
-            {t('agents.viewProfile')}
-          </DropdownMenuItem>
-        ) : null}
-        {isOwner ? (
-          <DropdownMenuItem onPress={() => handlers.edit(agent)}>
-            {t('agents.edit')}
-          </DropdownMenuItem>
-        ) : null}
-        {hasComputer ? (
-          <DropdownMenuItem onPress={() => handlers.openComputer(agent)}>
-            {t('agents.computer.open')}
-          </DropdownMenuItem>
-        ) : null}
-        {hasPage ? (
-          <DropdownMenuItem onPress={() => handlers.share(agent)}>
-            {t('agents.share')}
-          </DropdownMenuItem>
-        ) : null}
-        {spaces.length > 0 ? (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>{t('spaces.moveToSpace')}</DropdownMenuSubTrigger>
-            <DropdownMenuSubContent side="right" align="start">
-              <DropdownMenuRadioGroup
-                value={agent.spaceId ?? NONE}
-                onValueChange={(value) => handlers.move(agent, value || null)}
-              >
-                <DropdownMenuRadioItem value={NONE}>{t('spaces.noSpace')}</DropdownMenuRadioItem>
-                {spaces.map((space) => (
-                  <DropdownMenuRadioItem key={space.id} value={space.id}>
-                    {space.name}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        ) : null}
-        {canPause ? (
-          <DropdownMenuItem onPress={() => handlers.setPaused(agent, !paused)}>
-            {t(paused ? 'agents.resume' : 'agents.pause')}
-          </DropdownMenuItem>
-        ) : null}
-        {isOwner ? <DropdownMenuSeparator /> : null}
-        {isOwner ? (
-          <DropdownMenuItem tone="danger" onPress={() => handlers.askDelete(agent)}>
-            {t('agents.delete')}
-          </DropdownMenuItem>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      {hasPage ? (
+        <DropdownMenuItem onPress={() => handlers.openProfile(agent)}>
+          {t('agents.viewProfile')}
+        </DropdownMenuItem>
+      ) : null}
+      {isOwner ? (
+        <DropdownMenuItem onPress={() => handlers.edit(agent)}>{t('agents.edit')}</DropdownMenuItem>
+      ) : null}
+      {hasComputer ? (
+        <DropdownMenuItem onPress={() => handlers.openComputer(agent)}>
+          {t('agents.computer.open')}
+        </DropdownMenuItem>
+      ) : null}
+      {hasPage ? (
+        <DropdownMenuItem onPress={() => handlers.share(agent)}>
+          {t('agents.share')}
+        </DropdownMenuItem>
+      ) : null}
+      {spaces.length > 0 ? (
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>{t('spaces.moveToSpace')}</DropdownMenuSubTrigger>
+          <DropdownMenuSubContent side="right" align="start">
+            <DropdownMenuRadioGroup
+              value={agent.spaceId ?? NONE}
+              onValueChange={(value) => handlers.move(agent, value || null)}
+            >
+              <DropdownMenuRadioItem value={NONE}>{t('spaces.noSpace')}</DropdownMenuRadioItem>
+              {spaces.map((space) => (
+                <DropdownMenuRadioItem key={space.id} value={space.id}>
+                  {space.name}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      ) : null}
+      {canPause ? (
+        <DropdownMenuItem onPress={() => handlers.setPaused(agent, !paused)}>
+          {t(paused ? 'agents.resume' : 'agents.pause')}
+        </DropdownMenuItem>
+      ) : null}
+      {isOwner ? <DropdownMenuSeparator /> : null}
+      {isOwner ? (
+        <DropdownMenuItem tone="danger" onPress={() => handlers.askDelete(agent)}>
+          {t('agents.delete')}
+        </DropdownMenuItem>
+      ) : null}
+    </>
   );
 });
 
@@ -219,17 +210,14 @@ export const GemieRowActions = React.memo(function GemieRowActions({
  * Alia's row's ⋯ menu: her editor, which opens with her identity locked and the person's own
  * connected accounts on her to manage (ADR 0035). She has no page, computer, space or delete here.
  */
-export const AliaRowActions = React.memo(function AliaRowActions() {
+export const AliaRowMenu = React.memo(function AliaRowMenu() {
   const { t } = useTranslation();
   const openAgentEditor = useOpenAgentEditor();
   return (
-    <DropdownMenu>
-      <MoreTrigger label={t('agents.options', { name: 'Alia' })} />
-      <DropdownMenuContent minWidth={200}>
-        <DropdownMenuItem onPress={() => openAgentEditor(ALIA_GEMIE_ID)}>
-          {t('agents.edit')}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenuItem onPress={() => openAgentEditor(ALIA_GEMIE_ID)}>
+        {t('agents.edit')}
+      </DropdownMenuItem>
+    </>
   );
 });

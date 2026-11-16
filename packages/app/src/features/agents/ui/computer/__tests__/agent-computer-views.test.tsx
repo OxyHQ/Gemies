@@ -41,6 +41,23 @@ vi.mock('@oxy.so/bloom/button', async () => {
       ReactModule.createElement('Button', props, children),
   };
 });
+vi.mock('@oxy.so/bloom/list', async () => {
+  const ReactModule = await import('react');
+  return {
+    List: ({
+      items,
+    }: {
+      items: Array<{ id: string; title: string; trailing?: React.ReactNode; onPress?: () => void }>;
+    }) =>
+      ReactModule.createElement(
+        'List',
+        null,
+        items.map(({ id, title, trailing, ...props }) =>
+          ReactModule.createElement('ListItem', { key: id, ...props }, title, trailing),
+        ),
+      ),
+  };
+});
 vi.mock('@oxy.so/bloom/chip', async () => {
   const ReactModule = await import('react');
   return {
@@ -247,7 +264,9 @@ describe('files and activity are read-only', () => {
         onStart: vi.fn(),
       }),
     );
-    act(() => root.findByType('Pressable' as never).props.onPress());
+    const entries = root.findAllByType('ListItem' as never);
+    expect(entries[1]!.props.onPress).toBeUndefined();
+    act(() => entries[0]!.props.onPress());
     expect(onOpenDirectory).toHaveBeenCalledWith('/workspace/downloads/old');
     const up = root.findByType('Button' as never);
     act(() => up.props.onPress());

@@ -246,6 +246,7 @@ vi.mock('@oxy.so/bloom/icons/RiEditLine', () => ({ RiEditLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiFolderLine', () => ({ RiFolderLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiPushpinLine', () => ({ RiPushpinLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiStarLine', () => ({ RiStarLine: () => null }));
+vi.mock('@oxy.so/bloom/icons/RiCloseLine', () => ({ RiCloseLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiAddLine', () => ({ RiAddLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiBookOpenLine', () => ({ RiBookOpenLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiCustomerServiceLine', () => ({ RiCustomerServiceLine: () => null }));
@@ -263,6 +264,13 @@ vi.mock('@oxy.so/bloom/icons/RiTimeLine', () => ({ RiTimeLine: () => null }));
 
 vi.mock('@oxy.so/bloom/ai-chat', () => ({ useAiChatShell: () => null }));
 vi.mock('@oxy.so/bloom/surfaces', () => ({ confirm: vi.fn(async () => true) }));
+vi.mock('@oxy.so/bloom/page-header', async () => {
+  const ReactModule = await import('react');
+  return {
+    PageHeader: ({ leading, actions, ...props }: Record<string, React.ReactNode>) =>
+      ReactModule.createElement('PageHeader', props, leading, actions),
+  };
+});
 vi.mock('@oxy.so/bloom/conversation-sidebar', () => ({
   ConversationSidebar: (props: Record<string, any>) => {
     state.sidebarProps = props;
@@ -271,10 +279,11 @@ vi.mock('@oxy.so/bloom/conversation-sidebar', () => ({
     // mounted so their menus can be pressed, and what sits under the flat list.
     const trees: any[] = [props.tree ?? []].flat();
     const row = (key: string, item: any) =>
-      React.createElement('Row', { key, rowKey: item.key }, item.actions);
+      React.createElement('Row', { key, rowKey: item.key }, item.contextMenu, item.actions);
     return React.createElement(
       'Sidebar',
       null,
+      props.header,
       trees.map((tree) => tree.actions),
       props.after,
       trees.flatMap((tree) => [
@@ -848,10 +857,10 @@ describe('spaces in the sidebar', () => {
     const flatAgent = sections()
       .find((s) => s.key === 'agents')!
       .items.find((i: { key: string }) => i.key === 'agent:a3');
-    expect(flatAgent.actions).toBeDefined();
+    expect(flatAgent.contextMenu).toBeDefined();
     let menu!: ReactTestRenderer;
     await act(async () => {
-      menu = create(member.actions);
+      menu = create(member.contextMenu);
     });
     const group = menu.root.find((n) => is(n, 'RadioGroup'));
     await act(async () => group.props.onValueChange(''));
@@ -901,7 +910,7 @@ describe("a gemie row's menu", () => {
       .items.find((i: { key: string }) => i.key === 'agent:a1');
     let menu!: ReactTestRenderer;
     await act(async () => {
-      menu = create(row.actions);
+      menu = create(row.contextMenu);
     });
     const labels = menu.root
       .findAll((node) => is(node, 'MenuItem') || is(node, 'SubTrigger'))
@@ -1004,5 +1013,56 @@ describe("a gemie row's menu", () => {
     await settle();
     expect(state.deleteAgent).toHaveBeenCalled();
     expect(state.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe('sidebar row selection', () => {
+  const conversationRows = () => sections().find((section) => section.key === 'chats')!.items;
+
+  it('selects one row independently of navigation and exposes its existing menu in PageHeader', async () => {
+    state.conversations = [chat('c1'), chat('c2')];
+    await mount();
+    const first = conversationRows().find((item: { key: string }) => item.key === 'c1');
+    expect(first.checked).toBe(false);
+    expect(first.contextMenu).toBeDefined();
+    expect(first.actions).toBeUndefined();
+    await act(async () => first.onCheckedChange(true));
+    expect(state.replace).not.toHaveBeenCalled();
+    expect(conversationRows().every((item: { selecting: boolean }) => item.selecting)).toBe(true);
+    expect(renderer.root.findByType('PageHeader' as never).props.title).toBe('c1');
+
+    await act(async () =>
+      conversationRows()
+        .find((item: { key: string }) => item.key === 'c2')
+        .onCheckedChange(true),
+    );
+    expect(
+      conversationRows()
+        .filter((item: { checked: boolean }) => item.checked)
+        .map((item: { key: string }) => item.key),
+    ).toEqual(['c2']);
+    const header = renderer.root.findByType('PageHeader' as never);
+    expect(header.props.title).toBe('c2');
+    // The selected-row toolbar reuses the same rename/pin/move/delete menu, with its current row.
+    expect(menuItem(header, 'sidebar.rename')).toBeTruthy();
+    await act(async () =>
+      header
+        .findAllByType('Button' as never)
+        .find((button) => button.props.accessibilityLabel === 'common.cancel')!
+        .props.onPress(),
+    );
+    expect(conversationRows().some((item: { checked: boolean }) => item.checked)).toBe(false);
+    expect(renderer.root.findAllByType('PageHeader' as never)).toHaveLength(0);
+  });
+
+  it('leaves selection when the sidebar search changes', async () => {
+    state.conversations = [chat('c1'), chat('c2')];
+    await mount();
+    await act(async () => conversationRows()[0].onCheckedChange(true));
+    await act(async () => state.sidebarProps!.onQueryChange('c2'));
+    expect(conversationRows().map((item: { key: string }) => item.key)).toEqual(['c2']);
+    expect(conversationRows()[0].checked).toBe(false);
+    expect(conversationRows()[0].selecting).toBe(false);
+    expect(renderer.root.findAllByType('PageHeader' as never)).toHaveLength(0);
   });
 });

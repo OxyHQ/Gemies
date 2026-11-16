@@ -34,7 +34,6 @@ export function MoreTrigger({ label }: { label: string }) {
         iconOnly
         appearance="plain"
         tone="neutral"
-        size="xs"
         leadingIcon={RiMoreFill}
         accessibilityLabel={label}
       />
@@ -47,7 +46,7 @@ export function MoreTrigger({ label }: { label: string }) {
  * delete. A chat is filed in one place at most, so moving it into a project
  * takes it out of its folder and the other way round (the sidebar does that).
  */
-export const ConversationActions = React.memo(function ConversationActions({
+export const ConversationMenu = React.memo(function ConversationMenu({
   conversation,
   projects,
   projectId,
@@ -79,62 +78,58 @@ export const ConversationActions = React.memo(function ConversationActions({
   onDelete: (conversation: Conversation) => void;
 }) {
   const { t } = useTranslation();
-  const title = conversation.title || t('sidebar.newConversation');
   return (
-    <DropdownMenu>
-      <MoreTrigger label={t('sidebar.chatOptions', { title })} />
-      <DropdownMenuContent minWidth={200}>
-        <DropdownMenuItem onPress={() => onRename(conversation)}>
-          {t('sidebar.rename')}
-        </DropdownMenuItem>
-        <DropdownMenuItem onPress={() => onTogglePin(conversation.id)}>
-          {t(pinned ? 'sidebar.unpin' : 'sidebar.pin')}
-        </DropdownMenuItem>
-        <DropdownMenuItem onPress={() => onToggleFavorite(conversation.id)}>
-          {t(favorite ? 'sidebar.removeFavorite' : 'sidebar.addFavorite')}
-        </DropdownMenuItem>
-        {projects.length > 0 ? (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>{t('sidebar.moveToProject')}</DropdownMenuSubTrigger>
-            <DropdownMenuSubContent side="right" align="start">
-              <DropdownMenuRadioGroup
-                value={projectId ?? NONE}
-                onValueChange={(value) => onMove(conversation.id, value || null)}
-              >
-                <DropdownMenuRadioItem value={NONE}>{t('sidebar.noProject')}</DropdownMenuRadioItem>
-                {projects.map((project) => (
-                  <DropdownMenuRadioItem key={project.id} value={project.id}>
-                    {project.name}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        ) : null}
-        {folders.length > 0 ? (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>{t('sidebar.moveToFolder')}</DropdownMenuSubTrigger>
-            <DropdownMenuSubContent side="right" align="start">
-              <DropdownMenuRadioGroup
-                value={folderId ?? NONE}
-                onValueChange={(value) => onMoveToFolder(conversation.id, value || null)}
-              >
-                <DropdownMenuRadioItem value={NONE}>{t('sidebar.noFolder')}</DropdownMenuRadioItem>
-                {folders.map((folder) => (
-                  <DropdownMenuRadioItem key={folder.id} value={folder.id}>
-                    {folder.name}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        ) : null}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem tone="danger" onPress={() => onDelete(conversation)}>
-          {t('sidebar.deleteChat')}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenuItem onPress={() => onRename(conversation)}>
+        {t('sidebar.rename')}
+      </DropdownMenuItem>
+      <DropdownMenuItem onPress={() => onTogglePin(conversation.id)}>
+        {t(pinned ? 'sidebar.unpin' : 'sidebar.pin')}
+      </DropdownMenuItem>
+      <DropdownMenuItem onPress={() => onToggleFavorite(conversation.id)}>
+        {t(favorite ? 'sidebar.removeFavorite' : 'sidebar.addFavorite')}
+      </DropdownMenuItem>
+      {projects.length > 0 ? (
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>{t('sidebar.moveToProject')}</DropdownMenuSubTrigger>
+          <DropdownMenuSubContent side="right" align="start">
+            <DropdownMenuRadioGroup
+              value={projectId ?? NONE}
+              onValueChange={(value) => onMove(conversation.id, value || null)}
+            >
+              <DropdownMenuRadioItem value={NONE}>{t('sidebar.noProject')}</DropdownMenuRadioItem>
+              {projects.map((project) => (
+                <DropdownMenuRadioItem key={project.id} value={project.id}>
+                  {project.name}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      ) : null}
+      {folders.length > 0 ? (
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>{t('sidebar.moveToFolder')}</DropdownMenuSubTrigger>
+          <DropdownMenuSubContent side="right" align="start">
+            <DropdownMenuRadioGroup
+              value={folderId ?? NONE}
+              onValueChange={(value) => onMoveToFolder(conversation.id, value || null)}
+            >
+              <DropdownMenuRadioItem value={NONE}>{t('sidebar.noFolder')}</DropdownMenuRadioItem>
+              {folders.map((folder) => (
+                <DropdownMenuRadioItem key={folder.id} value={folder.id}>
+                  {folder.name}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      ) : null}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem tone="danger" onPress={() => onDelete(conversation)}>
+        {t('sidebar.deleteChat')}
+      </DropdownMenuItem>
+    </>
   );
 });
 
@@ -225,7 +220,6 @@ export function NewCollectionAction({
           iconOnly
           appearance="plain"
           tone="neutral"
-          size="xs"
           leadingIcon={RiAddLine}
           accessibilityLabel={label}
         />

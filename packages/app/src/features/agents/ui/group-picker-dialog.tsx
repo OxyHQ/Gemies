@@ -6,7 +6,7 @@ import { useTranslation } from '@/shared/i18n/use-translation';
 import { readAgentCharacter } from '@gemies/sdk';
 import { AgentAvatar } from '@oxy.so/bloom/agent-avatar';
 import { useAvatarFlights } from '@oxy.so/bloom/avatar-flight';
-import { Button } from '@oxy.so/bloom/button';
+import { List } from '@oxy.so/bloom/list';
 import { Dialog } from '@oxy.so/bloom/dialog';
 import { SelectedAgentPreview } from '@oxy.so/bloom/multi-agent-chat/selected-agent-preview';
 import { toast } from '@oxy.so/bloom/toast';
@@ -58,9 +58,13 @@ export function GroupPickerDialog() {
     setOpen(false);
     setSelected([]);
   };
-  const toggle = (id: string) =>
+  const selectAgent = (id: string, checked: boolean) =>
     setSelected((ids) =>
-      ids.includes(id) ? ids.filter((x) => x !== id) : ids.length < GROUP_MAX ? [...ids, id] : ids,
+      checked
+        ? ids.includes(id) || ids.length >= GROUP_MAX
+          ? ids
+          : [...ids, id]
+        : ids.filter((candidate) => candidate !== id),
     );
   const begin = async () => {
     try {
@@ -88,32 +92,26 @@ export function GroupPickerDialog() {
     >
       <View className="items-center gap-4">
         <SelectedAgentPreview agents={chosen} flights={flights} anchor="picker" caption />
-        <View
-          className="flex-row flex-wrap justify-center gap-2"
-          accessibilityRole="menu"
+        <List
           accessibilityLabel={t('group.choose')}
-        >
-          {(agents ?? []).map((agent) => (
-            <Button
-              key={agent._id}
-              appearance="plain"
-              tone="neutral"
-              size="sm"
-              pressed={selected.includes(agent._id)}
-              accessibilityLabel={agentDisplayName(agent)}
-              leading={
-                <AgentAvatar
-                  character={readAgentCharacter(agent.character, agent.color)}
-                  size={20}
-                  portrait
-                />
-              }
-              onPress={() => toggle(agent._id)}
-            >
-              {agentDisplayName(agent)}
-            </Button>
-          ))}
-        </View>
+          style={{ width: '100%' }}
+          items={(agents ?? []).map((agent) => ({
+            id: agent._id,
+            title: agentDisplayName(agent),
+            label: agentDisplayName(agent),
+            role: 'checkbox',
+            leading: (
+              <AgentAvatar
+                character={readAgentCharacter(agent.character, agent.color)}
+                size={36}
+                portrait
+              />
+            ),
+            checked: selected.includes(agent._id),
+            selecting: true,
+            onCheckedChange: (checked) => selectAgent(agent._id, checked),
+          }))}
+        />
         {(agents ?? []).length < GROUP_MIN ? <Muted>{t('group.needTwo')}</Muted> : null}
       </View>
     </Dialog>

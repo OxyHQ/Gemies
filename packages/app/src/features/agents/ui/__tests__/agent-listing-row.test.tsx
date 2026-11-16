@@ -30,8 +30,9 @@ const { slotted, hosts } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@oxy.so/bloom/item', async () => ({
-  Item: await slotted('Item', ['leading', 'title', 'subtitle', 'trailing']),
+vi.mock('react-native', async () => hosts('View'));
+vi.mock('@oxy.so/bloom/list', async () => ({
+  ListItem: await slotted('ListItem', ['leading', 'title', 'supporting', 'trailing']),
 }));
 vi.mock('@oxy.so/bloom/button', async () => hosts('Button'));
 vi.mock('@oxy.so/bloom/agent-avatar', async () => hosts('AgentAvatar'));
@@ -76,9 +77,9 @@ function mount(overrides: Record<string, unknown> = {}) {
 describe('AgentListingRow', () => {
   it('shows the name, "by author", and the tagline under it', () => {
     const { root } = mount();
-    const item = root.findByType('Item' as never);
-    expect(item.props.subtitle).toBe('Finds savings in your SaaS spend.');
-    expect(item.props.subtitleNumberOfLines).toBe(1);
+    const item = root.findByType('ListItem' as never);
+    expect(item.props.supporting).toBe('Finds savings in your SaaS spend.');
+    expect(item.props.supportingLines).toBe(1);
     const labels = root
       .findAll((n) => (n.type as unknown) === 'Text')
       .map((n) => n.children.join(''));
@@ -96,7 +97,7 @@ describe('AgentListingRow', () => {
 
   it('opens the agent from the row, and its thread from Chat without opening the page', () => {
     const { root, onPress, onChat } = mount();
-    act(() => root.findByType('Item' as never).props.onPress());
+    act(() => root.findByType('ListItem' as never).props.onPress());
     expect(onPress).toHaveBeenCalledWith('a1');
     const chat = root.findByType('Button' as never);
     expect(chat.props.stopPropagation).toBe(true);
