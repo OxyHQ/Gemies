@@ -3,18 +3,35 @@ import type { Agent } from '@/shared/contracts/agents';
 import type { Space } from '@/shared/contracts/spaces';
 import { AgentRowAvatar, reactAgentRow } from '@/shell/agent-row-avatar';
 import { GemieRowMenu, type GemieRowHandlers } from '@/shell/sidebar-gemie-menu';
+import { FolderMenu, ProjectMenu } from '@/shell/sidebar-menus';
+import type { Folder } from '@/features/projects/runtime/collections';
 import { SidebarView } from '@/shell/sidebar';
 import { AiChatContainer, AiChatShell } from '@oxy.so/bloom/ai-chat';
 import { AvatarGroup } from '@oxy.so/bloom/avatar-group';
 import { Button } from '@oxy.so/bloom/button';
 import type { ConversationSidebarProps } from '@oxy.so/bloom/conversation-sidebar';
 import { RiMenuLine } from '@oxy.so/bloom/icons/RiMenuLine';
+import { RiFolderLine } from '@oxy.so/bloom/icons/RiFolderLine';
 import { List } from '@oxy.so/bloom/list';
 import { PageHeader } from '@oxy.so/bloom/page-header';
 import type { SidebarTreeItem } from '@oxy.so/bloom/sidebar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const DATE = '2026-11-16T12:00:00.000Z';
+const folder: Folder = {
+  id: 'research',
+  kind: 'folder',
+  name: 'Research',
+  description: null,
+  icon: null,
+  color: null,
+  isFavorite: false,
+  isExpanded: false,
+  conversationIds: [],
+  createdAt: DATE,
+  updatedAt: DATE,
+};
+const project: Folder = { ...folder, id: 'launch', kind: 'project', name: 'Launch' };
 const agents: Agent[] = ['Pepe', 'Mira', 'Luna'].map((name, index) => ({
   _id: `fixture-${index}`,
   identity: { source: 'local', name, color: 'violet' },
@@ -65,6 +82,8 @@ export default function SidebarFixture() {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState('fixture-0');
   const [navOpen, setNavOpen] = useState(false);
+  const [folderOpen, setFolderOpen] = useState(false);
+  const [projectOpen, setProjectOpen] = useState(false);
   const events = useRef<string[]>([]);
   const [lastEvent, setLastEvent] = useState('Choose a Gemie');
   const record = useCallback((event: string) => {
@@ -119,6 +138,7 @@ export default function SidebarFixture() {
     onQueryChange: setQuery,
     selectedTreeItem: active,
     onTreeItemPress: (item) => {
+      if (item.key.startsWith('folder:') || item.key.startsWith('project:')) return;
       reactAgentRow(item.key);
       setActive(item.key);
       record(`navigate:${item.key}`);
@@ -133,10 +153,22 @@ export default function SidebarFixture() {
       {
         key: 'spaces',
         label: 'Spaces',
-        folders: [
+        items: [
           {
-            key: 'research',
+            key: 'folder:research',
             label: 'Research',
+            icon: RiFolderLine,
+            expandable: true,
+            open: folderOpen,
+            onOpenChange: setFolderOpen,
+            onPress: () => setFolderOpen((open) => !open),
+            contextMenu: (
+              <FolderMenu
+                folder={folder}
+                onRename={() => record('rename:research')}
+                onDelete={() => record('delete:research')}
+              />
+            ),
             items: [
               {
                 key: 'group',
@@ -157,6 +189,23 @@ export default function SidebarFixture() {
                 ),
               },
             ],
+          },
+          {
+            key: 'project:launch',
+            label: 'Launch',
+            icon: RiFolderLine,
+            expandable: true,
+            open: projectOpen,
+            onOpenChange: setProjectOpen,
+            onPress: () => setProjectOpen((open) => !open),
+            contextMenu: (
+              <ProjectMenu
+                project={project}
+                onEdit={() => record('edit:launch')}
+                onDelete={() => record('delete:launch')}
+              />
+            ),
+            items: [],
           },
         ],
       },

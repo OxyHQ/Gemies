@@ -17,11 +17,11 @@ import {
 import { useAliaSettings } from '@/features/settings/ui/settings-context';
 import {
   ConversationMenu,
-  FolderActions,
+  FolderMenu,
   FolderNameDialog,
   NewCollectionAction,
   MoreTrigger,
-  ProjectActions,
+  ProjectMenu,
   RenameConversationDialog,
   StreamingIndicator,
 } from '@/shell/sidebar-menus';
@@ -66,6 +66,7 @@ import {
 } from '@oxy.so/bloom/conversation-sidebar';
 import { useNewAgentConversation } from '@/features/agents/runtime/use-new-agent-conversation';
 import { RiFolderLine } from '@oxy.so/bloom/icons/RiFolderLine';
+import { RiFolderOpenLine } from '@oxy.so/bloom/icons/RiFolderOpenLine';
 import { RiPushpinLine } from '@oxy.so/bloom/icons/RiPushpinLine';
 import { RiCustomerServiceLine } from '@oxy.so/bloom/icons/RiCustomerServiceLine';
 import { RiFileTextLine } from '@oxy.so/bloom/icons/RiFileTextLine';
@@ -78,7 +79,6 @@ import type {
   SidebarNavItem,
   SidebarProps,
   SidebarTree,
-  SidebarTreeFolder,
   SidebarTreeItem,
 } from '@oxy.so/bloom/sidebar';
 import * as Skeleton from '@oxy.so/bloom/skeleton';
@@ -171,7 +171,6 @@ export function SidebarView({
     };
     for (const section of sections) {
       find(section.items);
-      for (const folder of section.folders ?? []) find(folder.items);
     }
     const rows = (
       items: readonly SidebarTreeItem[] | undefined,
@@ -192,7 +191,6 @@ export function SidebarView({
       tree: sections.map((section) => ({
         ...section,
         items: rows(section.items),
-        folders: section.folders?.map((folder) => ({ ...folder, items: rows(folder.items)! })),
       })),
     };
   }, [props.tree, selectedKey]);
@@ -769,28 +767,30 @@ function useSidebarProps() {
 
   // Projects and folders, for the chats filed in them, and the chats section above them.
   const tree = React.useMemo<SidebarTree[] | undefined>(() => {
-    const treeFolders: SidebarTreeFolder[] = [
+    const treeFolders: SidebarTreeItem[] = [
       ...sections.projects.map(({ project, conversations: rows }) => ({
         key: `project:${project.id}`,
         label: project.name,
+        icon: project.isExpanded ? RiFolderOpenLine : RiFolderLine,
+        expandable: true,
         open: project.isExpanded,
+        onPress: () => toggleProject(project.id),
         onOpenChange: () => toggleProject(project.id),
-        actions: (
-          <ProjectActions
-            project={project}
-            onEdit={openProjectDialog}
-            onDelete={askDeleteProject}
-          />
+        contextMenu: (
+          <ProjectMenu project={project} onEdit={openProjectDialog} onDelete={askDeleteProject} />
         ),
         items: rows.map(row),
       })),
       ...sections.folders.map(({ folder, conversations: rows }) => ({
         key: `folder:${folder.id}`,
         label: folder.name,
+        icon: folder.isExpanded ? RiFolderOpenLine : RiFolderLine,
+        expandable: true,
         open: folder.isExpanded,
+        onPress: () => toggleFolder(folder.id),
         onOpenChange: () => toggleFolder(folder.id),
-        actions: (
-          <FolderActions folder={folder} onRename={renameFolder} onDelete={askDeleteFolder} />
+        contextMenu: (
+          <FolderMenu folder={folder} onRename={renameFolder} onDelete={askDeleteFolder} />
         ),
         items: rows.map(row),
       })),
@@ -807,7 +807,7 @@ function useSidebarProps() {
     const projectsTree: SidebarTree = {
       key: 'projects',
       label: t('sidebar.projects'),
-      folders: treeFolders,
+      items: treeFolders,
       actions: isAuthenticated ? (
         <NewCollectionAction
           onNewProject={() => openProjectDialog(null)}
@@ -1122,7 +1122,13 @@ function useSidebarProps() {
     selectedTreeItem: selectedAgentKey ?? chatId?.id,
     onTreeItemPress: (item: { key: string }) => {
       // The muted row of an empty space opens the picker itself; a folder is not a destination.
-      if (item.key.startsWith(SPACE_ADD_KEY) || item.key.startsWith(SPACE_KEY)) return;
+      if (
+        item.key.startsWith(SPACE_ADD_KEY) ||
+        item.key.startsWith(SPACE_KEY) ||
+        item.key.startsWith('project:') ||
+        item.key.startsWith('folder:')
+      )
+        return;
       if (item.key === ALIA_KEY) {
         closeNav?.();
         return router.replace('/(app)');

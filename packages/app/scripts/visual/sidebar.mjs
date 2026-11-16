@@ -13,7 +13,8 @@ import { chromium } from 'playwright-core';
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const server = await serveExport(resolve(appRoot, process.argv[2] ?? 'dist-fixtures'));
 const output = await mkdtemp(join(tmpdir(), 'gemies-sidebar-'));
-const browser = await chromium.launch({ headless: true });
+// A headed browser preserves desktop hover capability; Linux CI can use xvfb-run.
+const browser = await chromium.launch({ headless: false });
 const results = [];
 try {
   for (const touch of [false, true]) {
@@ -28,6 +29,14 @@ try {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto(`${server.origin}/__fixtures/sidebar`);
+    const capabilities = await page.evaluate(() => ({
+      hover: matchMedia('(hover: hover)').matches,
+      finePointer: matchMedia('(pointer: fine)').matches,
+      coarsePointer: matchMedia('(pointer: coarse)').matches,
+    }));
+    assert.equal(capabilities.hover, !touch);
+    assert.equal(capabilities.finePointer, !touch);
+    assert.equal(capabilities.coarsePointer, touch);
     await page.waitForFunction(() => window.__aliaFixture?.sidebar);
     if (touch)
       await page.getByRole('button', { name: 'Open navigation', exact: true }).last().click();
@@ -36,6 +45,62 @@ try {
     const check = (id) => row(id).getByRole('checkbox');
     const events = () => page.evaluate(() => window.__aliaFixture.sidebar.events());
     const navigation = async () => (await events()).filter((e) => e.startsWith('navigate:'));
+    await page.evaluate(() => {
+      window.__sidebarTouchTrace = [];
+      for (const type of ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'click']) {
+        document.addEventListener(
+          type,
+          (e) =>
+            window.__sidebarTouchTrace.push({
+              type,
+              target: e.target.closest?.('[data-bloom-list-row]')?.getAttribute('data-testid'),
+              prevented: e.defaultPrevented,
+            }),
+          { capture: true, passive: true },
+        );
+      }
+    });
+    const longPress = async (target) => {
+      await target.click({ trial: true });
+      await page.evaluate(() => {
+        window.__sidebarTouchTrace = [];
+      });
+      const trigger = await target.locator('[data-bloom-list-link]').elementHandle();
+      const r = await target.boundingBox();
+      const point = { x: r.x + 100, y: r.y + r.height / 2 };
+      const hit = () =>
+        page.evaluate(
+          ({ x, y }) =>
+            document
+              .elementFromPoint(x, y)
+              ?.closest('[data-bloom-list-row]')
+              ?.getAttribute('data-testid'),
+          point,
+        );
+      const before = await hit();
+      assert.equal(before, await target.getAttribute('data-testid'));
+      const cdp = await context.newCDPSession(page);
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [point],
+      });
+      await page.waitForTimeout(750);
+      console.log('Touch target', {
+        before,
+        held: await hit(),
+        rect: r,
+        after: await target.boundingBox(),
+      });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(100);
+      console.log(
+        'Touch events',
+        await page.evaluate(() => window.__sidebarTouchTrace),
+        'trigger connected',
+        await trigger.evaluate((el) => el.isConnected),
+      );
+      await cdp.detach();
+    };
     await row(0).waitFor({ state: 'visible' });
     await page.waitForTimeout(600);
     assert.equal(await page.getByRole('button', { name: /Options for/ }).count(), 0);
@@ -55,16 +120,8 @@ try {
       assert.equal((await navigation()).length, 0);
       await page.mouse.move(800, 650);
     }
-    if (touch) {
-      const r = await row(0).boundingBox();
-      const cdp = await context.newCDPSession(page);
-      await cdp.send('Input.dispatchTouchEvent', {
-        type: 'touchStart',
-        touchPoints: [{ x: r.x + 130, y: r.y + r.height / 2 }],
-      });
-      await page.waitForTimeout(750);
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    } else await row(0).locator('[data-bloom-list-identity]').click();
+    if (touch) await longPress(row(0));
+    else await row(0).locator('[data-bloom-list-identity]').click();
     await page.waitForTimeout(250);
     assert.equal(await check(0).getAttribute('aria-checked'), 'true');
     assert.equal((await navigation()).length, 0);
@@ -74,10 +131,6 @@ try {
       fullPage: true,
     });
     await page.getByRole('button', { name: 'Options for Pepe', exact: true }).click();
-    console.log(
-      touch ? 'touch menu' : 'desktop menu',
-      (await page.locator('body').innerText()).slice(-900),
-    );
     await page.getByText('Edit', { exact: true }).last().click();
     await page.waitForTimeout(300);
     assert.equal((await events()).filter((e) => e === 'edit:fixture-0').length, touch ? 1 : 2);
@@ -95,6 +148,40 @@ try {
       await page.getByRole('button', { name: 'Open navigation', exact: true }).last().click();
     await page.getByRole('button', { name: 'Research', exact: true }).click();
     await page.locator('[data-testid="sidebar-tree-item-group"]:visible').waitFor();
+    for (const [key, label, command, event, expanded] of [
+      ['folder:research', 'Research', 'Rename folder', 'rename:research', 'true'],
+      ['project:launch', 'Launch', 'Edit Project', 'edit:launch', 'false'],
+    ]) {
+      const target = page.locator(`[data-testid="sidebar-tree-item-${key}"]:visible`).last();
+      const disclosure = page
+        .locator(`[data-testid="sidebar-tree-disclosure-${key}"]:visible`)
+        .last();
+      assert.equal(await disclosure.getAttribute('aria-expanded'), expanded);
+      if (touch) await longPress(target);
+      else {
+        await target.click({ button: 'right' });
+        await page.getByRole('menuitem', { name: command, exact: true }).click();
+        await page.getByRole('menu').waitFor({ state: 'hidden' });
+        assert.equal((await events()).filter((e) => e === event).length, 1);
+        await target.locator('[data-bloom-list-identity]').click();
+      }
+      assert.equal(await target.getByRole('checkbox').getAttribute('aria-checked'), 'true');
+      assert.equal(await disclosure.getAttribute('aria-expanded'), expanded);
+      assert.equal(await page.getByRole('menu').count(), 0);
+      assert.deepEqual(await navigation(), ['navigate:fixture-1']);
+      await page.getByRole('button', { name: `Options for ${label}`, exact: true }).click();
+      await page.getByRole('menuitem', { name: command, exact: true }).click();
+      await page.getByRole('menu').waitFor({ state: 'hidden' });
+      assert.equal((await events()).filter((e) => e === event).length, touch ? 1 : 2);
+      await target.locator('[data-bloom-list-identity]').click();
+      assert.equal(await target.getByRole('checkbox').getAttribute('aria-checked'), 'true');
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await disclosure.click();
+      assert.notEqual(await disclosure.getAttribute('aria-expanded'), expanded);
+      await disclosure.click();
+      assert.equal(await disclosure.getAttribute('aria-expanded'), expanded);
+      assert.deepEqual(await navigation(), ['navigate:fixture-1']);
+    }
     await page.waitForTimeout(600);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
@@ -103,6 +190,7 @@ try {
     assert.deepEqual(errors, []);
     results.push({
       platform: touch ? 'Chromium touch 390 dark' : 'Chromium desktop 1440 light',
+      capabilities,
       checks: [
         'idle no ellipsis',
         'idle avatar visible',
@@ -115,6 +203,7 @@ try {
         'clear selection',
         'row navigation once',
         'folder disclosure and grouped avatars',
+        'folder/project context commands, selection and disclosure remain independent',
         'no horizontal overflow',
         'no page errors',
       ],
@@ -129,6 +218,14 @@ try {
   await writeFile(join(output, 'result.json'), JSON.stringify(results, null, 2));
   console.log(JSON.stringify(results, null, 2));
   console.log(`Sidebar evidence: ${output}`);
+} catch (error) {
+  const page = browser.contexts().at(-1)?.pages().at(-1);
+  if (page) {
+    await page.screenshot({ path: join(output, 'failure.png'), fullPage: true });
+    await writeFile(join(output, 'failure.html'), await page.content());
+  }
+  console.error(`Sidebar failure evidence: ${output}`);
+  throw error;
 } finally {
   await browser.close();
   await server.close();

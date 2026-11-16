@@ -244,6 +244,7 @@ vi.mock('@oxy.so/bloom/icons/RiPlugLine', () => ({ RiPlugLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiDeleteBinLine', () => ({ RiDeleteBinLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiEditLine', () => ({ RiEditLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiFolderLine', () => ({ RiFolderLine: () => null }));
+vi.mock('@oxy.so/bloom/icons/RiFolderOpenLine', () => ({ RiFolderOpenLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiPushpinLine', () => ({ RiPushpinLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiStarLine', () => ({ RiStarLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiCloseLine', () => ({ RiCloseLine: () => null }));
@@ -279,7 +280,13 @@ vi.mock('@oxy.so/bloom/conversation-sidebar', () => ({
     // mounted so their menus can be pressed, and what sits under the flat list.
     const trees: any[] = [props.tree ?? []].flat();
     const row = (key: string, item: any) =>
-      React.createElement('Row', { key, rowKey: item.key }, item.contextMenu, item.actions);
+      React.createElement(
+        'Row',
+        { key, rowKey: item.key },
+        item.contextMenu,
+        item.actions,
+        ...(item.items ?? []).map((child: typeof item) => row(`${key}/${child.key}`, child)),
+      );
     return React.createElement(
       'Sidebar',
       null,
@@ -405,10 +412,12 @@ async function settle() {
 
 const folderItems = () =>
   Object.fromEntries(
-    (sections().flatMap((section) => section.folders ?? []) as any[]).map((folder) => [
-      folder.key,
-      folder.items.map((item: any) => item.key),
-    ]),
+    (sections().find((section) => section.key === 'projects')?.items ?? []).map(
+      (folder: { key: string; items: { key: string }[] }) => [
+        folder.key,
+        folder.items.map((item) => item.key),
+      ],
+    ),
   );
 
 /** The tree's sections, in the order the sidebar draws them: Alia's chats (when any), then projects. */
@@ -521,7 +530,8 @@ describe('the sidebar list', () => {
     expect(folder?.name).toBe('Work');
     expect(
       sections()
-        .flatMap((s) => s.folders ?? [])
+        .filter((s) => s.key === 'projects')
+        .flatMap((s) => s.items ?? [])
         .map((f: any) => [f.key, f.label]),
     ).toContainEqual([`folder:${folder!.id}`, 'Work']);
     // The chat's menu offers the folder; filing it moves it from the chats section into the folder.
@@ -535,6 +545,56 @@ describe('the sidebar list', () => {
     expect(folderItems()).toEqual({ [`folder:${folder!.id}`]: ['alpha'] });
     expect(chatIds()).toEqual(['beta']);
   });
+
+  it.each(['folder', 'project'])(
+    'selects a %s independently from its disclosure and navigation',
+    async (kind) => {
+      state.collections.setState({
+        collections: [
+          {
+            id: 'collection-1',
+            kind,
+            name: 'Work',
+            conversationIds: ['alpha'],
+            isExpanded: false,
+          },
+        ],
+      });
+      await mount();
+      const collection = () => sections().find((section) => section.key === 'projects').items[0];
+      expect(collection().contextMenu).toBeDefined();
+      expect(collection().actions).toBeUndefined();
+      expect(collection().items.map((item: { key: string }) => item.key)).toEqual(['alpha']);
+      const sidebar = state.sidebarProps;
+      if (!sidebar) throw new Error('Sidebar fixture did not mount');
+      await act(async () => {
+        collection().onPress();
+        sidebar.onTreeItemPress(collection());
+      });
+      expect(collection().open).toBe(true);
+      expect(state.push).not.toHaveBeenCalled();
+      expect(state.replace).not.toHaveBeenCalled();
+      act(() => collection().onCheckedChange(true));
+      expect(collection().checked).toBe(true);
+      expect(collection().open).toBe(true);
+      expect(collection().items[0].selecting).toBe(true);
+      expect(renderer.root.findByType('PageHeader' as any).props.title).toBe('Work');
+      await act(async () => collection().onOpenChange(false));
+      expect(collection().open).toBe(false);
+      expect(collection().checked).toBe(true);
+      const header = renderer.root.findByType('PageHeader' as any);
+      await act(async () =>
+        menuItem(
+          header,
+          kind === 'folder' ? 'sidebar.deleteFolder' : 'sidebar.deleteProject',
+        ).props.onPress(),
+      );
+      await settle();
+      expect(state.collections.getState().collections).toEqual([]);
+      expect(state.push).not.toHaveBeenCalled();
+      expect(state.replace).not.toHaveBeenCalled();
+    },
+  );
 
   it('marks the chat being answered, and shows ghost rows while history loads', async () => {
     useConversationStore.setState({ streamingConversationId: 'beta' });
