@@ -119,7 +119,8 @@ await esbuild.build({
   logLevel: 'info',
 });
 
-// The production voice canary is an ECS one-shot like the dictation canary.
+// The production voice canary is an ECS one-shot like the chat canary; its recorded request is
+// data it reads by path beside the bundle, copied after this build.
 await esbuild.build({
   entryPoints: ['src/scripts/voice-call-canary.ts'],
   bundle: true,
@@ -132,6 +133,7 @@ await esbuild.build({
   minify: false,
   logLevel: 'info',
 });
+await cp('src/scripts/fixtures', 'dist/scripts/fixtures', { recursive: true });
 
 // Reviewed organization mapping is an ECS one-shot; the runtime image has no src/ directory.
 await esbuild.build({

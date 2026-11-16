@@ -1,52 +1,85 @@
 /**
- * Production canary of a voice call: one Kaana `conversation` session opened
- * the way a Gemies call opens it (lib/voice/call.ts): the model and voice
- * picked from the catalogue by the same `rankRealtimeCandidates`, server VAD
- * that creates the response, the same session limits, through Gemies' own
- * Kaana transport, attributed to the QA account. It speaks the first seconds
- * of a public-domain recording in real time, then silence so the turn ends,
- * waits for the spoken answer, closes, and judges what came back:
+ * Production canary of a voice call (ADR 0041 §7): one real call through
+ * Gemies' own voice socket, `GET /v1/voice/session`, as the QA person.
  *
- * - the session opened and at least one response was created and finished;
- * - the answer was audio (at least one `output_audio.delta`), with no fatal
- *   error;
- * - the session's billed units (what `session.close` resolves with, what
- *   Kaana settles) are not empty.
+ * It runs inside the live API image as an ECS one-shot
+ * (`production-voice-canary.yml`), like the chat canary: it starts that image's
+ * API and opens the socket on its loopback port with the QA session the
+ * workflow signed in for this run alone (`scripts/canary-qa-session.mjs`), so
+ * the call is what an app's call is — the socket's own `auth`, the plan check,
+ * the catalogue's default `live` line and its voice, the credit meter, the
+ * one-call registry, the persona, and every turn the voice hands over answered
+ * by the chat route as that person.
  *
- * It runs inside the Gemies API image as an ECS one-shot
- * (`production-voice-canary.yml`), because only that workload identity holds
- * the terms that admit a voice session. It refuses to run unless
- * ALIA_CANARY_OXY_USER_ID names the QA account and ALIA_VOICE_CANARY_CONFIRM is
- * `production-voice-canary`. It never prints a credential, prompt or answer;
- * the one result line is `ALIA_VOICE_CANARY {json}`.
+ * It speaks a recorded request for a reminder (`fixtures/voice-canary-reminder.pcm`,
+ * 24 kHz PCM16 mono, synthesized offline) in real time, then silence, until the
+ * answer has been stored and spoken; hangs up; then stops the reminder the way
+ * the app does (`DELETE /automations/:id`) and deletes the canary's
+ * conversation. It passes when:
+ *
+ * - the call was ready on a line and no error came;
+ * - exactly one turn was answered and stored (`messages.saved`), and that
+ *   answer ran `createAutomation` successfully;
+ * - audio came back after the answer was stored (the answer was spoken);
+ * - the call closed `hangup`, which the server sends only once it has closed
+ *   the Kaana session, settled the minutes and ended the `voice_calls` row;
+ * - the reminder was stopped.
+ *
+ * It refuses to run unless ALIA_VOICE_CANARY_CONFIRM is
+ * `production-voice-canary` and the QA session is present. It never prints a
+ * credential, the prompt or the answer; the one result line is
+ * `ALIA_VOICE_CANARY {json}`.
  */
 
-import { pathToFileURL } from 'node:url';
-import type { RealtimeServerEvent } from '@kaana.ai/contracts';
-import type { KaanaClient } from '../lib/kaana/port.js';
-import { rankRealtimeCandidates } from '../lib/models/voice-models.js';
-import { sessionLimits } from '../lib/voice/call-contract.js';
-import type { ProductVoice } from '../lib/voice/protocol.js';
-import { loadRecording, qaAccount } from './canary-recording.js';
+import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import WebSocket from 'ws';
+import {
+  decodeAssistantAudioFrame,
+  type ProductVoice,
+  VOICE_PROTOCOL_VERSION,
+  VOICE_SESSION_PATH,
+} from '../lib/voice/protocol.js';
+import {
+  apiEnvironment,
+  canarySession,
+  mintQaToken,
+  qaBearer,
+  waitUntilReady,
+} from './canary-qa-person.js';
 
 const CONFIRM_VALUE = 'production-voice-canary';
 const RESULT_MARKER = 'ALIA_VOICE_CANARY';
+const API_BASE_URL = 'http://127.0.0.1:3001';
+/** The tool a reminder is made with (`lib/tools/automation-create.ts`). */
+export const REMINDER_TOOL = 'createAutomation';
+
 const SAMPLE_RATE = 24_000;
 const BYTES_PER_MS = (SAMPLE_RATE * 2) / 1000;
-const FRAME_MS = 100;
-const SILENCE_MS = 2_000;
-const ANSWER_WAIT_MS = 20_000;
-const MAX_CALL_MS = 120_000;
+const FRAME_MS = 40;
+/** How long the answer's audio must have stopped before the canary hangs up. */
+const QUIET_AFTER_ANSWER_MS = 3_000;
+const CALL_TIMEOUT_MS = 120_000;
+
+/** The recorded request, shipped beside the bundle (`build.ts` copies it to `dist/scripts/fixtures`). */
+export const FIXTURE = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'voice-canary-reminder.pcm',
+);
 
 export interface VoiceCanaryOptions {
   readonly dryRun: boolean;
-  readonly seconds: number;
   readonly voice: ProductVoice;
+  /** The language the recorded request is in. */
   readonly locale: string;
 }
 
 export function parseVoiceArgs(argv: readonly string[]): VoiceCanaryOptions {
-  const options = { dryRun: false, seconds: 8, voice: 'female' as ProductVoice, locale: 'en' };
+  const options = { dryRun: false, voice: 'female' as ProductVoice, locale: 'en-US' };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     const value = () => {
@@ -56,7 +89,6 @@ export function parseVoiceArgs(argv: readonly string[]): VoiceCanaryOptions {
       return next;
     };
     if (flag === '--dry-run') options.dryRun = true;
-    else if (flag === '--seconds') options.seconds = Number(value());
     else if (flag === '--voice') {
       const voice = value();
       if (voice !== 'female' && voice !== 'male') throw new Error('--voice must be female or male');
@@ -64,55 +96,88 @@ export function parseVoiceArgs(argv: readonly string[]): VoiceCanaryOptions {
     } else if (flag === '--locale') options.locale = value();
     else throw new Error(`unknown argument ${flag}`);
   }
-  if (!Number.isInteger(options.seconds) || options.seconds < 3 || options.seconds > 30)
-    throw new Error('--seconds must be an integer from 3 to 30');
   if (!/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(options.locale))
     throw new Error('--locale must be a BCP 47 tag');
   return options;
 }
 
-/** The QA account, or a refusal naming what is missing; never echoed whole. */
-export function canaryAccount(env: NodeJS.ProcessEnv): string {
+/** The explicit confirmation, then the QA session (`canarySession`); never echoed. */
+export function canaryIdentity(env: NodeJS.ProcessEnv): ReturnType<typeof canarySession> {
   if (env.ALIA_VOICE_CANARY_CONFIRM !== CONFIRM_VALUE)
     throw new Error(`ALIA_VOICE_CANARY_CONFIRM must be ${CONFIRM_VALUE}`);
-  return qaAccount(env);
+  return canarySession(env);
 }
 
 export interface VoiceCanaryReport {
-  model: string;
-  sessionId: string | null;
+  /** The call's `voice_calls` id, which the API's logs correlate with Kaana's request id. */
+  callId: string | null;
+  /** The line that served the call (`publisher/model@revision`). */
+  model: string | null;
   audioMs: number;
+  /** Turns answered and stored (`messages.saved`). */
+  answeredTurns: number;
+  /** The tools of the answered turn, by name. */
+  tools: Array<{ name: string; ok: boolean }>;
+  /** Voice audio received at all, and after the answer was stored. */
+  audioBytes: number;
+  answerAudioBytes: number;
+  /** From the end of the request to the first audio of the answer. */
+  firstAnswerAudioMs: number | null;
+  closedReason: string | null;
+  errors: string[];
+  reminderStopped: boolean;
+  conversationRemoved: boolean;
   wallMs: number;
-  counts: { responsesCreated: number; responsesDone: number; audioDeltas: number; errors: number };
-  firstAudioMs: number | null;
-  units: ReadonlyArray<{ unit: string; quantity: number }>;
-  fatal: string | null;
 }
 
 /** Every reason the report fails; empty means the canary passed. */
 export function judgeVoice(report: VoiceCanaryReport): string[] {
   const failures: string[] = [];
-  if (report.fatal !== null) failures.push(`fatal: ${report.fatal}`);
-  if (report.sessionId === null) failures.push('no session opened');
-  if (report.counts.responsesCreated < 1) failures.push('no response.created');
-  if (report.counts.audioDeltas < 1) failures.push('no output_audio.delta');
-  if (report.counts.responsesDone < 1) failures.push('no response.done');
-  if (!report.units.some((unit) => unit.quantity > 0)) failures.push('no units billed');
+  if (report.model === null) failures.push('the call was never ready');
+  if (report.errors.length > 0) failures.push(`call errors: ${report.errors.join(', ')}`);
+  if (report.answeredTurns !== 1)
+    failures.push(`${report.answeredTurns} turns answered and stored, not exactly one`);
+  if (!report.tools.some((tool) => tool.name === REMINDER_TOOL && tool.ok))
+    failures.push(`the answered turn did not run ${REMINDER_TOOL}`);
+  if (report.audioBytes === 0) failures.push('no audio came back');
+  if (report.answerAudioBytes === 0) failures.push('the answer was not spoken');
+  if (report.closedReason !== 'hangup') failures.push(`closed ${report.closedReason ?? 'never'}`);
+  if (!report.reminderStopped) failures.push('the reminder was not stopped');
   return failures;
+}
+
+/** The reminder ids a stored conversation's `createAutomation` results name. */
+export function reminderIdsOf(
+  messages: ReadonlyArray<{ toolInvocations?: Array<{ toolName: string; result?: unknown }> }>,
+): string[] {
+  const ids: string[] = [];
+  for (const message of messages)
+    for (const invocation of message.toolInvocations ?? []) {
+      if (invocation.toolName !== REMINDER_TOOL) continue;
+      const automation = (invocation.result as { automation?: { id?: unknown } } | undefined)
+        ?.automation;
+      if (typeof automation?.id === 'string') ids.push(automation.id);
+    }
+  return ids;
+}
+
+export interface VoiceRunDependencies {
+  /** The API the call is made on (`http://127.0.0.1:3001` in the one-shot). */
+  readonly baseURL: string;
+  /** The QA bearer for the next request (`qaBearer`). */
+  readonly bearer: () => Promise<string>;
+  /** Real time by default; tests pass 0. */
+  readonly frameDelayMs?: number;
+  readonly quietAfterAnswerMs?: number;
+  readonly timeoutMs?: number;
+  readonly now?: () => number;
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-export interface VoiceRunDependencies {
-  readonly kaana: KaanaClient;
-  readonly account: string;
-  /** Real time by default; tests pass 0 to stream at once. */
-  readonly frameDelayMs?: number;
-  readonly answerWaitMs?: number;
-  readonly now?: () => number;
-}
+type ServerEvent = Record<string, unknown> & { type: string };
 
-/** Pick the call's model as a call does, speak, wait for the answer, close, report. */
+/** Call through the socket, speak, wait for the spoken answer, hang up, clean up, report. */
 export async function runVoiceCanary(
   options: VoiceCanaryOptions,
   pcm: Uint8Array,
@@ -120,134 +185,181 @@ export async function runVoiceCanary(
 ): Promise<VoiceCanaryReport> {
   const now = deps.now ?? Date.now;
   const frameDelayMs = deps.frameDelayMs ?? FRAME_MS;
-  const report: VoiceCanaryReport = {
-    model: '',
-    sessionId: null,
-    audioMs: Math.floor(pcm.byteLength / BYTES_PER_MS),
-    wallMs: 0,
-    counts: { responsesCreated: 0, responsesDone: 0, audioDeltas: 0, errors: 0 },
-    firstAudioMs: null,
-    units: [],
-    fatal: null,
-  };
+  const quietMs = deps.quietAfterAnswerMs ?? QUIET_AFTER_ANSWER_MS;
   const startedAt = now();
-  const models = await deps.kaana.models.list({ onBehalfOfUserId: deps.account });
-  const candidate = rankRealtimeCandidates(models, { voice: options.voice })[0];
-  if (!candidate) {
-    report.fatal = 'no_realtime_candidate';
-    return report;
-  }
-  report.model = candidate.model.modelId;
-  const session = await deps.kaana.realtime.connect(
-    {
-      model: candidate.model.modelId,
-      type: 'session.open',
-      kind: 'conversation',
-      transport: 'websocket',
-      config: {
-        instructions: 'This is an automated check. Answer in one short sentence.',
-        outputModalities: ['audio'],
-        voice: candidate.voiceId,
-        inputAudioFormat: 'pcm16_24khz',
-        outputAudioFormat: 'pcm16_24khz',
-        turnDetection: { type: 'server_vad', createResponse: true, interruptResponse: true },
-        inputAudioTranscription: { language: options.locale },
-      },
-      limits: sessionLimits(MAX_CALL_MS, 30_000),
-      clientSessionId: `voice_canary_${startedAt.toString(36)}`,
-      labels: { surface: 'alia-voice-canary' },
-    },
-    { onBehalfOfUserId: deps.account },
-  );
-  report.sessionId = session.sessionId;
-  let answered = null as (() => void) | null;
-  let spokenAt: number | null = null;
-  const reading = (async () => {
-    for await (const event of session as AsyncIterable<RealtimeServerEvent>) {
-      switch (event.type) {
-        case 'response.created':
-          report.counts.responsesCreated += 1;
-          break;
-        case 'output_audio.delta':
-          report.counts.audioDeltas += 1;
-          if (report.firstAudioMs === null && spokenAt !== null)
-            report.firstAudioMs = now() - spokenAt;
-          break;
-        case 'response.done':
-          report.counts.responsesDone += 1;
-          if (report.counts.audioDeltas > 0) answered?.();
-          break;
-        case 'error':
-          report.counts.errors += 1;
-          if (event.fatal) {
-            report.fatal = event.error.code;
-            answered?.();
-          }
-          break;
-        default:
-          break;
+  const deadline = startedAt + (deps.timeoutMs ?? CALL_TIMEOUT_MS);
+  const conversationId = randomUUID();
+  const events: ServerEvent[] = [];
+  const report: VoiceCanaryReport = {
+    callId: null,
+    model: null,
+    audioMs: Math.floor(pcm.byteLength / BYTES_PER_MS),
+    answeredTurns: 0,
+    tools: [],
+    audioBytes: 0,
+    answerAudioBytes: 0,
+    firstAnswerAudioMs: null,
+    closedReason: null,
+    errors: [],
+    reminderStopped: false,
+    conversationRemoved: false,
+    wallMs: 0,
+  };
+  let spokeAt: number | null = null;
+  let lastAudioAt = 0;
+  let closed = false;
+  const saved = () => events.some((event) => event.type === 'messages.saved');
+
+  const ws = new WebSocket(`${deps.baseURL.replace(/^http/, 'ws')}${VOICE_SESSION_PATH}`);
+  ws.binaryType = 'nodebuffer';
+  ws.on('message', (data, isBinary) => {
+    if (isBinary) {
+      const frame = decodeAssistantAudioFrame(new Uint8Array(data as Buffer));
+      if (!frame) return;
+      report.audioBytes += frame.pcm.byteLength;
+      lastAudioAt = now();
+      if (saved()) {
+        report.answerAudioBytes += frame.pcm.byteLength;
+        if (report.firstAnswerAudioMs === null && spokeAt !== null)
+          report.firstAnswerAudioMs = now() - spokeAt;
+      }
+      return;
+    }
+    const event = JSON.parse(data.toString()) as ServerEvent;
+    events.push(event);
+    if (event.type === 'session.accepted') report.callId = String(event.callId);
+    if (event.type === 'session.ready')
+      report.model = String((event.model as { id?: unknown } | undefined)?.id ?? '');
+    if (event.type === 'error') report.errors.push(String(event.code));
+    if (event.type === 'session.closed') report.closedReason = String(event.reason);
+  });
+  ws.on('close', () => {
+    closed = true;
+  });
+  const send = (event: Record<string, unknown>) => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(event));
+  };
+  const until = async (ready: () => boolean) => {
+    while (!ready() && !closed && now() < deadline) await sleep(20);
+    return ready();
+  };
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      ws.once('open', () => resolve());
+      ws.once('error', reject);
+    });
+    send({ type: 'auth', token: await deps.bearer() });
+    if (await until(() => events.some((event) => event.type === 'auth.ok'))) {
+      send({
+        type: 'session.start',
+        protocol: VOICE_PROTOCOL_VERSION,
+        conversationId,
+        voice: options.voice,
+        locale: options.locale,
+      });
+    }
+    if (await until(() => report.model !== null)) {
+      const frameBytes = FRAME_MS * BYTES_PER_MS;
+      const silence = new Uint8Array(frameBytes);
+      // The request in real time, then silence: the voice decides when the person finished.
+      for (let offset = 0; offset < pcm.byteLength && !closed; offset += frameBytes) {
+        ws.send(pcm.subarray(offset, Math.min(offset + frameBytes, pcm.byteLength)));
+        await sleep(frameDelayMs);
+      }
+      spokeAt = now();
+      while (!closed && now() < deadline) {
+        if (saved() && report.answerAudioBytes > 0 && now() - lastAudioAt >= quietMs) break;
+        ws.send(silence);
+        await sleep(Math.max(frameDelayMs, 1));
       }
     }
-  })();
-
-  const frameBytes = FRAME_MS * BYTES_PER_MS;
-  const silence = new Uint8Array(SILENCE_MS * BYTES_PER_MS);
-  const speech = new Uint8Array(pcm.byteLength + silence.byteLength);
-  speech.set(pcm, 0);
-  speech.set(silence, pcm.byteLength);
-  for (let offset = 0; offset < speech.byteLength && report.fatal === null; offset += frameBytes) {
-    session.appendAudio(speech.subarray(offset, Math.min(offset + frameBytes, speech.byteLength)));
-    if (offset >= pcm.byteLength) spokenAt ??= now();
-    if (frameDelayMs > 0) await sleep(frameDelayMs);
+    send({ type: 'session.end' });
+    await until(() => report.closedReason !== null);
+  } finally {
+    ws.close();
   }
-  spokenAt ??= now();
-  await new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, deps.answerWaitMs ?? ANSWER_WAIT_MS);
-    answered = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-    if (report.fatal !== null || (report.counts.responsesDone > 0 && report.counts.audioDeltas > 0))
-      answered();
-  });
-  const units = await session.close();
+
+  const answers = new Set(
+    events
+      .filter((event) => event.type === 'messages.saved')
+      .flatMap((event) => event.messageIds as string[]),
+  );
+  report.answeredTurns = events.filter((event) => event.type === 'messages.saved').length;
+  report.tools = events
+    .filter((event) => event.type === 'tool.finished' && answers.has(String(event.messageId)))
+    .map((event) => ({ name: String(event.name), ok: event.ok === true }));
+
+  // The cleanup, as the QA person through the app's own routes.
+  const authorized = async () => ({ authorization: `Bearer ${await deps.bearer()}` });
+  const stored = await fetch(`${deps.baseURL}/conversations/${conversationId}`, {
+    headers: await authorized(),
+  }).catch(() => null);
+  const body = stored?.ok
+    ? ((await stored.json().catch(() => null)) as {
+        messages?: Parameters<typeof reminderIdsOf>[0];
+      } | null)
+    : null;
+  const reminders = reminderIdsOf(body?.messages ?? []);
+  let stopped = reminders.length > 0;
+  for (const id of reminders) {
+    const response = await fetch(`${deps.baseURL}/automations/${id}`, {
+      method: 'DELETE',
+      headers: await authorized(),
+    }).catch(() => null);
+    stopped &&= response?.ok === true;
+  }
+  report.reminderStopped = stopped;
+  const removed = await fetch(`${deps.baseURL}/conversations/${conversationId}`, {
+    method: 'DELETE',
+    headers: await authorized(),
+  }).catch(() => null);
+  report.conversationRemoved = removed?.ok === true;
   report.wallMs = now() - startedAt;
-  await Promise.race([reading.catch(() => undefined), sleep(5_000)]);
-  report.units = units.map(({ unit, quantity }) => ({ unit, quantity }));
   return report;
 }
 
 export function voicePlan(options: VoiceCanaryOptions): string {
   return [
-    `call             kind conversation, server_vad creating the response, as lib/voice/call.ts opens it`,
-    `model            the cheapest catalogue line rankRealtimeCandidates gives a ${options.voice} voice`,
-    `audio            the first ${options.seconds} s of the LibriVox Gettysburg Address, then ${SILENCE_MS} ms of silence, PCM16 24 kHz mono in real time`,
-    `identity         Gemies' Oxy workload transport, attributed to ALIA_CANARY_OXY_USER_ID`,
-    `asserts          a session, response.created, output_audio.delta, response.done, no fatal error, billed units`,
+    `call             GET ${VOICE_SESSION_PATH} on the live image's own API, protocol ${VOICE_PROTOCOL_VERSION}, ${options.voice} voice, ${options.locale}`,
+    `line             the catalogue's default live line, as every call opens it (ADR 0041)`,
+    `audio            a recorded request for a reminder (${FIXTURE.split('/').pop()}), then silence, PCM16 24 kHz mono in real time`,
+    `identity         the QA session the workflow signed in for this run, through the socket's own auth`,
+    `asserts          ready, one answered turn that ran ${REMINDER_TOOL}, its answer spoken, closed hangup, the reminder stopped`,
   ].join('\n');
 }
 
 async function main(): Promise<void> {
   const options = parseVoiceArgs(process.argv.slice(2));
   if (options.dryRun) {
-    process.stdout.write(`${voicePlan(options)}\n(dry run: nothing fetched, nothing opened)\n`);
+    process.stdout.write(`${voicePlan(options)}\n(dry run: nothing opened)\n`);
     return;
   }
-  const account = canaryAccount(process.env);
-  const { getKaanaClient } = await import('../lib/kaana/transport.js');
-  const kaana = getKaanaClient(account);
-  if (!kaana)
-    throw new Error('Gemies has no Kaana transport (Oxy service identity is not configured)');
+  const qa = canaryIdentity(process.env);
+  const bearer = qaBearer(qa, mintQaToken);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1_000);
+  const api = spawn(process.execPath, ['packages/api/dist/index.js'], {
+    env: apiEnvironment(process.env),
+    stdio: ['ignore', 'inherit', 'inherit'],
+  });
   try {
-    const pcm = await loadRecording({ seconds: options.seconds, container: 's16le' });
-    const report = await runVoiceCanary(options, pcm, { kaana, account });
+    await waitUntilReady(controller.signal);
+    const pcm = new Uint8Array(await readFile(FIXTURE));
+    const report = await runVoiceCanary(options, pcm, { baseURL: API_BASE_URL, bearer });
     const failures = judgeVoice(report);
     process.stdout.write(
-      `${RESULT_MARKER} ${JSON.stringify({ schemaVersion: 1, passed: failures.length === 0, failures, ...report })}\n`,
+      `${RESULT_MARKER} ${JSON.stringify({ schemaVersion: 2, passed: failures.length === 0, failures, ...report })}\n`,
     );
     if (failures.length > 0) process.exitCode = 1;
   } finally {
-    kaana.dispose?.();
+    clearTimeout(timeout);
+    api.kill('SIGTERM');
+    await Promise.race([
+      new Promise<void>((resolve) => api.once('exit', () => resolve())),
+      sleep(10_000),
+    ]);
+    if (api.exitCode === null) api.kill('SIGKILL');
   }
 }
 

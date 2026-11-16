@@ -1,54 +1,9 @@
 /**
- * The state shapes of one voice call: the exchange ledger (what the person
- * said, what Alia answered), the per-response and per-tool-call bookkeeping,
- * the upstream session and the call's lifecycle states. Types only; the
+ * The state shapes of one voice call: the upstream session, the turns the
+ * voice handed over and the call's lifecycle states. Types only; the
  * transitions are `VoiceCall`'s (`call.ts`).
  */
 import type { RealtimeSession } from '@kaana.ai/sdk';
-import type { ToolInvocation } from '../../domain/conversation.js';
-
-/**
- * What the person said in one input item: its one `transcript.done`, the final
- * transcript (Kaana contract set 6.0.0, whatever the provider sends).
- */
-export interface UserEntry {
-  kind: 'user';
-  /** Stored under this id, and named by every transcript event of the item. */
-  messageId: string;
-  itemId: string;
-  text: string | null;
-  /** Refreshed by every event of the item: stored as it is once this passes. */
-  deadline: number;
-}
-
-export interface TurnEntry {
-  kind: 'assistant';
-  /** Stored under this id, and named by every transcript event of the turn. */
-  messageId: string;
-  /** Output transcripts by audio item, in the order the items began. */
-  texts: Map<string, string>;
-  toolInvocations: ToolInvocation[];
-  audioItems: Set<string>;
-  interruptedAfterMs?: number;
-  done: boolean;
-  /** Set when the turn was cancelled while it spoke: wait this long for the played ms. */
-  interruptDeadline?: number;
-}
-
-export type LedgerEntry = UserEntry | TurnEntry;
-
-export interface ResponseState {
-  readonly turn: TurnEntry;
-  toolCalls: number;
-  readonly pending: Promise<void>[];
-  audioItem: string | null;
-}
-
-export interface ToolCallState {
-  name: string;
-  args: string;
-  responseId: string;
-}
 
 export interface UpstreamState {
   readonly session: RealtimeSession;
@@ -56,6 +11,34 @@ export interface UpstreamState {
   createdAt: number | null;
   /** When it ended; the minutes between are what the session costs. */
   endedAt: number | null;
+}
+
+/** How a delegated turn ended. */
+export type DelegationOutcome = 'answered' | 'superseded' | 'failed' | 'dropped';
+
+/** One `delegation.requested`, answered by one chat turn (ADR 0041 §2). */
+export interface DelegationState {
+  readonly delegationId: string;
+  /** The chat turn's control id: what the app's Stop names too. */
+  readonly turnId: string;
+  /** The person's words are stored under this id, and every user transcript of them names it. */
+  readonly userMessageId: string;
+  /** The answer is stored under this id, and every answer transcript and tool event names it. */
+  readonly assistantMessageId: string;
+  readonly controller: AbortController;
+  /** The person moved on: nothing more is sent for it. */
+  superseded: boolean;
+  /** The last voice audio item heard while it was the current turn. */
+  lastAudioItem: string | null;
+}
+
+/**
+ * Words of a turn that was superseded before the chat route stored it: they
+ * open the next turn, unless the stored conversation shows they made it.
+ */
+export interface CarriedWords {
+  readonly messageId: string;
+  readonly text: string;
 }
 
 export type CallState = 'idle' | 'opening' | 'live' | 'reconnecting' | 'closing' | 'closed';

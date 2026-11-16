@@ -460,7 +460,7 @@ describe('the conversation', () => {
 });
 
 describe('barge-in', () => {
-  it('flushes playback and tells Alia how much of the answer was heard', async () => {
+  it('flushes playback and drops the rest of the interrupted answer', async () => {
     const call = newCall();
     await live(call);
     socket().receiveAudio('a1', new Uint8Array(4800));
@@ -471,11 +471,6 @@ describe('barge-in', () => {
     expect(kind(call)).toBe('user-speaking');
     expect(engine.flushes).toBe(1);
     await settle();
-    expect(socket().events().at(-1)).toEqual({
-      type: 'playback.interrupted',
-      itemId: 'a1',
-      playedMs: 740,
-    });
 
     // Frames of the interrupted answer still in flight are not played.
     socket().receiveAudio('a1', new Uint8Array(4800));
@@ -483,18 +478,6 @@ describe('barge-in', () => {
     // The next answer is.
     socket().receiveAudio('a2', new Uint8Array(4800));
     expect(engine.enqueued.map((e) => e.itemId)).toEqual(['a1', 'a2']);
-  });
-
-  it('reports nothing when nothing was playing', async () => {
-    const call = newCall();
-    await live(call);
-    socket().receive({ type: 'user.speech_started', itemId: 'u1', seq: 3 });
-    await settle();
-    expect(
-      socket()
-        .events()
-        .some((e) => e.type === 'playback.interrupted'),
-    ).toBe(false);
   });
 });
 
@@ -688,6 +671,22 @@ describe('the token', () => {
         .events()
         .filter((e) => e.type === 'session.start'),
     ).toHaveLength(1);
+    call.hangUp();
+  });
+
+  it("re-sends the app's assertion with every refresh, which lives only five minutes", async () => {
+    vi.useFakeTimers();
+    let assertion = 'clarity-assertion-1';
+    const call = newCall({ tokenRefreshMs: 1_000, getAppAssertion: async () => assertion });
+    await live(call);
+    assertion = 'clarity-assertion-2';
+    await vi.advanceTimersByTimeAsync(1_000);
+    // The same token, a fresh assertion: the call's turns stay in the app.
+    expect(socket().events().at(-1)).toEqual({
+      type: 'auth',
+      token: 'oxy-session',
+      appAssertion: 'clarity-assertion-2',
+    });
     call.hangUp();
   });
 });

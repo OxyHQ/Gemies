@@ -94,10 +94,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     new URL('../.github/workflows/production-chat-canary.yml', import.meta.url),
     'utf8',
   );
-  const runner = readFileSync(
-    new URL('../packages/api/src/scripts/production-chat-canary.ts', import.meta.url),
-    'utf8',
-  );
+  // The runner and the QA person it is (`canary-qa-person.ts`), read as one.
+  const runner = ['production-chat-canary.ts', 'canary-qa-person.ts']
+    .map((file) =>
+      readFileSync(new URL(`../packages/api/src/scripts/${file}`, import.meta.url), 'utf8'),
+    )
+    .join('\n');
   const build = readFileSync(new URL('../packages/api/build.ts', import.meta.url), 'utf8');
   const failures = checkProductionChatCanary({ workflow, runner, build });
   if (failures.length) {

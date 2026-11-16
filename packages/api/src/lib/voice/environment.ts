@@ -8,11 +8,11 @@ import { getDb } from '../../db/index.js';
 import { listGroupMembers } from '../../db/chat/conversationMemberRepository.js';
 import { insertChatAnalytics } from '../../db/usage/chatAnalyticsRepository.js';
 import { prefetchTurnInputs } from '../chat/turn-inputs.js';
-import { appendConversationMessages, generateConversationTitle } from '../conversation-saver.js';
 import { getKaanaClient } from '../kaana/transport.js';
 import type { VoiceCallEnvironment } from './call.js';
 import { finishCall, startCall } from './call-registry.js';
-import { buildVoiceTurn, loadConversationHistory } from './turn.js';
+import { chatRouteTurnRunner } from './delegated-turn.js';
+import { loadConversationHistory } from './persona.js';
 
 export function createVoiceEnvironment(accountId: string): VoiceCallEnvironment {
   return {
@@ -23,11 +23,7 @@ export function createVoiceEnvironment(accountId: string): VoiceCallEnvironment 
     loadHistory: loadConversationHistory,
     groupMembers: (oxyUserId, conversationId) =>
       listGroupMembers(getDb(), oxyUserId, conversationId),
-    buildTurn: buildVoiceTurn,
-    persist: appendConversationMessages,
-    titleConversation: (oxyUserId, conversationId, firstUserText) => {
-      void generateConversationTitle(oxyUserId, conversationId, firstUserText);
-    },
+    turns: chatRouteTurnRunner(),
     recordAnalytics: (record) =>
       insertChatAnalytics(getDb(), {
         oxyUserId: record.oxyUserId,

@@ -2,15 +2,14 @@
  * One voice call over Alia's `/v1/voice/session` socket (ADR 0017 §3–§4),
  * without React: the hook (`useVoiceRoom`) owns one and renders its snapshots.
  *
- * Alia holds the realtime session with Kaana; turn detection and barge-in are
- * the model's, on the server. The device only:
+ * Gemies holds the `live` session with Kaana and answers each turn the voice
+ * hands over through the chat route (ADR 0041); turn detection and barge-in
+ * are the voice's, on the server. The device only:
  *
  * - captures the microphone and sends it as PCM16 frames (nothing while muted);
  * - plays the answer's PCM16 frames from a jitter-buffered queue;
  * - when the server says the person started speaking, drops what it has not
- *   played and tells Alia how much of the answer was HEARD
- *   (`playback.interrupted`), so the model remembers what was said, not what it
- *   generated;
+ *   played of the answer;
  * - shows a state it can prove (`VoiceCallState`). "Listening" needs the
  *   session ready upstream, a first captured buffer and Alia's acknowledgement
  *   of the first appended audio; "speaking" needs the first answer frame
@@ -81,8 +80,10 @@ export interface VoiceCallOptions {
     options?: { signal?: AbortSignal },
   ) => string | null | Promise<string | null>;
   /**
-   * The host's Oxy app assertion, sent with the first `auth` of each socket so
-   * an agent Oxy confines to an app opens only there (ADR 0021). Absent: none.
+   * The host's Oxy app assertion, sent with every `auth` (the first of each
+   * socket and each token refresh, before the assertion's five minutes run
+   * out), so an agent Oxy confines to an app opens there and the call's turns
+   * stay in it (ADR 0021). Absent: none.
    */
   readonly getAppAssertion?: () => Promise<string | null>;
   readonly conversationId: string;
@@ -333,6 +334,8 @@ export class VoiceCall {
     const socket = this.socket;
     this.refreshingToken = true;
     try {
+      // The assertion lives five minutes; the turns of a longer call need a fresh one.
+      const assertion = await this.options.getAppAssertion?.().catch(() => null);
       const token = await this.readToken();
       if (
         !token ||
@@ -342,9 +345,9 @@ export class VoiceCall {
         socket.readyState !== OPEN
       )
         return;
-      if (token === this.lastToken) return;
+      if (token === this.lastToken && !assertion) return;
       this.lastToken = token;
-      this.send({ type: 'auth', token });
+      this.send({ type: 'auth', token, ...(assertion ? { appAssertion: assertion } : {}) });
     } finally {
       this.refreshingToken = false;
     }
@@ -417,8 +420,6 @@ export class VoiceCall {
       case 'transcript.done':
         this.upsertMessage(event, () => event.text, false);
         return;
-      case 'assistant.audio_done':
-        return;
       case 'assistant.done':
         this.settleStreaming(event.itemId);
         if (this.toolRan) {
@@ -468,7 +469,7 @@ export class VoiceCall {
     this.engine?.enqueue(decoded.itemId, decoded.pcm.slice());
   }
 
-  /** The person spoke: stop the answer now and report what of it was heard. */
+  /** The person spoke: stop the answer now, and play none of what is still arriving for it. */
   private bargeIn(): void {
     const received = this.lastReceivedItem;
     if (received !== null) this.interrupted.add(received);
@@ -476,9 +477,7 @@ export class VoiceCall {
     if (engine === null) return;
     this.playingItem = null;
     void engine.flush().then((heard) => {
-      if (heard === null || this.finished) return;
-      this.interrupted.add(heard.itemId);
-      this.send({ type: 'playback.interrupted', itemId: heard.itemId, playedMs: heard.playedMs });
+      if (heard !== null) this.interrupted.add(heard.itemId);
     });
   }
 
