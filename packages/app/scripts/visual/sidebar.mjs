@@ -182,6 +182,21 @@ try {
       assert.equal(await disclosure.getAttribute('aria-expanded'), expanded);
       assert.deepEqual(await navigation(), ['navigate:fixture-1']);
     }
+    const groupRow = page.locator('[data-testid="sidebar-tree-item-group"]:visible').last();
+    if (touch) {
+      await groupRow.click({ trial: true });
+      const rect = await groupRow.boundingBox();
+      const cdp = await context.newCDPSession(page);
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: rect.x + 100, y: rect.y + rect.height / 2 }],
+      });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await cdp.detach();
+    } else await groupRow.click({ position: { x: 100, y: 25 } });
+    assert.deepEqual(await navigation(), ['navigate:fixture-1', 'navigate:group']);
+    if (touch)
+      await page.getByRole('button', { name: 'Open navigation', exact: true }).last().click();
     await page.waitForTimeout(600);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
@@ -204,6 +219,7 @@ try {
         'row navigation once',
         'folder disclosure and grouped avatars',
         'folder/project context commands, selection and disclosure remain independent',
+        'following touch opens the group exactly once',
         'no horizontal overflow',
         'no page errors',
       ],
