@@ -1,5 +1,15 @@
 # @gemies/sdk
 
+## 9.1.0
+
+Conversation lists, search results and file/source rows now use Bloom's shared ListItem. Group
+conversation avatars use AvatarGroup's conversation layout, and header actions use Button.Group
+with the same Button component as standalone actions. Existing SDK exports, callbacks and
+conversation behavior remain unchanged.
+
+Requires Bloom 22 or later and Services 14.22 or later; earlier Services versions import Bloom
+components removed in version 22.
+
 ## 9.0.0
 
 Gemies acts for the person with Oxy's first-party authority (oxy ADR 0066): what the Oxy registry

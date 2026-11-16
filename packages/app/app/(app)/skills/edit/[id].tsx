@@ -1,3 +1,4 @@
+import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
 import {
   useCreateSkillVersion,
   useDeleteSkill,
@@ -6,12 +7,12 @@ import {
 } from '@/features/skills/runtime/use-skills';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { Button } from '@oxy.so/bloom/button';
-import { ButtonGroup, ButtonGroupItem } from '@oxy.so/bloom/button-group';
+
 import { Field } from '@oxy.so/bloom/field';
 import { RiDeleteBinLine } from '@oxy.so/bloom/icons/RiDeleteBinLine';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { DetailSkeleton } from '@/shared/ui/skeletons';
-import { SettingsListGroup, SettingsListItem } from '@oxy.so/bloom/settings-list';
+
 import { ResponsiveGrid } from '@oxy.so/bloom/grid';
 import { Switch } from '@oxy.so/bloom/switch';
 import { TextFieldInput } from '@oxy.so/bloom/text-field';
@@ -168,11 +169,11 @@ export default function EditSkillScreen() {
           headerBackVisible: true,
           headerRight: () => (
             <>
-              <ButtonGroup accessibilityLabel={t('skills.save')}>
-                <ButtonGroupItem disabled={patch.isPending} onPress={savePresentation}>
+              <Button.Group accessibilityLabel={t('skills.save')}>
+                <Button disabled={patch.isPending} onPress={savePresentation}>
                   {t('skills.save')}
-                </ButtonGroupItem>
-              </ButtonGroup>
+                </Button>
+              </Button.Group>
               <Button
                 size="md"
                 tone="action"
@@ -264,8 +265,8 @@ export default function EditSkillScreen() {
             />
           </Field>
 
-          <SettingsListGroup>
-            <SettingsListItem
+          <GroupedSection>
+            <GroupedSectionItem
               title={t('skills.publish')}
               description={t('skills.publishHint')}
               rightElement={
@@ -276,10 +277,10 @@ export default function EditSkillScreen() {
                 />
               }
             />
-          </SettingsListGroup>
+          </GroupedSection>
 
-          <SettingsListGroup>
-            <SettingsListItem
+          <GroupedSection>
+            <GroupedSectionItem
               icon={<RiDeleteBinLine width={18} height={18} fill={colors.error} />}
               title={confirmingDelete ? t('skills.deleteSkillConfirm') : t('skills.deleteSkill')}
               destructive
@@ -287,7 +288,7 @@ export default function EditSkillScreen() {
               disabled={remove.isPending}
               onPress={() => (confirmingDelete ? void handleDelete() : setConfirmingDelete(true))}
             />
-          </SettingsListGroup>
+          </GroupedSection>
         </ResponsiveGrid>
       </ScrollView>
     </>

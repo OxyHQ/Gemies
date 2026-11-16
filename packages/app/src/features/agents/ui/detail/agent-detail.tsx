@@ -1,3 +1,4 @@
+import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
 import { AgentDetailSection, ChipList } from '@/features/agents/ui/detail/agent-detail-section';
 import { AgentHeaderActions } from '@/features/agents/ui/detail/agent-header-actions';
 import { AgentIdentitySummary } from '@/features/agents/ui/detail/agent-identity-summary';
@@ -12,7 +13,7 @@ import { useAgentThreads } from '@/features/agents/runtime/use-agent-threads';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import type { Agent } from '@/shared/contracts/agents';
 import { ResponsiveGrid } from '@oxy.so/bloom/grid';
-import { SettingsListGroup, SettingsListItem } from '@oxy.so/bloom/settings-list';
+
 import { Switch } from '@oxy.so/bloom/switch';
 import { Text } from '@oxy.so/bloom/typography';
 import { useOxy } from '@oxy.so/services/ui/client';
@@ -60,8 +61,8 @@ export function AgentDetail({ agent }: { agent: Agent }) {
   const sections: ReactNode[] = [
     ...(isOwner
       ? [
-          <SettingsListGroup key="owner">
-            <SettingsListItem
+          <GroupedSection key="owner">
+            <GroupedSectionItem
               title={
                 agent.status === 'active' ? t('agents.statusActive') : t('agents.statusPaused')
               }
@@ -78,7 +79,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
                 />
               }
             />
-          </SettingsListGroup>,
+          </GroupedSection>,
         ]
       : []),
     // Only when there are threads: a cell that draws nothing would still take its gap in the column.

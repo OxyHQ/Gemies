@@ -39,9 +39,10 @@ const { hosts, slotted } = vi.hoisted(() => ({
 }));
 
 vi.mock('react-native', async () => hosts('View', 'Text', 'ScrollView'));
-vi.mock('@oxy.so/bloom/button-group', async () => hosts('ButtonGroup', 'ButtonGroupItem'));
 vi.mock('@oxy.so/bloom/icons/RiShare2Line', async () => hosts('RiShare2Line'));
-vi.mock('@oxy.so/bloom/button', async () => hosts('Button'));
+vi.mock('@oxy.so/bloom/button', async () =>
+  (await import('@/shared/testing/bloom-button-stub')).buttonModule(),
+);
 vi.mock('@oxy.so/bloom/checkbox', async () => hosts('Checkbox'));
 vi.mock('@oxy.so/bloom/field', async () => hosts('Field'));
 vi.mock('@oxy.so/bloom/select', async () =>
@@ -74,9 +75,9 @@ vi.mock('@oxy.so/bloom/label', async () => hosts('Label'));
 vi.mock('@oxy.so/bloom/segmented-control', async () =>
   hosts('SegmentedControl', 'SegmentedControlItem', 'SegmentedControlItemText'),
 );
-vi.mock('@oxy.so/bloom/settings-list', async () => ({
-  ...(await hosts('SettingsListGroup')),
-  SettingsListItem: await slotted('SettingsListItem', ['title', 'rightElement']),
+vi.mock('@oxy.so/bloom/grouped-section', async () => ({
+  ...(await hosts('GroupedSection')),
+  GroupedSectionItem: await slotted('GroupedSectionItem', ['title', 'rightElement']),
 }));
 vi.mock('@oxy.so/bloom/switch', async () => hosts('Switch'));
 vi.mock('@oxy.so/bloom/textarea', async () => hosts('Textarea'));
@@ -123,7 +124,7 @@ describe('the agent header', () => {
 
   it('offers only what it can do, each wired to a handler', () => {
     const root = render(<AgentHeaderActions {...props} />);
-    const items = all(root, 'ButtonGroupItem');
+    const items = all(root, 'Button');
     expect(items.map((item) => item.props.accessibilityLabel ?? texts(item).join(''))).toEqual([
       'Edit',
       'Chat',
@@ -134,7 +135,7 @@ describe('the agent header', () => {
 
   it('offers no Chat on a private agent this person cannot talk to', () => {
     const root = render(<AgentHeaderActions {...props} isOwner={false} canChat={false} />);
-    const labels = all(root, 'ButtonGroupItem').map(
+    const labels = all(root, 'Button').map(
       (item) => item.props.accessibilityLabel ?? texts(item).join(''),
     );
     expect(labels).toEqual(['Share']);

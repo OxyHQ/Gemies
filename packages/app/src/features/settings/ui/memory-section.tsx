@@ -1,9 +1,10 @@
+import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
 import { useUserData } from '@/features/memory/runtime/use-user-data';
 import { useUserDataStore } from '@/features/memory/runtime/user-data-store';
 import apiClient from '@/shared/api/client';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { Button } from '@oxy.so/bloom/button';
-import { SettingsCard, SettingsRow } from '@oxy.so/bloom/settings-modal';
+
 import { Switch } from '@oxy.so/bloom/switch';
 import { toast } from '@oxy.so/bloom/toast';
 import { useAuth, useOxy } from '@oxy.so/services/ui/client';
@@ -52,24 +53,39 @@ export function MemorySection() {
 
   return (
     <View className="w-full gap-6">
-      <SettingsCard>
-        <SettingsRow label={t(`${K}.niloTitle`)} description={t(`${K}.niloDescription`)}>
-          <Button size="sm" appearance="outline" tone="neutral" onPress={openNilo}>
-            {t(`${K}.openNilo`)}
-          </Button>
-        </SettingsRow>
-        <SettingsRow
-          label={t('memory.recallToggleLabel')}
+      <GroupedSection>
+        <GroupedSectionItem
+          titleNumberOfLines={0}
+          descriptionLines={0}
+          wrapControl
+          title={t(`${K}.niloTitle`)}
+          description={t(`${K}.niloDescription`)}
+          rightElement={
+            <>
+              <Button size="sm" appearance="outline" tone="neutral" onPress={openNilo}>
+                {t(`${K}.openNilo`)}
+              </Button>
+            </>
+          }
+        />
+        <GroupedSectionItem
+          titleNumberOfLines={0}
+          descriptionLines={0}
+          wrapControl
+          title={t('memory.recallToggleLabel')}
           description={t('memory.recallToggleDescription')}
-        >
-          <Switch
-            accessibilityLabel={t('memory.recallToggleLabel')}
-            checked={memory?.settings?.recallEnabled ?? true}
-            onCheckedChange={handleToggleRecall}
-            disabled={updating}
-          />
-        </SettingsRow>
-      </SettingsCard>
+          rightElement={
+            <>
+              <Switch
+                accessibilityLabel={t('memory.recallToggleLabel')}
+                checked={memory?.settings?.recallEnabled ?? true}
+                onCheckedChange={handleToggleRecall}
+                disabled={updating}
+              />
+            </>
+          }
+        />
+      </GroupedSection>
     </View>
   );
 }

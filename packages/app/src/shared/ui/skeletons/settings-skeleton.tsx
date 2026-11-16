@@ -1,4 +1,5 @@
-import { SettingsCard } from '@oxy.so/bloom/settings-modal';
+import { GroupedSection } from '@oxy.so/bloom/grouped-section';
+
 import * as Skeleton from '@oxy.so/bloom/skeleton';
 import { View } from 'react-native';
 
@@ -50,8 +51,8 @@ export function SettingsSkeletonRows({
 /** A whole settings card of {@link SettingsSkeletonRows}. */
 export function SettingsRowsSkeleton(props: { rows?: number; control?: SettingsControlShape }) {
   return (
-    <SettingsCard>
+    <GroupedSection>
       <SettingsSkeletonRows {...props} />
-    </SettingsCard>
+    </GroupedSection>
   );
 }

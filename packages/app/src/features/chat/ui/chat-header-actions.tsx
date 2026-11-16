@@ -1,8 +1,9 @@
+import { Button } from '@oxy.so/bloom/button';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { useUIStore } from '@/features/chat/runtime/ui-store';
 import { workspacePanelKind } from '@/features/chat/model/workspace-panel-kind';
 import { AgentAvatar, type AvatarCharacter } from '@oxy.so/bloom/agent-avatar';
-import { ButtonGroup, ButtonGroupItem } from '@oxy.so/bloom/button-group';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -128,9 +129,9 @@ export const ChatHeaderActions = React.memo(function ChatHeaderActions({
       setRightPanel(workspacePanelKind(null, canvasArtifacts) === 'gallery' ? 'gallery' : 'canvas');
   };
   return (
-    <ButtonGroup accessibilityLabel={t('chatHeader.chatActions')}>
+    <Button.Group accessibilityLabel={t('chatHeader.chatActions')}>
       {onShare === undefined ? null : (
-        <ButtonGroupItem
+        <Button
           iconOnly
           leadingIcon={RiShare2Line}
           accessibilityLabel={t('chatHeader.share')}
@@ -139,7 +140,7 @@ export const ChatHeaderActions = React.memo(function ChatHeaderActions({
       )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild label={t('chatHeader.moreOptions')}>
-          <ButtonGroupItem
+          <Button
             iconOnly
             leadingIcon={RiMoreFill}
             accessibilityLabel={t('chatHeader.moreOptions')}
@@ -220,6 +221,6 @@ export const ChatHeaderActions = React.memo(function ChatHeaderActions({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
-    </ButtonGroup>
+    </Button.Group>
   );
 });

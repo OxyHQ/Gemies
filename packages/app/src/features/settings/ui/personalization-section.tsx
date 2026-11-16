@@ -1,13 +1,9 @@
+import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
 import { generateAPIUrl } from '@/shared/api/generate-api-url';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { useUserData } from '@/features/memory/runtime/use-user-data';
 import { useUserDataStore } from '@/features/memory/runtime/user-data-store';
-import {
-  SettingsCard,
-  SettingsPageActions,
-  SettingsRow,
-  type SettingsRowData,
-} from '@oxy.so/bloom/settings-modal';
+import { SettingsPageActions, type SettingsRowData } from '@oxy.so/bloom/settings-modal';
 import { SettingsSelect } from '@oxy.so/bloom/settings-modal/rows';
 import { toast } from '@oxy.so/bloom/toast';
 import { useOxy } from '@oxy.so/services/ui/client';
@@ -192,13 +188,19 @@ export function PersonalizationSection() {
   return (
     <View className="w-full gap-6">
       <SettingsPageActions label={t('settings.title')} actions={pageActions} />
-      <SettingsCard>
+      <GroupedSection>
         {rows.map((row) => (
-          <SettingsRow key={row.key} label={row.label} description={row.description}>
-            {row.control}
-          </SettingsRow>
+          <GroupedSectionItem
+            titleNumberOfLines={0}
+            descriptionLines={0}
+            wrapControl
+            key={row.key}
+            title={row.label}
+            description={row.description}
+            rightElement={<>{row.control}</>}
+          />
         ))}
-      </SettingsCard>
+      </GroupedSection>
     </View>
   );
 }

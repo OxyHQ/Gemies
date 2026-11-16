@@ -10,7 +10,7 @@ import { SettingsSkeletonRows } from '@/shared/ui/skeletons';
 import { Admonition } from '@oxy.so/bloom/admonition';
 import { AgentCreatorField, AgentCreatorSection } from '@oxy.so/bloom/agent-creator';
 import { Button } from '@oxy.so/bloom/button';
-import { ButtonGroup, ButtonGroupItem } from '@oxy.so/bloom/button-group';
+
 import { RiDeleteBinLine } from '@oxy.so/bloom/icons/RiDeleteBinLine';
 import { confirm } from '@oxy.so/bloom/surfaces';
 import { Textarea } from '@oxy.so/bloom/textarea';
@@ -109,22 +109,22 @@ function MemoryFileRow({
             </Admonition>
           ) : null}
           <View className="flex-row justify-end">
-            <ButtonGroup size="sm" accessibilityLabel={path}>
-              <ButtonGroupItem onPress={handleSave} disabled={!dirty || save.isPending}>
+            <Button.Group size="sm" accessibilityLabel={path}>
+              <Button onPress={handleSave} disabled={!dirty || save.isPending}>
                 {conflict ? t(`${K}.saveMineOverIt`) : t('settings.saveButton')}
-              </ButtonGroupItem>
+              </Button>
               {conflict ? (
-                <ButtonGroupItem onPress={() => setEdit(null)} disabled={save.isPending}>
+                <Button onPress={() => setEdit(null)} disabled={save.isPending}>
                   {t(`${K}.discardMine`)}
-                </ButtonGroupItem>
+                </Button>
               ) : null}
-              <ButtonGroupItem
+              <Button
                 iconOnly
                 leadingIcon={RiDeleteBinLine}
                 accessibilityLabel={`${t(`${K}.forget`)} ${path}`}
                 onPress={() => onForget(path)}
               />
-            </ButtonGroup>
+            </Button.Group>
           </View>
         </View>
       )}

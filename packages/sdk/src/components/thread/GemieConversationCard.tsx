@@ -1,10 +1,11 @@
-import { AgentStack } from '@oxy.so/bloom/agent-reply';
+import { AvatarGroup } from '@oxy.so/bloom/avatar-group';
 import { AiChatMessageLine } from '@oxy.so/bloom/ai-chat';
 import { Card } from '@oxy.so/bloom/card';
 import { TypingDots } from '@oxy.so/bloom/chat-indicators';
 import { RiArrowRightSLine } from '@oxy.so/bloom/icons/RiArrowRightSLine';
-import { Item } from '@oxy.so/bloom/item';
+import { ListItem } from '@oxy.so/bloom/list';
 import { useRef, useState } from 'react';
+import { View } from 'react-native';
 import { useOpenGemieConversation } from '../../lib/gemie-conversation-opener';
 import { useLabels } from '../../lib/labels';
 import { agentCharacterOf } from '../../lib/participants';
@@ -90,26 +91,31 @@ export function GemieConversationCard({
   return (
     <AiChatMessageLine block>
       <Card>
-        <Item
+        <ListItem
           leading={
-            <AgentStack
-              size={STACK_SIZE}
-              agents={[from, to].map((agent) => ({
-                id: agent.id,
-                name: agent.name,
-                avatar: agentCharacterOf(agent),
-              }))}
-            />
+            <View pointerEvents="none">
+              <AvatarGroup
+                layout="conversation"
+                motion="always"
+                size={STACK_SIZE}
+                items={[from, to].map((agent) => ({
+                  id: agent.id,
+                  name: agent.name,
+                  kind: 'bot' as const,
+                  character: agentCharacterOf(agent),
+                }))}
+              />
+            </View>
           }
           title={title}
-          subtitle={subtitle}
+          supporting={subtitle}
           // The last thing said is a glimpse; the whole of it is one press away.
-          subtitleNumberOfLines={1}
+          supportingLines={1}
           trailing={talking ? <TypingDots /> : pressable ? <RiArrowRightSLine size="sm" /> : null}
           {...(pressable
             ? {
-                accessibilityRole: 'button' as const,
-                accessibilityLabel: `${title}. ${t('chat.gemiesOpen')}`,
+                role: 'button' as const,
+                label: `${title}. ${t('chat.gemiesOpen')}`,
                 onPress: () => open(conversationId),
               }
             : {})}

@@ -1,6 +1,6 @@
+import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
 import type { AgentThreadSummary as AgentThread } from '@/features/agents/runtime/use-agent-threads';
 import { useTranslation } from '@/shared/i18n/use-translation';
-import { SettingsListGroup, SettingsListItem } from '@oxy.so/bloom/settings-list';
 
 function formatRelativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -26,9 +26,9 @@ export function AgentThreadsList({
   if (threads.length === 0) return null;
 
   return (
-    <SettingsListGroup title={t('agents.threads')}>
+    <GroupedSection title={t('agents.threads')}>
       {threads.slice(0, 8).map((thread) => (
-        <SettingsListItem
+        <GroupedSectionItem
           key={thread.id}
           title={thread.title}
           titleNumberOfLines={1}
@@ -37,6 +37,6 @@ export function AgentThreadsList({
           onPress={() => onOpen(thread)}
         />
       ))}
-    </SettingsListGroup>
+    </GroupedSection>
   );
 }

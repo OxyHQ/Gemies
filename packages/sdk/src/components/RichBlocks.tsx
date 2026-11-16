@@ -9,7 +9,7 @@ import {
 } from '@oxy.so/bloom/admonition';
 import { Card, CardBody, CardHeader, CardTitle } from '@oxy.so/bloom/card';
 import { RiExternalLinkLine } from '@oxy.so/bloom/icons/RiExternalLinkLine';
-import { Item } from '@oxy.so/bloom/item';
+import { ListItem } from '@oxy.so/bloom/list';
 import { Rating } from '@oxy.so/bloom/rating';
 import { Muted, Text } from '@oxy.so/bloom/typography';
 import { Image } from './Image';
@@ -17,7 +17,7 @@ import { Linking, View } from 'react-native';
 
 /**
  * The rich blocks a reply can carry (```compactlist, ```banner, …), drawn with
- * Bloom: a card per block, `Item` rows, `Admonition` for a banner and `Rating`
+ * Bloom: a card per block, `ListItem` rows, `Admonition` for a banner and `Rating`
  * for a source's credibility. `ReplyMarkdown.tsx` parses the fences.
  */
 
@@ -37,11 +37,11 @@ export function CompactList({ title, items }: { title: string; items: CompactLis
       <CardBody>
         <View role="list">
           {items.map((item, index) => (
-            <Item
+            <ListItem
               key={index}
               role="listitem"
               title={item.title}
-              subtitle={item.meta}
+              supporting={item.meta}
               leading={
                 item.image ? (
                   <Image
@@ -151,12 +151,13 @@ export function Timeline({ title, items }: { title: string; items: TimelineItem[
       <CardBody>
         <View role="list">
           {items.map((item, index) => (
-            <Item
+            <ListItem
               key={index}
               role="listitem"
               leading={<Muted>{item.date}</Muted>}
               title={item.title}
-              subtitle={item.description}
+              supporting={item.description}
+              supportingLines="adaptive"
             />
           ))}
         </View>

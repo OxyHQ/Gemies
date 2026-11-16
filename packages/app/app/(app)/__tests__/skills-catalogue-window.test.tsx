@@ -54,14 +54,6 @@ vi.mock('@/features/skills/runtime/use-skills', () => ({
   useInstallSkill: () => hooks.install,
 }));
 
-vi.mock('@oxy.so/bloom/button-group', async () => {
-  const ReactModule = await import('react');
-  const host =
-    (name: string) =>
-    ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
-      ReactModule.createElement(name, props, children);
-  return { ButtonGroup: host('ButtonGroup'), ButtonGroupItem: host('ButtonGroupItem') };
-});
 vi.mock('expo-router', () => ({
   // The header is the layout's; the page only declares it.
   Stack: { Screen: () => null },
@@ -143,17 +135,9 @@ vi.mock('@oxy.so/bloom/typography', async () => {
     ReactModule.createElement('Text', props, children);
   return { Text: text, Muted: text };
 });
-vi.mock('@oxy.so/bloom/button', async () => {
-  const ReactModule = await import('react');
-  return {
-    Button: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
-      ReactModule.createElement(
-        'Button',
-        props,
-        typeof children === 'string' ? ReactModule.createElement('Text', null, children) : children,
-      ),
-  };
-});
+vi.mock('@oxy.so/bloom/button', async () =>
+  (await import('@/shared/testing/bloom-button-stub')).buttonModule(),
+);
 // The search box is Bloom's `Search`; the test types into it as `Input`.
 vi.mock('@oxy.so/bloom/search', async () => {
   const ReactModule = await import('react');
@@ -415,10 +399,7 @@ describe('the Skills catalogue with 100 records and 10 installed duplicates', ()
     const { root } = renderScreen();
 
     const more = root.find(
-      (node) =>
-        isHost(node, 'Button') &&
-        node.findAll((child) => isHost(child, 'Text') && child.props.children === 'skills.loadMore')
-          .length > 0,
+      (node) => isHost(node, 'Button') && node.props.children === 'skills.loadMore',
     );
     act(() => {
       (more.props.onPress as () => void)();

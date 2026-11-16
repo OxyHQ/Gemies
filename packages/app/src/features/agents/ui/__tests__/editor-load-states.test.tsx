@@ -67,14 +67,6 @@ vi.mock('@oxy.so/bloom/surfaces', () => ({
   confirm: vi.fn(async () => false),
 }));
 
-vi.mock('@oxy.so/bloom/button-group', async () => {
-  const ReactModule = await import('react');
-  const host =
-    (name: string) =>
-    ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
-      ReactModule.createElement(name, props, children);
-  return { ButtonGroup: host('ButtonGroup'), ButtonGroupItem: host('ButtonGroupItem') };
-});
 vi.mock('expo-router', () => ({
   // The header is the layout's; the page only declares it.
   Stack: { Screen: () => null },
@@ -145,13 +137,9 @@ vi.mock('@oxy.so/bloom/typography', async () => {
     ReactModule.createElement('Text', props, children);
   return { Text: text, Muted: text };
 });
-vi.mock('@oxy.so/bloom/button', async () => {
-  const ReactModule = await import('react');
-  return {
-    Button: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
-      ReactModule.createElement('Button', props, children),
-  };
-});
+vi.mock('@oxy.so/bloom/button', async () =>
+  (await import('@/shared/testing/bloom-button-stub')).buttonModule(),
+);
 vi.mock('@oxy.so/bloom/dropdown-menu', async () => {
   const ReactModule = await import('react');
   const host =
@@ -178,32 +166,22 @@ vi.mock('@oxy.so/bloom/search', async () => {
     Search: (props: Record<string, unknown>) => ReactModule.createElement('Search', props),
   };
 });
-vi.mock('@oxy.so/bloom/button', async () => {
-  const ReactModule = await import('react');
-  return {
-    GhostButton: (props: Record<string, unknown>) =>
-      ReactModule.createElement('GhostButton', props),
-    Button: ({ children, ...props }: any) =>
-      ReactModule.createElement(
-        'Button',
-        props,
-        typeof children === 'string' ? ReactModule.createElement('Text', null, children) : children,
-      ),
-  };
-});
+vi.mock('@oxy.so/bloom/button', async () =>
+  (await import('@/shared/testing/bloom-button-stub')).buttonModule(),
+);
 vi.mock('@oxy.so/bloom/item', async () => {
   const ReactModule = await import('react');
   return {
     Item: (props: Record<string, unknown>) => ReactModule.createElement('Item', props),
   };
 });
-vi.mock('@oxy.so/bloom/settings-list', async () => {
+vi.mock('@oxy.so/bloom/grouped-section', async () => {
   const ReactModule = await import('react');
   return {
-    SettingsListGroup: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
-      ReactModule.createElement('SettingsListGroup', props, children),
-    SettingsListItem: (props: Record<string, unknown>) =>
-      ReactModule.createElement('SettingsListItem', props),
+    GroupedSection: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
+      ReactModule.createElement('GroupedSection', props, children),
+    GroupedSectionItem: (props: Record<string, unknown>) =>
+      ReactModule.createElement('GroupedSectionItem', props),
   };
 });
 vi.mock('@gemies/sdk', async () => {

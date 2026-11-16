@@ -1,3 +1,4 @@
+import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
 import { errorMessage } from '@/shared/api/error-utils';
 import {
   useRedeemInviteCode,
@@ -22,7 +23,7 @@ import {
   SegmentedControlItem,
   SegmentedControlItemText,
 } from '@oxy.so/bloom/segmented-control';
-import { SettingsListGroup, SettingsListItem } from '@oxy.so/bloom/settings-list';
+
 import { TextFieldInput } from '@oxy.so/bloom/text-field';
 import { toast } from '@oxy.so/bloom/toast';
 import * as Clipboard from 'expo-clipboard';
@@ -180,18 +181,18 @@ function ShareTab() {
       >
         {t('dialogs.invite.share')}
       </Button>
-      <SettingsListGroup>
-        <SettingsListItem
+      <GroupedSection>
+        <GroupedSectionItem
           title={t('dialogs.invite.creditsEarned')}
           value={String(referralInfo?.totalCreditsEarned ?? 0)}
           showChevron={false}
         />
-        <SettingsListItem
+        <GroupedSectionItem
           title={t('dialogs.invite.referrals')}
           value={String(referralInfo?.totalReferrals ?? 0)}
           showChevron={false}
         />
-      </SettingsListGroup>
+      </GroupedSection>
     </View>
   );
 }
@@ -249,9 +250,9 @@ function HistoryTab() {
     );
   }
   return (
-    <SettingsListGroup>
+    <GroupedSection>
       {data.referrals.map((referral) => (
-        <SettingsListItem
+        <GroupedSectionItem
           key={`${referral.userId}-${referral.creditedAt}`}
           title={referral.email || t('common.user')}
           description={new Date(referral.creditedAt).toLocaleDateString()}
@@ -259,6 +260,6 @@ function HistoryTab() {
           showChevron={false}
         />
       ))}
-    </SettingsListGroup>
+    </GroupedSection>
   );
 }

@@ -45,7 +45,7 @@ vi.mock('@oxy.so/bloom/typography', async () => {
       ReactModule.createElement('Text', props, children),
   };
 });
-vi.mock('@oxy.so/bloom/item', () => ({ Item: () => null }));
+vi.mock('@oxy.so/bloom/list', () => ({ ListItem: () => null }));
 vi.mock('@oxy.so/bloom/questionnaire', () => ({ Questionnaire: () => null }));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast: { error: toastError } }));
 vi.mock('../../src/lib/keyboard', () => ({

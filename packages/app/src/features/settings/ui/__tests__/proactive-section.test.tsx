@@ -17,8 +17,13 @@ const { hosts } = vi.hoisted(() => ({
     return Object.fromEntries(
       names.map((name) => [
         name,
-        ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
-          ReactModule.createElement(name, props, children as React.ReactNode),
+        ({ children, rightElement, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
+          ReactModule.createElement(
+            name,
+            props,
+            children as React.ReactNode,
+            rightElement as React.ReactNode,
+          ),
       ]),
     );
   },
@@ -27,9 +32,8 @@ const { hosts } = vi.hoisted(() => ({
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), delete: vi.fn() }));
 
 vi.mock('react-native', async () => hosts('View', 'Text'));
-vi.mock('@oxy.so/bloom/settings-modal', async () =>
-  hosts('SettingsCard', 'SettingsRow', 'SettingsSection'),
-);
+vi.mock('@oxy.so/bloom/settings-modal', async () => hosts('SettingsSection'));
+vi.mock('@oxy.so/bloom/grouped-section', async () => hosts('GroupedSection', 'GroupedSectionItem'));
 vi.mock('@oxy.so/bloom/switch', async () => hosts('Switch'));
 vi.mock('@oxy.so/bloom/skeleton', async () => hosts('Box', 'Region'));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));

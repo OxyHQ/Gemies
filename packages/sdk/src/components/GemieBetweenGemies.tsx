@@ -1,6 +1,6 @@
 import { AgentAvatarProvider } from '@oxy.so/bloom/agent-avatar';
 import type { AiChatThreadHandle } from '@oxy.so/bloom/ai-chat';
-import { ButtonGroup, ButtonGroupItem } from '@oxy.so/bloom/button-group';
+import { Button } from '@oxy.so/bloom/button';
 import { RiArrowLeftLine } from '@oxy.so/bloom/icons/RiArrowLeftLine';
 import { PageHeader } from '@oxy.so/bloom/page-header';
 import { Text } from '@oxy.so/bloom/typography';
@@ -80,14 +80,14 @@ function ConversationBetweenGemies({ conversationId, onBack }: GemieBetweenGemie
     <View className="flex-1 bg-background" testID="gemie-conversation">
       <PageHeader
         leading={
-          <ButtonGroup accessibilityLabel={back}>
-            <ButtonGroupItem
+          <Button.Group accessibilityLabel={back}>
+            <Button
               iconOnly
               leadingIcon={RiArrowLeftLine}
               accessibilityLabel={back}
               onPress={onBack}
             />
-          </ButtonGroup>
+          </Button.Group>
         }
         title={participants ? <GemieParticipants participants={participants} /> : undefined}
         titleAlign="center"

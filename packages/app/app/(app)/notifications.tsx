@@ -1,3 +1,4 @@
+import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
 import {
   useDismissNotification,
   useMarkAllAsRead,
@@ -19,7 +20,7 @@ import { RiNotificationOffLine } from '@oxy.so/bloom/icons/RiNotificationOffLine
 import { RiSettings3Line } from '@oxy.so/bloom/icons/RiSettings3Line';
 import { Item } from '@oxy.so/bloom/item';
 import { ListRowsSkeleton } from '@/shared/ui/skeletons';
-import { SettingsListGroup, SettingsListItem } from '@oxy.so/bloom/settings-list';
+
 import { Switch } from '@oxy.so/bloom/switch';
 import type { AccentTone } from '@oxy.so/bloom/theme';
 import { useTheme } from '@oxy.so/bloom/theme';
@@ -172,8 +173,8 @@ export default function NotificationsScreen() {
 
       {/* Push settings (collapsible) */}
       {showSettings ? (
-        <SettingsListGroup>
-          <SettingsListItem
+        <GroupedSection>
+          <GroupedSectionItem
             icon={<StatusIcon size="md" fill={colors.textSecondary} />}
             title={t('notifications.pushNotifications')}
             description={t('notifications.pushDescription')}
@@ -186,7 +187,7 @@ export default function NotificationsScreen() {
               />
             }
           />
-        </SettingsListGroup>
+        </GroupedSection>
       ) : null}
       {showSettings && permissionStatus === 'denied' ? (
         <Admonition type="warning">{t('notifications.permissionDenied')}</Admonition>

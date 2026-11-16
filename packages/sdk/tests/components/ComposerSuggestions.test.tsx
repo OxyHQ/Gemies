@@ -10,11 +10,11 @@ vi.mock('react-native', async () => {
       ReactModule.createElement(name, props, children);
   return { View: host('View') };
 });
-vi.mock('@oxy.so/bloom/item', async () => {
+vi.mock('@oxy.so/bloom/list', async () => {
   const ReactModule = await import('react');
   return {
-    Item: ({ title, ...props }: Record<string, React.ReactNode>) =>
-      ReactModule.createElement('Item', props, title),
+    ListItem: ({ title, ...props }: Record<string, React.ReactNode>) =>
+      ReactModule.createElement('ListItem', props, title),
   };
 });
 vi.mock('@oxy.so/bloom/typography', async () => {
@@ -48,9 +48,9 @@ describe('ComposerSuggestions', () => {
       );
     });
     const r = renderer as TestRenderer.ReactTestRenderer;
-    const [item] = all(r, 'Item');
-    expect(item!.props.highlighted).toBe(true);
-    expect(item!.props.accessibilityLabel).toBe('Trip to Lisbon');
+    const [item] = all(r, 'ListItem');
+    expect(item!.props.active).toBe(true);
+    expect(item!.props.label).toBe('Trip to Lisbon');
     const highlight = all(r, 'Text').find(
       (node) => node.props.className === 'font-medium text-primary',
     );

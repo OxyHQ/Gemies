@@ -55,7 +55,7 @@ import {
 import { useStore } from '@/features/chat/runtime/global-store';
 import { AgentAvatar } from '@oxy.so/bloom/agent-avatar';
 import { useAiChatShell } from '@oxy.so/bloom/ai-chat';
-import { AgentStack } from '@oxy.so/bloom/agent-reply';
+import { AvatarGroup } from '@oxy.so/bloom/avatar-group';
 import { AgentRowAvatar, reactAgentRow } from '@/shell/agent-row-avatar';
 import { useHoverIntent } from '@/shell/hover-intent';
 import {
@@ -521,12 +521,15 @@ function useSidebarProps() {
       key: space.conversationId,
       label: t('spaces.general'),
       leading: (
-        <AgentStack
+        <AvatarGroup
+          layout="conversation"
+          motion="always"
           size={AGENT_ROW_AVATAR}
-          agents={members.slice(0, 3).map((agent) => ({
+          items={members.slice(0, 3).map((agent) => ({
             id: agent._id,
             name: agentDisplayName(agent),
-            avatar: readAgentCharacter(agent.character, agent.color),
+            kind: 'bot' as const,
+            character: readAgentCharacter(agent.character, agent.color),
           }))}
         />
       ),
@@ -567,7 +570,8 @@ function useSidebarProps() {
               {
                 id,
                 name: agentDisplayName(agent),
-                avatar: readAgentCharacter(agent.character, agent.color),
+                kind: 'bot' as const,
+                character: readAgentCharacter(agent.character, agent.color),
               },
             ];
       });
@@ -586,7 +590,14 @@ function useSidebarProps() {
           // Not a chat of Alia's: no pin glyph, no time chip; the avatars and the last line say it.
           icon: undefined,
           meta: undefined,
-          leading: <AgentStack size={AGENT_ROW_AVATAR} agents={members.slice(0, 3)} />,
+          leading: (
+            <AvatarGroup
+              layout="conversation"
+              motion="always"
+              size={AGENT_ROW_AVATAR}
+              items={members.slice(0, 3)}
+            />
+          ),
           description:
             activity.inConversation(conv.id) ??
             (conv.lastMessage?.trim() || t('sidebar.noAgentMessages')),
@@ -632,12 +643,15 @@ function useSidebarProps() {
           key: conv.id,
           label,
           leading: (
-            <AgentStack
+            <AvatarGroup
+              layout="conversation"
+              motion="always"
               size={AGENT_ROW_AVATAR}
-              agents={members.map((member) => ({
+              items={members.map((member) => ({
                 id: member.id,
                 name: member.name,
-                avatar: agentCharacterOf(member),
+                kind: 'bot' as const,
+                character: agentCharacterOf(member),
               }))}
             />
           ),
@@ -953,12 +967,15 @@ function useSidebarProps() {
         label: t('sidebar.create.group'),
         description: t('sidebar.create.groupHint'),
         leading: (
-          <AgentStack
+          <AvatarGroup
+            layout="conversation"
+            motion="always"
             size={32}
-            agents={(myAgents ?? []).slice(0, 3).map((agent) => ({
+            items={(myAgents ?? []).slice(0, 3).map((agent) => ({
               id: agent._id,
               name: agentDisplayName(agent),
-              avatar: readAgentCharacter(agent.character, agent.color),
+              kind: 'bot' as const,
+              character: readAgentCharacter(agent.character, agent.color),
             }))}
           />
         ),

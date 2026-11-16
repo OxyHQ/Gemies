@@ -15,8 +15,13 @@ const { hosts } = vi.hoisted(() => ({
     return Object.fromEntries(
       names.map((name) => [
         name,
-        ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
-          ReactModule.createElement(name, props, children as React.ReactNode),
+        ({ children, rightElement, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
+          ReactModule.createElement(
+            name,
+            props,
+            children as React.ReactNode,
+            rightElement as React.ReactNode,
+          ),
       ]),
     );
   },
@@ -27,7 +32,7 @@ const openURL = vi.hoisted(() => vi.fn());
 
 vi.mock('react-native', async () => hosts('View', 'Text'));
 vi.mock('expo-linking', () => ({ openURL }));
-vi.mock('@oxy.so/bloom/settings-modal', async () => hosts('SettingsCard', 'SettingsRow'));
+vi.mock('@oxy.so/bloom/grouped-section', async () => hosts('GroupedSection', 'GroupedSectionItem'));
 vi.mock('@oxy.so/bloom/switch', async () => hosts('Switch'));
 vi.mock('@oxy.so/bloom/button', async () => hosts('Button'));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
@@ -82,8 +87,8 @@ afterEach(() => {
 describe('Settings → Memory', () => {
   it('says memories live in Nilo and opens nilo.so', async () => {
     const tree = await render();
-    const row = all(tree, 'SettingsRow')[0]!;
-    expect(row.props.label).toBe(en.settings.assistant.memory.niloTitle);
+    const row = all(tree, 'GroupedSectionItem')[0]!;
+    expect(row.props.title).toBe(en.settings.assistant.memory.niloTitle);
     expect(row.props.description).toBe(en.settings.assistant.memory.niloDescription);
     const button = all(tree, 'Button')[0]!;
     await act(async () => button.props.onPress());
