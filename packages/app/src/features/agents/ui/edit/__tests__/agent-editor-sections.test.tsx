@@ -44,11 +44,12 @@ vi.mock('@oxy.so/bloom/agent-creator', async () =>
 vi.mock('@oxy.so/bloom/typography', async () => hosts('Text'));
 vi.mock('@/features/agents/ui/edit/sections/editor-select', async () => hosts('EditorSelect'));
 vi.mock('@oxy.so/bloom/switch', async () => hosts('Switch'));
-vi.mock('@oxy.so/bloom/button', async () => hosts('Button'));
-vi.mock('@oxy.so/bloom/button-group', async () => hosts('ButtonGroup', 'ButtonGroupItem'));
+vi.mock('@oxy.so/bloom/button', async () =>
+  (await import('@/shared/testing/bloom-button-stub')).buttonModule(),
+);
 vi.mock('@oxy.so/bloom/textarea', async () => hosts('Textarea'));
 vi.mock('@oxy.so/bloom/skeleton', async () => hosts('Box', 'Region'));
-vi.mock('@oxy.so/bloom/settings-modal', async () => hosts('SettingsCard'));
+vi.mock('@oxy.so/bloom/grouped-section', async () => hosts('GroupedSection', 'GroupedSectionItem'));
 vi.mock('@oxy.so/bloom/icons/RiDeleteBinLine', () => ({ RiDeleteBinLine: 'RiDeleteBinLine' }));
 vi.mock('@oxy.so/bloom/icons/RiExternalLinkLine', () => ({
   RiExternalLinkLine: 'RiExternalLinkLine',
@@ -514,7 +515,9 @@ describe('what the agent remembers', () => {
     const textarea = all(tree, 'Textarea')[0]!;
     expect(textarea.props.value).toBe('- likes tea\n');
     await act(async () => textarea.props.onChangeText('- likes coffee\n'));
-    const [save] = all(tree, 'ButtonGroupItem');
+    const save = all(tree, 'Button').find(
+      (button) => button.props.children === en.settings.saveButton,
+    );
     await act(async () => save?.props.onPress());
     await settle();
     expect(api.put).toHaveBeenCalledWith('/agents/agent-1/memory', {
@@ -523,7 +526,9 @@ describe('what the agent remembers', () => {
       expectedHash: 'h1',
     });
 
-    const forget = all(tree, 'ButtonGroupItem')[1]!;
+    const forget = all(tree, 'Button').find(
+      (button) => button.props.accessibilityLabel === 'Forget MEMORY.md',
+    )!;
     expect(forget.props.accessibilityLabel).toBe('Forget MEMORY.md');
     await act(async () => forget.props.onPress());
     await settle();
@@ -539,7 +544,7 @@ describe('what the agent remembers', () => {
     documents = [{ path: 'MEMORY.md' }];
     const tree = await render();
     const button = (label: string) =>
-      all(tree, 'ButtonGroupItem').find((node) => node.props.children === label);
+      all(tree, 'Button').find((node) => node.props.children === label);
 
     await act(async () => all(tree, 'Textarea')[0]?.props.onChangeText('- likes coffee\n'));
     // The agent wrote to the file meanwhile: the save names the old hash and loses.
@@ -580,7 +585,7 @@ describe('what the agent remembers', () => {
     documents = [{ path: 'MEMORY.md' }];
     const tree = await render();
     const button = (label: string) =>
-      all(tree, 'ButtonGroupItem').find((node) => node.props.children === label);
+      all(tree, 'Button').find((node) => node.props.children === label);
 
     await act(async () => all(tree, 'Textarea')[0]?.props.onChangeText('- likes coffee\n'));
     memoryFile = { content: '- likes tea\n- lives in Madrid\n', hash: 'h2' };

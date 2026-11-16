@@ -19,11 +19,11 @@ vi.mock('react-native', async () => {
       ReactModule.createElement(name, props, children);
   return { View: host('View') };
 });
-vi.mock('@oxy.so/bloom/item', async () => {
+vi.mock('@oxy.so/bloom/list', async () => {
   const ReactModule = await import('react');
   return {
-    Item: ({ title, ...props }: Record<string, React.ReactNode>) =>
-      ReactModule.createElement('Item', props, title),
+    ListItem: ({ title, ...props }: Record<string, React.ReactNode>) =>
+      ReactModule.createElement('ListItem', props, title),
   };
 });
 vi.mock('@oxy.so/bloom/typography', async () => {
@@ -52,7 +52,7 @@ afterEach(() => {
   world.conversations = [];
 });
 const items = (r: TestRenderer.ReactTestRenderer): ReactTestInstance[] =>
-  r.root.findAll((node) => (node.type as unknown) === 'Item');
+  r.root.findAll((node) => (node.type as unknown) === 'ListItem');
 
 const at = (day: number) => new Date(Date.UTC(2026, 9, day));
 
@@ -71,7 +71,7 @@ describe('GemieRecentConversations', () => {
     const r = renderer as TestRenderer.ReactTestRenderer;
 
     expect(world.asked.at(-1)).toEqual({ agentId: 'sindi' });
-    expect(items(r).map((item) => item.props.accessibilityLabel)).toEqual([
+    expect(items(r).map((item) => item.props.label)).toEqual([
       'Pisos en Gràcia',
       'New chat',
       'Mi contrato',

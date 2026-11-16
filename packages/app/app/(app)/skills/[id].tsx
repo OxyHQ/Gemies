@@ -1,3 +1,4 @@
+import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
 import { ReplyMarkdown } from '@gemies/sdk';
 import { SkillCover } from '@/features/skills/ui/skill-cover';
 import {
@@ -11,7 +12,7 @@ import {
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { Badge } from '@oxy.so/bloom/badge';
 import { Button } from '@oxy.so/bloom/button';
-import { ButtonGroup, ButtonGroupItem } from '@oxy.so/bloom/button-group';
+
 import { EmptyState } from '@/shared/ui/empty-state';
 import { RiCheckLine } from '@oxy.so/bloom/icons/RiCheckLine';
 import { RiDownloadLine } from '@oxy.so/bloom/icons/RiDownloadLine';
@@ -20,7 +21,7 @@ import { RiFileTextLine } from '@oxy.so/bloom/icons/RiFileTextLine';
 import { RiPencilLine } from '@oxy.so/bloom/icons/RiPencilLine';
 import { RiPlayLine } from '@oxy.so/bloom/icons/RiPlayLine';
 import { DetailSkeleton, LinesSkeleton } from '@/shared/ui/skeletons';
-import { SettingsListGroup, SettingsListItem } from '@oxy.so/bloom/settings-list';
+
 import { ResponsiveGrid } from '@oxy.so/bloom/grid';
 import { Switch } from '@oxy.so/bloom/switch';
 import { useTheme } from '@oxy.so/bloom/theme';
@@ -103,7 +104,7 @@ export default function SkillDetailScreen() {
   const sections: ReactNode[] = [
     ...(shelf
       ? [
-          <SettingsListGroup
+          <GroupedSection
             key="k0"
             footer={
               shelf.pinnedVersion === null
@@ -111,7 +112,7 @@ export default function SkillDetailScreen() {
                 : t('skills.versionPinned', { version: shelf.pinnedVersion })
             }
           >
-            <SettingsListItem
+            <GroupedSectionItem
               title={t('skills.enabled')}
               description={t('skills.enabledHint')}
               rightElement={
@@ -124,7 +125,7 @@ export default function SkillDetailScreen() {
                 />
               }
             />
-            <SettingsListItem
+            <GroupedSectionItem
               title={t('skills.autoInvoke')}
               description={t('skills.autoInvokeHint')}
               rightElement={
@@ -140,7 +141,7 @@ export default function SkillDetailScreen() {
                 />
               }
             />
-          </SettingsListGroup>,
+          </GroupedSection>,
         ]
       : []),
     ...(skill.compatibility
@@ -187,11 +188,11 @@ export default function SkillDetailScreen() {
       ) : files.length === 0 ? (
         <Muted>{t('skills.noFiles')}</Muted>
       ) : (
-        <SettingsListGroup>
+        <GroupedSection>
           {files.map((file) => {
             const Icon = KIND_ICON[file.kind];
             return (
-              <SettingsListItem
+              <GroupedSectionItem
                 key={file.path}
                 icon={<Icon width={18} height={18} fill={colors.icon} />}
                 title={file.path}
@@ -199,13 +200,13 @@ export default function SkillDetailScreen() {
               />
             );
           })}
-        </SettingsListGroup>
+        </GroupedSection>
       )}
     </View>,
     ...(skill.sourceUrl
       ? [
-          <SettingsListGroup key="k5">
-            <SettingsListItem
+          <GroupedSection key="k5">
+            <GroupedSectionItem
               icon={<RiExternalLinkLine width={18} height={18} fill={colors.icon} />}
               title={t('skills.viewSource')}
               description={`${skill.sourceRepo ?? ''}${
@@ -214,7 +215,7 @@ export default function SkillDetailScreen() {
               accessibilityRole="link"
               onPress={() => void Linking.openURL(skill.sourceUrl!)}
             />
-          </SettingsListGroup>,
+          </GroupedSection>,
         ]
       : []),
   ];
@@ -227,14 +228,14 @@ export default function SkillDetailScreen() {
           headerBackVisible: true,
           headerRight: isOwner
             ? () => (
-                <ButtonGroup accessibilityLabel={t('common.edit')}>
-                  <ButtonGroupItem
+                <Button.Group accessibilityLabel={t('common.edit')}>
+                  <Button
                     iconOnly
                     leadingIcon={RiPencilLine}
                     accessibilityLabel={t('common.edit')}
                     onPress={() => router.push(`/(app)/skills/edit/${skill._id}`)}
                   />
-                </ButtonGroup>
+                </Button.Group>
               )
             : undefined,
         }}

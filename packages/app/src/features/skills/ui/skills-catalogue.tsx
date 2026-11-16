@@ -9,7 +9,7 @@ import {
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Button } from '@oxy.so/bloom/button';
-import { ButtonGroup, ButtonGroupItem } from '@oxy.so/bloom/button-group';
+
 import { RiAddLine } from '@oxy.so/bloom/icons/RiAddLine';
 import { RiCheckLine } from '@oxy.so/bloom/icons/RiCheckLine';
 import { RiDownloadLine } from '@oxy.so/bloom/icons/RiDownloadLine';
@@ -244,11 +244,11 @@ export function SkillsCatalogue({ onOpenSkill, onImport, onCreate }: SkillsCatal
   return (
     <>
       <View className="flex-row flex-wrap items-center justify-end gap-2 px-4 pt-4">
-        <ButtonGroup accessibilityLabel={t('skills.import')}>
-          <ButtonGroupItem leadingIcon={RiDownloadLine} onPress={onImport}>
+        <Button.Group accessibilityLabel={t('skills.import')}>
+          <Button leadingIcon={RiDownloadLine} onPress={onImport}>
             {t('skills.import')}
-          </ButtonGroupItem>
-        </ButtonGroup>
+          </Button>
+        </Button.Group>
         <Button tone="action" size="md" leadingIcon={RiAddLine} onPress={onCreate}>
           {t('common.create')}
         </Button>

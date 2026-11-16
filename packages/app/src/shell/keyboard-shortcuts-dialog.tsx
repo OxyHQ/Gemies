@@ -1,8 +1,9 @@
+import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { useUIStore } from '@/features/chat/runtime/ui-store';
 import { Dialog } from '@oxy.so/bloom/dialog';
 import { Kbd } from '@oxy.so/bloom/kbd';
-import { SettingsListGroup, SettingsListItem } from '@oxy.so/bloom/settings-list';
+
 import { Platform, View } from 'react-native';
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
@@ -57,9 +58,9 @@ export function KeyboardShortcutsDialog() {
     >
       <View className="gap-4">
         {SHORTCUT_SECTIONS.map((section) => (
-          <SettingsListGroup key={section.titleKey} title={t(section.titleKey)}>
+          <GroupedSection key={section.titleKey} title={t(section.titleKey)}>
             {section.shortcuts.map((shortcut) => (
-              <SettingsListItem
+              <GroupedSectionItem
                 key={shortcut.labelKey}
                 title={t(shortcut.labelKey)}
                 showChevron={false}
@@ -75,7 +76,7 @@ export function KeyboardShortcutsDialog() {
                 }
               />
             ))}
-          </SettingsListGroup>
+          </GroupedSection>
         ))}
       </View>
     </Dialog>

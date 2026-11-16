@@ -110,7 +110,7 @@ vi.mock('@gemies/sdk', () => ({
 vi.mock('@oxy.so/bloom/agent-avatar', () => ({ AgentAvatar: () => null }));
 vi.mock('@/features/onboarding/ui/invite-dialog', () => ({ InviteDialog: () => null }));
 vi.mock('@/features/agents/ui/group-picker-dialog', () => ({ GroupPickerDialog: () => null }));
-vi.mock('@oxy.so/bloom/agent-reply', () => ({ AgentStack: () => null }));
+vi.mock('@oxy.so/bloom/avatar-group', () => ({ AvatarGroup: () => null }));
 vi.mock('@/features/agents/runtime/use-new-agent-conversation', () => ({
   useNewAgentConversation: () => () => undefined,
 }));

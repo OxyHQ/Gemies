@@ -1,4 +1,4 @@
-import { ButtonGroup, ButtonGroupItem } from '@oxy.so/bloom/button-group';
+import { Button } from '@oxy.so/bloom/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,14 +63,14 @@ export const GemieChatHeader = memo(function GemieChatHeader({
       leading={
         leading ??
         (onBack ? (
-          <ButtonGroup accessibilityLabel={labels.chatActions}>
-            <ButtonGroupItem
+          <Button.Group accessibilityLabel={labels.chatActions}>
+            <Button
               iconOnly
               leadingIcon={RiArrowLeftLine}
               accessibilityLabel={labels.back}
               onPress={onBack}
             />
-          </ButtonGroup>
+          </Button.Group>
         ) : undefined)
       }
       title={
@@ -83,9 +83,9 @@ export const GemieChatHeader = memo(function GemieChatHeader({
         <>
           {trailing}
           {hasMessages ? (
-            <ButtonGroup accessibilityLabel={labels.chatActions}>
+            <Button.Group accessibilityLabel={labels.chatActions}>
               {onShare ? (
-                <ButtonGroupItem
+                <Button
                   iconOnly
                   leadingIcon={RiShare2Line}
                   accessibilityLabel={labels.share}
@@ -94,11 +94,7 @@ export const GemieChatHeader = memo(function GemieChatHeader({
               ) : null}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild label={labels.more}>
-                  <ButtonGroupItem
-                    iconOnly
-                    leadingIcon={RiMoreFill}
-                    accessibilityLabel={labels.more}
-                  />
+                  <Button iconOnly leadingIcon={RiMoreFill} accessibilityLabel={labels.more} />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   {menu}
@@ -111,7 +107,7 @@ export const GemieChatHeader = memo(function GemieChatHeader({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </ButtonGroup>
+            </Button.Group>
           ) : null}
         </>
       }

@@ -1,7 +1,8 @@
+import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
 import { useEmailAlerts } from '@/features/notifications/runtime/use-email-alerts';
 import { SettingsRowsSkeleton } from '@/shared/ui/skeletons';
 import { useTranslation } from '@/shared/i18n/use-translation';
-import { SettingsCard, SettingsRow, SettingsSection } from '@oxy.so/bloom/settings-modal';
+import { SettingsSection } from '@oxy.so/bloom/settings-modal';
 import { Switch } from '@oxy.so/bloom/switch';
 import { View } from 'react-native';
 
@@ -24,32 +25,44 @@ export function ProactiveSection() {
   }
   if (failed || !alerts) {
     return (
-      <SettingsCard>
-        <SettingsRow label={t(`${K}.loadFailed`)} />
-      </SettingsCard>
+      <GroupedSection>
+        <GroupedSectionItem wrapControl title={t(`${K}.loadFailed`)} />
+      </GroupedSection>
     );
   }
 
   return (
     <View className="w-full gap-6">
       <SettingsSection label={t(`${K}.emailTitle`)}>
-        <SettingsCard>
-          <SettingsRow
-            label={t(`${K}.aliaEmailLabel`)}
+        <GroupedSection>
+          <GroupedSectionItem
+            titleNumberOfLines={0}
+            descriptionLines={0}
+            wrapControl
+            title={t(`${K}.aliaEmailLabel`)}
             description={t(`${K}.aliaEmailDescription`)}
-          >
-            <Switch
-              accessibilityLabel={t(`${K}.aliaEmailLabel`)}
-              checked={alerts.alia.enabled}
-              onCheckedChange={(enabled) => setEnabled(null, enabled)}
-            />
-          </SettingsRow>
-        </SettingsCard>
+            rightElement={
+              <>
+                <Switch
+                  accessibilityLabel={t(`${K}.aliaEmailLabel`)}
+                  checked={alerts.alia.enabled}
+                  onCheckedChange={(enabled) => setEnabled(null, enabled)}
+                />
+              </>
+            }
+          />
+        </GroupedSection>
       </SettingsSection>
 
-      <SettingsCard>
-        <SettingsRow label={t(`${K}.limitsLabel`)} description={t(`${K}.limitsDescription`)} />
-      </SettingsCard>
+      <GroupedSection>
+        <GroupedSectionItem
+          titleNumberOfLines={0}
+          descriptionLines={0}
+          wrapControl
+          title={t(`${K}.limitsLabel`)}
+          description={t(`${K}.limitsDescription`)}
+        />
+      </GroupedSection>
     </View>
   );
 }

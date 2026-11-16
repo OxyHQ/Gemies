@@ -8,12 +8,14 @@ const seen = vi.hoisted(() => ({
   profiles: [] as Array<{ agents: Array<{ id: string; name: string }>; onPress: () => void }>,
 }));
 
-vi.mock('@oxy.so/bloom/button-group', () => ({
-  ButtonGroup: ({ children }: { children?: React.ReactNode }) => children,
-  ButtonGroupItem: (props: Record<string, unknown>) => {
-    seen.items.push(props);
-    return null;
-  },
+vi.mock('@oxy.so/bloom/button', () => ({
+  Button: Object.assign(
+    (props: Record<string, unknown>) => {
+      seen.items.push(props);
+      return null;
+    },
+    { Group: ({ children }: { children?: React.ReactNode }) => children },
+  ),
 }));
 vi.mock('@oxy.so/bloom/icons/RiArrowLeftLine', () => ({ RiArrowLeftLine: 'back-icon' }));
 vi.mock('@oxy.so/bloom/icons/RiDeleteBin6Line', () => ({ RiDeleteBin6Line: 'bin-icon' }));

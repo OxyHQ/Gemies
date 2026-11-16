@@ -1,5 +1,6 @@
+import { Button } from '@oxy.so/bloom/button';
 import { useTranslation } from '@/shared/i18n/use-translation';
-import { ButtonGroup, ButtonGroupItem } from '@oxy.so/bloom/button-group';
+
 import { RiShare2Line } from '@oxy.so/bloom/icons/RiShare2Line';
 
 /**
@@ -45,18 +46,18 @@ export function AgentHeaderActions({
   const { t } = useTranslation();
 
   return (
-    <ButtonGroup accessibilityLabel={t('pages.agents.agentActions')}>
-      {isOwner ? <ButtonGroupItem onPress={onEdit}>{t('agents.edit')}</ButtonGroupItem> : null}
-      {canChat ? <ButtonGroupItem onPress={onChat}>{t('agents.chat')}</ButtonGroupItem> : null}
+    <Button.Group accessibilityLabel={t('pages.agents.agentActions')}>
+      {isOwner ? <Button onPress={onEdit}>{t('agents.edit')}</Button> : null}
+      {canChat ? <Button onPress={onChat}>{t('agents.chat')}</Button> : null}
       {hasComputer && onComputer ? (
-        <ButtonGroupItem onPress={onComputer}>{t('agents.computer.open')}</ButtonGroupItem>
+        <Button onPress={onComputer}>{t('agents.computer.open')}</Button>
       ) : null}
-      <ButtonGroupItem
+      <Button
         iconOnly
         leadingIcon={RiShare2Line}
         accessibilityLabel={t('agents.share')}
         onPress={onShare}
       />
-    </ButtonGroup>
+    </Button.Group>
   );
 }

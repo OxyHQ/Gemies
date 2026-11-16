@@ -1,4 +1,4 @@
-import { Item } from '@oxy.so/bloom/item';
+import { ListItem } from '@oxy.so/bloom/list';
 import { Text } from '@oxy.so/bloom/typography';
 import { View } from 'react-native';
 import type { Completion } from '../lib/suggestions';
@@ -23,12 +23,11 @@ export function ComposerSuggestions<T extends GemieSuggestion>({
       {completions.map(({ suggestion, matchStart, matchEnd }, index) => {
         const { text } = suggestion;
         return (
-          <Item
+          <ListItem
             key={suggestion.id}
-            density="compact"
-            highlighted={index === selected}
-            accessibilityRole="button"
-            accessibilityLabel={text}
+            active={index === selected}
+            role="button"
+            label={text}
             onPress={() => onPick(suggestion)}
             title={
               <Text numberOfLines={1}>

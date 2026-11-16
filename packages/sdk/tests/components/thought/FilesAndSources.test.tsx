@@ -34,6 +34,9 @@ vi.mock('react-native', async () => {
 vi.mock('@oxy.so/bloom/accordion', async () =>
   (await import('../../support/panel-bloom-stubs')).accordionModule(),
 );
+vi.mock('@oxy.so/bloom/list', async () =>
+  (await import('../../support/panel-bloom-stubs')).listModule(),
+);
 vi.mock('@oxy.so/bloom/item', async () =>
   (await import('../../support/panel-bloom-stubs')).itemModule(),
 );

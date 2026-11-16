@@ -64,6 +64,12 @@ const AccordionCtx = createContext<{ open: string[]; toggle: (v: string) => void
 });
 const ItemCtx = createContext('');
 
+/** A list row exposes the same app decisions under the shared List API. */
+export const listModule = () => ({
+  ListItem: ({ label, supporting, ...props }: Props) =>
+    itemModule().Item({ ...props, accessibilityLabel: label, subtitle: supporting }),
+});
+
 export const accordionModule = () => ({
   Accordion: ({ value, onValueChange, children }: Props) => {
     const open = Array.isArray(value)

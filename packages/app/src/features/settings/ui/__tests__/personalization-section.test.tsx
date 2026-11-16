@@ -13,8 +13,13 @@ const { hosts } = vi.hoisted(() => ({
     return Object.fromEntries(
       names.map((name) => [
         name,
-        ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
-          ReactModule.createElement(name, props, children as React.ReactNode),
+        ({ children, rightElement, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
+          ReactModule.createElement(
+            name,
+            props,
+            children as React.ReactNode,
+            rightElement as React.ReactNode,
+          ),
       ]),
     );
   },
@@ -23,9 +28,8 @@ const { hosts } = vi.hoisted(() => ({
 const toastMock = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 
 vi.mock('react-native', async () => hosts('View', 'Text'));
-vi.mock('@oxy.so/bloom/settings-modal', async () =>
-  hosts('SettingsCard', 'SettingsRow', 'SettingsPageActions'),
-);
+vi.mock('@oxy.so/bloom/settings-modal', async () => hosts('SettingsPageActions'));
+vi.mock('@oxy.so/bloom/grouped-section', async () => hosts('GroupedSection', 'GroupedSectionItem'));
 vi.mock('@oxy.so/bloom/settings-modal/rows', async () => hosts('SettingsSelect'));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast: toastMock }));
 vi.mock('@oxy.so/services/ui/client', () => ({
@@ -91,7 +95,7 @@ describe('PersonalizationSection', () => {
       renderer = create(<PersonalizationSection />);
     });
     const tree = renderer!;
-    expect(all(tree, 'SettingsRow').map((row) => row.props.label)).toEqual([
+    expect(all(tree, 'GroupedSectionItem').map((row) => row.props.title)).toEqual([
       'settings.aliaLanguage.title',
       'settings.responseLength.title',
       'settings.voicePreference.title',

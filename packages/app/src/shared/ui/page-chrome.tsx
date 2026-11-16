@@ -1,6 +1,7 @@
+import { Button } from '@oxy.so/bloom/button';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { useAiChatShell } from '@oxy.so/bloom/ai-chat';
-import { ButtonGroup, ButtonGroupItem } from '@oxy.so/bloom/button-group';
+
 import { RiMenuLine } from '@oxy.so/bloom/icons/RiMenuLine';
 import { PageHeader } from '@oxy.so/bloom/page-header';
 import type React from 'react';
@@ -36,7 +37,7 @@ export interface ShellPageHeaderProps {
   titleAlign?: 'start' | 'center';
   /** Draws the back capsule when set. */
   onBack?: () => void;
-  /** The page's own actions, grouped by the page into `ButtonGroup` islands. */
+  /** The page's own actions, grouped by the page into `Button.Group` groups. */
   actions?: React.ReactNode;
 }
 
@@ -66,28 +67,28 @@ export function ShellPageHeader({ title, titleAlign, onBack, actions }: ShellPag
       backLabel={t('common.back')}
       leading={
         showMenu ? (
-          <ButtonGroup accessibilityLabel={shell.labels.openNavigation}>
-            <ButtonGroupItem
+          <Button.Group accessibilityLabel={shell.labels.openNavigation}>
+            <Button
               iconOnly
               leadingIcon={RiMenuLine}
               accessibilityLabel={shell.labels.openNavigation}
               onPress={shell.openNav}
             />
-          </ButtonGroup>
+          </Button.Group>
         ) : undefined
       }
       actions={
         <>
           {actions}
           {showPanel ? (
-            <ButtonGroup accessibilityLabel={shell.labels.openPanel(shell.panelLabel)}>
-              <ButtonGroupItem
+            <Button.Group accessibilityLabel={shell.labels.openPanel(shell.panelLabel)}>
+              <Button
                 iconOnly
                 leadingIcon={shell.panelIcon}
                 accessibilityLabel={shell.labels.openPanel(shell.panelLabel)}
                 onPress={shell.openPanel}
               />
-            </ButtonGroup>
+            </Button.Group>
           ) : null}
         </>
       }

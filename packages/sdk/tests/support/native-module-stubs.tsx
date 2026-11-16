@@ -36,6 +36,7 @@ export function reactNativeModule(platform: { OS: string }) {
       visible === false ? null : React.createElement('Modal', props, children as React.ReactNode),
     TextInput: host('TextInput'),
     ScrollView: host('ScrollView'),
+    FlatList: host('FlatList'),
     // A render-prop child is called as React Native calls it, at rest.
     Pressable: ({ children, ...props }: Props) =>
       React.createElement(
@@ -83,6 +84,7 @@ export function reactNativeModule(platform: { OS: string }) {
     Keyboard: { addListener: () => subscription, dismiss: () => {} },
     BackHandler: { addEventListener: () => subscription },
     Animated: {
+      createAnimatedComponent: <T,>(component: T) => component,
       View: host('View'),
       Value: class {
         value: number;
@@ -106,6 +108,7 @@ export function reanimatedModule() {
     View: host('View'),
     Text: host('RNText'),
     ScrollView: host('ScrollView'),
+    FlatList: host('FlatList'),
     createAnimatedComponent: <T,>(component: T) => component,
   };
   // `FadeIn.duration(120).delay(40)` and the like: any chain, to itself.
@@ -124,6 +127,7 @@ export function reanimatedModule() {
     useAnimatedReaction: () => {},
     useAnimatedRef: () => React.useRef(null),
     useAnimatedScrollHandler: () => () => {},
+    useComposedEventHandler: () => () => {},
     useScrollViewOffset: () => ({ value: 0 }),
     scrollTo: () => {},
     measure: () => null,
@@ -176,6 +180,7 @@ export function gestureHandlerModule() {
     GestureHandlerRootView: through,
     Gesture: new Proxy({}, { get: () => () => gesture }),
     ScrollView: host('ScrollView'),
+    FlatList: host('FlatList'),
   };
 }
 

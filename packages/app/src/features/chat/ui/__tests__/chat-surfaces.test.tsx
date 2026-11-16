@@ -64,7 +64,9 @@ vi.mock('@oxy.so/bloom/dropdown-menu', async () => {
   };
 });
 vi.mock('@oxy.so/bloom/agent-avatar', () => ({ AgentAvatar: () => null }));
-vi.mock('@oxy.so/bloom/button', () => ({ Button: () => null }));
+vi.mock('@oxy.so/bloom/button', async () =>
+  (await import('@/shared/testing/bloom-button-stub')).buttonModule(),
+);
 const surfaces = vi.hoisted(() => ({
   confirm: vi.fn(async (_options: Record<string, unknown>) => true),
 }));
@@ -86,15 +88,6 @@ for (const icon of [
 }
 
 vi.mock('@oxy.so/bloom/ai-chat', () => ({ useAiChatShell: () => shell.value }));
-vi.mock('@oxy.so/bloom/button-group', async () => {
-  const ReactModule = await import('react');
-  return {
-    ButtonGroup: ({ children }: React.PropsWithChildren) =>
-      ReactModule.createElement('ButtonGroup', null, children),
-    ButtonGroupItem: (props: Record<string, unknown>) =>
-      ReactModule.createElement('ButtonGroupItem', props),
-  };
-});
 vi.mock('@oxy.so/bloom/page-header', async () => {
   const ReactModule = await import('react');
   return {
@@ -187,7 +180,7 @@ describe('ChatHeaderActions', () => {
       'chatHeader.stopSharing',
       'chat.exportMarkdown',
     ]);
-    expect(all(r, 'ButtonGroupItem').map((node) => node.props.accessibilityLabel)).toContain(
+    expect(all(r, 'Button').map((node) => node.props.accessibilityLabel)).toContain(
       'chatHeader.share',
     );
   });
@@ -201,7 +194,7 @@ describe('ChatHeaderActions', () => {
         }),
     );
     const r = render(<ChatHeaderActions onShare={onShare} onExport={vi.fn()} />);
-    const item = all(r, 'ButtonGroupItem').find(
+    const item = all(r, 'Button').find(
       (node) => node.props.accessibilityLabel === 'chatHeader.share',
     );
     await act(async () => {
@@ -298,7 +291,7 @@ describe('ShellPageHeader', () => {
     labels: { openNavigation: 'Open navigation', openPanel: (p: string) => `Open ${p}` },
   };
   const items = (r: ReactTestRenderer) =>
-    all(r, 'ButtonGroupItem').map((item) => item.props.accessibilityLabel as string);
+    all(r, 'Button').map((item) => item.props.accessibilityLabel as string);
 
   it('is the page’s title and back alone on a wide screen', () => {
     shell.value = baseShell;
@@ -314,19 +307,17 @@ describe('ShellPageHeader', () => {
     shell.value = { ...baseShell, compact: true, navCollapsed: true };
     const r = render(<ShellPageHeader title="Skills" />);
     expect(items(r)).toEqual(['Open navigation', 'Open Code']);
-    act(() => all(r, 'ButtonGroupItem')[0].props.onPress());
+    act(() => all(r, 'Button')[0].props.onPress());
     expect(baseShell.openNav).toHaveBeenCalled();
   });
 
   it('keeps the page’s own actions before the panel button', () => {
     shell.value = { ...baseShell, compact: true };
-    const r = render(
-      <ShellPageHeader title="Skills" actions={<ButtonGroupItemStub label="Create" />} />,
-    );
+    const r = render(<ShellPageHeader title="Skills" actions={<ButtonStub label="Create" />} />);
     expect(items(r)).toEqual(['Create', 'Open Code']);
   });
 });
 
-function ButtonGroupItemStub({ label }: { label: string }) {
-  return React.createElement('ButtonGroupItem', { accessibilityLabel: label });
+function ButtonStub({ label }: { label: string }) {
+  return React.createElement('Button', { accessibilityLabel: label });
 }

@@ -5,7 +5,7 @@ import { useLabels } from '../../lib/labels';
 import { Button } from '@oxy.so/bloom/button';
 import { Card, CardBody } from '@oxy.so/bloom/card';
 import { RiCloseLine } from '@oxy.so/bloom/icons/RiCloseLine';
-import { Item } from '@oxy.so/bloom/item';
+import { ListItem } from '@oxy.so/bloom/list';
 import { Search } from '@oxy.so/bloom/search';
 import { Muted } from '@oxy.so/bloom/typography';
 import { useState } from 'react';
@@ -24,7 +24,7 @@ import { ScrollView, View } from 'react-native';
  * can read and not reach is a wall, so `onJump` is not an extra: it is what the
  * hit is for.
  *
- * Bloom's `Search` for the field and an `Item` per hit, on a `Card` floating
+ * Bloom's `Search` for the field and a `ListItem` per hit, on a `Card` floating
  * over the top of the thread in its 768 column: the card is the surface, so
  * nothing here paints one of its own.
  */
@@ -109,12 +109,12 @@ export const ThreadSearch = ({ thread, onJump, onClose }: ThreadSearchProps) => 
                 keyboardShouldPersistTaps="handled"
               >
                 {found.map((hit) => (
-                  <Item
+                  <ListItem
                     // The cursor, never `messageId`: a message the server wrote
                     // has no client id, and `null` is not a key.
                     key={hit.cursor}
                     title={hit.snippet}
-                    subtitle={`${t(
+                    supporting={`${t(
                       hit.role === 'user' ? 'chat.searchThreadYou' : 'chat.searchThreadAgent',
                     )} · ${hitDay(hit.createdAt, locale)}`}
                     onPress={() => onJump(hit)}

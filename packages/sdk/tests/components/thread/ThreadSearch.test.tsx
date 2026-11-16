@@ -48,19 +48,19 @@ vi.mock('@oxy.so/bloom/search', async () => {
 });
 
 /** Bloom's row, as a pressable with its two lines as text. */
-vi.mock('@oxy.so/bloom/item', async () => {
+vi.mock('@oxy.so/bloom/list', async () => {
   const ReactModule = await import('react');
   return {
-    Item: ({
+    ListItem: ({
       title,
-      subtitle,
+      supporting,
       ...props
-    }: { title?: React.ReactNode; subtitle?: React.ReactNode } & Record<string, unknown>) =>
+    }: { title?: React.ReactNode; supporting?: React.ReactNode } & Record<string, unknown>) =>
       ReactModule.createElement(
         'Pressable',
         props,
         ReactModule.createElement('Text', null, title),
-        ReactModule.createElement('Text', null, subtitle),
+        ReactModule.createElement('Text', null, supporting),
       ),
   };
 });

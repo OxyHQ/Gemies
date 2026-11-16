@@ -1,4 +1,4 @@
-import { Item } from '@oxy.so/bloom/item';
+import { ListItem } from '@oxy.so/bloom/list';
 import { Text } from '@oxy.so/bloom/typography';
 import { useMemo } from 'react';
 import { View } from 'react-native';
@@ -45,11 +45,10 @@ export function GemieRecentConversations({
       {recent.map((conversation) => {
         const title = conversation.title || labels.newChat;
         return (
-          <Item
+          <ListItem
             key={conversation.id}
-            density="compact"
-            accessibilityRole="button"
-            accessibilityLabel={title}
+            role="button"
+            label={title}
             onPress={() => onOpen(conversation.id)}
             title={<Text numberOfLines={1}>{title}</Text>}
             trailing={
