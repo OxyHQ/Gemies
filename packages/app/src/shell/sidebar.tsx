@@ -7,7 +7,7 @@ import {
 } from '@/features/spaces/model/space-rows';
 import { FolderRowsSkeleton } from '@/shared/ui/skeletons/folder-rows-skeleton';
 import { useSidebarSpaces } from '@/shell/use-sidebar-spaces';
-import { AliaRowActions, GemieRowActions, useGemieRowHandlers } from '@/shell/sidebar-gemie-menu';
+import { AliaRowMenu, GemieRowMenu, useGemieRowHandlers } from '@/shell/sidebar-gemie-menu';
 import { GroupPickerDialog } from '@/features/agents/ui/group-picker-dialog';
 import { InviteDialog } from '@/features/onboarding/ui/invite-dialog';
 import {
@@ -16,11 +16,12 @@ import {
 } from '@/features/projects/ui/project-edit-dialog';
 import { useAliaSettings } from '@/features/settings/ui/settings-context';
 import {
-  ConversationActions,
-  FolderActions,
+  ConversationMenu,
+  FolderMenu,
   FolderNameDialog,
   NewCollectionAction,
-  ProjectActions,
+  MoreTrigger,
+  ProjectMenu,
   RenameConversationDialog,
   StreamingIndicator,
 } from '@/shell/sidebar-menus';
@@ -61,9 +62,11 @@ import { useHoverIntent } from '@/shell/hover-intent';
 import {
   ConversationSidebar,
   type ConversationSidebarCreateOption,
+  type ConversationSidebarProps,
 } from '@oxy.so/bloom/conversation-sidebar';
 import { useNewAgentConversation } from '@/features/agents/runtime/use-new-agent-conversation';
 import { RiFolderLine } from '@oxy.so/bloom/icons/RiFolderLine';
+import { RiFolderOpenLine } from '@oxy.so/bloom/icons/RiFolderOpenLine';
 import { RiPushpinLine } from '@oxy.so/bloom/icons/RiPushpinLine';
 import { RiCustomerServiceLine } from '@oxy.so/bloom/icons/RiCustomerServiceLine';
 import { RiFileTextLine } from '@oxy.so/bloom/icons/RiFileTextLine';
@@ -76,7 +79,6 @@ import type {
   SidebarNavItem,
   SidebarProps,
   SidebarTree,
-  SidebarTreeFolder,
   SidebarTreeItem,
 } from '@oxy.so/bloom/sidebar';
 import * as Skeleton from '@oxy.so/bloom/skeleton';
@@ -96,6 +98,10 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import { Badge } from '@oxy.so/bloom/badge';
+import { Button } from '@oxy.so/bloom/button';
+import { PageHeader } from '@oxy.so/bloom/page-header';
+import { RiCloseLine } from '@oxy.so/bloom/icons/RiCloseLine';
+import { DropdownMenu, DropdownMenuContent } from '@oxy.so/bloom/dropdown-menu';
 import { type ActorActivityEntry, useRealtimeActivityStore } from '@gemies/sdk/realtime';
 
 const SUPPORT_URL = 'https://oxy.so/help';
@@ -140,15 +146,97 @@ export const Sidebar = React.memo(function Sidebar({ mobile, shell }: AliaSideba
   const { props, dialogs } = useSidebarProps();
   return (
     <>
-      {mobile ? (
-        <ConversationSidebar {...props} mobile surface="plain" />
-      ) : (
-        <ConversationSidebar {...props} {...shell} />
-      )}
+      <SidebarView props={props} mobile={mobile} shell={shell} />
       {dialogs}
     </>
   );
 });
+
+/** The app's sidebar presentation, shared by its live data and isolated visual fixtures. */
+export function SidebarView({
+  props,
+  mobile,
+  shell,
+}: AliaSidebarProps & { props: ConversationSidebarProps }) {
+  const { t } = useTranslation();
+  const [selectedKey, setSelectedKey] = React.useState<string | null>(null);
+  const selection = React.useMemo(() => {
+    const sections = props.tree ? ('label' in props.tree ? [props.tree] : props.tree) : [];
+    let selected: SidebarTreeItem | undefined;
+    const find = (items: readonly SidebarTreeItem[] | undefined) => {
+      for (const item of items ?? []) {
+        if (item.key === selectedKey && item.contextMenu) selected = item;
+        find(item.items);
+      }
+    };
+    for (const section of sections) {
+      find(section.items);
+    }
+    const rows = (
+      items: readonly SidebarTreeItem[] | undefined,
+    ): readonly SidebarTreeItem[] | undefined =>
+      items?.map((item) => ({
+        ...item,
+        ...(item.contextMenu
+          ? {
+              checked: item.key === selected?.key,
+              selecting: selected !== undefined,
+              onCheckedChange: (checked: boolean) => setSelectedKey(checked ? item.key : null),
+            }
+          : {}),
+        ...(item.items ? { items: rows(item.items) } : {}),
+      }));
+    return {
+      selected,
+      tree: sections.map((section) => ({
+        ...section,
+        items: rows(section.items),
+      })),
+    };
+  }, [props.tree, selectedKey]);
+  const selected = selection.selected;
+  return (
+    <ConversationSidebar
+      {...props}
+      {...(mobile ? { mobile: true, surface: 'plain' as const } : shell)}
+      tree={selection.tree}
+      onQueryChange={(query) => {
+        setSelectedKey(null);
+        props.onQueryChange?.(query);
+      }}
+      header={
+        selected ? (
+          <PageHeader
+            title={selected.label}
+            sticky={false}
+            safeArea={false}
+            leading={
+              <Button
+                icon={RiCloseLine}
+                tone="neutral"
+                appearance="outline"
+                accessibilityLabel={t('common.cancel')}
+                onPress={() => setSelectedKey(null)}
+              />
+            }
+            actions={
+              <DropdownMenu
+                onOpenChange={(open) => {
+                  if (!open) setSelectedKey(null);
+                }}
+              >
+                <MoreTrigger label={t('agents.options', { name: selected.label })} />
+                <DropdownMenuContent>{selected.contextMenu}</DropdownMenuContent>
+              </DropdownMenu>
+            }
+          />
+        ) : (
+          props.header
+        )
+      }
+    />
+  );
+}
 
 function useSidebarProps() {
   const router = useRouter();
@@ -388,7 +476,7 @@ function useSidebarProps() {
       const streaming = streamingChatId === conv.id || activity.inConversation(conv.id) !== null;
       const unread = conv.unreadCount ?? 0;
       const menu = isAuthenticated ? (
-        <ConversationActions
+        <ConversationMenu
           conversation={conv}
           projects={projects}
           projectId={projects.find((p) => p.conversationIds.includes(conv.id))?.id}
@@ -411,16 +499,14 @@ function useSidebarProps() {
         icon: pinnedIds.includes(conv.id) ? RiPushpinLine : undefined,
         meta: shortTime(conv.updatedAt),
         onPrefetch: () => onHoverIntent(() => prefetchConversation(conv.id)),
+        contextMenu: menu ?? undefined,
         actions:
           streaming || unread > 0 ? (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               {streaming ? <StreamingIndicator /> : null}
               {unread > 0 ? <UnreadBadge count={unread} /> : null}
-              {menu}
             </View>
-          ) : (
-            (menu ?? undefined)
-          ),
+          ) : undefined,
       };
     },
     [
@@ -491,17 +577,16 @@ function useSidebarProps() {
           prefetchAgentThread(gemieThreadAddress(agent), Boolean(agent.lastMessage?.trim())),
         ),
       // Its page, edit, computer, share, move to a space, pause and delete (`sidebar-gemie-menu.tsx`).
-      actions: isAuthenticated ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {(agent.unreadCount ?? 0) > 0 ? <UnreadBadge count={agent.unreadCount ?? 0} /> : null}
-          <GemieRowActions
-            agent={agent}
-            isOwner={user?.id === agent.author}
-            spaces={spacesUi.spaces}
-            handlers={gemieHandlers}
-          />
-        </View>
+      contextMenu: isAuthenticated ? (
+        <GemieRowMenu
+          agent={agent}
+          isOwner={user?.id === agent.author}
+          spaces={spacesUi.spaces}
+          handlers={gemieHandlers}
+        />
       ) : undefined,
+      actions:
+        (agent.unreadCount ?? 0) > 0 ? <UnreadBadge count={agent.unreadCount ?? 0} /> : undefined,
     }),
     [
       t,
@@ -618,7 +703,7 @@ function useSidebarProps() {
               leading: <GemieAvatar size={AGENT_ROW_AVATAR} portrait />,
               description: t('gemies.aliaTagline'),
               // Her editor: identity locked, the person's own accounts on her (`sidebar-gemie-menu.tsx`).
-              actions: isAuthenticated ? <AliaRowActions /> : undefined,
+              contextMenu: isAuthenticated ? <AliaRowMenu /> : undefined,
             },
           ]
         : [];
@@ -682,28 +767,30 @@ function useSidebarProps() {
 
   // Projects and folders, for the chats filed in them, and the chats section above them.
   const tree = React.useMemo<SidebarTree[] | undefined>(() => {
-    const treeFolders: SidebarTreeFolder[] = [
+    const treeFolders: SidebarTreeItem[] = [
       ...sections.projects.map(({ project, conversations: rows }) => ({
         key: `project:${project.id}`,
         label: project.name,
+        icon: project.isExpanded ? RiFolderOpenLine : RiFolderLine,
+        expandable: true,
         open: project.isExpanded,
+        onPress: () => toggleProject(project.id),
         onOpenChange: () => toggleProject(project.id),
-        actions: (
-          <ProjectActions
-            project={project}
-            onEdit={openProjectDialog}
-            onDelete={askDeleteProject}
-          />
+        contextMenu: (
+          <ProjectMenu project={project} onEdit={openProjectDialog} onDelete={askDeleteProject} />
         ),
         items: rows.map(row),
       })),
       ...sections.folders.map(({ folder, conversations: rows }) => ({
         key: `folder:${folder.id}`,
         label: folder.name,
+        icon: folder.isExpanded ? RiFolderOpenLine : RiFolderLine,
+        expandable: true,
         open: folder.isExpanded,
+        onPress: () => toggleFolder(folder.id),
         onOpenChange: () => toggleFolder(folder.id),
-        actions: (
-          <FolderActions folder={folder} onRename={renameFolder} onDelete={askDeleteFolder} />
+        contextMenu: (
+          <FolderMenu folder={folder} onRename={renameFolder} onDelete={askDeleteFolder} />
         ),
         items: rows.map(row),
       })),
@@ -720,7 +807,7 @@ function useSidebarProps() {
     const projectsTree: SidebarTree = {
       key: 'projects',
       label: t('sidebar.projects'),
-      folders: treeFolders,
+      items: treeFolders,
       actions: isAuthenticated ? (
         <NewCollectionAction
           onNewProject={() => openProjectDialog(null)}
@@ -1035,7 +1122,13 @@ function useSidebarProps() {
     selectedTreeItem: selectedAgentKey ?? chatId?.id,
     onTreeItemPress: (item: { key: string }) => {
       // The muted row of an empty space opens the picker itself; a folder is not a destination.
-      if (item.key.startsWith(SPACE_ADD_KEY) || item.key.startsWith(SPACE_KEY)) return;
+      if (
+        item.key.startsWith(SPACE_ADD_KEY) ||
+        item.key.startsWith(SPACE_KEY) ||
+        item.key.startsWith('project:') ||
+        item.key.startsWith('folder:')
+      )
+        return;
       if (item.key === ALIA_KEY) {
         closeNav?.();
         return router.replace('/(app)');

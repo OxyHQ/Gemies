@@ -18,7 +18,7 @@ import { RiCloseLine } from '@oxy.so/bloom/icons/RiCloseLine';
 import { RiNotification3Line } from '@oxy.so/bloom/icons/RiNotification3Line';
 import { RiNotificationOffLine } from '@oxy.so/bloom/icons/RiNotificationOffLine';
 import { RiSettings3Line } from '@oxy.so/bloom/icons/RiSettings3Line';
-import { Item } from '@oxy.so/bloom/item';
+import { ListItem } from '@oxy.so/bloom/list';
 import { ListRowsSkeleton } from '@/shared/ui/skeletons';
 
 import { Switch } from '@oxy.so/bloom/switch';
@@ -209,14 +209,17 @@ export default function NotificationsScreen() {
             const tone = PRIORITY_TONES[notification.priority] || PRIORITY_TONES.normal;
 
             return (
-              <Item
+              <ListItem
                 key={notification._id}
                 role="listitem"
+                label={notification.title}
                 onPress={() => handleNotificationPress(notification)}
                 leading={
-                  <Badge dot color={tone} invisible={!isUnread}>
-                    <Icon width={18} height={18} fill={colors.textSecondary} />
-                  </Badge>
+                  <View pointerEvents="none">
+                    <Badge dot color={tone} invisible={!isUnread}>
+                      <Icon width={18} height={18} fill={colors.textSecondary} />
+                    </Badge>
+                  </View>
                 }
                 title={
                   isUnread ? (
@@ -227,7 +230,8 @@ export default function NotificationsScreen() {
                     <Muted numberOfLines={1}>{notification.title}</Muted>
                   )
                 }
-                subtitle={<Muted numberOfLines={3}>{notification.body}</Muted>}
+                supporting={notification.body}
+                supportingLines={3}
                 trailing={
                   <View className="flex-row items-center gap-1">
                     <Muted>{timeAgo(notification.createdAt)}</Muted>

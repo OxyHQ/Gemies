@@ -4,9 +4,10 @@ import type { Agent } from '@/shared/contracts/agents';
 import { readAgentCharacter } from '@gemies/sdk';
 import { AgentAvatar } from '@oxy.so/bloom/agent-avatar';
 import { Button } from '@oxy.so/bloom/button';
-import { Item } from '@oxy.so/bloom/item';
+import { ListItem } from '@oxy.so/bloom/list';
 import { Text } from '@oxy.so/bloom/typography';
 import React from 'react';
+import { View } from 'react-native';
 
 /**
  * One agent in the catalogue, as a row: its mark, its name with "by author" after it, its tagline
@@ -27,16 +28,18 @@ export const AgentListingRow = React.memo(function AgentListingRow({
   const name = agentDisplayName(agent);
   const author = agent.authorName?.trim();
   return (
-    <Item
+    <ListItem
       role="listitem"
-      accessibilityLabel={name}
+      label={name}
       onPress={() => onPress(agent._id)}
       leading={
-        <AgentAvatar
-          size={32}
-          character={readAgentCharacter(agent.character, agent.color)}
-          portrait
-        />
+        <View pointerEvents="none">
+          <AgentAvatar
+            size={36}
+            character={readAgentCharacter(agent.character, agent.color)}
+            portrait
+          />
+        </View>
       }
       title={
         <Text numberOfLines={1} className="text-sm font-medium text-text-primary">
@@ -49,11 +52,10 @@ export const AgentListingRow = React.memo(function AgentListingRow({
           ) : null}
         </Text>
       }
-      subtitle={agent.tagline}
-      subtitleNumberOfLines={1}
+      supporting={agent.tagline}
+      supportingLines={1}
       trailing={
         <Button
-          size="sm"
           tone="neutral"
           appearance="subtle"
           stopPropagation

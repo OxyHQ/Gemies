@@ -244,8 +244,10 @@ vi.mock('@oxy.so/bloom/icons/RiPlugLine', () => ({ RiPlugLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiDeleteBinLine', () => ({ RiDeleteBinLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiEditLine', () => ({ RiEditLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiFolderLine', () => ({ RiFolderLine: () => null }));
+vi.mock('@oxy.so/bloom/icons/RiFolderOpenLine', () => ({ RiFolderOpenLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiPushpinLine', () => ({ RiPushpinLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiStarLine', () => ({ RiStarLine: () => null }));
+vi.mock('@oxy.so/bloom/icons/RiCloseLine', () => ({ RiCloseLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiAddLine', () => ({ RiAddLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiBookOpenLine', () => ({ RiBookOpenLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiCustomerServiceLine', () => ({ RiCustomerServiceLine: () => null }));
@@ -263,6 +265,13 @@ vi.mock('@oxy.so/bloom/icons/RiTimeLine', () => ({ RiTimeLine: () => null }));
 
 vi.mock('@oxy.so/bloom/ai-chat', () => ({ useAiChatShell: () => null }));
 vi.mock('@oxy.so/bloom/surfaces', () => ({ confirm: vi.fn(async () => true) }));
+vi.mock('@oxy.so/bloom/page-header', async () => {
+  const ReactModule = await import('react');
+  return {
+    PageHeader: ({ leading, actions, ...props }: Record<string, React.ReactNode>) =>
+      ReactModule.createElement('PageHeader', props, leading, actions),
+  };
+});
 vi.mock('@oxy.so/bloom/conversation-sidebar', () => ({
   ConversationSidebar: (props: Record<string, any>) => {
     state.sidebarProps = props;
@@ -271,10 +280,17 @@ vi.mock('@oxy.so/bloom/conversation-sidebar', () => ({
     // mounted so their menus can be pressed, and what sits under the flat list.
     const trees: any[] = [props.tree ?? []].flat();
     const row = (key: string, item: any) =>
-      React.createElement('Row', { key, rowKey: item.key }, item.actions);
+      React.createElement(
+        'Row',
+        { key, rowKey: item.key },
+        item.contextMenu,
+        item.actions,
+        ...(item.items ?? []).map((child: typeof item) => row(`${key}/${child.key}`, child)),
+      );
     return React.createElement(
       'Sidebar',
       null,
+      props.header,
       trees.map((tree) => tree.actions),
       props.after,
       trees.flatMap((tree) => [
@@ -396,10 +412,12 @@ async function settle() {
 
 const folderItems = () =>
   Object.fromEntries(
-    (sections().flatMap((section) => section.folders ?? []) as any[]).map((folder) => [
-      folder.key,
-      folder.items.map((item: any) => item.key),
-    ]),
+    (sections().find((section) => section.key === 'projects')?.items ?? []).map(
+      (folder: { key: string; items: { key: string }[] }) => [
+        folder.key,
+        folder.items.map((item) => item.key),
+      ],
+    ),
   );
 
 /** The tree's sections, in the order the sidebar draws them: Alia's chats (when any), then projects. */
@@ -512,7 +530,8 @@ describe('the sidebar list', () => {
     expect(folder?.name).toBe('Work');
     expect(
       sections()
-        .flatMap((s) => s.folders ?? [])
+        .filter((s) => s.key === 'projects')
+        .flatMap((s) => s.items ?? [])
         .map((f: any) => [f.key, f.label]),
     ).toContainEqual([`folder:${folder!.id}`, 'Work']);
     // The chat's menu offers the folder; filing it moves it from the chats section into the folder.
@@ -526,6 +545,56 @@ describe('the sidebar list', () => {
     expect(folderItems()).toEqual({ [`folder:${folder!.id}`]: ['alpha'] });
     expect(chatIds()).toEqual(['beta']);
   });
+
+  it.each(['folder', 'project'])(
+    'selects a %s independently from its disclosure and navigation',
+    async (kind) => {
+      state.collections.setState({
+        collections: [
+          {
+            id: 'collection-1',
+            kind,
+            name: 'Work',
+            conversationIds: ['alpha'],
+            isExpanded: false,
+          },
+        ],
+      });
+      await mount();
+      const collection = () => sections().find((section) => section.key === 'projects').items[0];
+      expect(collection().contextMenu).toBeDefined();
+      expect(collection().actions).toBeUndefined();
+      expect(collection().items.map((item: { key: string }) => item.key)).toEqual(['alpha']);
+      const sidebar = state.sidebarProps;
+      if (!sidebar) throw new Error('Sidebar fixture did not mount');
+      await act(async () => {
+        collection().onPress();
+        sidebar.onTreeItemPress(collection());
+      });
+      expect(collection().open).toBe(true);
+      expect(state.push).not.toHaveBeenCalled();
+      expect(state.replace).not.toHaveBeenCalled();
+      act(() => collection().onCheckedChange(true));
+      expect(collection().checked).toBe(true);
+      expect(collection().open).toBe(true);
+      expect(collection().items[0].selecting).toBe(true);
+      expect(renderer.root.findByType('PageHeader' as any).props.title).toBe('Work');
+      await act(async () => collection().onOpenChange(false));
+      expect(collection().open).toBe(false);
+      expect(collection().checked).toBe(true);
+      const header = renderer.root.findByType('PageHeader' as any);
+      await act(async () =>
+        menuItem(
+          header,
+          kind === 'folder' ? 'sidebar.deleteFolder' : 'sidebar.deleteProject',
+        ).props.onPress(),
+      );
+      await settle();
+      expect(state.collections.getState().collections).toEqual([]);
+      expect(state.push).not.toHaveBeenCalled();
+      expect(state.replace).not.toHaveBeenCalled();
+    },
+  );
 
   it('marks the chat being answered, and shows ghost rows while history loads', async () => {
     useConversationStore.setState({ streamingConversationId: 'beta' });
@@ -848,10 +917,10 @@ describe('spaces in the sidebar', () => {
     const flatAgent = sections()
       .find((s) => s.key === 'agents')!
       .items.find((i: { key: string }) => i.key === 'agent:a3');
-    expect(flatAgent.actions).toBeDefined();
+    expect(flatAgent.contextMenu).toBeDefined();
     let menu!: ReactTestRenderer;
     await act(async () => {
-      menu = create(member.actions);
+      menu = create(member.contextMenu);
     });
     const group = menu.root.find((n) => is(n, 'RadioGroup'));
     await act(async () => group.props.onValueChange(''));
@@ -901,7 +970,7 @@ describe("a gemie row's menu", () => {
       .items.find((i: { key: string }) => i.key === 'agent:a1');
     let menu!: ReactTestRenderer;
     await act(async () => {
-      menu = create(row.actions);
+      menu = create(row.contextMenu);
     });
     const labels = menu.root
       .findAll((node) => is(node, 'MenuItem') || is(node, 'SubTrigger'))
@@ -1004,5 +1073,56 @@ describe("a gemie row's menu", () => {
     await settle();
     expect(state.deleteAgent).toHaveBeenCalled();
     expect(state.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe('sidebar row selection', () => {
+  const conversationRows = () => sections().find((section) => section.key === 'chats')!.items;
+
+  it('selects one row independently of navigation and exposes its existing menu in PageHeader', async () => {
+    state.conversations = [chat('c1'), chat('c2')];
+    await mount();
+    const first = conversationRows().find((item: { key: string }) => item.key === 'c1');
+    expect(first.checked).toBe(false);
+    expect(first.contextMenu).toBeDefined();
+    expect(first.actions).toBeUndefined();
+    await act(async () => first.onCheckedChange(true));
+    expect(state.replace).not.toHaveBeenCalled();
+    expect(conversationRows().every((item: { selecting: boolean }) => item.selecting)).toBe(true);
+    expect(renderer.root.findByType('PageHeader' as never).props.title).toBe('c1');
+
+    await act(async () =>
+      conversationRows()
+        .find((item: { key: string }) => item.key === 'c2')
+        .onCheckedChange(true),
+    );
+    expect(
+      conversationRows()
+        .filter((item: { checked: boolean }) => item.checked)
+        .map((item: { key: string }) => item.key),
+    ).toEqual(['c2']);
+    const header = renderer.root.findByType('PageHeader' as never);
+    expect(header.props.title).toBe('c2');
+    // The selected-row toolbar reuses the same rename/pin/move/delete menu, with its current row.
+    expect(menuItem(header, 'sidebar.rename')).toBeTruthy();
+    await act(async () =>
+      header
+        .findAllByType('Button' as never)
+        .find((button) => button.props.accessibilityLabel === 'common.cancel')!
+        .props.onPress(),
+    );
+    expect(conversationRows().some((item: { checked: boolean }) => item.checked)).toBe(false);
+    expect(renderer.root.findAllByType('PageHeader' as never)).toHaveLength(0);
+  });
+
+  it('leaves selection when the sidebar search changes', async () => {
+    state.conversations = [chat('c1'), chat('c2')];
+    await mount();
+    await act(async () => conversationRows()[0].onCheckedChange(true));
+    await act(async () => state.sidebarProps!.onQueryChange('c2'));
+    expect(conversationRows().map((item: { key: string }) => item.key)).toEqual(['c2']);
+    expect(conversationRows()[0].checked).toBe(false);
+    expect(conversationRows()[0].selecting).toBe(false);
+    expect(renderer.root.findAllByType('PageHeader' as never)).toHaveLength(0);
   });
 });

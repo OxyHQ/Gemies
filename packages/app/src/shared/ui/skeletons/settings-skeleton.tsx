@@ -1,7 +1,5 @@
-import { GroupedSection } from '@oxy.so/bloom/grouped-section';
-
+import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
 import * as Skeleton from '@oxy.so/bloom/skeleton';
-import { View } from 'react-native';
 
 /** What sits at the end of a settings row once its data is here. */
 export type SettingsControlShape = 'value' | 'switch' | 'none';
@@ -18,12 +16,7 @@ function ControlShape({ shape }: { shape: SettingsControlShape }) {
   );
 }
 
-/**
- * The rows of a settings card that are on their way, for a card that holds other things too (a
- * list that is empty or full once it is here). Each row has Bloom's geometry (52 tall, 16 between
- * the label and its control, the hairline under all but the last), with the label and the control
- * drawn as placeholders: the row holds its place and nothing moves when the data arrives.
- */
+/** Settings placeholders use the same row geometry as their loaded controls. */
 export function SettingsSkeletonRows({
   rows = 1,
   control = 'value',
@@ -34,15 +27,12 @@ export function SettingsSkeletonRows({
   return (
     <Skeleton.Region>
       {Array.from({ length: rows }, (_, index) => (
-        <View
+        <GroupedSectionItem
           key={index}
-          className={`min-h-[52px] flex-row items-center justify-between gap-4 py-2.5 pr-2.5 ${
-            index === rows - 1 ? '' : 'border-b border-border'
-          }`}
-        >
-          <Skeleton.Box width={LABEL_WIDTHS[index % LABEL_WIDTHS.length]} height={14} />
-          <ControlShape shape={control} />
-        </View>
+          title=""
+          content={<Skeleton.Box width={LABEL_WIDTHS[index % LABEL_WIDTHS.length]} height={14} />}
+          rightElement={<ControlShape shape={control} />}
+        />
       ))}
     </Skeleton.Region>
   );
