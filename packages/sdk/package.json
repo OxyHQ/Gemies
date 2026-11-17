@@ -82,7 +82,7 @@
     "expo-web-browser": "^57.0.0 || ^58.0.0",
     "react-native-css": "^3.0.7",
     "react-native-audio-api": "^0.13.6",
-    "react-native-qrcode-svg": "^6.3.21"
+    "react-native-qrcode-svg": "^6.3.54"
   },
   "peerDependenciesMeta": {
     "nativewind": {
@@ -93,10 +93,10 @@
     }
   },
   "devDependencies": {
-    "@types/react-test-renderer": "^19.1.0",
+    "@types/react-test-renderer": "^19.3.1",
     "react-native-audio-api": "0.13.6",
-    "react-native-qrcode-svg": "^6.3.21",
-    "react-test-renderer": "19.3.0",
+    "react-native-qrcode-svg": "^6.3.54",
+    "react-test-renderer": "19.3.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
   }
