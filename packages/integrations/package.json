@@ -40,7 +40,7 @@
     "@types/node": "^20.19.43",
     "@types/ws": "^8.18.1",
     "drizzle-kit": "0.31.10",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   }
 }
