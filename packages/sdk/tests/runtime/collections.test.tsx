@@ -15,7 +15,7 @@ const wire = vi.hoisted(() => ({
 }));
 
 vi.mock('@oxy.so/services/ui/client', () => ({
-  useOxy: () => ({ canUsePrivateApi: true, isAccountCacheReady: true }),
+  useOxy: () => ({ canUsePrivateApi: true }),
 }));
 vi.mock('../../src/runtime/api', () => {
   const answer = (method: string) => async (path: string, body?: unknown) => {

@@ -86,7 +86,6 @@ vi.mock('@oxy.so/services/ui/client', () => ({
     user: null,
     isAuthenticated: true,
     canUsePrivateApi: true,
-    isAccountCacheReady: true,
   }),
 }));
 const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));

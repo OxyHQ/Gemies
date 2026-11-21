@@ -15,7 +15,6 @@ const server = vi.hoisted(() => ({
   respond: (_method: string, _url: string): { status: number; body?: unknown } => ({ status: 200 }),
   calls: [] as string[],
   apiReady: true,
-  cacheReady: true,
 }));
 
 vi.mock('@oxy.so/services/ui/client', async () => ({
@@ -23,7 +22,6 @@ vi.mock('@oxy.so/services/ui/client', async () => ({
   useOxy: () => ({
     isAuthenticated: true,
     canUsePrivateApi: server.apiReady,
-    isAccountCacheReady: server.cacheReady,
     oxyServices: {
       createLinkedClient: () => ({
         client: {
@@ -94,7 +92,6 @@ function mount(probe: () => void) {
 beforeEach(() => {
   server.calls = [];
   server.apiReady = true;
-  server.cacheReady = true;
   stored.value = JSON.stringify([copy('c1'), copy('c2')]);
 });
 afterEach(() => {
@@ -165,9 +162,8 @@ describe('a session the server cannot reach', () => {
   });
 });
 
-it('waits for both the restored account cache and usable authentication, then loads immediately', async () => {
+it('waits for usable authentication, then loads immediately', async () => {
   server.apiReady = false;
-  server.cacheReady = false;
   server.respond = () => ({
     status: 200,
     body: {
@@ -182,9 +178,6 @@ it('waits for both the restored account cache and usable authentication, then lo
   });
   expect(server.calls).toEqual([]);
   server.apiReady = true;
-  await rerender();
-  expect(server.calls).toEqual([]);
-  server.cacheReady = true;
   await rerender();
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));

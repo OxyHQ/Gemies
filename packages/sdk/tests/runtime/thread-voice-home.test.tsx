@@ -50,7 +50,6 @@ vi.mock('@oxy.so/services/ui/client', () => ({
     user: null,
     isAuthenticated: true,
     canUsePrivateApi: true,
-    isAccountCacheReady: true,
   }),
 }));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast: { error: vi.fn() } }));
