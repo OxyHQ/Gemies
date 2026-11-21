@@ -23,8 +23,9 @@ mapping is in [`CHANGELOG.md`](./CHANGELOG.md) under 1.0.0.
 bun add @gemies/sdk
 ```
 
-`react`, `react-native`, `@oxy.so/core`, `@oxy.so/services`, `@tanstack/react-query`
-(the conversation runtime's cache; `OxyProvider` mounts the client), `react-native-css`
+`react`, `react-native`, `@oxy.so/core`, `@oxy.so/services` (15 or later), `@tanstack/react-query`
+(the conversation runtime's cache; your app mounts its `QueryClientProvider` above `OxyProvider`
+and drops the SDK's queries when the account changes, see 10.0.0 in the changelog), `react-native-css`
 (the thread's images take `className`) and the Expo modules listed under `peerDependencies` in
 `package.json` — among them `expo-clipboard` and `expo-web-browser`, which the thread's copy
 button and its sources use — are yours to install. Metro

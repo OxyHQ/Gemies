@@ -22,7 +22,6 @@ vi.mock('@oxy.so/services/ui/client', async () => ({
   useOxy: () => ({
     isAuthenticated: true,
     canUsePrivateApi: true,
-    isAccountCacheReady: true,
     user: { id: 'u1' },
     oxyServices: {
       createLinkedClient: ({ baseURL }: { baseURL: string }) => ({

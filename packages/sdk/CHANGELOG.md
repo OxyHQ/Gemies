@@ -1,5 +1,27 @@
 # @gemies/sdk
 
+## 10.0.0
+
+Built on `@oxy.so/services` 15, which keeps its data in `@oxy.so/bloom-data` and no longer carries
+React Query.
+
+- **Breaking — requires Services 15** (`@oxy.so/services` `>=15.0.0 <16`). Services 14 is no
+  longer supported.
+- **Breaking — the app mounts the query client.** The conversation runtime still keeps its cache in
+  React Query, but `OxyProvider` no longer mounts a `QueryClientProvider`: mount your own above
+  `OxyProvider`, the one client the SDK and your own screens (a sidebar reading
+  `gemieQueryKeys`) share.
+- **Breaking — the app drops the SDK's queries on an account switch.** Services 14 did it for the
+  roots an app listed in `accountQueries`; Services 15 takes no `accountQueries`. The SDK's keys
+  (`gemieQueryKeys`) are not scoped to an account, so when `useOxy().user?.id` changes, remove
+  their roots from your client (for example
+  `queryClient.removeQueries({ predicate: (q) => GEMIE_ROOTS.has(q.queryKey[0]) })` with the roots
+  your app listed before). The conversation list's offline copy is unchanged: it comes from
+  `GemieRuntimeProvider`'s `offline` store, keyed by account.
+- **`useConversations` and `useConversationCollections` start as soon as the private API is
+  usable** (`canUsePrivateApi`). They no longer wait for `useOxy().isAccountCacheReady`, which
+  Services 15 removed: there is no account cache to restore before the first read.
+
 ## 9.1.0
 
 Conversation lists, search results and file/source rows now use Bloom's shared ListItem. Group

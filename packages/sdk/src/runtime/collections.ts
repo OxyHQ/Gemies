@@ -36,14 +36,14 @@ import { API_ROUTES } from './routes';
 /** The person's folders, projects, pins and favourites. Kept current by the realtime connection. */
 export function useConversationCollections(): ConversationCollections {
   const api = useGemieApi();
-  const { canUsePrivateApi, isAccountCacheReady } = useOxy();
+  const { canUsePrivateApi } = useOxy();
   const query = useQuery({
     queryKey: gemieQueryKeys.collections,
     queryFn: async () =>
       readCollectionsSnapshot(
         (await api.get<CollectionsSnapshotWire>(API_ROUTES.collections.list)).data,
       ),
-    enabled: canUsePrivateApi && isAccountCacheReady,
+    enabled: canUsePrivateApi,
     // No timer and no refocus: the `collections` event keeps it, and a reset reads it again.
     staleTime: Number.POSITIVE_INFINITY,
     refetchOnWindowFocus: false,

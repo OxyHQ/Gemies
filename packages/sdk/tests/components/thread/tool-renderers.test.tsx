@@ -108,7 +108,6 @@ vi.mock('@oxy.so/services/ui/client', () => ({
     user: { id: 'me' },
     isAuthenticated: true,
     canUsePrivateApi: true,
-    isAccountCacheReady: true,
   }),
 }));
 

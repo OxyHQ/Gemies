@@ -173,7 +173,7 @@ async function fetchConversationsPage(
  * with both gemies in `members`.
  */
 export function useConversations({ agentId, app, kind }: ConversationsFilter = {}) {
-  const { user, isAuthenticated, canUsePrivateApi, isAccountCacheReady } = useOxy();
+  const { user, isAuthenticated, canUsePrivateApi } = useOxy();
   const client = useConversationsClient();
   const accountId = user?.id;
   const { offline: offlineStore } = useGemieRuntime();
@@ -183,13 +183,7 @@ export function useConversations({ agentId, app, kind }: ConversationsFilter = {
     data: ConversationsInfiniteData;
   } | null>(null);
   useEffect(() => {
-    if (
-      !isAuthenticated ||
-      !isAccountCacheReady ||
-      agentId !== undefined ||
-      app !== undefined ||
-      kind !== undefined
-    )
+    if (!isAuthenticated || agentId !== undefined || app !== undefined || kind !== undefined)
       return;
     let current = true;
     void new OfflineConversations(offlineStore ?? null)
@@ -217,7 +211,7 @@ export function useConversations({ agentId, app, kind }: ConversationsFilter = {
     return () => {
       current = false;
     };
-  }, [accountId, offlineStore, isAuthenticated, isAccountCacheReady, agentId, app, kind]);
+  }, [accountId, offlineStore, isAuthenticated, agentId, app, kind]);
 
   const query = useInfiniteQuery({
     queryKey:
@@ -231,12 +225,11 @@ export function useConversations({ agentId, app, kind }: ConversationsFilter = {
     select: reviveConversationDates,
     staleTime: FIVE_MINUTES,
     retry: (count, error) => errorStatus(error) !== 401 && count < 2,
-    enabled: canUsePrivateApi && isAccountCacheReady,
+    enabled: canUsePrivateApi,
   });
   // Offline content is a display fallback, never a fresh successful server answer.
   const fallback =
     isAuthenticated &&
-    isAccountCacheReady &&
     agentId === undefined &&
     app === undefined &&
     kind === undefined &&
