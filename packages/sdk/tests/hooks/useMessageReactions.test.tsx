@@ -32,7 +32,7 @@ import { applyMessageReaction } from '../../src/runtime/message-reactions';
 import { createRoomLedger } from '../../src/runtime/room-events';
 import { useRoomEvents } from '../../src/runtime/use-room-events';
 import { ThreadMessages } from '../../src/runtime/data/threads';
-import { Conversations } from '../../src/runtime/data/conversations';
+import { ConversationMessages, messagesRecord } from '../../src/runtime/data/conversations';
 import type { Message } from '../../src/runtime/types';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -110,7 +110,9 @@ afterEach(() => {
 describe('saved message reactions', () => {
   it('persists explicit intent, updates live/stored/history state and accepts newer cross-device state', async () => {
     withStore(client, () => {
-      Conversations.put({ id: 'c1', title: '', createdAt: '', updatedAt: '', messages: [initial] });
+      ConversationMessages.put(
+        messagesRecord({ id: 'c1', title: '', createdAt: '', updatedAt: '', messages: [initial] }),
+      );
       ThreadMessages.put([
         { ...initial, conversationId: 'c1', cursor: 'cursor' },
         { ...initial, conversationId: 'other', cursor: 'other' },
@@ -127,7 +129,7 @@ describe('saved message reactions', () => {
     });
     await acknowledge();
     expect(current.messages[0]).toMatchObject({ reactions: ['❤️'], reactionRevision: 1 });
-    expect(withStore(client, () => Conversations.get('c1'))).toMatchObject({
+    expect(withStore(client, () => ConversationMessages.get('c1'))).toMatchObject({
       messages: [{ reactions: ['❤️'], reactionRevision: 1 }],
     });
     expect(withStore(client, () => ThreadMessages.get('cursor'))).toMatchObject({

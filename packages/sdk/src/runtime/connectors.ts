@@ -16,7 +16,7 @@ import { useOxy } from '@oxy.so/services/ui/client';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import { useRealtimeEvent, useRealtimeReset } from '../realtime/react';
+import { rereadOn } from '../realtime/reread';
 import { type GemieApi, useGemieApi } from './api';
 import { useGemieRuntime } from './config';
 import { answerSource, useAnswer } from './data/answer';
@@ -253,6 +253,9 @@ export const connections = answerSource('gemies.connections', {
     (await api.get<{ servers: Connection[] }>(CONNECTOR_ROUTES.connected, { signal })).data.servers,
 });
 
+rereadOn('connections', connections);
+rereadOn('reset', connections);
+
 /**
  * What the person connected, each account on its own. `enabled: false` reads nothing: the chat is
  * embedded in apps whose origin the connector routes do not answer, and asks only for a turn that
@@ -265,10 +268,7 @@ export function useConnections({
 } = {}): RecordView<Connection[]> {
   const api = useGemieApi();
   const { canUsePrivateApi } = useOxy();
-  const view = useAnswer(connections, ...(canUsePrivateApi && enabled ? [api] : [skip]));
-  useRealtimeEvent('connections', () => void view.refresh());
-  useRealtimeReset(() => void view.refresh());
-  return view;
+  return useAnswer(connections, ...(canUsePrivateApi && enabled ? [api] : [skip]));
 }
 
 /** A logo path the API answered, as a URL on its origin. */

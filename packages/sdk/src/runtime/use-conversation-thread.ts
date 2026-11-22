@@ -23,7 +23,7 @@ import {
 import {
   bumpConversation,
   ConversationNotFoundError,
-  Conversations,
+  forgetConversation,
   mergeMessages,
 } from './data/conversations';
 import { reportDroppedAttachments, useStartConversation } from './use-start-conversation';
@@ -138,7 +138,7 @@ export function useConversationThread({
   // list) and return to a valid composer; its read is never retried, so this happens once.
   useEffect(() => {
     if (!(conversationQueryError instanceof ConversationNotFoundError)) return;
-    withStore(store, () => Conversations.remove(conversationQueryError.conversationId));
+    withStore(store, () => forgetConversation(conversationQueryError.conversationId));
     host.closeConversation?.();
   }, [conversationQueryError, store, host]);
 

@@ -8,9 +8,10 @@
  * Records and lists are copied to the account's durable store, so the sidebar paints from the last
  * session.
  *
- * A record is the conversation as the API sends it, JSON throughout. A list row carries no
- * `messages`; the conversation's own read (`conversation`) does, and a row arriving later (a list
- * page, a realtime event) leaves them in place.
+ * A conversation is two records, JSON throughout: its row (`Conversations`: what a list, a realtime
+ * event and the sidebar carry) and, once the conversation itself was read, its messages
+ * (`ConversationMessages`, whose copy on disk is bounded). A row arriving later never touches the
+ * messages.
  */
 import { action, currentStore, entity, list, source } from '@oxy.so/bloom-data';
 import type { RealtimeConnection } from '../../realtime/connection';
@@ -21,6 +22,7 @@ import { normalizeConversationMessages } from '../message-history';
 import { createRandomUuid } from '../random-uuid';
 import { API_ROUTES } from '../routes';
 import type { Conversation, Message } from '../types';
+import { rereadOn } from '../../realtime/reread';
 import { gemieRead } from './read';
 
 const PAGE_SIZE = 20;
@@ -147,15 +149,85 @@ function messageText(message: Message | undefined): string {
 
 // ── Records and lists ───────────────────────────────────────────────
 
+/** A conversation's row: everything but its messages. */
 export const Conversations = entity<Conversation>('gemies.conversation', {
   id: (conversation) => conversation.id,
   persist: { version: 1 },
-  // A row (a list page, a realtime event) carries no messages: it keeps the ones held.
-  combine: (incoming, held) =>
-    incoming.messages === undefined && held.messages !== undefined
-      ? { ...incoming, messages: held.messages }
-      : incoming,
 });
+
+/** A conversation's messages, with its row (a ref into `Conversations`). */
+export interface ConversationMessagesRecord {
+  readonly id: string;
+  readonly conversation: Conversation;
+  readonly messages: Message[];
+}
+
+/** How many conversations' messages the durable copy keeps: the ones written last. */
+export const MAX_PERSISTED_CONVERSATIONS = 20;
+/** How many of a conversation's messages the durable copy keeps: the last ones. */
+export const MAX_PERSISTED_MESSAGES = 40;
+/** The most a conversation's stored messages may weigh, as JSON. */
+export const MAX_PERSISTED_BYTES = 150_000;
+
+/** A message's text parts alone. */
+function textOnly(message: Message): Message {
+  if (typeof message.content === 'string') return message;
+  const text = message.content.filter((part) => part.type === 'text');
+  return text.length === message.content.length ? message : { ...message, content: text };
+}
+
+/**
+ * What survives a restart of a conversation's messages, so reopening one draws its latest at once
+ * (and reads them again behind) instead of a skeleton: its last {@link MAX_PERSISTED_MESSAGES},
+ * never a turn still streaming or not yet stored by the server (a restart must not show a
+ * half-written reply as if it were the answer), text only (an image part can be a data URL of
+ * megabytes or a signed URL expired by the next visit), and at most {@link MAX_PERSISTED_BYTES},
+ * dropping the oldest messages first. Memory keeps them all.
+ */
+export function trimConversationMessages(
+  record: ConversationMessagesRecord,
+): ConversationMessagesRecord {
+  let messages = record.messages
+    .filter((message) => !message.isStreaming && !message.unsaved)
+    .slice(-MAX_PERSISTED_MESSAGES)
+    .map(textOnly);
+  let trimmed = { ...record, messages };
+  while (messages.length > 1 && JSON.stringify(trimmed).length > MAX_PERSISTED_BYTES) {
+    messages = messages.slice(Math.ceil(messages.length / 4));
+    trimmed = { ...record, messages };
+  }
+  return trimmed;
+}
+
+export const ConversationMessages = entity<ConversationMessagesRecord>(
+  'gemies.conversation-messages',
+  {
+    id: (record) => record.id,
+    refs: { conversation: Conversations },
+    persist: { version: 1, keep: MAX_PERSISTED_CONVERSATIONS, trim: trimConversationMessages },
+  },
+);
+
+/** A read conversation as its two records: the row, and its messages. */
+export function messagesRecord(conversation: Conversation): ConversationMessagesRecord {
+  const { messages = [], ...row } = conversation;
+  return { id: conversation.id, conversation: row, messages };
+}
+
+/** A held conversation as readers see it: its row, with its messages once they were read. */
+export function heldConversation(id: string): Conversation | undefined {
+  const row = Conversations.get(id);
+  const messages = ConversationMessages.get(id)?.messages;
+  return row && messages ? { ...row, messages } : row;
+}
+
+/** Forgets a conversation: its row (out of every list) and its messages. */
+export function forgetConversation(id: string): void {
+  currentStore().batch(() => {
+    ConversationMessages.remove(id);
+    Conversations.remove(id);
+  });
+}
 
 /** The person's conversations, newest first, one list per filter (`conversationsKey`). */
 export const ConversationList = list('gemies.conversations', { of: Conversations, persist: true });
@@ -231,16 +303,21 @@ export async function fetchConversation(
 }
 
 /**
- * One conversation with its messages. A missing conversation is deterministic: retrying only
- * repeats the same 404, so it is never retried (nor is a prefetch, which a refusal answers).
+ * One conversation with its messages (its row stored beside them). A missing conversation is
+ * deterministic: retrying only repeats the same 404, so it is never retried (nor is a prefetch,
+ * which a refusal answers).
  */
-export const conversation = source(Conversations, {
+export const conversation = source(ConversationMessages, {
   ...gemieRead,
   key: (_client: ConversationsClient, id: string) => id,
   stale: FIVE_MINUTES,
   retry: 0,
-  load: ({ signal }, client, id) => fetchConversation(client, id, signal),
+  load: async ({ signal }, client, id) =>
+    messagesRecord(await fetchConversation(client, id, signal)),
 });
+
+// A client too far behind the account's log reads its lists and conversations again.
+rereadOn('reset', conversationList, conversation);
 
 // ── Placement ───────────────────────────────────────────────────────
 
@@ -318,12 +395,18 @@ function toTop(id: string, moveExisting: boolean): void {
   else if (moveExisting) ConversationList.move('all', id, 0);
 }
 
-/** Stores what a write answered: merged into the held record (keeping what it does not carry). */
-function upsert(record: Conversation): void {
-  if (!Conversations.merge(record.id, record)) Conversations.put(record);
+/** Stores what a write answered: merged into the held records (keeping what it does not carry). */
+function upsert(saved: Conversation): void {
+  const { conversation: row, messages } = messagesRecord(saved);
+  currentStore().batch(() => {
+    if (!Conversations.merge(row.id, row)) Conversations.put(row);
+    if (saved.messages === undefined || ConversationMessages.merge(row.id, { messages })) return;
+    const held = Conversations.get(row.id) ?? row;
+    ConversationMessages.put({ id: row.id, conversation: held, messages });
+  });
 }
 
-/** The conversation without its preview: what a clear leaves (`lastMessage` is not sent). */
+/** The row without its preview: what a clear leaves (`lastMessage` is not sent). */
 function withoutPreview({ lastMessage: _last, ...rest }: Conversation): Conversation {
   return rest;
 }
@@ -415,7 +498,8 @@ async function postSave(
 /** Saves a conversation's messages (and title): drawn at once, put back if refused. */
 export const saveConversation = action({
   optimistic: (_client: ConversationsClient, { id, messages, title }: SaveConversationInput) => {
-    Conversations.merge(id, { messages, ...(title ? { title } : {}) });
+    if (title) Conversations.merge(id, { title });
+    ConversationMessages.merge(id, { messages });
   },
   run: (client, input) => postSave(client, input),
   settle: (saved: Conversation) => {
@@ -461,9 +545,7 @@ export const deleteConversation = action({
     }
     return id;
   },
-  settle: (id: string) => {
-    Conversations.remove(id);
-  },
+  settle: (id: string) => forgetConversation(id),
 });
 
 /**
@@ -475,7 +557,7 @@ export const deleteConversation = action({
 export const clearConversation = action({
   key: (_client: ConversationsClient, id: string) => `gemies.conversation.clear:${id}`,
   optimistic: (_client, id) => {
-    Conversations.merge(id, { messages: [] });
+    ConversationMessages.merge(id, { messages: [] });
   },
   run: async (client, id) => {
     try {
@@ -493,7 +575,8 @@ export const clearConversation = action({
     return id;
   },
   settle: (id: string, client: ConversationsClient) => {
-    Conversations.update(id, (held) => ({ ...withoutPreview(held), messages: [] }));
+    Conversations.update(id, withoutPreview);
+    ConversationMessages.merge(id, { messages: [] });
     void conversation.refresh(client, id);
     refreshConversationLists(client);
   },
@@ -537,7 +620,7 @@ export const createConversation = action({
     }
   },
   settle: (created: Conversation) => {
-    Conversations.put(created);
+    ConversationMessages.put(messagesRecord(created));
     toTop(created.id, false);
   },
 });

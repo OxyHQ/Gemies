@@ -1,6 +1,6 @@
 import { currentStore } from '@oxy.so/bloom-data';
 import { applyMessageReaction, type MessageReactionSnapshot } from '../message-reactions';
-import { Conversations } from './conversations';
+import { ConversationMessages } from './conversations';
 import { ThreadMessages, threadMessageKey } from './threads';
 
 /**
@@ -9,9 +9,9 @@ import { ThreadMessages, threadMessageKey } from './threads';
  */
 export function storeReaction(update: MessageReactionSnapshot): void {
   currentStore().batch(() => {
-    Conversations.patch(update.conversationId, (held) =>
-      held.messages ? { messages: applyMessageReaction(held.messages, update) } : undefined,
-    );
+    ConversationMessages.patch(update.conversationId, (held) => ({
+      messages: applyMessageReaction(held.messages, update),
+    }));
     const cursor = ThreadMessages.lookup(
       'message',
       threadMessageKey(update.conversationId, update.messageId),

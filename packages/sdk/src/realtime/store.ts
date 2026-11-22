@@ -3,20 +3,27 @@
  *
  * Every write here is an idempotent upsert of what the server says now (the conversation by id,
  * a message by its id, a reaction by its revision), so applying an event twice, or again over a
- * read that predates it (`noteSnapshot`), converges on the same state. Nothing here reads from the
- * server: what must be read again (a rewritten thread, the lists after a reset, the connections)
- * is read by the hooks that show it, which hear the same events (`useRealtimeEvent`,
- * `useRealtimeReset`).
+ * read that predates it (`noteSnapshot`), converges on the same state. What must be read again is
+ * invalidated, never read here: the reads a reset or a `connections` event makes stale
+ * (`reread.ts`), and a thread a new message may have moved onto another stretch. A rewritten
+ * conversation (`reload`) is read again by `useConversation`, which hands it to the thread.
  */
 import { currentStore, type Store, withStore } from '@oxy.so/bloom-data';
 import { readCollectionsSnapshot } from '../runtime/collections-model';
 import { storeCollections } from '../runtime/data/collections';
-import { Conversations, mergeMessages, placeConversation } from '../runtime/data/conversations';
+import {
+  ConversationMessages,
+  forgetConversation,
+  mergeMessages,
+  placeConversation,
+} from '../runtime/data/conversations';
 import { storeReaction } from '../runtime/data/reactions';
+import { gemieThread } from '../runtime/data/threads';
 import { normalizeConversationMessages } from '../runtime/message-history';
 import type { Conversation } from '../runtime/types';
 import type { RealtimeConnection } from './connection';
 import type { RealtimeConversationRow, RealtimeData, RealtimeFrame } from './contract';
+import { invalidateOn } from './reread';
 
 function toConversation(row: RealtimeConversationRow): Conversation {
   return {
@@ -46,14 +53,16 @@ export function applyRealtimeFrame(frame: RealtimeFrame): void {
       currentStore().batch(() => {
         placeConversation(toConversation(data.conversation));
         if (appended.length === 0) return;
-        Conversations.patch(data.conversation.id, (held) =>
-          held.messages ? { messages: mergeMessages(held.messages, appended) } : undefined,
-        );
+        ConversationMessages.patch(data.conversation.id, (held) => ({
+          messages: mergeMessages(held.messages, appended),
+        }));
+        // A gemie's thread reads which stretch is active; a message may have started a new one.
+        gemieThread.invalidateAll();
       });
       return;
     }
     case 'conversation.deleted':
-      Conversations.remove((frame.data as RealtimeData['conversation.deleted']).conversationId);
+      forgetConversation((frame.data as RealtimeData['conversation.deleted']).conversationId);
       return;
     case 'message.reaction': {
       const update = frame.data as RealtimeData['message.reaction'];
@@ -62,6 +71,9 @@ export function applyRealtimeFrame(frame: RealtimeFrame): void {
     }
     case 'collections':
       storeCollections(readCollectionsSnapshot(frame.data as RealtimeData['collections']));
+      return;
+    case 'connections':
+      invalidateOn('connections');
       return;
     default:
   }
@@ -86,8 +98,18 @@ export function attachRealtimeStore(connection: RealtimeConnection, store: Store
   const existing = byConnection.get(connection);
   if (existing) existing.refs++;
   else {
-    const detach = connection.on('*', (frame) => withStore(store, () => applyRealtimeFrame(frame)));
-    byConnection.set(connection, { refs: 1, detach });
+    const offFrames = connection.on('*', (frame) =>
+      withStore(store, () => applyRealtimeFrame(frame)),
+    );
+    // Too far behind the account's log: everything it reads is stale.
+    const offReset = connection.onReset(() => withStore(store, () => invalidateOn('reset')));
+    byConnection.set(connection, {
+      refs: 1,
+      detach: () => {
+        offFrames();
+        offReset();
+      },
+    });
   }
   let released = false;
   return () => {

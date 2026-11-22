@@ -1,9 +1,24 @@
 import { Store, withStore } from '@oxy.so/bloom-data';
-import { ConversationList, Conversations } from '../../src/runtime/data/conversations';
+import {
+  ConversationList,
+  ConversationMessages,
+  Conversations,
+  heldConversation as held,
+  messagesRecord,
+} from '../../src/runtime/data/conversations';
 import type { Conversation } from '../../src/runtime/types';
 
 /** An account's store for one test, memory only. */
 export const freshStore = () => new Store();
+
+/** Holds a conversation as the store keeps it: its row, and its messages when it has some. */
+export function holdConversation(store: Store, conversation: Conversation): void {
+  withStore(store, () =>
+    conversation.messages === undefined
+      ? Conversations.put(conversation)
+      : ConversationMessages.put(messagesRecord(conversation)),
+  );
+}
 
 /** Holds `rows` as a list the server answered (`key`, default the person's own list). */
 export function seedList(
@@ -11,8 +26,8 @@ export function seedList(
   rows: readonly Conversation[],
   { key = 'all', hasMore = false }: { key?: string; hasMore?: boolean } = {},
 ): void {
+  for (const row of rows) holdConversation(store, row);
   withStore(store, () => {
-    Conversations.put([...rows]);
     ConversationList.set(key, () => ({
       ids: rows.map((row) => row.id),
       extra: undefined,
@@ -31,4 +46,4 @@ export const listIds = (store: Store, key = 'all'): readonly string[] =>
 
 /** A held conversation, as readers see it. */
 export const heldConversation = (store: Store, id: string): Conversation | undefined =>
-  withStore(store, () => Conversations.get(id));
+  withStore(store, () => held(id));

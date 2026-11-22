@@ -12,6 +12,7 @@ import {
   type RecordView,
   skip,
   useEntities,
+  useEntity,
   useList,
   useRecord,
   useStore,
@@ -21,7 +22,7 @@ import { toast } from '@oxy.so/bloom/toast';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLabels } from '../lib/labels';
-import { useGemieRealtime, useRealtimeEvent, useRealtimeReset } from '../realtime/react';
+import { useGemieRealtime, useRealtimeEvent } from '../realtime/react';
 import type { RealtimeData } from '../realtime/contract';
 import { useGemieApi } from './api';
 import { useGemieRuntime } from './config';
@@ -30,6 +31,7 @@ import {
   type ConversationsFilter,
   type CreateConversationInput,
   type SaveConversationInput,
+  ConversationMessages,
   Conversations,
   clearConversation,
   conversation,
@@ -37,6 +39,7 @@ import {
   conversationsKey,
   createConversation,
   deleteConversation,
+  heldConversation,
   markConversationRead,
   OfflineConversations,
   refreshConversationLists,
@@ -75,7 +78,7 @@ export interface ConversationsView extends ListView<unknown> {
  * sheet read this. Given `agentId`, only the conversations with that agent; given `app`, only the
  * ones started in that app (`GET /v1/conversations?agentId=&app=`); given `kind: 'gemies'`, the
  * conversations the person's gemies have with each other (ADR 0042), each with both gemies in
- * `members`. A realtime reset reads it again.
+ * `members`. A realtime reset makes it stale: read again at once on screen, else when next shown.
  *
  * While the session is unavailable (a 401) the person's own list shows the offline copy, when the
  * runtime has one; it is a display fallback, never a server answer.
@@ -89,7 +92,6 @@ export function useConversations(filter: ConversationsFilter = {}): Conversation
   // biome-ignore lint/correctness/useExhaustiveDependencies: the key identifies the filter
   const stableFilter = useMemo(() => ({ agentId, app, kind }), [key]);
   const view = useList(conversationList, ...(canUsePrivateApi ? [client, stableFilter] : [skip]));
-  useRealtimeReset(() => void view.refresh());
   const rows = useEntities(Conversations, view.ids);
 
   const accountId = user?.id;
@@ -126,8 +128,8 @@ export function useConversations(filter: ConversationsFilter = {}): Conversation
 /**
  * One conversation with its messages. A row the sidebar holds shows at once (without messages)
  * while the conversation is read. A rewritten thread (a realtime `reload`, an edit or a
- * regenerate on another device) and a realtime reset read it again; `onReload` hears the
- * rewritten conversation once it is read.
+ * regenerate on another device) is read again, and `onReload` hears it once it is read; a realtime
+ * reset makes it stale.
  */
 export function useConversation(
   id: string | undefined,
@@ -137,19 +139,26 @@ export function useConversation(
   const client = useConversationsClient();
   const store = useStore();
   const view = useRecord(conversation, ...(canUsePrivateApi && id ? [client, id] : [skip]));
+  // Plain records, the same while unchanged: the row, and its messages once read.
+  const row = useEntity(Conversations, id, (held) => held);
+  const messages = useEntity(ConversationMessages, id, (held) => held?.messages);
+  const value = useMemo(() => (row && messages ? { ...row, messages } : row), [row, messages]);
   useRealtimeEvent('conversation', (frame) => {
     const data = frame.data as RealtimeData['conversation'];
     if (!data.reload || id === undefined || data.conversation.id !== id) return;
     void view.refresh().then(() => {
       const read = withStore(store, () => ({
         status: conversation.state(client, id).status,
-        fresh: Conversations.get(id),
+        fresh: heldConversation(id),
       }));
       if (read.status === 'success' && read.fresh) onReload?.(read.fresh);
     });
   });
-  useRealtimeReset(() => void view.refresh());
-  return view;
+  return {
+    ...view,
+    value,
+    isLoading: view.isLoading && value === undefined,
+  };
 }
 
 /**
