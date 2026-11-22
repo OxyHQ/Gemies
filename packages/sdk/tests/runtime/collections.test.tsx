@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, type Store, withStore } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,6 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const wire = vi.hoisted(() => ({
   calls: [] as Array<{ method: string; path: string; body?: unknown }>,
   fail: false,
+  /** A write waits on this when set, so a test can look at the screen before the answer. */
+  hold: null as Promise<void> | null,
   snapshot: { collections: [] as unknown[], pinned: [] as string[], favorites: [] as string[] },
 }));
 
@@ -19,7 +21,10 @@ vi.mock('@oxy.so/services/ui/client', () => ({
 }));
 vi.mock('../../src/runtime/api', () => {
   const answer = (method: string) => async (path: string, body?: unknown) => {
-    wire.calls.push({ method, path, ...(body === undefined ? {} : { body }) });
+    // A read's second argument is its request (a signal), not a body.
+    const sent = method === 'get' || method === 'delete' ? undefined : body;
+    wire.calls.push({ method, path, ...(sent === undefined ? {} : { body: sent }) });
+    if (method !== 'get' && wire.hold) await wire.hold;
     if (wire.fail && method !== 'get') throw new Error('refused');
     return { status: 200, data: wire.snapshot };
   };
@@ -33,7 +38,7 @@ vi.mock('../../src/runtime/api', () => {
   return { useGemieApi: () => api };
 });
 
-import { applyRealtimeToCache } from '../../src/realtime/cache';
+import { applyRealtimeFrame } from '../../src/realtime/store';
 import type { RealtimeFrame } from '../../src/realtime/contract';
 import {
   type CollectionActions,
@@ -41,15 +46,16 @@ import {
   useCollectionActions,
   useConversationCollections,
 } from '../../src/runtime/collections';
+import { freshStore } from '../support/data-store';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-let client: QueryClient;
+let store: Store;
 let renderer: ReactTestRenderer | undefined;
 let seen: ConversationCollections;
 let actions: CollectionActions;
 
-/** React Query tells its observers on the next tick. */
+/** The store tells its readers after the write; a tick lets React render it. */
 const tick = () =>
   act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -78,13 +84,14 @@ const folder = (id: string, conversationIds: string[] = []) => ({
 beforeEach(async () => {
   wire.calls = [];
   wire.fail = false;
+  wire.hold = null;
   wire.snapshot = { collections: [folder('work')], pinned: ['a'], favorites: [] };
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  store = freshStore();
   await act(async () => {
     renderer = create(
-      <QueryClientProvider client={client}>
+      <DataProvider store={store}>
         <Probe />
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
   // The first read lands.
@@ -98,6 +105,24 @@ afterEach(() => {
 });
 
 describe('the account collections', () => {
+  it('draws a change at once, before the server answers', async () => {
+    let release!: () => void;
+    wire.hold = new Promise((resolve) => {
+      release = resolve;
+    });
+    wire.snapshot = { ...wire.snapshot, favorites: ['a'] };
+    let done!: Promise<void>;
+    act(() => {
+      done = actions.setFavorite('a', true);
+    });
+    expect(seen.favorites).toEqual(['a']);
+    await act(async () => {
+      release();
+      await done;
+    });
+    expect(seen.favorites).toEqual(['a']);
+  });
+
   it('reads the snapshot once', () => {
     expect(seen.collections.map((c) => c.id)).toEqual(['work']);
     expect(seen.pinned).toEqual(['a']);
@@ -128,22 +153,24 @@ describe('the account collections', () => {
     expect(
       wire.calls.some((c) => c.method === 'put' && c.path.endsWith('/work/conversations/c1')),
     ).toBe(true);
-    // Refused: the server's state (no c1) is read again and drawn.
+    // Refused: the change's layer goes, and the server's state (no c1) shows again.
     expect(seen.collections[0]?.conversationIds).toEqual([]);
   });
 
   it('takes another device’s change whole, from the realtime snapshot', async () => {
     act(() =>
-      applyRealtimeToCache(client, {
-        v: 1,
-        type: 'collections',
-        seq: 4,
-        data: {
-          collections: [folder('work', ['c9']), folder('home')],
-          pinned: [],
-          favorites: ['z'],
-        },
-      } as RealtimeFrame),
+      withStore(store, () =>
+        applyRealtimeFrame({
+          v: 1,
+          type: 'collections',
+          seq: 4,
+          data: {
+            collections: [folder('work', ['c9']), folder('home')],
+            pinned: [],
+            favorites: ['z'],
+          },
+        } as RealtimeFrame),
+      ),
     );
     await tick();
     expect(seen.collections.map((c) => [c.id, c.conversationIds])).toEqual([

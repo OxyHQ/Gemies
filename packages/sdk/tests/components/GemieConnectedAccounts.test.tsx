@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import type React from 'react';
 import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -51,7 +51,9 @@ vi.mock('@oxy.so/bloom/select', async () => ({
 vi.mock('react-native-qrcode-svg', async () => ({ default: (await host('QRCode')).QRCode }));
 vi.mock('@oxy.so/bloom/surfaces', () => ({ confirm }));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast }));
-vi.mock('@oxy.so/services/ui/client', () => ({ useOxy: () => ({ isAuthenticated: true }) }));
+vi.mock('@oxy.so/services/ui/client', () => ({
+  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true }),
+}));
 vi.mock('../../src/runtime/api', () => ({ useGemieApi: () => api }));
 
 async function host(name: string): Promise<Record<string, unknown>> {
@@ -128,11 +130,9 @@ async function settle(): Promise<void> {
 async function render(
   element: React.ReactElement = <GemieConnectedAccounts />,
 ): Promise<TestRenderer.ReactTestRenderer> {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new Store();
   await act(async () => {
-    renderer = TestRenderer.create(
-      <QueryClientProvider client={client}>{element}</QueryClientProvider>,
-    );
+    renderer = TestRenderer.create(<DataProvider store={client}>{element}</DataProvider>);
   });
   await settle();
   if (!renderer) throw new Error('not rendered');
@@ -227,7 +227,14 @@ describe('connecting an account, once, in Settings', () => {
   it('says so with a retry when the API does not answer, and recovers when it does', async () => {
     const answer = api.get.getMockImplementation();
     api.get.mockRejectedValue(new TypeError('Failed to fetch'));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const tree = await render();
+    // A read that got no answer is tried twice more, a second and two seconds later, then said.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    vi.useRealTimers();
+    expect(api.get).toHaveBeenCalledTimes(3);
     expect(texts(tree)).toContain('Could not load this. Try again.');
     expect(button(tree, 'Connect a WhatsApp account')).toBeUndefined();
 

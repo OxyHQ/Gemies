@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -17,7 +17,7 @@ vi.mock('@oxy.so/services/ui/client', () => ({
 }));
 vi.mock('../../src/runtime/conversations', () => ({
   useCreateConversation: () => ({
-    mutateAsync: async (params: unknown) => {
+    run: async (params: unknown) => {
       created.calls.push(params);
       if (created.fail) throw new Error('offline');
       return { id: 'made' };
@@ -46,11 +46,11 @@ function Probe({ agentId }: { agentId?: string }) {
 async function mount(agentId?: string) {
   await act(async () => {
     renderer = create(
-      <QueryClientProvider client={new QueryClient()}>
+      <DataProvider store={new Store()}>
         <GemieRuntimeProvider host={host}>
           <Probe agentId={agentId} />
         </GemieRuntimeProvider>
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
 }

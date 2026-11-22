@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  *
  * The routes are the agent's thread routes (`/agents/thread/:handle/…`), read through the Alia API
  * as the signed-in person. A fake API records what was asked, so each case is "which page was
- * requested with which cursor" and "what the screen is handed", not React Query's own behaviour.
+ * requested with which cursor" and "what the screen is handed", not the store's own behaviour.
  */
 
 const api = vi.hoisted(() => ({
@@ -28,6 +28,11 @@ vi.mock('../../src/runtime/api', () => ({
       return { status: 200, data: api.answer(path, request?.params) };
     },
   }),
+}));
+
+// The thread hears realtime events; no connection is held without a session.
+vi.mock('@oxy.so/services/ui/client', () => ({
+  useOxy: () => ({ isAuthenticated: false, canUsePrivateApi: false, user: null }),
 }));
 
 import { useThreadView } from '../../src/hooks/useThreadView';
@@ -54,16 +59,14 @@ function render<T>(use: () => T): { current: () => T } {
   }
   act(() => {
     renderer = create(
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
+      <DataProvider store={new Store()}>
         <Probe />
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
   return { current: () => latest };
 }
-/** Let the fake API answer and React Query publish what it got. */
+/** Let the fake API answer and the store publish what it got. */
 const settle = async () => {
   for (let i = 0; i < 3; i += 1)
     await act(async () => new Promise((resolve) => setTimeout(resolve, 5)));
@@ -154,7 +157,7 @@ describe('searching the thread', () => {
     expect(api.calls).toEqual([
       { path: '/agents/thread/pepe/search', params: { q: 'invoice', limit: 30 } },
     ]);
-    expect(hook.current().data?.[0]?.cursor).toBe('k9');
+    expect(hook.current().value?.[0]?.cursor).toBe('k9');
   });
 });
 
@@ -226,7 +229,7 @@ describe('a thread addressed by its gemie id (Alia’s, who has no handle)', () 
     await settle();
 
     expect(api.calls).toEqual([{ path: `/agents/${ALIA}/thread`, params: undefined }]);
-    expect(hook.current().data).toMatchObject({ conversationId: 'c9', threadId: 'thread-1' });
+    expect(hook.current().value).toMatchObject({ conversationId: 'c9', threadId: 'thread-1' });
   });
 
   it('opens nothing without an id, and does not ask twice after a 404', async () => {

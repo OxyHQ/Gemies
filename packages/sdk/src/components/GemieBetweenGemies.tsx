@@ -55,18 +55,19 @@ export function GemieBetweenGemies(props: GemieBetweenGemiesProps) {
 function ConversationBetweenGemies({ conversationId, onBack }: GemieBetweenGemiesProps) {
   const { t, back } = useLabels();
   const threadRef = useRef<AiChatThreadHandle | null>(null);
-  const { data, isPending, refetch } = useConversation(conversationId);
+  const { value: data, isLoading, isFetching, refresh } = useConversation(conversationId);
   const [messages, setMessages] = useState<Message[]>([]);
   // Which live reply each room event draws, for as long as this conversation is open.
   const [ledger] = useState(createRoomLedger);
 
   // Opened, it is read fresh: the gemies may have said more since it was last loaded.
   useEffect(() => {
-    void refetch();
-  }, [refetch]);
+    void refresh();
+  }, [refresh]);
+  const read = data?.messages;
   useEffect(() => {
-    if (data) setMessages(data.messages);
-  }, [data]);
+    if (read) setMessages(read);
+  }, [read]);
   useRoomEvents(conversationId, ledger, setMessages);
 
   const participants = useMemo<GemieChatParticipants | null>(() => {
@@ -104,7 +105,7 @@ function ConversationBetweenGemies({ conversationId, onBack }: GemieBetweenGemie
             messages={messages}
             conversationId={conversationId}
             isLoading={false}
-            conversationLoading={isPending}
+            conversationLoading={isLoading || (isFetching && read === undefined)}
             threadRef={threadRef}
             readOnly
           />

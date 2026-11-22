@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const world = vi.hoisted(() => ({
   asked: [] as unknown[],
-  conversations: [] as Array<{ id: string; title: string; updatedAt: Date }>,
+  conversations: [] as Array<{ id: string; title: string; updatedAt: string }>,
 }));
 
 // The runtime provider holds the account's realtime connection; signed out here, it holds none.
@@ -36,7 +36,7 @@ vi.mock('@oxy.so/bloom/typography', async () => {
 vi.mock('../../src/runtime/conversations', () => ({
   useConversations: (options: unknown) => {
     world.asked.push(options);
-    return { data: { pages: [{ conversations: world.conversations }] } };
+    return { conversations: world.conversations };
   },
 }));
 
@@ -54,7 +54,7 @@ afterEach(() => {
 const items = (r: TestRenderer.ReactTestRenderer): ReactTestInstance[] =>
   r.root.findAll((node) => (node.type as unknown) === 'ListItem');
 
-const at = (day: number) => new Date(Date.UTC(2026, 9, day));
+const at = (day: number) => new Date(Date.UTC(2026, 9, day)).toISOString();
 
 describe('GemieRecentConversations', () => {
   it("offers the lead's three latest conversations, and opens the one picked", () => {

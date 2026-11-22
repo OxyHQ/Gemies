@@ -106,13 +106,13 @@ vi.mock('../../../src/runtime/use-conversation-stream', () => ({
   }),
 }));
 vi.mock('../../../src/runtime/conversations', () => ({
-  ConversationNotFoundError: class ConversationNotFoundError extends Error {},
-  useConversation: () => ({ data: undefined, isLoading: false, isFetching: false }),
-  useCreateConversation: () => ({ mutateAsync: async () => ({}), mutate: () => {} }),
-  useDeleteConversation: () => ({ mutateAsync: async () => {} }),
-  useReadConversation: () => async () => ({ messages: [] }),
+  useConversation: () => ({ value: undefined, isLoading: false, isFetching: false }),
+  useCreateConversation: () => ({ run: async () => ({}), mutate: () => {} }),
+  useDeleteConversation: () => ({ run: async () => {} }),
   useMarkConversationRead: () => () => undefined,
-  useClearConversation: () => ({ mutateAsync: async () => {} }),
+  useConversationsClient: () => ({}),
+  useRefreshConversation: () => () => undefined,
+  useClearConversation: () => ({ run: async () => {} }),
 }));
 vi.mock('../../../src/runtime/use-agent-activity', () => ({ useAgentActivity: () => ({}) }));
 vi.mock('../../../src/runtime/attachment-utils', () => ({
@@ -196,7 +196,7 @@ vi.mock('@oxy.so/bloom/loading', async () => ({ Loading: await stub('Loading')()
 vi.mock('@oxy.so/bloom/skeleton', async () => ({ Box: await stub('Skeleton')() }));
 vi.mock('@oxy.so/bloom/divider', async () => ({ Divider: await stub('Divider')() }));
 
-const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query');
+const { DataProvider, Store } = await import('@oxy.so/bloom-data');
 const { BloomThemeProvider } = await import('@oxy.so/bloom/theme');
 const { GemieChatContent } = await import('../../../src/components/GemieChatContent');
 const { useComposerDraftStore } = await import('../../../src/runtime/composer-draft-store');
@@ -216,9 +216,9 @@ async function mount(props: React.ComponentProps<typeof GemieChatContent>) {
   await act(async () => {
     renderer = create(
       <BloomThemeProvider mode="light">
-        <QueryClientProvider client={new QueryClient()}>
+        <DataProvider store={new Store()}>
           <GemieChatContent conversationId="c1" {...props} />
-        </QueryClientProvider>
+        </DataProvider>
       </BloomThemeProvider>,
     );
   });

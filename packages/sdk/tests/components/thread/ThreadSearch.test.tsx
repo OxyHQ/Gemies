@@ -90,9 +90,9 @@ vi.mock('../../../src/runtime/use-thread-search', () => ({
   useThreadSearch: (_thread: unknown, query: string) => {
     state.askedWith.push(query);
     return {
-      data: query.trim() === '' ? undefined : state.hits,
+      value: query.trim() === '' ? undefined : state.hits,
       isFetching: false,
-      isError: false,
+      status: 'success',
     };
   },
 }));

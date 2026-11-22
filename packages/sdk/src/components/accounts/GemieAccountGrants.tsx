@@ -34,10 +34,11 @@ export function GemieAccountGrants({
   onManage,
   t = englishCopy,
 }: GemieAccountGrantsProps) {
-  const { data, isPending, isError, isFetching, refetch } = useConnectedAccounts();
+  const { value: data, isLoading, status, isFetching, refresh } = useConnectedAccounts();
+  const isError = status === 'error';
   const { grant } = useConnectedAccountMutations();
 
-  if (isPending) {
+  if (isLoading) {
     return (
       <Skeleton.Region>
         <View className="gap-3 py-2.5">
@@ -59,7 +60,7 @@ export function GemieAccountGrants({
           appearance="outline"
           tone="neutral"
           loading={isFetching}
-          onPress={() => void refetch()}
+          onPress={() => void refresh()}
         >
           {t(`${K}.retry`)}
         </Button>
@@ -72,7 +73,7 @@ export function GemieAccountGrants({
 
   const setGranted = async (accountId: string, granted: boolean) => {
     try {
-      await grant.mutateAsync({ accountId, gemieId, granted });
+      await grant.run(accountId, gemieId, granted);
     } catch {
       toast.error(t(`${K}.saveFailed`));
     }

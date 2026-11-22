@@ -22,7 +22,7 @@ vi.mock('../../src/runtime/config', () => ({
 }));
 vi.mock('../../src/runtime/sharing', () => ({
   SharedConversationGoneError: class extends Error {},
-  useSharedConversation: () => ({ data, isLoading: false }),
+  useSharedConversation: () => ({ value: data, isLoading: false }),
   sharedMessages: () =>
     data.messages.map((message, index) => ({
       id: `shared-${index}`,

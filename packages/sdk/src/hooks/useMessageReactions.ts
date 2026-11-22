@@ -1,6 +1,6 @@
 import { toast } from '@oxy.so/bloom/toast';
 import { useOxy } from '@oxy.so/services/ui/client';
-import { useQueryClient } from '@tanstack/react-query';
+import { useStore, withStore } from '@oxy.so/bloom-data';
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { useLabels } from '../lib/labels';
 import { useGemieApi } from '../runtime/api';
@@ -11,7 +11,7 @@ import {
   readMessageReactionAcknowledgement,
   type MessageReactionSnapshot,
 } from '../runtime/message-reactions';
-import { updateReactionCaches } from '../runtime/reaction-cache';
+import { storeReaction } from '../runtime/data/reactions';
 import { useGemieRealtime } from '../realtime/react';
 
 const NONE: readonly string[] = [];
@@ -29,7 +29,7 @@ export function useMessageReactions({
   const { t } = useLabels();
   const api = useGemieApi();
   const { user } = useOxy();
-  const queryClient = useQueryClient();
+  const store = useStore();
   const [version, changed] = useReducer((value: number) => value + 1, 0);
   const callbacks = useRef({ onChange, t });
   callbacks.current = { onChange, t };
@@ -54,12 +54,12 @@ export function useMessageReactions({
         },
         changed,
         confirmed: (update) => {
-          updateReactionCaches(queryClient, update);
+          withStore(store, () => storeReaction(update));
           callbacks.current.onChange?.(update);
         },
         failed: () => toast.error(callbacks.current.t('chat.reactionFailed')),
       }),
-    [api, queryClient, accountId],
+    [api, store, accountId],
   );
 
   useEffect(() => {

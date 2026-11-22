@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -55,8 +55,8 @@ vi.mock('../../src/lib/agent-character', () => ({ readAgentCharacter: (value: un
 vi.mock('../../src/lib/alia-character', () => ({ ALIA_AVATAR: { preset: 'alia' } }));
 vi.mock('../../src/runtime/agents', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  useAgentProfile: () => ({ data: undefined, isLoading: false }),
-  useAgentFeatures: () => ({ data: undefined, isLoading: false }),
+  useAgentProfile: () => ({ value: undefined, isLoading: false }),
+  useAgentFeatures: () => ({ value: undefined, isLoading: false }),
 }));
 vi.mock('../../src/runtime/oxy-files', () => ({ useDocumentUpload: () => async () => 'file-1' }));
 vi.mock('@oxy.so/bloom/agent-avatar', () => ({
@@ -190,18 +190,18 @@ vi.mock('../../src/runtime/use-conversation-stream', () => ({
   }),
 }));
 vi.mock('../../src/runtime/conversations', () => ({
-  ConversationNotFoundError: class ConversationNotFoundError extends Error {},
-  useConversation: () => ({ data: undefined, error: null, isLoading: false, isFetching: false }),
+  useConversation: () => ({ value: undefined, error: null, isLoading: false, isFetching: false }),
   useCreateConversation: () => ({
-    mutateAsync: async () => ({ id: 'made' }),
-    mutate: (params: Record<string, unknown>) => {
+    run: async (params: Record<string, unknown>) => {
       world.created.push(params);
+      return { id: 'made' };
     },
   }),
-  useDeleteConversation: () => ({ mutateAsync: async () => {} }),
-  useReadConversation: () => async () => ({ messages: [] }),
+  useDeleteConversation: () => ({ run: async () => {} }),
   useMarkConversationRead: () => () => undefined,
-  useClearConversation: () => ({ mutateAsync: async () => {} }),
+  useConversationsClient: () => ({}),
+  useRefreshConversation: () => () => undefined,
+  useClearConversation: () => ({ run: async () => {} }),
 }));
 vi.mock('../../src/runtime/attachment-utils', () => ({
   buildMessageContent: async (text: string) => ({ content: text, dropped: [] }),
@@ -225,9 +225,9 @@ let renderer: TestRenderer.ReactTestRenderer | undefined;
 
 function tree(props: React.ComponentProps<typeof GemieChatContent> = {}) {
   return (
-    <QueryClientProvider client={new QueryClient()}>
+    <DataProvider store={new Store()}>
       <GemieChatContent conversationId="c1" {...props} />
-    </QueryClientProvider>
+    </DataProvider>
   );
 }
 function mount(props?: React.ComponentProps<typeof GemieChatContent>) {
@@ -293,9 +293,9 @@ describe('a call replaces dictation', () => {
   it('is not offered by the text-only entry, which has no call to draw, whatever `voice` says', () => {
     act(() => {
       renderer = TestRenderer.create(
-        <QueryClientProvider client={new QueryClient()}>
+        <DataProvider store={new Store()}>
           <TextChatContent conversationId="c1" voice={{}} />
-        </QueryClientProvider>,
+        </DataProvider>,
       );
     });
     expect(world.composer.mounts).toBe(1);

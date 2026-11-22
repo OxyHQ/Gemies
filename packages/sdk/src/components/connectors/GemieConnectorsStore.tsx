@@ -126,18 +126,15 @@ export function GemieConnectorsStore({
 
   const accountsOf = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const connection of connections.data ?? []) {
+    for (const connection of connections.value ?? []) {
       if (connection.registryId) {
         counts.set(connection.registryId, (counts.get(connection.registryId) ?? 0) + 1);
       }
     }
     return counts;
-  }, [connections.data]);
+  }, [connections.value]);
 
-  const pages = store.data?.pages ?? [];
-  const entries = pages.flatMap((page) => page.servers);
-  const total = pages[0]?.total ?? 0;
-  const categories = pages[0]?.categories ?? [];
+  const { entries, total, categories } = store;
   const browsing = !q && category === null && filters.size === 0 && sort === 'featured';
   const featured = browsing ? entries.filter((entry) => entry.featured) : [];
   const rest = browsing ? entries.filter((entry) => !entry.featured) : entries;
@@ -153,7 +150,7 @@ export function GemieConnectorsStore({
   const connect = async (entry: ConnectorEntry) => {
     setPending(entry.id);
     try {
-      const connection = await actions.connect.mutateAsync(entry.id);
+      const connection = await actions.connect.run(entry.id);
       if (connection) {
         toast.success(t(`${K}.signIn.connected`, { name: entry.name }));
         onConnected?.();
@@ -224,14 +221,19 @@ export function GemieConnectorsStore({
         <SortSelect value={sort} onChange={setSort} t={t} />
       </View>
 
-      {store.isPending ? (
+      {store.isLoading ? (
         <StoreSkeleton />
       ) : store.isError && entries.length === 0 ? (
         <View className="items-start gap-2 py-4">
           <Text variant="body-2-regular" className="text-text-secondary">
             {t(`${K}.store.loadFailed`)}
           </Text>
-          <Button size="sm" appearance="outline" tone="neutral" onPress={() => store.refetch()}>
+          <Button
+            size="sm"
+            appearance="outline"
+            tone="neutral"
+            onPress={() => void store.refresh()}
+          >
             {t(`${K}.store.retry`)}
           </Button>
         </View>
@@ -256,14 +258,14 @@ export function GemieConnectorsStore({
               {q ? t(`${K}.store.noResults`, { query: q }) : t(`${K}.store.empty`)}
             </Text>
           ) : null}
-          {store.hasNextPage ? (
+          {store.hasMore ? (
             <View className="items-center">
               <Button
                 size="sm"
                 appearance="outline"
                 tone="neutral"
-                loading={store.isFetchingNextPage}
-                onPress={() => void store.fetchNextPage()}
+                loading={store.isLoadingMore}
+                onPress={() => void store.more()}
               >
                 {t(`${K}.store.more`, { count: total - entries.length })}
               </Button>
@@ -292,7 +294,7 @@ export function GemieConnectorsStore({
         open={customOpen}
         onClose={() => setCustomOpen(false)}
         onAdd={async (input) => {
-          await actions.addCustom.mutateAsync(input);
+          await actions.addCustom.run(input);
           toast.success(t(`${K}.signIn.connected`, { name: input.name }));
           onConnected?.();
         }}

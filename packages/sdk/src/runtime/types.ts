@@ -129,28 +129,20 @@ export interface Conversation {
   kind?: 'person' | 'gemies';
   /** The two gemies of a conversation between gemies, as their messages carry them. */
   members?: NonNullable<Message['agentInfo']>[];
-  createdAt: Date;
-  updatedAt: Date;
-  messages: Message[];
+  /** ISO 8601, as the API sends it: a conversation is a JSON record (`Conversations`). */
+  createdAt: string;
+  updatedAt: string;
+  /**
+   * The messages, once the conversation itself was read (`useConversation`). A row read from a
+   * list (`useConversations`) or a realtime event carries none, and leaves any held ones in place.
+   */
+  messages?: Message[];
 }
 
 /** The run a delegated agent started for a turn: its session is `turnId`, in the agent's own room. */
 export interface AgentRun {
   turnId: string;
   agentId: string;
-}
-
-/** One page of the paginated conversation list. */
-export interface ConversationsPage {
-  conversations: Conversation[];
-  nextCursor: string | null;
-  hasMore: boolean;
-}
-
-/** React Query infinite-query cache shape for the conversation list. */
-export interface ConversationsInfiniteData {
-  pages: ConversationsPage[];
-  pageParams: unknown[];
 }
 
 /** What a chat turn is sent with. */

@@ -67,8 +67,8 @@ function threadPath(thread: GemieThreadAddress): string {
 }
 
 /**
- * The thread's cache key: the handle, as it always was (a host's own thread query lives under
- * `gemieQueryKeys.threads.all(handle)`), or `id:<gemieId>`, which no handle can be.
+ * The thread's key in the account's store (`gemieThread`, its history and its search): the handle,
+ * or `id:<gemieId>`, which no handle can be.
  */
 export function threadKey(thread: GemieThreadAddress): string {
   return 'handle' in thread ? thread.handle : `id:${thread.gemieId}`;

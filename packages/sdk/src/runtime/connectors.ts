@@ -1,16 +1,27 @@
-import { useOxy } from '@oxy.so/services/ui/client';
 import {
-  keepPreviousData,
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+  action,
+  type ActionView,
+  entity,
+  list,
+  type RecordView,
+  skip,
+  source,
+  useEntities,
+  useList,
+  useListState,
+  useStore,
+  withStore,
+} from '@oxy.so/bloom-data';
+import { useOxy } from '@oxy.so/services/ui/client';
 import * as WebBrowser from 'expo-web-browser';
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import { useGemieApi } from './api';
+import { useRealtimeEvent, useRealtimeReset } from '../realtime/react';
+import { type GemieApi, useGemieApi } from './api';
 import { useGemieRuntime } from './config';
+import { answerSource, useAnswer } from './data/answer';
+import { ACCOUNT, gemieRead } from './data/read';
+import { useBoundAction } from './use-bound-action';
 
 /**
  * Connectors (`@gemies/sdk/connectors`): the providers' own remote MCP servers a person connects —
@@ -36,12 +47,6 @@ export const CONNECTOR_ROUTES = {
   connection: (id: string) => `/mcp/${encodeURIComponent(id)}`,
   reconnect: (id: string) => `/mcp/${encodeURIComponent(id)}/reconnect`,
 } as const;
-
-export const connectorQueryKeys = {
-  catalogue: ['gemie-connectors', 'catalogue'] as const,
-  store: (query: ConnectorStoreQuery) => ['gemie-connectors', 'catalogue', query] as const,
-  connected: ['gemie-connectors', 'connected'] as const,
-};
 
 export const CONNECTOR_CATEGORIES = [
   'productivity',
@@ -148,44 +153,122 @@ export function connectorStoreParams(
   };
 }
 
+/** The store's connectors, by id: one record serves every search that lists it. */
+export const ConnectorEntries = entity<ConnectorEntry>('gemies.connector', {
+  id: (entry) => entry.id,
+});
+
+/** What a store list keeps beside its entries: the count and each category's, under its search. */
+export interface ConnectorStoreExtra {
+  total: number;
+  categories: ConnectorStorePage['categories'];
+}
+
+/** The store's lists, one per search, filters and order (`connectorStoreKey`); memory only. */
+export const ConnectorStoreList = list<ConnectorStoreExtra>('gemies.connector-store', {
+  of: ConnectorEntries,
+});
+
+/** The key of a store query: equal searches share one list. */
+export function connectorStoreKey(query: ConnectorStoreQuery): string {
+  return JSON.stringify(connectorStoreParams(query, 0));
+}
+
+/** The store, a page at a time (by offset), searched, filtered and sorted by the API. */
+export const connectorStore = source(ConnectorStoreList, {
+  ...gemieRead,
+  key: (_api: GemieApi, query: ConnectorStoreQuery) => connectorStoreKey(query),
+  stale: 5 * 60_000,
+  load: async ({ cursor, signal }, api, query) => {
+    const { data } = await api.get<ConnectorStorePage>(CONNECTOR_ROUTES.catalogue, {
+      signal,
+      params: connectorStoreParams(query, cursor === undefined ? 0 : Number(cursor)),
+    });
+    return {
+      items: data.servers,
+      next: data.nextOffset === null ? null : String(data.nextOffset),
+      extra: { total: data.total, categories: data.categories },
+    };
+  },
+  // The first page's count and categories describe the whole search.
+  fold: (current, extra, mode) =>
+    (mode === 'next' ? current : extra) ?? { total: 0, categories: [] },
+});
+
+/** The store as a screen reads it. */
+export interface ConnectorStoreView {
+  readonly entries: readonly ConnectorEntry[];
+  readonly total: number;
+  readonly categories: ConnectorStorePage['categories'];
+  /** Nothing to show yet: no answer for this search, and none for an earlier one. */
+  readonly isLoading: boolean;
+  readonly isError: boolean;
+  readonly hasMore: boolean;
+  readonly isLoadingMore: boolean;
+  readonly more: () => Promise<void>;
+  readonly refresh: () => Promise<void>;
+}
+
 /**
  * The store, a page at a time: hundreds of connectors are searched, filtered and sorted by the API,
- * and a new search keeps the previous results on screen until the next arrive.
+ * and a new search keeps the previous results on screen until its own arrive.
  */
-export function useConnectorStore(query: ConnectorStoreQuery) {
+export function useConnectorStore(query: ConnectorStoreQuery): ConnectorStoreView {
   const api = useGemieApi();
-  const { isAuthenticated } = useOxy();
-  return useInfiniteQuery({
-    queryKey: connectorQueryKeys.store(query),
-    initialPageParam: 0,
-    queryFn: async ({ pageParam }) =>
-      (
-        await api.get<ConnectorStorePage>(CONNECTOR_ROUTES.catalogue, {
-          params: connectorStoreParams(query, pageParam),
-        })
-      ).data,
-    getNextPageParam: (last) => last.nextOffset ?? undefined,
-    enabled: isAuthenticated,
-    staleTime: 5 * 60_000,
-    placeholderData: keepPreviousData,
-  });
+  const { canUsePrivateApi } = useOxy();
+  const view = useList(connectorStore, ...(canUsePrivateApi ? [api, query] : [skip]));
+  // The last search that answered, shown while a new one has no answer yet.
+  const [shown, setShown] = useState<string | null>(null);
+  useEffect(() => {
+    if (view.list) setShown(view.key);
+  }, [view.list, view.key]);
+  const previous = useListState(ConnectorStoreList, view.list ? null : shown);
+  const held = view.list ?? previous;
+  const entries = useEntities(ConnectorEntries, held?.ids ?? []);
+  return {
+    entries: useMemo(
+      () => entries.filter((entry): entry is ConnectorEntry => entry !== undefined),
+      [entries],
+    ),
+    total: held?.extra?.total ?? 0,
+    categories: held?.extra?.categories ?? [],
+    isLoading: held === undefined && view.isLoading,
+    isError: view.status === 'error',
+    hasMore: view.hasMore,
+    isLoadingMore: view.isFetching && view.list !== undefined,
+    more: view.more,
+    refresh: view.refresh,
+  };
 }
+
+/**
+ * What the person connected, each account on its own: memory only, read again when the realtime
+ * `connections` event says it changed, and after a reset.
+ */
+export const connections = answerSource('gemies.connections', {
+  ...gemieRead,
+  key: (_api: GemieApi) => ACCOUNT,
+  stale: 30_000,
+  load: async ({ signal }, api) =>
+    (await api.get<{ servers: Connection[] }>(CONNECTOR_ROUTES.connected, { signal })).data.servers,
+});
 
 /**
  * What the person connected, each account on its own. `enabled: false` reads nothing: the chat is
  * embedded in apps whose origin the connector routes do not answer, and asks only for a turn that
  * used a connector.
  */
-export function useConnections({ enabled = true }: { enabled?: boolean } = {}) {
+export function useConnections({
+  enabled = true,
+}: {
+  enabled?: boolean;
+} = {}): RecordView<Connection[]> {
   const api = useGemieApi();
-  const { isAuthenticated } = useOxy();
-  return useQuery({
-    queryKey: connectorQueryKeys.connected,
-    queryFn: async () =>
-      (await api.get<{ servers: Connection[] }>(CONNECTOR_ROUTES.connected)).data.servers,
-    enabled: isAuthenticated && enabled,
-    staleTime: 30_000,
-  });
+  const { canUsePrivateApi } = useOxy();
+  const view = useAnswer(connections, ...(canUsePrivateApi && enabled ? [api] : [skip]));
+  useRealtimeEvent('connections', () => void view.refresh());
+  useRealtimeReset(() => void view.refresh());
+  return view;
 }
 
 /** A logo path the API answered, as a URL on its origin. */
@@ -232,87 +315,123 @@ export interface ConnectorActionsOptions {
   returnTo: string;
 }
 
+/** Draws a change to the held connections, as the calling action's layer. */
+function drawConnections(change: (held: Connection[]) => Connection[]): void {
+  connections.entity.update(ACCOUNT, (held) => ({ ...held, value: change([...held.value]) }));
+}
+
+/** Every write ends with the connections read again, so each screen shows them as they are. */
+const rereadConnections = (api: GemieApi) => void connections.refresh(api);
+
+/** Finishes a provider's sign-in with what it returned (`state`, `code`): the connection it made. */
+export const completeConnectorSignIn = action({
+  run: async (api: GemieApi, result: { state: string; code: string }) =>
+    (await api.post<{ server: Connection }>(CONNECTOR_ROUTES.complete, result)).data.server,
+  settle: (_connection, api) => rereadConnections(api),
+});
+
+/** What a connection through a provider's sign-in needs: the API, and where the sign-in returns. */
+export interface ConnectorClient {
+  api: GemieApi;
+  returnTo: string;
+}
+
+/** Sign in at the provider, and finish here when the native session hands the result back. */
+async function signIn(
+  { api, returnTo }: ConnectorClient,
+  authorizationUrl: string,
+): Promise<Connection | null> {
+  const returned = await openSignIn(authorizationUrl, returnTo);
+  if (!returned) return null;
+  const result = signInResult(new URL(returned).searchParams);
+  if (!result) return null;
+  if ('error' in result) throw new Error(result.error);
+  return (await api.post<{ server: Connection }>(CONNECTOR_ROUTES.complete, result)).data.server;
+}
+
+/** A new account: through the provider's sign-in, or at once for a server that needs none. */
+export const connectConnector = action({
+  run: async (client: ConnectorClient, registryId: string) => {
+    const { data } = await client.api.post<{ authorizationUrl?: string; server?: Connection }>(
+      CONNECTOR_ROUTES.connect,
+      { registryId, returnTo: client.returnTo },
+    );
+    if (data.authorizationUrl) return signIn(client, data.authorizationUrl);
+    return data.server ?? null;
+  },
+  settle: (_connection, client) => rereadConnections(client.api),
+});
+
+export interface CustomConnectorInput {
+  name: string;
+  url: string;
+  headers?: Record<string, string>;
+}
+
+/** The person's own MCP server, by URL; through its sign-in when it has one. */
+export const addCustomConnector = action({
+  run: async (client: ConnectorClient, input: CustomConnectorInput) => {
+    const { data } = await client.api.post<{ server: Connection; authorizationUrl?: string }>(
+      CONNECTOR_ROUTES.custom,
+      { ...input, returnTo: client.returnTo },
+    );
+    return data.authorizationUrl ? signIn(client, data.authorizationUrl) : data.server;
+  },
+  settle: (_connection, client) => rereadConnections(client.api),
+});
+
+/** Connects an account again, through its provider's sign-in when it needs one. */
+export const reconnectConnector = action({
+  run: async (client: ConnectorClient, id: string) => {
+    const { data } = await client.api.post<{ server: Connection; authorizationUrl?: string }>(
+      CONNECTOR_ROUTES.reconnect(id),
+      { returnTo: client.returnTo },
+    );
+    return data.authorizationUrl ? signIn(client, data.authorizationUrl) : data.server;
+  },
+  settle: (_connection, client) => rereadConnections(client.api),
+});
+
+/** Names which account of the provider a connection is: drawn at once, put back if refused. */
+export const renameConnector = action({
+  optimistic: (_api: GemieApi, id: string, accountLabel: string | null) =>
+    drawConnections((held) => held.map((c) => (c._id === id ? { ...c, accountLabel } : c))),
+  run: async (api, id, accountLabel) => {
+    await api.patch(CONNECTOR_ROUTES.connection(id), { accountLabel });
+  },
+  settle: (_result, api) => rereadConnections(api),
+});
+
+/** Disconnects an account: gone at once, back if refused. */
+export const disconnectConnector = action({
+  optimistic: (_api: GemieApi, id: string) =>
+    drawConnections((held) => held.filter((c) => c._id !== id)),
+  run: async (api, id) => {
+    await api.delete(CONNECTOR_ROUTES.connection(id));
+  },
+  settle: (_result, api) => rereadConnections(api),
+});
+
 /**
- * Connecting, adding a custom server, reconnecting, renaming and disconnecting. Each ends with the
- * lists read again, so every screen that shows a connector shows it as it is.
+ * Connecting, adding a custom server, reconnecting, renaming and disconnecting, as a component calls
+ * them. Each ends with the connections read again.
  */
-export function useConnectorActions({ returnTo }: ConnectorActionsOptions) {
+export function useConnectorActions({ returnTo }: ConnectorActionsOptions): {
+  connect: ActionView<[registryId: string], Connection | null>;
+  addCustom: ActionView<[input: CustomConnectorInput], Connection | null>;
+  reconnect: ActionView<[id: string], Connection | null>;
+  rename: ActionView<[id: string, accountLabel: string | null], void>;
+  disconnect: ActionView<[id: string], void>;
+} {
   const api = useGemieApi();
-  const queryClient = useQueryClient();
-  const refresh = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: connectorQueryKeys.connected }),
-    [queryClient],
-  );
-
-  const complete = useMutation({
-    mutationFn: async (input: { state: string; code: string }) =>
-      (await api.post<{ server: Connection }>(CONNECTOR_ROUTES.complete, input)).data.server,
-    onSuccess: refresh,
-  });
-
-  /** Sign in at the provider, and finish here when the native session hands the result back. */
-  const signIn = async (authorizationUrl: string): Promise<Connection | null> => {
-    const returned = await openSignIn(authorizationUrl, returnTo);
-    if (!returned) return null;
-    const result = signInResult(new URL(returned).searchParams);
-    if (!result) return null;
-    if ('error' in result) throw new Error(result.error);
-    return complete.mutateAsync(result);
+  const client = useMemo<ConnectorClient>(() => ({ api, returnTo }), [api, returnTo]);
+  return {
+    connect: useBoundAction(connectConnector, client),
+    addCustom: useBoundAction(addCustomConnector, client),
+    reconnect: useBoundAction(reconnectConnector, client),
+    rename: useBoundAction(renameConnector, api),
+    disconnect: useBoundAction(disconnectConnector, api),
   };
-
-  /** A new account: through the provider's sign-in, or at once for a server that needs none. */
-  const connect = useMutation({
-    mutationFn: async (registryId: string) => {
-      const { data } = await api.post<{ authorizationUrl?: string; server?: Connection }>(
-        CONNECTOR_ROUTES.connect,
-        { registryId, returnTo },
-      );
-      if (data.authorizationUrl) return signIn(data.authorizationUrl);
-      await refresh();
-      return data.server ?? null;
-    },
-  });
-
-  const addCustom = useMutation({
-    mutationFn: async (input: { name: string; url: string; headers?: Record<string, string> }) => {
-      const { data } = await api.post<{ server: Connection; authorizationUrl?: string }>(
-        CONNECTOR_ROUTES.custom,
-        { ...input, returnTo },
-      );
-      await refresh();
-      return data.authorizationUrl ? signIn(data.authorizationUrl) : data.server;
-    },
-  });
-
-  const reconnect = useMutation({
-    mutationFn: async (id: string) => {
-      const { data } = await api.post<{ server: Connection; authorizationUrl?: string }>(
-        CONNECTOR_ROUTES.reconnect(id),
-        { returnTo },
-      );
-      if (!data.authorizationUrl) {
-        await refresh();
-        return data.server;
-      }
-      return signIn(data.authorizationUrl);
-    },
-  });
-
-  const rename = useMutation({
-    mutationFn: async (input: { id: string; accountLabel: string | null }) => {
-      await api.patch(CONNECTOR_ROUTES.connection(input.id), { accountLabel: input.accountLabel });
-    },
-    onSuccess: refresh,
-  });
-
-  const disconnect = useMutation({
-    mutationFn: async (id: string) => {
-      await api.delete(CONNECTOR_ROUTES.connection(id));
-    },
-    onSuccess: refresh,
-  });
-
-  return { connect, addCustom, reconnect, rename, disconnect, complete };
 }
 
 /** The connector slug a tool name carries: `mcp_notion_2__search` → `notion_2`. */
@@ -341,8 +460,8 @@ export function connectionOfTool(
  * connector's tool.
  */
 export function useConnectionOfTool(toolName: string | undefined): Connection | undefined {
-  const { data } = useConnections({ enabled: toolSlug(toolName) !== undefined });
-  return connectionOfTool(data, toolName);
+  const { value } = useConnections({ enabled: toolSlug(toolName) !== undefined });
+  return connectionOfTool(value, toolName);
 }
 
 /** The copy key that says why a sign-in did not connect (`mcp_oauth_error`, or `failed`). */
@@ -377,7 +496,7 @@ export function useWebSignInReturn(
   onDone: (outcome: { ok: true; connection: Connection } | { ok: false; error: string }) => void,
 ) {
   const api = useGemieApi();
-  const queryClient = useQueryClient();
+  const store = useStore();
   const handled = useRef(false);
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined' || handled.current) return;
@@ -396,12 +515,10 @@ export function useWebSignInReturn(
       onDone({ ok: false, error: result.error });
       return;
     }
-    api
-      .post<{ server: Connection }>(CONNECTOR_ROUTES.complete, result)
-      .then(async ({ data }) => {
-        await queryClient.invalidateQueries({ queryKey: connectorQueryKeys.connected });
-        onDone({ ok: true, connection: data.server });
-      })
+    withStore(store, () => completeConnectorSignIn(api, result))
+      .then((connection) =>
+        onDone(connection ? { ok: true, connection } : { ok: false, error: 'failed' }),
+      )
       .catch(() => onDone({ ok: false, error: 'failed' }));
     // Once per page load: the query is cleared as soon as it is read.
   }, []);

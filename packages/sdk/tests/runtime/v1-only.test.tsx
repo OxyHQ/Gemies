@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -111,20 +111,18 @@ describe('every request the runtime makes', () => {
     }
     await act(async () => {
       renderer = create(
-        <QueryClientProvider
-          client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-        >
+        <DataProvider store={new Store()}>
           <GemieRuntimeProvider apiUrl="https://api.example">
             <Probe />
           </GemieRuntimeProvider>
-        </QueryClientProvider>,
+        </DataProvider>,
       );
     });
     await act(async () => {
-      await api.create.mutateAsync({});
-      await api.rename.mutateAsync({ id: 'c1', title: 'Renamed' });
-      await api.clear.mutateAsync('c1');
-      await api.remove.mutateAsync('c1');
+      await api.create.run({});
+      await api.rename.run('c1', 'Renamed');
+      await api.clear.run('c1');
+      await api.remove.run('c1');
       await api.stream.append({ role: 'user', content: 'hello' });
     });
 

@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { OxyServices } from '@oxy.so/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { expect, it, vi } from 'vitest';
 
@@ -70,7 +70,7 @@ it('preserves partial text as cancelled and drains Stop when the terminal SSE pr
   oxy.session.setAccessToken(
     `e30.${Buffer.from(JSON.stringify({ userId: 'A', operatorId: 'operator', sessionId: 'session-A', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.sig`,
   );
-  const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queries = new Store();
   let api!: ReturnType<typeof useConversationStream>;
   let renderer: ReactTestRenderer | undefined;
   let result: Promise<string> | undefined;
@@ -82,11 +82,11 @@ it('preserves partial text as cancelled and drains Stop when the terminal SSE pr
   try {
     await act(async () => {
       renderer = create(
-        <QueryClientProvider client={queries}>
+        <DataProvider store={queries}>
           <GemieRuntimeProvider apiUrl={baseURL} host={{}}>
             <Probe />
           </GemieRuntimeProvider>
-        </QueryClientProvider>,
+        </DataProvider>,
       );
     });
     act(() => {
@@ -133,7 +133,7 @@ it('preserves partial text as cancelled and drains Stop when the terminal SSE pr
       renderer?.unmount();
       await result?.catch(() => {});
     });
-    queries.clear();
+    void queries.close();
     oxy.dispose();
     world.oxy = null;
     server.closeAllConnections();
@@ -174,7 +174,7 @@ it('keeps an answer the server had already finished as completed and stored, and
   oxy.session.setAccessToken(
     `e30.${Buffer.from(JSON.stringify({ userId: 'A', operatorId: 'operator', sessionId: 'session-A', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.sig`,
   );
-  const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queries = new Store();
   let api!: ReturnType<typeof useConversationStream>;
   let renderer: ReactTestRenderer | undefined;
   let result: Promise<string> | undefined;
@@ -187,11 +187,11 @@ it('keeps an answer the server had already finished as completed and stored, and
   try {
     await act(async () => {
       renderer = create(
-        <QueryClientProvider client={queries}>
+        <DataProvider store={queries}>
           <GemieRuntimeProvider apiUrl={baseURL} host={{}}>
             <Probe />
           </GemieRuntimeProvider>
-        </QueryClientProvider>,
+        </DataProvider>,
       );
     });
     act(() => {
@@ -234,7 +234,7 @@ it('keeps an answer the server had already finished as completed and stored, and
       renderer?.unmount();
       await result?.catch(() => {});
     });
-    queries.clear();
+    void queries.close();
     oxy.dispose();
     world.oxy = null;
     server.closeAllConnections();
@@ -294,7 +294,7 @@ it.each([
   oxy.session.setAccessToken(
     `e30.${Buffer.from(JSON.stringify({ userId: 'A', sessionId: 'session-A', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.sig`,
   );
-  const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queries = new Store();
   const host = { onTurnEnd: vi.fn(), onTurnPreview: vi.fn() };
   let conversationId = 'old-conversation';
   let api!: ReturnType<typeof useConversationStream>;
@@ -306,11 +306,11 @@ it.each([
     return null;
   }
   const tree = () => (
-    <QueryClientProvider client={queries}>
+    <DataProvider store={queries}>
       <GemieRuntimeProvider apiUrl={baseURL} host={host}>
         <Probe />
       </GemieRuntimeProvider>
-    </QueryClientProvider>
+    </DataProvider>
   );
   try {
     await act(async () => {
@@ -400,7 +400,7 @@ it.each([
       renderer?.unmount();
       await Promise.all([oldResult?.catch(() => {}), newResult?.catch(() => {})]);
     });
-    queries.clear();
+    void queries.close();
     oxy.dispose();
     world.oxy = null;
     server.closeAllConnections();

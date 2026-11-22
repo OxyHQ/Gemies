@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@oxy.so/services/ui/client', () => ({ useOxy: () => ({ isAuthenticated: true }) }));
+vi.mock('@oxy.so/services/ui/client', () => ({
+  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true }),
+}));
 vi.mock('expo-web-browser', () => ({ openAuthSessionAsync: vi.fn() }));
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 vi.mock('../../src/runtime/api', () => ({ useGemieApi: () => ({}) }));
