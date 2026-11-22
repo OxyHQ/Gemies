@@ -2,25 +2,75 @@
 
 ## 10.0.0
 
-Built on `@oxy.so/services` 15, which keeps its data in `@oxy.so/bloom-data` and no longer carries
-React Query.
+Built on `@oxy.so/services` 15. The runtime's own data moved off React Query onto
+`@oxy.so/bloom-data`, in the store Services' `OxyProvider` opens for the signed-in account: an
+account switch never shows the previous account's conversations, collections, threads or
+connections, and an answer that lands for an account that was left is dropped. The SDK has no React
+Query left.
 
-- **Breaking — requires Services 15** (`@oxy.so/services` `>=15.0.0 <16`). Services 14 is no
-  longer supported.
-- **Breaking — the app mounts the query client.** The conversation runtime still keeps its cache in
-  React Query, but `OxyProvider` no longer mounts a `QueryClientProvider`: mount your own above
-  `OxyProvider`, the one client the SDK and your own screens (a sidebar reading
-  `gemieQueryKeys`) share.
-- **Breaking — the app drops the SDK's queries on an account switch.** Services 14 did it for the
-  roots an app listed in `accountQueries`; Services 15 takes no `accountQueries`. The SDK's keys
-  (`gemieQueryKeys`) are not scoped to an account, so when `useOxy().user?.id` changes, remove
-  their roots from your client (for example
-  `queryClient.removeQueries({ predicate: (q) => GEMIE_ROOTS.has(q.queryKey[0]) })` with the roots
-  your app listed before). The conversation list's offline copy is unchanged: it comes from
-  `GemieRuntimeProvider`'s `offline` store, keyed by account.
-- **`useConversations` and `useConversationCollections` start as soon as the private API is
-  usable** (`canUsePrivateApi`). They no longer wait for `useOxy().isAccountCacheReady`, which
-  Services 15 removed: there is no account cache to restore before the first read.
+### Peers
+
+- **Breaking:** `@oxy.so/services` `>=15.0.0 <16`; Services 14 is no longer supported.
+- **Added:** `@oxy.so/bloom-data` `>=0.1.0` (Services 15 requires it too).
+- **Removed:** `@tanstack/react-query`. An app that uses React Query itself declares it itself.
+
+### The account's data (`@gemies/sdk/runtime`)
+
+- **Records and lists:** `Conversations` (one record per conversation), `ConversationList` (one per
+  filter, `conversationsKey(filter)`, `filterOfKey`), `ThreadMessages`, `ThreadHistory`,
+  `ThreadWindow`, persisted to the account's durable copy where the app persisted them before
+  (conversations, their lists, the collections, an agent's profile, a thread).
+- **Sources** (each takes the provider's client first): `conversationList`, `conversation`,
+  `conversationCollections`, `agentProfile`, `agentFeatures`, `gemieThread`, `threadHistorySource`,
+  `threadWindow`, `threadSearch`, `sharedConversation`; `@gemies/sdk/accounts` adds
+  `connectedAccounts`, `connectedAccountQr`, `connectedAccountChats`; `@gemies/sdk/connectors`
+  adds `connections`, `connectorStore` (`ConnectorStoreList`, `ConnectorEntries`).
+- **Actions** (optimistic: a change shows at once and comes back exactly as it was when the server
+  refuses): `markConversationRead`, `saveConversation`, `renameConversation`,
+  `deleteConversation`, `clearConversation`, `createConversation`, `createCollection`,
+  `updateCollection`, `deleteCollection`, `setCollectionMember`, `setConversationPinned`,
+  `setConversationFavorite`, `importCollections`, `shareConversation`,
+  `revokeConversationShare`; `updateAccount`, `grantAccount`, `removeAccount`, `connectAccount`;
+  `renameConnector`, `disconnectConnector`, `connectConnector`, `addCustomConnector`,
+  `reconnectConnector`, `completeConnectorSignIn`. None is durable: nothing the runtime writes
+  was replayed after a restart.
+- **Helpers:** `useConversationsClient`, `useRefreshConversation`, `useRefreshGemieThread`,
+  `placeConversation`, `refreshConversationLists`, `storeCollections`, `answerSource`, `useAnswer`,
+  `gemieRead` (the read rules every source shares), `ACCOUNT`.
+- **Removed:** `gemieQueryKeys`, `connectorQueryKeys`, `reviveConversationDates`, the
+  `ConversationsPage` and `ConversationsInfiniteData` types, and `importCollections(api, local)`'s
+  plain function (it is the action of that name).
+
+### Hooks
+
+- **Breaking — reads return bloom-data views.** `useConversation`, `useAgentProfile`,
+  `useAgentFeatures`, `useGemieThread`, `useThreadSearch`, `useSharedConversation`,
+  `useConnections`, `useConnectedAccounts`, `useConnectedAccountQr` and
+  `useConnectedAccountChats` return a `RecordView` (`value`, was `data`; `refresh()`, was
+  `refetch()`; `status === 'error'`, was `isError`). `useConversations` returns a `ListView` with
+  its rows as `conversations` (was `data.pages[n].conversations`; `more()` was `fetchNextPage()`).
+  `useConnectorStore` returns `entries`, `total`, `categories`, `isLoading`, `isError`, `hasMore`,
+  `isLoadingMore`, `more` and `refresh`, and keeps the previous search's results on screen until a
+  new search answers.
+- **Breaking — writes return `ActionView`** (`run`, `isPending`, `error`, `data`, `reset`; `run`
+  was `mutateAsync`, there is no `mutate`): `useSaveConversation`, `useDeleteConversation`,
+  `useClearConversation`, `useCreateConversation`, `useRenameConversation` (`run(id, title)`, was
+  `mutateAsync({ id, title })`), `useConnectedAccountMutations` (`update.run(accountId, patch)`,
+  `grant.run(accountId, gemieId, granted)`) and `useConnectorActions`
+  (`rename.run(id, accountLabel)`).
+- `useConversation(id, { onReload })` hears a conversation rewritten on another device once it is
+  read again. A row the sidebar holds shows at once, without messages, while the conversation is
+  read.
+- Every private read waits for `useOxy().canUsePrivateApi` (no more `isAccountCacheReady`, which
+  Services 15 removed); `useSharedConversation` needs no session.
+- What was invalidated is read again by the hooks that show it: a realtime reset, a `connections`
+  event, a rewritten thread, the next stretch of a thread.
+
+### Records
+
+- **Breaking:** `Conversation.createdAt` and `updatedAt` are ISO strings (a record is JSON, as the
+  durable copy keeps it), and `Conversation.messages` is optional: a list row or a realtime event
+  carries none, and leaves the held ones in place.
 
 ## 9.1.0
 

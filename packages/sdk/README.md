@@ -23,9 +23,9 @@ mapping is in [`CHANGELOG.md`](./CHANGELOG.md) under 1.0.0.
 bun add @gemies/sdk
 ```
 
-`react`, `react-native`, `@oxy.so/core`, `@oxy.so/services` (15 or later), `@tanstack/react-query`
-(the conversation runtime's cache; your app mounts its `QueryClientProvider` above `OxyProvider`
-and drops the SDK's queries when the account changes, see 10.0.0 in the changelog), `react-native-css`
+`react`, `react-native`, `@oxy.so/core`, `@oxy.so/services` (15 or later), `@oxy.so/bloom-data`
+(the conversation runtime's data lives in the signed-in account's store, the one `OxyProvider`
+opens with the session, so an account switch never shows the previous account's), `react-native-css`
 (the thread's images take `className`) and the Expo modules listed under `peerDependencies` in
 `package.json` — among them `expo-clipboard` and `expo-web-browser`, which the thread's copy
 button and its sources use — are yours to install. Metro
@@ -351,7 +351,7 @@ Everything that is a conversation lives in `src/runtime`, in layers that depend 
 | Layer | What | Public names |
 | --- | --- | --- |
 | Transport | Alia's REST API over the signed-in person's Oxy client (token, refresh and the single 401 replay are Oxy's); the turn's SSE stream | `useGemieApi`, `GemieApiError` |
-| Model and state | the records, React Query keys and the cached lists; zustand stores for the composer drafts and the hand-off of a first message | `Message`, `Conversation`, `gemieQueryKeys`, `useComposerDraftStore`, `useConversationStore` |
+| Model and state | the records and their lists in the account's `@oxy.so/bloom-data` store (entities, sources and actions); zustand stores for the composer drafts and the hand-off of a first message | `Message`, `Conversation`, `Conversations`, `ConversationList`, `conversationList`, `conversationCollections`, `useComposerDraftStore`, `useConversationStore` |
 | Hooks | `useConversations` (the list, paginated), `useConversation` (one, with its history), `useCreateConversation`, `useRenameConversation`, `useDeleteConversation`, `useClearConversation`, and `useConversationThread`: the live thread of one conversation — messages, `sendMessage`, `createNewConversation`, `editMessage`, `regenerateMessage`, `retryFailedTurn`, `stopGeneration`, `clearConversation`, `startOver`, `ensureConversation` | `use…` |
 | UI | `GemieChatContent` (the conversation screen), `GemieChatScreen`, `GemieChatSheet`, `GemieThread`, `ThoughtPanel` | components |
 
@@ -449,7 +449,7 @@ The sheet and the Alia app differ ONLY in what they put there:
   renderUsageLimit={({ error, dismiss }) => <UsageLimitDialog error={error} onDismiss={dismiss} />}
 />
 function Sidebar() {
-  const { data } = useConversations(); // the very query the thread keeps up to date
+  const { conversations, more } = useConversations(); // the very list the thread keeps up to date
   …
 }
 ```
