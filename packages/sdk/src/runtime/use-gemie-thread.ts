@@ -1,7 +1,5 @@
 import { type RecordView, skip, useStore, withStore } from '@oxy.so/bloom-data';
 import { useCallback } from 'react';
-import type { RealtimeData } from '../realtime/contract';
-import { useRealtimeEvent } from '../realtime/react';
 import { useGemieApi } from './api';
 import { useAnswer } from './data/answer';
 import { gemieThread, type GemieThreadInfo, threadHistory } from './data/threads';
@@ -16,19 +14,15 @@ export type { GemieThreadInfo } from './data/threads';
  *
  * Render the chat with what it answers: `<GemieChatContent conversationId={thread.conversationId}
  * gemieThread={{ gemieId, threadId: thread.threadId }} />`. A message that may have started a new
- * stretch (a realtime `conversation` event with appended messages) reads it again, and so does
- * starting the next stretch from the chat (`useRefreshGemieThread`).
+ * stretch (a realtime `conversation` event with appended messages) makes it stale, and starting the
+ * next stretch from the chat reads it again (`useRefreshGemieThread`).
  */
 export function useGemieThread(gemieId: string | undefined): RecordView<GemieThreadInfo> {
   const api = useGemieApi();
-  const view = useAnswer(
+  return useAnswer(
     gemieThread,
     ...((gemieId?.length ?? 0) > 0 ? [api, { gemieId: gemieId as string }] : [skip]),
   );
-  useRealtimeEvent('conversation', (frame) => {
-    if ((frame.data as RealtimeData['conversation']).appended?.length) void view.refresh();
-  });
-  return view;
 }
 
 /**

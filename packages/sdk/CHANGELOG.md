@@ -16,10 +16,16 @@ Query left.
 
 ### The account's data (`@gemies/sdk/runtime`)
 
-- **Records and lists:** `Conversations` (one record per conversation), `ConversationList` (one per
-  filter, `conversationsKey(filter)`, `filterOfKey`), `ThreadMessages`, `ThreadHistory`,
-  `ThreadWindow`, persisted to the account's durable copy where the app persisted them before
-  (conversations, their lists, the collections, an agent's profile, a thread).
+- **Records and lists:** `Conversations` (a conversation's row), `ConversationMessages` (its
+  messages, once it was read, with its row as a ref; `heldConversation(id)` joins the two),
+  `ConversationList` (one per filter, `conversationsKey(filter)`, `filterOfKey`), `ThreadMessages`,
+  `ThreadHistory`, `ThreadWindow`. They are copied to the account's durable copy where the app
+  persisted them before (conversations, their lists, the collections, an agent's profile, a
+  thread), with the bound the app's cache had: the messages of the
+  `MAX_PERSISTED_CONVERSATIONS` (20) conversations written last, each its last
+  `MAX_PERSISTED_MESSAGES` (40) finished messages, text only, at most `MAX_PERSISTED_BYTES`
+  (150 KB), never a turn still streaming or not yet stored (`trimConversationMessages`). Memory
+  keeps everything.
 - **Sources** (each takes the provider's client first): `conversationList`, `conversation`,
   `conversationCollections`, `agentProfile`, `agentFeatures`, `gemieThread`, `threadHistorySource`,
   `threadWindow`, `threadSearch`, `sharedConversation`; `@gemies/sdk/accounts` adds
@@ -35,7 +41,7 @@ Query left.
   `reconnectConnector`, `completeConnectorSignIn`. None is durable: nothing the runtime writes
   was replayed after a restart.
 - **Helpers:** `useConversationsClient`, `useRefreshConversation`, `useRefreshGemieThread`,
-  `placeConversation`, `refreshConversationLists`, `storeCollections`, `answerSource`, `useAnswer`,
+  `placeConversation`, `forgetConversation`, `messagesRecord`, `refreshConversationLists`, `storeCollections`, `answerSource`, `useAnswer`,
   `gemieRead` (the read rules every source shares), `ACCOUNT`.
 - **Removed:** `gemieQueryKeys`, `connectorQueryKeys`, `reviveConversationDates`, the
   `ConversationsPage` and `ConversationsInfiniteData` types, and `importCollections(api, local)`'s
@@ -63,8 +69,10 @@ Query left.
   read.
 - Every private read waits for `useOxy().canUsePrivateApi` (no more `isAccountCacheReady`, which
   Services 15 removed); `useSharedConversation` needs no session.
-- What was invalidated is read again by the hooks that show it: a realtime reset, a `connections`
-  event, a rewritten thread, the next stretch of a thread.
+- A realtime reset makes the lists, the conversations, the collections, the connected accounts
+  and the connections stale (`invalidateAll`): what is on screen is read again at once, the rest
+  when it is next shown, however fresh it was. A `connections` event does the same for the
+  connected accounts and the connections, and a message appended to a conversation for the threads.
 
 ### Records
 

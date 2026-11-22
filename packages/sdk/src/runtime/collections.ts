@@ -7,7 +7,6 @@
 import { skip, useStore, withStore } from '@oxy.so/bloom-data';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { useMemo } from 'react';
-import { useRealtimeReset } from '../realtime/react';
 import { type GemieApi, useGemieApi } from './api';
 import {
   type CollectionFields,
@@ -39,9 +38,10 @@ export { readCollectionsSnapshot } from './collections-model';
 export function useConversationCollections(): ConversationCollections {
   const api = useGemieApi();
   const { canUsePrivateApi } = useOxy();
-  const view = useAnswer(conversationCollections, ...(canUsePrivateApi ? [api] : [skip]));
-  useRealtimeReset(() => void view.refresh());
-  return view.value ?? EMPTY_COLLECTIONS;
+  return (
+    useAnswer(conversationCollections, ...(canUsePrivateApi ? [api] : [skip])).value ??
+    EMPTY_COLLECTIONS
+  );
 }
 
 export interface CollectionActions {

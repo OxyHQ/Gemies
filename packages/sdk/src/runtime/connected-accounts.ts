@@ -8,7 +8,7 @@ import {
 } from '@oxy.so/bloom-data';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { useCallback, useEffect } from 'react';
-import { useRealtimeEvent, useRealtimeReset } from '../realtime/react';
+import { rereadOn } from '../realtime/reread';
 import { type GemieApi, useGemieApi } from './api';
 import { answerSource, useAnswer } from './data/answer';
 import { ACCOUNT, gemieRead } from './data/read';
@@ -108,6 +108,9 @@ export const connectedAccounts = answerSource('gemies.connected-accounts', {
     (await api.get<ConnectedAccountsAnswer>(ACCOUNT_ROUTES.all, { signal })).data,
 });
 
+rereadOn('connections', connectedAccounts);
+rereadOn('reset', connectedAccounts);
+
 /** The code of an account being connected, as its session reports it now. */
 export const connectedAccountQr = answerSource('gemies.connected-account-qr', {
   ...gemieRead,
@@ -143,10 +146,7 @@ export const connectedAccountChats = answerSource('gemies.connected-account-chat
 export function useConnectedAccounts(): RecordView<ConnectedAccountsAnswer> {
   const api = useGemieApi();
   const { canUsePrivateApi } = useOxy();
-  const view = useAnswer(connectedAccounts, ...(canUsePrivateApi ? [api] : [skip]));
-  useRealtimeEvent('connections', () => void view.refresh());
-  useRealtimeReset(() => void view.refresh());
-  return view;
+  return useAnswer(connectedAccounts, ...(canUsePrivateApi ? [api] : [skip]));
 }
 
 /** Reads the caller's accounts again, in the store of the tree. */

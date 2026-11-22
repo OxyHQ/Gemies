@@ -2,13 +2,15 @@ import { type Store, withStore } from '@oxy.so/bloom-data';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { RealtimeConversationRow, RealtimeFrame } from '../../src/realtime/contract';
 import { applyRealtimeFrame } from '../../src/realtime/store';
-import {
-  bumpConversation,
-  Conversations,
-  conversationsKey,
-} from '../../src/runtime/data/conversations';
+import { bumpConversation, conversationsKey } from '../../src/runtime/data/conversations';
 import type { Conversation, Message } from '../../src/runtime/types';
-import { freshStore, heldConversation, listIds, seedList } from '../support/data-store';
+import {
+  freshStore,
+  heldConversation,
+  holdConversation,
+  listIds,
+  seedList,
+} from '../support/data-store';
 
 /**
  * Realtime events into the account's store (`src/realtime/store.ts`): a new message moves its
@@ -93,12 +95,10 @@ describe('a conversation event', () => {
 
   it('gives an open conversation the messages it gained, replacing the copy drawn under the same id', () => {
     const drawn: Message = { id: 'm2', role: 'assistant', content: 'stream…' };
-    withStore(store, () =>
-      Conversations.put({
-        ...conversation('a', 30),
-        messages: [{ id: 'm1', role: 'user', content: 'hola' }, drawn],
-      }),
-    );
+    holdConversation(store, {
+      ...conversation('a', 30),
+      messages: [{ id: 'm1', role: 'user', content: 'hola' }, drawn],
+    });
     const appended: Message[] = [
       { id: 'm2', role: 'assistant', content: 'Hola, ¿qué tal?' },
       { id: 'm3', role: 'assistant', content: 'Te escribo luego' },
@@ -115,12 +115,10 @@ describe('a conversation event', () => {
   });
 
   it('keeps the messages of an open conversation when its row arrives without any', () => {
-    withStore(store, () =>
-      Conversations.put({
-        ...conversation('a', 30),
-        messages: [{ id: 'm1', role: 'user', content: 'hola' }],
-      }),
-    );
+    holdConversation(store, {
+      ...conversation('a', 30),
+      messages: [{ id: 'm1', role: 'user', content: 'hola' }],
+    });
     apply(event({ conversation: row('a', 32), thread: {} }));
     expect(heldConversation(store, 'a')?.messages?.map((m) => m.id)).toEqual(['m1']);
   });

@@ -18,6 +18,7 @@ import {
   readCollectionsSnapshot,
 } from '../collections-model';
 import { API_ROUTES } from '../routes';
+import { rereadOn } from '../../realtime/reread';
 import { answerSource } from './answer';
 import { ACCOUNT, gemieRead } from './read';
 
@@ -35,6 +36,8 @@ export const conversationCollections = answerSource('gemies.collections', {
       (await api.get<CollectionsSnapshotWire>(API_ROUTES.collections.list, { signal })).data,
     ),
 });
+
+rereadOn('reset', conversationCollections);
 
 /** The snapshot as the server (or another device) answered it. */
 export function storeCollections(snapshot: ConversationCollections): void {
