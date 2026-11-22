@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { act, create } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -67,14 +67,14 @@ vi.mock('../../src/runtime/use-conversation-stream', () => ({
 }));
 
 vi.mock('../../src/runtime/conversations', () => ({
-  ConversationNotFoundError: class ConversationNotFoundError extends Error {},
-  useConversation: () => ({ data: undefined, isLoading: false, isFetching: false }),
-  useCreateConversation: () => ({ mutateAsync: vi.fn() }),
-  useDeleteConversation: () => ({ mutateAsync: vi.fn() }),
-  useReadConversation: () => async () => ({ messages: [] }),
+  useConversation: () => ({ value: undefined, isLoading: false, isFetching: false }),
+  useCreateConversation: () => ({ run: vi.fn() }),
+  useDeleteConversation: () => ({ run: vi.fn() }),
   useMarkConversationRead: () => () => undefined,
+  useConversationsClient: () => ({}),
+  useRefreshConversation: () => () => undefined,
   useClearConversation: () => ({
-    mutateAsync: vi.fn(async (id: string) => {
+    run: vi.fn(async (id: string) => {
       chat.sequence.push(`clear:${id}`);
       if (chat.clearOutcome !== 'ok') throw chat.clearOutcome;
       return id;
@@ -109,12 +109,12 @@ function Probe({ conversationId }: { conversationId?: string }) {
 
 /** `null` mounts a screen with no conversation id — `undefined` would take the default. */
 async function mount(conversationId: string | null = 'c1') {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new Store();
   await act(async () => {
     create(
-      <QueryClientProvider client={client}>
+      <DataProvider store={client}>
         <Probe conversationId={conversationId ?? undefined} />
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
   // Mounting syncs the (empty) detail query into the screen, which is one

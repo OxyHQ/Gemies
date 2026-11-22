@@ -170,8 +170,8 @@ vi.mock('@oxy.so/services/ui/client', () => ({ useOxy: () => ({ user: { id: 'u1'
 // Stable across renders, as the real hook's `t` is (see `use-translation.ts`).
 const translation = vi.hoisted(() => ({ t: (key: string) => key, locale: 'en-GB' }));
 vi.mock('../../../src/lib/labels', () => ({ useLabels: () => translation }));
-const queryClient = vi.hoisted(() => ({ getQueryState: () => undefined }));
-vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => queryClient }));
+// The thought scope reads the open conversation's read state through the conversation client.
+vi.mock('../../../src/runtime/conversations', () => ({ useConversationsClient: () => ({}) }));
 vi.mock('expo-clipboard', () => ({ setStringAsync: async () => true }));
 // The turn's actions reach TTS, dictation and Bloom's context menu; none of
 // them takes part in what a token re-renders. `stateOf` is stable, as the real

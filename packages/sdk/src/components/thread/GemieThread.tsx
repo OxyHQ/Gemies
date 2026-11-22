@@ -98,7 +98,7 @@ export interface GemieThreadProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   /** Quote a turn's words into the composer (a bubble's reply button). Omitted, the button is not drawn. */
   onReply?: (text: string) => void;
-  /** A saved reaction updates the live message as well as the query cache. */
+  /** A saved reaction updates the live message as well as the account's store. */
   onReactionChange?: (update: MessageReactionSnapshot) => void;
   /** A conversation read by somebody it was shared with: no votes, no read-aloud, no regenerate. */
   readOnly?: boolean;

@@ -4,7 +4,9 @@
  * Layers, each depending only on the ones above it in this list:
  *
  *  1. transport — `api` (REST over the signed-in Oxy client), the turn's SSE stream
- *  2. model and state — `types`, `query-keys`, the zustand stores, the cached conversation lists
+ *  2. model and state — `types`, the zustand stores, and the account's data (`data/*`): the
+ *     conversations, their lists, the collections and the threads in the signed-in account's
+ *     `@oxy.so/bloom-data` store, with the writes that change them
  *  3. hooks — `useConversations`…, `useConversationThread`
  *
  * Nothing here draws anything. It is also a leaf entry, `@gemies/sdk/runtime`, for a host that
@@ -34,6 +36,8 @@ export {
 export { useConversationActivity } from '../realtime/activity';
 export { GemieApiError, useGemieApi } from './api';
 export {
+  agentFeatures,
+  agentProfile,
   GEMIE_FEATURES,
   featureOffer,
   readAgentFeatures,
@@ -75,7 +79,10 @@ export type { MemberTurnAgent, MemberTurnEvent } from './stream-events';
 export {
   DEFAULT_SHARE_TTL_HOURS,
   readSharedConversation,
+  revokeConversationShare,
+  shareConversation,
   SharedConversationGoneError,
+  sharedConversation,
   sharedMessages,
   useShareConversation,
   useSharedConversation,
@@ -90,25 +97,73 @@ export type {
 export { uploadToOxyFiles, useDocumentUpload } from './oxy-files';
 export type { OxyFilesClient } from './oxy-files';
 export type { GemieApi, GemieApiRequest, GemieApiResult } from './api';
-export { gemieQueryKeys, type ConversationsFilter } from './query-keys';
 export {
-  ConversationNotFoundError,
   useClearConversation,
   useConversation,
   useConversations,
+  useConversationsClient,
   useCreateConversation,
   useDeleteConversation,
   useMarkConversationRead,
   usePrefetchConversation,
+  useRefreshConversation,
   useRenameConversation,
   useSaveConversation,
 } from './conversations';
-export { useConversationThread, mergeEditedContent } from './use-conversation-thread';
+export type { ConversationsView } from './conversations';
+// The account's data, for a host that reads or writes it beside the hooks (a sidebar).
 export {
+  clearConversation,
+  ConversationList,
+  ConversationNotFoundError,
+  Conversations,
+  conversation,
+  conversationList,
+  conversationsKey,
+  createConversation,
+  deleteConversation,
+  fetchConversation,
+  filterOfKey,
+  markConversationRead,
+  matchesFilter,
+  OfflineConversations,
+  placeConversation,
+  refreshConversationLists,
+  renameConversation,
+  saveConversation,
+} from './data/conversations';
+export type {
+  ConversationsClient,
+  ConversationsFilter,
+  CreateConversationInput,
+  SaveConversationInput,
+} from './data/conversations';
+export {
+  conversationCollections,
+  createCollection,
+  deleteCollection,
   importCollections,
-  useCollectionActions,
-  useConversationCollections,
-} from './collections';
+  setCollectionMember,
+  setConversationFavorite,
+  setConversationPinned,
+  storeCollections,
+  updateCollection,
+} from './data/collections';
+export {
+  gemieThread,
+  retryThreadRead,
+  ThreadHistory,
+  threadHistory as threadHistorySource,
+  ThreadMessages,
+  threadSearch,
+  ThreadWindow,
+  threadWindow,
+} from './data/threads';
+export { answerSource, useAnswer } from './data/answer';
+export type { Answer, AnswerSource, AnswerSourceOptions } from './data/answer';
+export { ACCOUNT, gemieRead } from './data/read';
+export { useConversationThread, mergeEditedContent } from './use-conversation-thread';
+export { useCollectionActions, useConversationCollections } from './collections';
 export type {
   CollectionActions,
   CollectionFields,
@@ -147,7 +202,7 @@ export type {
 } from './thought-store';
 export { useThreadHistory } from './use-thread-history';
 export { useThreadSearch, useThreadWindow } from './use-thread-search';
-export { useGemieThread } from './use-gemie-thread';
+export { useGemieThread, useRefreshGemieThread } from './use-gemie-thread';
 export type { GemieThreadInfo } from './use-gemie-thread';
 export { AGENT_ROUTES, threadKey } from './routes';
 export type { GemieThreadAddress } from './routes';

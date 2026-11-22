@@ -49,7 +49,8 @@ function hitDay(createdAt: string, locale: string): string {
 export const ThreadSearch = ({ thread, onJump, onClose }: ThreadSearchProps) => {
   const { t, locale } = useLabels();
   const [query, setQuery] = useState('');
-  const { data: hits, isFetching, isError } = useThreadSearch(thread, query);
+  const { value: hits, isFetching, status } = useThreadSearch(thread, query);
+  const isError = status === 'error';
 
   /**
    * Told apart deliberately: nothing typed is not a search that found nothing.

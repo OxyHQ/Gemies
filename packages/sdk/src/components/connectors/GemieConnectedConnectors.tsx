@@ -54,7 +54,7 @@ export function GemieConnectedConnectors({
   const reconnect = async (connection: Connection) => {
     setPending(connection._id);
     try {
-      const done = await actions.reconnect.mutateAsync(connection._id);
+      const done = await actions.reconnect.run(connection._id);
       if (done?.status === 'running') {
         toast.success(t(`${K}.reconnected`, { name: connection.displayName }));
       }
@@ -77,7 +77,7 @@ export function GemieConnectedConnectors({
     if (!ok) return;
     setPending(connection._id);
     try {
-      await actions.disconnect.mutateAsync(connection._id);
+      await actions.disconnect.run(connection._id);
       toast.success(t(`${K}.disconnected`, { name }));
     } catch {
       toast.error(t(`${K}.disconnectFailed`));
@@ -86,22 +86,27 @@ export function GemieConnectedConnectors({
     }
   };
 
-  if (connections.isPending) return <ConnectedSkeleton />;
+  if (connections.isLoading) return <ConnectedSkeleton />;
 
-  if (connections.isError) {
+  if (connections.status === 'error') {
     return (
       <View className="items-start gap-2 py-2.5">
         <Text variant="body-2-regular" className="text-text-secondary">
           {t(`${K}.connected.loadFailed`)}
         </Text>
-        <Button size="sm" appearance="outline" tone="neutral" onPress={() => connections.refetch()}>
+        <Button
+          size="sm"
+          appearance="outline"
+          tone="neutral"
+          onPress={() => void connections.refresh()}
+        >
           {t(`${K}.store.retry`)}
         </Button>
       </View>
     );
   }
 
-  const rows = connections.data ?? [];
+  const rows = connections.value ?? [];
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -210,7 +215,7 @@ export function GemieConnectedConnectors({
         onClose={() => setRenaming(null)}
         onSave={async (accountLabel) => {
           if (!renaming) return;
-          await actions.rename.mutateAsync({ id: renaming._id, accountLabel });
+          await actions.rename.run(renaming._id, accountLabel);
         }}
         t={t}
       />

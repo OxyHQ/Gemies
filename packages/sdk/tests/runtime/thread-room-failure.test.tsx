@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -27,13 +27,13 @@ vi.mock('../../src/runtime/use-conversation-stream', () => ({
   }),
 }));
 vi.mock('../../src/runtime/conversations', () => ({
-  ConversationNotFoundError: class ConversationNotFoundError extends Error {},
-  useConversation: () => ({ data: undefined, isLoading: false, isFetching: false }),
-  useCreateConversation: () => ({ mutateAsync: vi.fn() }),
-  useDeleteConversation: () => ({ mutateAsync: vi.fn() }),
-  useClearConversation: () => ({ mutateAsync: vi.fn() }),
-  useReadConversation: () => vi.fn(),
+  useConversation: () => ({ value: undefined, isLoading: false, isFetching: false }),
+  useCreateConversation: () => ({ run: vi.fn() }),
+  useDeleteConversation: () => ({ run: vi.fn() }),
+  useClearConversation: () => ({ run: vi.fn() }),
   useMarkConversationRead: () => vi.fn(),
+  useConversationsClient: () => ({}),
+  useRefreshConversation: () => () => undefined,
 }));
 vi.mock('../../src/realtime/react', async (original) =>
   (await import('../support/fake-realtime')).mockRealtimeReact(await original()),
@@ -52,17 +52,17 @@ import { useConversationThread } from '../../src/runtime/use-conversation-thread
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let renderer: ReactTestRenderer | undefined;
-let queryClient: QueryClient;
+let queryClient: Store;
 function Probe() {
   useConversationThread({ conversationId: 'c1' });
   return null;
 }
 const tree = () => (
-  <QueryClientProvider client={queryClient}>
+  <DataProvider store={queryClient}>
     <GemieRuntimeProvider>
       <Probe />
     </GemieRuntimeProvider>
-  </QueryClientProvider>
+  </DataProvider>
 );
 const fail = (chainId = 'db-user-message-id') =>
   act(async () => {
@@ -79,12 +79,12 @@ beforeEach(() => {
   world.toast.mockClear();
   world.setMessages.mockClear();
   fakeRealtime.reset();
-  queryClient = new QueryClient();
+  queryClient = new Store();
 });
 afterEach(async () => {
   await act(async () => renderer?.unmount());
   renderer = undefined;
-  queryClient.clear();
+  void queryClient.close();
 });
 
 describe('late group failures in the thread', () => {

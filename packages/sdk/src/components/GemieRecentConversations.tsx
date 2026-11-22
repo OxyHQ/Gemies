@@ -26,14 +26,11 @@ export function GemieRecentConversations({
 }) {
   const labels = useLabels();
   const { app } = useGemieRuntime();
-  const { data } = useConversations({
+  const { conversations } = useConversations({
     ...(agentId === undefined ? {} : { agentId }),
     ...(app === undefined ? {} : { app }),
   });
-  const recent = useMemo(
-    () => data?.pages[0]?.conversations.slice(0, RECENT_CONVERSATIONS_SHOWN) ?? [],
-    [data],
-  );
+  const recent = useMemo(() => conversations.slice(0, RECENT_CONVERSATIONS_SHOWN), [conversations]);
   const when = useMemo(
     () => new Intl.DateTimeFormat(labels.locale, { day: 'numeric', month: 'short' }),
     [labels.locale],

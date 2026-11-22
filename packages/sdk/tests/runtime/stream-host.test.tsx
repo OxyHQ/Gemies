@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -58,9 +58,9 @@ vi.mock('@oxy.so/services/ui/client', () => ({
 vi.mock('@oxy.so/bloom/toast', () => ({ toast: { error: vi.fn() } }));
 
 import { GemieRuntimeProvider, type GemieRuntimeHost } from '../../src/runtime/config';
-import { gemieQueryKeys } from '../../src/runtime/query-keys';
+import { seedList, heldConversation, listIds } from '../support/data-store';
 import { useConversationStream } from '../../src/runtime/use-conversation-stream';
-import type { Conversation, ConversationsInfiniteData } from '../../src/runtime/types';
+import type { Conversation } from '../../src/runtime/types';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -77,7 +77,7 @@ const host = {
 
 let api: ReturnType<typeof useConversationStream>;
 let renderer: ReactTestRenderer | null = null;
-let client: QueryClient;
+let client: Store;
 
 function Probe({ options }: { options: Parameters<typeof useConversationStream>[0] }) {
   api = useConversationStream(options);
@@ -85,14 +85,14 @@ function Probe({ options }: { options: Parameters<typeof useConversationStream>[
 }
 
 async function mount(options: Parameters<typeof useConversationStream>[0] = {}) {
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new Store();
   await act(async () => {
     renderer = create(
-      <QueryClientProvider client={client}>
+      <DataProvider store={client}>
         <GemieRuntimeProvider apiUrl="http://api.test" host={host}>
           <Probe options={options} />
         </GemieRuntimeProvider>
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
 }
@@ -279,30 +279,21 @@ describe('what a frame reaches', () => {
     });
   });
 
-  it('writes a new title into the cached conversation and its row in the list', async () => {
-    const row = { id: 'c1', title: 'New chat' } as Conversation;
+  it("writes a new title into the conversation's record, which every list shows", async () => {
+    const row: Conversation = { id: 'c1', title: 'New chat', createdAt: '', updatedAt: '' };
     harness.responses.push([
       content('hi'),
       frame({ conversationId: 'c1', title: 'Peru trip' }, 'alia.title'),
       done,
     ]);
     await mount({ conversationId: 'c1' });
-    client.setQueryData(gemieQueryKeys.conversations.detail('c1'), row);
-    client.setQueryData<ConversationsInfiniteData>(gemieQueryKeys.conversations.all, {
-      pages: [{ conversations: [row], nextCursor: null, hasMore: false }],
-      pageParams: [undefined],
-    });
+    seedList(client, [row]);
     await act(async () => {
       await api.append({ role: 'user', content: 'plan a trip' });
     });
 
-    expect(
-      client.getQueryData<Conversation>(gemieQueryKeys.conversations.detail('c1'))?.title,
-    ).toBe('Peru trip');
-    expect(
-      client.getQueryData<ConversationsInfiniteData>(gemieQueryKeys.conversations.all)?.pages[0]
-        ?.conversations[0]?.title,
-    ).toBe('Peru trip');
+    expect(heldConversation(client, 'c1')?.title).toBe('Peru trip');
+    expect(listIds(client)).toEqual(['c1']);
     expect(api.conversationTitle).toBe('Peru trip');
   });
 });

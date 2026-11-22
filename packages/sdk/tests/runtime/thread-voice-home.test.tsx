@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { act, create } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GemieRuntimeProvider, type GemieRuntimeHost } from '../../src/runtime/config';
@@ -31,19 +31,19 @@ vi.mock('../../src/runtime/use-conversation-stream', () => ({
   }),
 }));
 vi.mock('../../src/runtime/conversations', () => ({
-  ConversationNotFoundError: class ConversationNotFoundError extends Error {},
-  useConversation: () => ({ data: undefined, isLoading: false, isFetching: false }),
+  useConversation: () => ({ value: undefined, isLoading: false, isFetching: false }),
   useCreateConversation: () => ({
-    mutateAsync: vi.fn(async (params: unknown) => {
+    run: vi.fn(async (params: unknown) => {
       created.calls.push(params);
       if (created.fail) throw new Error('offline');
       return { id: 'made' };
     }),
   }),
-  useDeleteConversation: () => ({ mutateAsync: vi.fn() }),
-  useReadConversation: () => async () => ({ messages: [] }),
+  useDeleteConversation: () => ({ run: vi.fn() }),
   useMarkConversationRead: () => () => undefined,
-  useClearConversation: () => ({ mutateAsync: vi.fn() }),
+  useConversationsClient: () => ({}),
+  useRefreshConversation: () => () => undefined,
+  useClearConversation: () => ({ run: vi.fn() }),
 }));
 vi.mock('@oxy.so/services/ui/client', () => ({
   useOxy: () => ({
@@ -70,14 +70,14 @@ function Probe({ conversationId, agentId }: { conversationId?: string; agentId?:
 }
 
 async function mount(props: { conversationId?: string; agentId?: string }) {
-  const client = new QueryClient();
+  const client = new Store();
   await act(async () => {
     create(
-      <QueryClientProvider client={client}>
+      <DataProvider store={client}>
         <GemieRuntimeProvider host={host}>
           <Probe {...props} />
         </GemieRuntimeProvider>
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
 }

@@ -1,17 +1,16 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { skip, useEntities, useList } from '@oxy.so/bloom-data';
 import { useMemo } from 'react';
 import { useGemieApi } from './api';
-import { errorStatus } from './error-utils';
-import { gemieQueryKeys } from './query-keys';
-import { AGENT_ROUTES, type GemieThreadAddress, threadKey } from './routes';
-import { type ThreadPage, threadHistory } from './thread/thread-history';
+import { ThreadMessages, threadHistory as historySource } from './data/threads';
+import type { GemieThreadAddress } from './routes';
+import { type ThreadMessage, type WireThreadMessage, threadHistory } from './thread/thread-history';
 
 /**
  * Everything said in this thread before the conversation on screen, a page at a time, going back.
  *
  * The screen streams into the most recent conversation of the thread and knows nothing older;
  * the thread's messages route is what crosses the seams into the stretches before it. Pages are
- * pulled as the reader approaches the top, never eagerly — a thread has no end going backwards,
+ * pulled as the reader approaches the top, never eagerly: a thread has no end going backwards,
  * and the first page is already everything a reader who does not scroll will see.
  *
  * `nextCursor` is what says whether anything older remains, and it is the server's answer rather
@@ -19,9 +18,6 @@ import { type ThreadPage, threadHistory } from './thread/thread-history';
  * treating that as the end would stop the history dead on any thread whose current conversation
  * is long.
  */
-
-/** How many messages a page carries. The server clamps its own maximum. */
-const PAGE_SIZE = 50;
 
 /** Whether there is a thread to ask about: an address with a non-empty handle or gemie id. */
 export function isThreadAddress(
@@ -31,9 +27,18 @@ export function isThreadAddress(
   return ('handle' in thread ? thread.handle : thread.gemieId).length > 0;
 }
 
-/** A 404 is the answer — the agent does not exist or is not the person's, and asking again does not change it. */
-export function retryThreadRead(failureCount: number, error: unknown): boolean {
-  return errorStatus(error) !== 404 && failureCount < 2;
+/** A thread list's messages (held newest first) in reading order, the active stretch left out. */
+export function useHeldThreadMessages(
+  ids: readonly string[],
+  activeConversationId: string,
+): ThreadMessage[] {
+  const records = useEntities(ThreadMessages, ids);
+  return useMemo(() => {
+    const oldestFirst = records
+      .filter((message): message is WireThreadMessage => message !== undefined)
+      .reverse();
+    return threadHistory([{ messages: oldestFirst, nextCursor: null }], activeConversationId);
+  }, [records, activeConversationId]);
 }
 
 export function useThreadHistory(
@@ -41,33 +46,18 @@ export function useThreadHistory(
   activeConversationId: string | undefined,
 ) {
   const api = useGemieApi();
-  const query = useInfiniteQuery({
-    queryKey: gemieQueryKeys.threads.messages(thread === undefined ? '' : threadKey(thread)),
-    queryFn: async ({ pageParam }): Promise<ThreadPage> => {
-      if (thread === undefined) throw new Error('No thread to read');
-      const { data } = await api.get<ThreadPage>(AGENT_ROUTES.threadMessages(thread), {
-        params: { limit: PAGE_SIZE, before: pageParam },
-      });
-      return data;
-    },
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    // Nothing to page through until the thread has answered which conversation is the live one:
-    // without it every message would be history, including the ones already on screen.
-    enabled: isThreadAddress(thread) && activeConversationId !== undefined,
-    retry: retryThreadRead,
-  });
-
-  const messages = useMemo(
-    () => threadHistory(query.data?.pages ?? [], activeConversationId ?? ''),
-    [query.data?.pages, activeConversationId],
+  // Nothing to page through until the thread has answered which conversation is the live one:
+  // without it every message would be history, including the ones already on screen.
+  const view = useList(
+    historySource,
+    ...(isThreadAddress(thread) && activeConversationId !== undefined ? [api, thread] : [skip]),
   );
-
+  const messages = useHeldThreadMessages(view.ids, activeConversationId ?? '');
   return {
     messages,
     /** Whether a page older than the ones held remains to be asked for. */
-    hasMore: query.hasNextPage,
-    isLoadingMore: query.isFetchingNextPage,
-    loadMore: query.fetchNextPage,
+    hasMore: view.hasMore,
+    isLoadingMore: view.isFetching && view.list !== undefined,
+    loadMore: view.more,
   };
 }

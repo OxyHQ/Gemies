@@ -32,7 +32,7 @@ export interface GemieSharedConversationProps {
 
 function SharedThread({ token }: { token: string }) {
   const { t } = useLabels();
-  const { data, error, isLoading } = useSharedConversation(token);
+  const { value: data, error, isLoading } = useSharedConversation(token);
   const threadRef = useRef<AiChatThreadHandle | null>(null);
   const messages = useMemo(() => (data ? sharedMessages(data) : []), [data]);
 

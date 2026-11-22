@@ -111,7 +111,7 @@ vi.mock('@oxy.so/services/ui/client', () => ({
   }),
 }));
 
-const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query');
+const { DataProvider, Store } = await import('@oxy.so/bloom-data');
 const { BloomThemeProvider } = await import('@oxy.so/bloom/theme');
 const { GemieThread } = await import('../../../src/components/thread/GemieThread');
 const { GemieToolRenderersProvider } = await import('../../../src/lib/tool-renderers');
@@ -158,7 +158,7 @@ async function mount(messages: Message[], readOnly = false) {
   await act(async () => {
     renderer = create(
       <BloomThemeProvider mode="light">
-        <QueryClientProvider client={new QueryClient()}>
+        <DataProvider store={new Store()}>
           <GemieFlightsProvider value={flights as never}>
             <GemieToolRenderersProvider value={renderers}>
               <GemieThread
@@ -169,7 +169,7 @@ async function mount(messages: Message[], readOnly = false) {
               />
             </GemieToolRenderersProvider>
           </GemieFlightsProvider>
-        </QueryClientProvider>
+        </DataProvider>
       </BloomThemeProvider>,
     );
   });

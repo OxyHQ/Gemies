@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store, withStore } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { useMemo, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,7 +31,8 @@ import { fakeRealtime } from '../support/fake-realtime';
 import { applyMessageReaction } from '../../src/runtime/message-reactions';
 import { createRoomLedger } from '../../src/runtime/room-events';
 import { useRoomEvents } from '../../src/runtime/use-room-events';
-import { gemieQueryKeys } from '../../src/runtime/query-keys';
+import { ThreadMessages } from '../../src/runtime/data/threads';
+import { Conversations } from '../../src/runtime/data/conversations';
 import type { Message } from '../../src/runtime/types';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -45,7 +46,7 @@ const initial: Message = {
 };
 const roomFailure = vi.fn();
 let renderer: ReactTestRenderer | undefined;
-let client: QueryClient;
+let client: Store;
 let current: { messages: Message[]; reaction: ReturnType<typeof useMessageReactions> };
 function Probe({ conversationId }: { conversationId: string }) {
   const [messages, setMessages] = useState([initial]);
@@ -59,11 +60,11 @@ function Probe({ conversationId }: { conversationId: string }) {
   return null;
 }
 const tree = (conversationId: string) => (
-  <QueryClientProvider client={client}>
+  <DataProvider store={client}>
     <GemieRuntimeProvider>
       <Probe conversationId={conversationId} />
     </GemieRuntimeProvider>
-  </QueryClientProvider>
+  </DataProvider>
 );
 const mount = (conversationId = 'c1') =>
   act(async () => {
@@ -98,31 +99,22 @@ beforeEach(() => {
   errors.mockClear();
   fakeRealtime.reset();
   roomFailure.mockClear();
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new Store();
 });
 afterEach(() => {
   act(() => renderer?.unmount());
   renderer = undefined;
-  client.clear();
+  void client.close();
 });
 
 describe('saved message reactions', () => {
-  it('persists explicit intent, updates live/query/history state and accepts newer cross-device state', async () => {
-    client.setQueryData(gemieQueryKeys.conversations.detail('c1'), {
-      id: 'c1',
-      messages: [initial],
-    });
-    client.setQueryData(gemieQueryKeys.threads.messages('salina'), {
-      pages: [
-        {
-          messages: [
-            { ...initial, conversationId: 'c1', cursor: 'cursor' },
-            { ...initial, conversationId: 'other', cursor: 'other' },
-          ],
-          nextCursor: null,
-        },
-      ],
-      pageParams: [undefined],
+  it('persists explicit intent, updates live/stored/history state and accepts newer cross-device state', async () => {
+    withStore(client, () => {
+      Conversations.put({ id: 'c1', title: '', createdAt: '', updatedAt: '', messages: [initial] });
+      ThreadMessages.put([
+        { ...initial, conversationId: 'c1', cursor: 'cursor' },
+        { ...initial, conversationId: 'other', cursor: 'other' },
+      ]);
     });
     await mount();
     await toggle();
@@ -135,18 +127,16 @@ describe('saved message reactions', () => {
     });
     await acknowledge();
     expect(current.messages[0]).toMatchObject({ reactions: ['❤️'], reactionRevision: 1 });
-    expect(client.getQueryData(gemieQueryKeys.conversations.detail('c1'))).toMatchObject({
+    expect(withStore(client, () => Conversations.get('c1'))).toMatchObject({
       messages: [{ reactions: ['❤️'], reactionRevision: 1 }],
     });
-    expect(client.getQueryData(gemieQueryKeys.threads.messages('salina'))).toMatchObject({
-      pages: [
-        {
-          messages: [
-            { reactions: ['❤️'], reactionRevision: 1 },
-            { reactions: [], reactionRevision: 0 },
-          ],
-        },
-      ],
+    expect(withStore(client, () => ThreadMessages.get('cursor'))).toMatchObject({
+      reactions: ['❤️'],
+      reactionRevision: 1,
+    });
+    expect(withStore(client, () => ThreadMessages.get('other'))).toMatchObject({
+      reactions: [],
+      reactionRevision: 0,
     });
     await act(async () =>
       fakeRealtime.push('message.reaction', {

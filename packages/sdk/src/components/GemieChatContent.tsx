@@ -30,7 +30,6 @@ import { ScrollToBottomButton } from '@oxy.so/bloom/chat-screen';
 import { RiEditLine } from '@oxy.so/bloom/icons/RiEditLine';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   type ReactNode,
   useCallback,
@@ -68,8 +67,8 @@ import { GEMIE_FEATURES, featureOffer, useAgentFeatures, useAgentProfile } from 
 import { type GemieRuntimeHost, GemieRuntimeProvider, useGemieRuntime } from '../runtime/config';
 import { type GemieHostTools, APP_SLUG } from '../runtime/host-tools';
 import { useCreateConversation } from '../runtime/conversations';
-import { gemieQueryKeys } from '../runtime/query-keys';
-import { type GemieThreadAddress, threadKey } from '../runtime/routes';
+import { useRefreshGemieThread } from '../runtime/use-gemie-thread';
+import type { GemieThreadAddress } from '../runtime/routes';
 import type { Message } from '../runtime/types';
 import { useAgentActivity } from '../runtime/use-agent-activity';
 import { useConversationThread } from '../runtime/use-conversation-thread';
@@ -363,17 +362,16 @@ function GemieConversationView({
   const labels = useLabels();
   const { t } = labels;
   const runtime = useGemieRuntime();
-  const queryClient = useQueryClient();
   const { user, isAuthenticated } = useOxy();
   const agentId = agent?.id;
 
   // ── Who leads: the agent the chat was opened on, or Alia ──
-  const { data: profile, isLoading: profileLoading } = useAgentProfile(agentId);
+  const { value: profile, isLoading: profileLoading } = useAgentProfile(agentId);
   const lead = useMemo(
     () => (group === undefined ? leadOf(profile) : groupParticipants(group).lead),
     [group, profile],
   );
-  const { data: features } = useAgentFeatures(agentId);
+  const { value: features } = useAgentFeatures(agentId);
 
   // A failure reaches the host's handler when it has one, and Bloom's toast otherwise.
   const reportError = useCallback(
@@ -592,7 +590,8 @@ function GemieConversationView({
   );
 
   // ── The agent's offer to start the next stretch fresh ──
-  const createConversation = useCreateConversation();
+  const { run: createConversation } = useCreateConversation();
+  const refreshThread = useRefreshGemieThread();
   /**
    * Take the agent up on its offer: start the next stretch of this thread.
    *
@@ -614,21 +613,17 @@ function GemieConversationView({
       void startOver();
       return;
     }
-    const key = threadKey(threadAddress);
-    createConversation.mutate(next, {
-      onSuccess: () => {
-        void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.threads.all(key) });
-        // And the history with it: the stretch that was live becomes history the moment a new
-        // one is active, and the pages held were fetched before its last turns existed.
-        void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.threads.messages(key) });
-      },
-    });
+    // Created, the thread is read again and moves onto it; a refusal was already told.
+    createConversation(next).then(
+      () => refreshThread(threadAddress),
+      () => undefined,
+    );
   }, [
     agentId,
     threadAddress,
     threadRowId,
     createConversation,
-    queryClient,
+    refreshThread,
     dismissSuggestedNewConversation,
     startOver,
   ]);

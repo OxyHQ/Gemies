@@ -147,7 +147,7 @@ function ConnectingAccount({
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const { data } = useConnectedAccountQr(link);
+  const { value: data } = useConnectedAccountQr(link);
   const status = data?.status ?? 'qr-pending';
   const label = PLATFORM_LABELS[platform];
 
@@ -187,7 +187,7 @@ function ConnectingAccount({
 
 /** A Telegram account the person left before finishing: its steps, kept until it is connected. */
 function PendingTelegram({ account, t }: { account: ConnectedAccount; t: Translate }) {
-  const { data } = useConnectedAccountQr({ accountId: account._id, qr: null });
+  const { value: data } = useConnectedAccountQr({ accountId: account._id, qr: null });
   return <TelegramSteps link={data?.qr ?? null} t={t} />;
 }
 
@@ -203,9 +203,9 @@ function ChosenChats({
   saving: boolean;
   t: Translate;
 }) {
-  const { data: chats, isPending } = useConnectedAccountChats(account._id);
+  const { value: chats, isLoading } = useConnectedAccountChats(account._id);
 
-  if (isPending) {
+  if (isLoading) {
     return (
       <Skeleton.Region>
         <View className="gap-2">
@@ -345,7 +345,7 @@ function AccountRow({
   const save = useCallback(
     async (patch: ConnectedAccountPatch) => {
       try {
-        await update.mutateAsync({ accountId: account._id, ...patch });
+        await update.run(account._id, patch);
       } catch {
         toast.error(t(`${K}.saveFailed`));
       }
@@ -355,7 +355,7 @@ function AccountRow({
 
   const setGranted = async (gemieId: string, granted: boolean) => {
     try {
-      await grant.mutateAsync({ accountId: account._id, gemieId, granted });
+      await grant.run(account._id, gemieId, granted);
     } catch {
       toast.error(t(`${K}.saveFailed`));
     }
@@ -373,7 +373,7 @@ function AccountRow({
     });
     if (!ok) return;
     try {
-      await remove.mutateAsync(account._id);
+      await remove.run(account._id);
       toast.success(t(`${K}.removed`, { platform }));
     } catch {
       toast.error(t(`${K}.removeFailed`));
@@ -454,7 +454,8 @@ export interface GemieConnectedAccountsProps {
  * Alia apps draw this same panel. Only what this deployment can connect is offered.
  */
 export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccountsProps) {
-  const { data, isPending, isError, isFetching, refetch } = useConnectedAccounts();
+  const { value: data, isLoading, status, isFetching, refresh } = useConnectedAccounts();
+  const isError = status === 'error';
   const { connect, remove } = useConnectedAccountMutations();
   const [connecting, setConnecting] = useState<{
     platform: GemieAccountPlatform;
@@ -465,9 +466,11 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
     platform: GemieAccountPlatform;
     reason: string;
   } | null>(null);
+  /** The platform the last connection asked for, whose button spins while it runs. */
+  const [asked, setAsked] = useState<GemieAccountPlatform | null>(null);
   const finished = useCallback(() => setConnecting(null), []);
 
-  if (isPending) {
+  if (isLoading) {
     return (
       <Skeleton.Region>
         <View className="gap-3 py-2.5">
@@ -481,7 +484,9 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
   const handleConnect = async (platform: GemieAccountPlatform) => {
     setConnectFailure(null);
     try {
-      setConnecting({ platform, link: await connect.mutateAsync(platform) });
+      setAsked(platform);
+      const link = await connect.run(platform);
+      if (link) setConnecting({ platform, link });
     } catch (error) {
       setConnectFailure({ platform, reason: errorMessage(error, t(`${K}.tryAgain`)) });
     }
@@ -490,7 +495,7 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
   const handleCancel = async () => {
     const pending = connecting;
     setConnecting(null);
-    if (pending) await remove.mutateAsync(pending.link.accountId).catch(() => {});
+    if (pending) await remove.run(pending.link.accountId).catch(() => {});
   };
 
   /**
@@ -511,7 +516,7 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
               appearance="outline"
               tone="neutral"
               loading={isFetching}
-              onPress={() => void refetch()}
+              onPress={() => void refresh()}
             >
               {t(`${K}.retry`)}
             </Button>
@@ -570,7 +575,7 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
                   accessibilityLabel={t(`${K}.connectNamed`, {
                     platform: PLATFORM_LABELS[platform],
                   })}
-                  loading={connect.isPending && connect.variables === platform}
+                  loading={connect.isPending && asked === platform}
                   disabled={connect.isPending}
                   onPress={() => handleConnect(platform)}
                 >
