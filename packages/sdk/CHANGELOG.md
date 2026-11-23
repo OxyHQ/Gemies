@@ -61,8 +61,8 @@ react-native-css or Tailwind for the SDK.
 - `IdentityMark` takes `style` in place of `className`; `GemieActivityLine` takes `style`, laid over
   its own small primary line, in place of a `className` that replaced it.
 - `cn` (the class-name merger) is gone with NativeWind.
-- Classes that resolved to no style drew nothing and are gone (`text-error-primary` on the
-  connect-failure note).
+- Classes that resolved to no style drew nothing and are gone. The connect-failure note, whose
+  `text-error-primary` class drew it in no colour, is drawn in Bloom's error role.
 
 ### Hooks
 

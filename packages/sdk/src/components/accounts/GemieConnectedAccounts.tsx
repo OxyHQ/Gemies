@@ -591,7 +591,7 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
           )}
           {connectFailure ? (
             <View style={styles.steps}>
-              <Text variant="body-2-regular" accessibilityRole="alert">
+              <Text variant="body-2-regular" accessibilityRole="alert" style={styles.failure}>
                 {t(`${K}.connectFailed`, {
                   platform: PLATFORM_LABELS[connectFailure.platform],
                   reason: connectFailure.reason,
@@ -617,6 +617,8 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
 }
 
 const useStyles = createTokenStyles((t) => ({
+  // A connect failure, in Bloom's error role.
+  failure: { color: t.destructive },
   choice: { gap: 4 },
   muted: { color: t.mutedForeground },
   steps: { gap: 8 },
