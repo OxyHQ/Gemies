@@ -1,6 +1,6 @@
 import { Questionnaire, type QuestionnaireAnswers } from '@oxy.so/bloom/questionnaire';
 import { Muted } from '@oxy.so/bloom/typography';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { type AskedQuestion, formatAnswers } from '../lib/questions';
 
 interface QuestionCardProps {
@@ -53,7 +53,7 @@ export function QuestionCard({ questions, onSubmit, onDismiss }: QuestionCardPro
 /** The questions Alia asked, as plain lines: the thread's record of them once they are answered. */
 export function AskedQuestions({ questions }: { questions: AskedQuestion[] }) {
   return (
-    <View className="my-2 gap-1">
+    <View style={styles.questions}>
       {questions.map((q, i) => (
         // The model's questions never reorder: the position is the identity.
         // biome-ignore lint/suspicious/noArrayIndexKey: see above
@@ -62,3 +62,7 @@ export function AskedQuestions({ questions }: { questions: AskedQuestion[] }) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  questions: { marginVertical: 8, gap: 4 },
+});

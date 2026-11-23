@@ -156,7 +156,7 @@ vi.mock('../../../src/components/thread/TurnStatusLine', async () => ({
 vi.mock('../../../src/components/thread/NewConversationOffer', async () => ({
   NewConversationOffer: await stub('Offer')(),
 }));
-vi.mock('../../../src/components/Image', async () => ({ Image: await stub('Image')() }));
+vi.mock('expo-image', async () => ({ Image: await stub('Image')() }));
 vi.mock('@oxy.so/bloom/agent-progress', async () => ({
   AgentProgress: await stub('AgentProgress')(),
 }));

@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { useLabels } from '../lib/labels';
 import { useGemieRuntime } from '../runtime/config';
 import { useConversations } from '../runtime/conversations';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /** How many of the lead's conversations the sheet offers to pick up again. */
 const RECENT_CONVERSATIONS_SHOWN = 3;
@@ -24,6 +25,7 @@ export function GemieRecentConversations({
   agentId?: string;
   onOpen: (conversationId: string) => void;
 }) {
+  const styles = useStyles();
   const labels = useLabels();
   const { app } = useGemieRuntime();
   const { conversations } = useConversations({
@@ -37,8 +39,8 @@ export function GemieRecentConversations({
   );
   if (recent.length === 0) return null;
   return (
-    <View accessibilityRole="list" className="w-full max-w-[480px] self-center gap-1">
-      <Text className="px-3 text-sm text-text-secondary">{labels.recentConversations}</Text>
+    <View accessibilityRole="list" style={styles.list}>
+      <Text style={styles.heading}>{labels.recentConversations}</Text>
       {recent.map((conversation) => {
         const title = conversation.title || labels.newChat;
         return (
@@ -49,9 +51,7 @@ export function GemieRecentConversations({
             onPress={() => onOpen(conversation.id)}
             title={<Text numberOfLines={1}>{title}</Text>}
             trailing={
-              <Text className="text-xs text-text-tertiary">
-                {when.format(new Date(conversation.updatedAt))}
-              </Text>
+              <Text style={styles.updatedAt}>{when.format(new Date(conversation.updatedAt))}</Text>
             }
           />
         );
@@ -59,3 +59,9 @@ export function GemieRecentConversations({
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  list: { width: '100%', maxWidth: 480, gap: 4, alignSelf: 'center' },
+  heading: { paddingHorizontal: 12, fontSize: 14, color: t.mutedForeground, lineHeight: 20 },
+  updatedAt: { fontSize: 12, color: t.mutedForeground, lineHeight: 16 },
+}));

@@ -2,7 +2,8 @@ import { Text } from '@oxy.so/bloom/typography';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useConnectorLogoUrl } from '../../runtime/connectors';
-import { Image } from '../Image';
+import { Image } from 'expo-image';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 export interface ConnectorLogoProps {
   /** The connector's name, for the monogram and for screen readers. */
@@ -20,6 +21,7 @@ export interface ConnectorLogoProps {
  * brand mark. Without one, or when it does not load, a monogram — never a broken image.
  */
 export function ConnectorLogo({ name, logoUrl, size = 40 }: ConnectorLogoProps) {
+  const styles = useStyles();
   const src = useConnectorLogoUrl(logoUrl);
   const [failed, setFailed] = useState(false);
   const radius = Math.round(size * 0.22);
@@ -30,13 +32,14 @@ export function ConnectorLogo({ name, logoUrl, size = 40 }: ConnectorLogoProps) 
       <View
         accessibilityRole="image"
         accessibilityLabel={name}
-        className="items-center justify-center bg-background-tertiary-default"
-        style={{ width: size, height: size, borderRadius: radius }}
+        style={[styles.monogram, { width: size, height: size, borderRadius: radius }]}
       >
         <Text
           variant="body-medium"
-          className="text-text-secondary"
-          style={{ fontSize: Math.round(size * 0.45), lineHeight: Math.round(size * 0.6) }}
+          style={[
+            styles.initial,
+            { fontSize: Math.round(size * 0.45), lineHeight: Math.round(size * 0.6) },
+          ]}
         >
           {letter}
         </Text>
@@ -45,10 +48,7 @@ export function ConnectorLogo({ name, logoUrl, size = 40 }: ConnectorLogoProps) 
   }
 
   return (
-    <View
-      className="overflow-hidden border border-border bg-white"
-      style={{ width: size, height: size, borderRadius: radius }}
-    >
+    <View style={[styles.logo, { width: size, height: size, borderRadius: radius }]}>
       <Image
         source={{ uri: src }}
         accessibilityLabel={name}
@@ -59,3 +59,9 @@ export function ConnectorLogo({ name, logoUrl, size = 40 }: ConnectorLogoProps) 
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  monogram: { alignItems: 'center', justifyContent: 'center', backgroundColor: t.popover },
+  initial: { color: t.mutedForeground },
+  logo: { overflow: 'hidden', borderWidth: 1, borderColor: t.border, backgroundColor: '#fff' },
+}));

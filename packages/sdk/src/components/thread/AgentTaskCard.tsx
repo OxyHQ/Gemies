@@ -8,7 +8,7 @@ import { Badge } from '@oxy.so/bloom/badge';
 import { Card, CardBody, CardHeader } from '@oxy.so/bloom/card';
 import { Muted } from '@oxy.so/bloom/typography';
 import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /**
  * AgentTaskCard — an agent run in progress, inline in the chat.
@@ -80,7 +80,7 @@ export const AgentTaskCard = React.memo(function AgentTaskCard({ activity }: Age
   return (
     <Card>
       <CardHeader>
-        <View className="flex-row items-center justify-between gap-2">
+        <View style={styles.header}>
           <Badge variant="subtle" color={status.color} content={status.label} />
           <Muted>
             {[elapsed, plan && plan.total > 0 ? `${plan.completed}/${plan.total}` : '']
@@ -90,7 +90,7 @@ export const AgentTaskCard = React.memo(function AgentTaskCard({ activity }: Age
         </View>
       </CardHeader>
       <CardBody>
-        <View className="gap-3">
+        <View style={styles.body}>
           {plan && plan.items.length > 0 ? (
             <AgentProgress
               steps={uniqueStepLabels(plan.items.map((item) => item.text))}
@@ -124,4 +124,9 @@ export const AgentTaskCard = React.memo(function AgentTaskCard({ activity }: Age
       </CardBody>
     </Card>
   );
+});
+
+const styles = StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  body: { gap: 12 },
 });

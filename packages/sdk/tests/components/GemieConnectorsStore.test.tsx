@@ -18,7 +18,12 @@ vi.mock('react-native', async () => {
     (name: string) =>
     ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement(name, props, children);
-  return { View: element('View'), Pressable: element('Pressable'), Platform: { OS: 'ios' } };
+  return {
+    ...(await import('../support/style-stubs')).reactNativeStyles,
+    View: element('View'),
+    Pressable: element('Pressable'),
+    Platform: { OS: 'ios' },
+  };
 });
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn(), openAuthSessionAsync: vi.fn() }));
 vi.mock('@oxy.so/bloom/typography', async () => host('Text'));

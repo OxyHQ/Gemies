@@ -1,5 +1,12 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { AppState, Platform, View, type LayoutChangeEvent, type ViewStyle } from 'react-native';
+import {
+  AppState,
+  Platform,
+  View,
+  type LayoutChangeEvent,
+  type ViewStyle,
+  StyleSheet,
+} from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -513,7 +520,7 @@ export const AmbientField = memo(function AmbientField({
 
   return (
     <View
-      className="absolute inset-0"
+      style={styles.field}
       pointerEvents="none"
       // One prop for every platform: react-native-web writes `aria-hidden`, and
       // React Native turns it into `accessibilityElementsHidden` (iOS) and
@@ -578,3 +585,7 @@ export const AmbientField = memo(function AmbientField({
 });
 
 export { PARALLAX_DURATION, PARALLAX_EASE };
+
+const styles = StyleSheet.create({
+  field: { position: 'absolute', inset: 0 },
+});

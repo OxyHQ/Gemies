@@ -156,7 +156,7 @@ vi.mock('../../../src/components/ReplyMarkdown', async () => ({
 }));
 vi.mock('../../../src/components/PlanPreviewCard', () => ({ PlanPreviewCard: () => null }));
 vi.mock('../../../src/components/QuestionCard', () => ({ AskedQuestions: () => null }));
-vi.mock('../../../src/components/Image', async () => ({ Image: await stub('Image')() }));
+vi.mock('expo-image', async () => ({ Image: await stub('Image')() }));
 vi.mock('../../../src/hooks/useTTS', () => ({
   useTTS: () => ({
     readAloud: async () => {},

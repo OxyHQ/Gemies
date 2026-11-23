@@ -12,8 +12,8 @@ import { RiExternalLinkLine } from '@oxy.so/bloom/icons/RiExternalLinkLine';
 import { ListItem } from '@oxy.so/bloom/list';
 import { Rating } from '@oxy.so/bloom/rating';
 import { Muted, Text } from '@oxy.so/bloom/typography';
-import { Image } from './Image';
-import { Linking, View } from 'react-native';
+import { Image } from 'expo-image';
+import { Linking, View, StyleSheet } from 'react-native';
 
 /**
  * The rich blocks a reply can carry (```compactlist, ```banner, …), drawn with
@@ -30,7 +30,7 @@ type CompactListItem = {
 
 export function CompactList({ title, items }: { title: string; items: CompactListItem[] }) {
   return (
-    <Card appearance="outline" className="my-2">
+    <Card appearance="outline" style={styles.block}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
@@ -44,11 +44,7 @@ export function CompactList({ title, items }: { title: string; items: CompactLis
               supporting={item.meta}
               leading={
                 item.image ? (
-                  <Image
-                    source={{ uri: item.image }}
-                    className="h-10 w-10 rounded"
-                    contentFit="cover"
-                  />
+                  <Image source={{ uri: item.image }} style={styles.thumbnail} contentFit="cover" />
                 ) : undefined
               }
               trailing={item.href ? <RiExternalLinkLine size="sm" /> : undefined}
@@ -76,7 +72,7 @@ export function Banner({
   content: string;
 }) {
   return (
-    <View className="my-2">
+    <View style={styles.block}>
       <AdmonitionRoot type={Object.hasOwn(ADMONITION, type) ? ADMONITION[type] : 'info'}>
         <AdmonitionRow>
           <AdmonitionIcon />
@@ -121,12 +117,12 @@ export function Comparison({
   conclusion?: string;
 }) {
   return (
-    <Card appearance="outline" className="my-2">
+    <Card appearance="outline" style={styles.block}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardBody>
-        <View className="gap-2">
+        <View style={styles.sides}>
           <ComparisonSideCard side={left} />
           <ComparisonSideCard side={right} />
           {conclusion ? <Admonition type="tip">{conclusion}</Admonition> : null}
@@ -144,7 +140,7 @@ type TimelineItem = {
 
 export function Timeline({ title, items }: { title: string; items: TimelineItem[] }) {
   return (
-    <Card appearance="outline" className="my-2">
+    <Card appearance="outline" style={styles.block}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
@@ -176,8 +172,8 @@ export function RichImage({
   caption?: string;
 }) {
   return (
-    <View className="my-2 gap-1">
-      <Image source={{ uri: url }} className="aspect-video w-full rounded-lg" contentFit="cover" />
+    <View style={styles.figure}>
+      <Image source={{ uri: url }} style={styles.figureImage} contentFit="cover" />
       {title ? <Text variant="body-medium">{title}</Text> : null}
       {caption ? <Muted>{caption}</Muted> : null}
     </View>
@@ -188,9 +184,18 @@ export function RichImage({
 export function Credibility({ level, source }: { level: number; source: string }) {
   const { t } = useLabels();
   return (
-    <View className="my-2 flex-row items-center gap-2">
+    <View style={styles.rating}>
       <Rating value={Math.max(0, Math.min(5, level))} size="sm" />
       <Muted>{t('chat.richBlocks.source', { source })}</Muted>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  block: { marginVertical: 8 },
+  thumbnail: { height: 40, width: 40, borderRadius: 4 },
+  sides: { gap: 8 },
+  figure: { marginVertical: 8, gap: 4 },
+  figureImage: { aspectRatio: '16/9', width: '100%', borderRadius: 8 },
+  rating: { marginVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
+});

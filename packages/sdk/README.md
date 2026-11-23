@@ -25,14 +25,16 @@ bun add @gemies/sdk
 
 `react`, `react-native`, `@oxy.so/core`, `@oxy.so/services` (15 or later), `@oxy.so/bloom-data`
 (the conversation runtime's data lives in the signed-in account's store, the one `OxyProvider`
-opens with the session, so an account switch never shows the previous account's), `react-native-css`
-(the thread's images take `className`) and the Expo modules listed under `peerDependencies` in
+opens with the session, so an account switch never shows the previous account's) and the Expo
+modules listed under `peerDependencies` in
 `package.json` — among them `expo-clipboard` and `expo-web-browser`, which the thread's copy
 button and its sources use — are yours to install. Metro
 must resolve package `exports` (`resolver.unstable_enablePackageExports = true`,
 the default in Expo SDK 53+), because every icon import is a subpath.
 
-The chat is built from Bloom (`@oxy.so/bloom`, a peer dependency): mount Bloom's
+The chat is built from Bloom (`@oxy.so/bloom` 23 or later, a peer dependency) and styled with
+React Native styles over Bloom's tokens: the SDK needs no NativeWind, react-native-css or Tailwind,
+and its components take `style`, never `className`. Mount Bloom's
 `BloomProvider` above it, with the one `KeyboardProvider` your app already has.
 The main and conversation sheets use Bloom's default content sizing: they grow and
 shrink with the chat up to the shared viewport limit. Bloom coordinates the Screen

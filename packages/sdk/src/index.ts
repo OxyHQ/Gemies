@@ -1,4 +1,3 @@
-/// <reference types="nativewind/types" />
 // @gemies/sdk — the Gemies SDK
 // Reusable chat UI, voice, and streaming components for Oxy apps
 
@@ -123,8 +122,8 @@ export { GemieVoiceCall } from './components/voice/GemieVoiceCall';
 export { useVoiceLauncher, toastNotice } from './hooks/useVoiceLauncher';
 export type { UseVoiceLauncherOptions, VoiceLauncher } from './hooks/useVoiceLauncher';
 
-// ── UI Primitives (NativeWind) ──
-export { cn, formatFileSize } from './lib/utils';
+// ── Utilities ──
+export { formatFileSize } from './lib/utils';
 export { getToolLabel, getToolActiveLabel, getResearchActiveLabel } from './lib/tool-registry';
 export { getTextFromContent, getImagesFromContent } from './lib/content-utils';
 

@@ -179,6 +179,8 @@ export function gestureHandlerModule() {
     GestureDetector: through,
     GestureHandlerRootView: through,
     Gesture: new Proxy({}, { get: () => () => gesture }),
+    useNativeGesture: () => gesture,
+    usePanGesture: () => gesture,
     ScrollView: host('ScrollView'),
     FlatList: host('FlatList'),
   };

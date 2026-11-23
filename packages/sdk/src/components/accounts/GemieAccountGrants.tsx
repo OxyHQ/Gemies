@@ -10,6 +10,7 @@ import {
 } from '../../runtime/connected-accounts';
 import { GrantSwitchRow } from '../connectors/GrantSwitchRow';
 import { K, PlatformMark, accountName, statusText } from './account-parts';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 export interface GemieAccountGrantsProps {
   /** The gemie whose grants these are (Alia's id for her locked editor). */
@@ -34,6 +35,7 @@ export function GemieAccountGrants({
   onManage,
   t = englishCopy,
 }: GemieAccountGrantsProps) {
+  const styles = useStyles();
   const { value: data, isLoading, status, isFetching, refresh } = useConnectedAccounts();
   const isError = status === 'error';
   const { grant } = useConnectedAccountMutations();
@@ -41,7 +43,7 @@ export function GemieAccountGrants({
   if (isLoading) {
     return (
       <Skeleton.Region>
-        <View className="gap-3 py-2.5">
+        <View style={styles.loading}>
           <Skeleton.Box width={220} height={14} />
           <Skeleton.Box width={160} height={14} />
         </View>
@@ -51,8 +53,8 @@ export function GemieAccountGrants({
 
   if (isError && data === undefined) {
     return (
-      <View className="items-start gap-2 py-2.5 pe-2.5">
-        <Text variant="body-2-regular" className="text-text-secondary">
+      <View style={styles.failure}>
+        <Text variant="body-2-regular" style={styles.muted}>
           {t(`${K}.loadFailed`)}
         </Text>
         <Button
@@ -81,8 +83,8 @@ export function GemieAccountGrants({
 
   return (
     <View>
-      <View className="py-2.5 pe-2.5">
-        <Text variant="body-2-regular" className="text-text-secondary">
+      <View style={styles.intro}>
+        <Text variant="body-2-regular" style={styles.muted}>
           {accounts.length === 0 ? t(`${K}.grants.empty`) : t(`${K}.grants.description`, { name })}
         </Text>
       </View>
@@ -108,7 +110,7 @@ export function GemieAccountGrants({
           />
         );
       })}
-      <View className="flex-row border-t border-border py-2.5 pe-2.5">
+      <View style={styles.manageRow}>
         <Button size="sm" appearance="outline" tone="neutral" onPress={onManage}>
           {t(`${K}.grants.manage`)}
         </Button>
@@ -116,3 +118,17 @@ export function GemieAccountGrants({
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  loading: { gap: 12, paddingVertical: 10 },
+  failure: { alignItems: 'flex-start', gap: 8, paddingVertical: 10, paddingInlineEnd: 10 },
+  muted: { color: t.mutedForeground },
+  intro: { paddingVertical: 10, paddingInlineEnd: 10 },
+  manageRow: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderColor: t.border,
+    paddingVertical: 10,
+    paddingInlineEnd: 10,
+  },
+}));

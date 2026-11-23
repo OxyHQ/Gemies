@@ -1,4 +1,3 @@
-/// <reference types="nativewind/types" />
 /**
  * The connectors leaf entry: the remote MCP servers a person connects — the providers' own
  * (Notion, Linear, Slack…), the hundreds synced from the official MCP Registry — and their own MCP

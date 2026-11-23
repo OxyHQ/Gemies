@@ -40,7 +40,11 @@ const world = vi.hoisted(() => ({
   created: [] as Record<string, unknown>[],
 }));
 
-vi.mock('react-native', () => ({ View: 'View', Text: 'Text' }));
+vi.mock('react-native', async () => ({
+  ...(await import('../support/style-stubs')).reactNativeStyles,
+  View: 'View',
+  Text: 'Text',
+}));
 vi.mock('react-native-reanimated', () => ({}));
 vi.mock('../../src/lib/flights', () => ({
   GemieFlightsProvider: ({ children }: { children: React.ReactNode }) => children,

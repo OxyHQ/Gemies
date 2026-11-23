@@ -17,7 +17,10 @@ vi.mock('react-native', async () => {
     (name: string) =>
     ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement(name, props, children);
-  return { View: host('View') };
+  return {
+    ...(await import('../support/style-stubs')).reactNativeStyles,
+    View: host('View'),
+  };
 });
 vi.mock('@oxy.so/bloom/list', async () => {
   const ReactModule = await import('react');

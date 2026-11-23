@@ -36,6 +36,7 @@ import {
 } from './ComposerDropZone';
 import { ComposerSuggestions } from './ComposerSuggestions';
 import { QuestionCard } from './QuestionCard';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /**
  * Alia's composer: the ONE composer of the sheet, the screen and the Alia app, Bloom's
@@ -160,6 +161,7 @@ function GemieComposerBody<T extends GemieSuggestion>({
   apiUrl,
   onError,
 }: Omit<GemieComposerProps<T>, 'labels'>) {
+  const styles = useStyles();
   const labels = useLabels();
   const report = useCallback(
     (message: string) => (onError ? onError(message) : toast.error(message)),
@@ -293,13 +295,9 @@ function GemieComposerBody<T extends GemieSuggestion>({
   const host = (
     // The transcript's column (Bloom's `AgentChat`: 768 at most, centred), so
     // the composer and the conversation share one edge.
-    <View id={hostId} className="w-full max-w-[768px] self-center">
+    <View id={hostId} style={styles.composer}>
       {remainingSeconds !== null ? (
-        <Text
-          className="mb-1 self-center text-sm text-text-secondary"
-          accessibilityLiveRegion="polite"
-          aria-live="polite"
-        >
+        <Text style={styles.countdown} accessibilityLiveRegion="polite" aria-live="polite">
           {labels.dictationRemaining(remainingSeconds)}
         </Text>
       ) : null}
@@ -351,7 +349,7 @@ function GemieComposerBody<T extends GemieSuggestion>({
       </ComposerLoader>
       <ComposerDropOverlay visible={takesFiles && isDragOver} enabled={acceptsFiles} />
       {accessory ? (
-        <View pointerEvents="box-none" className="absolute bottom-full right-0 mb-2">
+        <View pointerEvents="box-none" style={styles.accessory}>
           {accessory}
         </View>
       ) : null}
@@ -386,3 +384,15 @@ export function GemieComposer<T extends GemieSuggestion = GemieSuggestion>({
     </GemieChatLabelsProvider>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  composer: { width: '100%', maxWidth: 768, alignSelf: 'center' },
+  countdown: {
+    marginBottom: 4,
+    alignSelf: 'center',
+    fontSize: 14,
+    color: t.mutedForeground,
+    lineHeight: 20,
+  },
+  accessory: { position: 'absolute', right: 0, bottom: '100%', marginBottom: 8 },
+}));

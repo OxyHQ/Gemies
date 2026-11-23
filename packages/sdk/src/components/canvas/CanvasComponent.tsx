@@ -1,6 +1,6 @@
 import { useLabels } from '../../lib/labels';
 import { Muted, Text } from '@oxy.so/bloom/typography';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { ChartRenderer } from './ChartRenderer';
 import { CodeRenderer } from './CodeRenderer';
 import { DashboardRenderer } from './DashboardRenderer';
@@ -57,9 +57,13 @@ export function CanvasComponent({ component, onFormSubmit }: CanvasComponentProp
   })();
 
   return (
-    <View className="gap-3">
+    <View style={styles.component}>
       <Text variant="body-semibold">{component.title}</Text>
       {content}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  component: { gap: 12 },
+});

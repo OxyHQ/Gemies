@@ -20,7 +20,10 @@ const { hosts } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('react-native', async () => hosts('View'));
+vi.mock('react-native', async () => ({
+  ...(await import('../../support/style-stubs')).reactNativeStyles,
+  ...(await hosts('View')),
+}));
 vi.mock('../../../src/lib/labels', () => ({ useLabels: () => ({ t: (key: string) => key }) }));
 vi.mock('@oxy.so/bloom/button', async () => hosts('Button'));
 vi.mock('@oxy.so/bloom/checkbox', async () => hosts('Checkbox'));

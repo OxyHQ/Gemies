@@ -65,6 +65,7 @@ vi.mock('react-native', async () => {
       ReactModule.createElement('TextInput', { ...props, ref }),
   );
   return {
+    ...(await import('../support/style-stubs')).reactNativeStyles,
     View: host('View'),
     Text: host('RNText'),
     Pressable,
@@ -153,6 +154,8 @@ vi.mock('react-native-gesture-handler', () => {
     Gesture: new Proxy({}, { get: () => () => builder }),
     GestureDetector: ({ children }: { children?: unknown }) => children,
     GestureHandlerRootView: ({ children }: { children?: unknown }) => children,
+    useNativeGesture: () => builder,
+    usePanGesture: () => builder,
   };
 });
 vi.mock('react-native-reanimated', async () => {

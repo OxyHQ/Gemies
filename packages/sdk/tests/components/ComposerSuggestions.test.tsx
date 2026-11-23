@@ -8,7 +8,10 @@ vi.mock('react-native', async () => {
     (name: string) =>
     ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement(name, props, children);
-  return { View: host('View') };
+  return {
+    ...(await import('../support/style-stubs')).reactNativeStyles,
+    View: host('View'),
+  };
 });
 vi.mock('@oxy.so/bloom/list', async () => {
   const ReactModule = await import('react');
@@ -51,9 +54,8 @@ describe('ComposerSuggestions', () => {
     const [item] = all(r, 'ListItem');
     expect(item!.props.active).toBe(true);
     expect(item!.props.label).toBe('Trip to Lisbon');
-    const highlight = all(r, 'Text').find(
-      (node) => node.props.className === 'font-medium text-primary',
-    );
+    // The typed part: medium, in the theme's primary.
+    const highlight = all(r, 'Text').find((node) => node.props.style?.fontWeight === 500);
     expect(highlight?.props.children).toBe('Lis');
     act(() => item!.props.onPress());
     expect(onPick).toHaveBeenCalledWith(rows[0]!.suggestion);

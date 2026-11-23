@@ -36,7 +36,10 @@ const { hosts, slotted } = vi.hoisted(() => ({
 vi.mock('@oxy.so/services/ui/client', () => ({
   useOxy: () => ({ user: null, canUsePrivateApi: false }),
 }));
-vi.mock('react-native', async () => hosts('View'));
+vi.mock('react-native', async () => ({
+  ...(await import('../../support/style-stubs')).reactNativeStyles,
+  ...(await hosts('View')),
+}));
 vi.mock('../../../src/lib/labels', () => ({
   useLabels: () => ({ t: (key: string) => key, locale: 'en' }),
 }));

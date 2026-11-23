@@ -15,6 +15,7 @@ import type { Message } from '../runtime/types';
 import { useRoomEvents } from '../runtime/use-room-events';
 import { GemieParticipants } from './GemieParticipants';
 import { GemieThread } from './thread/GemieThread';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 export interface GemieBetweenGemiesProps {
   /** A conversation between gemies (`kind: 'gemies'`, ADR 0042). */
@@ -53,6 +54,7 @@ export function GemieBetweenGemies(props: GemieBetweenGemiesProps) {
 }
 
 function ConversationBetweenGemies({ conversationId, onBack }: GemieBetweenGemiesProps) {
+  const styles = useStyles();
   const { t, back } = useLabels();
   const threadRef = useRef<AiChatThreadHandle | null>(null);
   const { value: data, isLoading, isFetching, refresh } = useConversation(conversationId);
@@ -78,7 +80,7 @@ function ConversationBetweenGemies({ conversationId, onBack }: GemieBetweenGemie
   }, [data?.members, messages]);
 
   return (
-    <View className="flex-1 bg-background" testID="gemie-conversation">
+    <View style={styles.screen} testID="gemie-conversation">
       <PageHeader
         leading={
           <Button.Group accessibilityLabel={back}>
@@ -96,9 +98,7 @@ function ConversationBetweenGemies({ conversationId, onBack }: GemieBetweenGemie
         sticky={false}
         safeArea={false}
       />
-      <Text className="px-4 pb-2 text-center text-xs text-muted-foreground">
-        {t('chat.betweenGemiesNotice')}
-      </Text>
+      <Text style={styles.footnote}>{t('chat.betweenGemiesNotice')}</Text>
       <AgentAvatarProvider>
         <BubblesProvider value>
           <GemieThread
@@ -114,3 +114,15 @@ function ConversationBetweenGemies({ conversationId, onBack }: GemieBetweenGemie
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  screen: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', backgroundColor: t.background },
+  footnote: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    textAlign: 'center',
+    fontSize: 12,
+    color: t.mutedForeground,
+    lineHeight: 16,
+  },
+}));

@@ -24,6 +24,7 @@ vi.mock('react-native', async () => {
     ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement(name, props, children);
   return {
+    ...(await import('../../support/style-stubs')).reactNativeStyles,
     View: host('View'),
     Pressable: host('Pressable'),
     ScrollView: host('ScrollView'),

@@ -3,6 +3,7 @@ import { Text } from '@oxy.so/bloom/typography';
 import { View } from 'react-native';
 import type { Completion } from '../lib/suggestions';
 import type { GemieSuggestion } from '../types';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /**
  * Suggestions over the composer, one line each, the typed part highlighted and the row the
@@ -17,9 +18,10 @@ export function ComposerSuggestions<T extends GemieSuggestion>({
   selected: number;
   onPick: (suggestion: T) => void;
 }) {
+  const styles = useStyles();
   if (completions.length === 0) return null;
   return (
-    <View accessibilityRole="list" className="w-full max-w-[768px] self-center">
+    <View accessibilityRole="list" style={styles.list}>
       {completions.map(({ suggestion, matchStart, matchEnd }, index) => {
         const { text } = suggestion;
         return (
@@ -32,7 +34,7 @@ export function ComposerSuggestions<T extends GemieSuggestion>({
             title={
               <Text numberOfLines={1}>
                 {text.slice(0, matchStart)}
-                <Text className="font-medium text-primary">{text.slice(matchStart, matchEnd)}</Text>
+                <Text style={styles.match}>{text.slice(matchStart, matchEnd)}</Text>
                 {text.slice(matchEnd)}
               </Text>
             }
@@ -42,3 +44,8 @@ export function ComposerSuggestions<T extends GemieSuggestion>({
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  list: { width: '100%', maxWidth: 768, alignSelf: 'center' },
+  match: { fontWeight: 500, color: t.primary },
+}));

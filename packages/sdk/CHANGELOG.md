@@ -8,9 +8,18 @@ account switch never shows the previous account's conversations, collections, th
 connections, and an answer that lands for an account that was left is dropped. The SDK has no React
 Query left.
 
+It also takes Bloom 23 and leaves NativeWind: the chat's components style through React Native
+styles and Bloom's colour tokens (`createTokenStyles` from `@oxy.so/bloom/theme`) and pass no
+`className`, which Bloom 23 no longer takes. They draw as on Bloom 22: each converted element was
+rendered before and after, light and dark, native and web. An app needs no NativeWind,
+react-native-css or Tailwind for the SDK.
+
 ### Peers
 
 - **Breaking:** `@oxy.so/services` `>=15.0.0 <16`; Services 14 is no longer supported.
+- **Breaking:** `@oxy.so/bloom` `>=23.0.0`.
+- **Removed:** `nativewind` (optional) and `react-native-css`, and the `clsx` and `tailwind-merge`
+  dependencies.
 - **Added:** `@oxy.so/bloom-data` `>=0.1.0` (Services 15 requires it too).
 - **Removed:** `@tanstack/react-query`. An app that uses React Query itself declares it itself.
 
@@ -46,6 +55,14 @@ Query left.
 - **Removed:** `gemieQueryKeys`, `connectorQueryKeys`, `reviveConversationDates`, the
   `ConversationsPage` and `ConversationsInfiniteData` types, and `importCollections(api, local)`'s
   plain function (it is the action of that name).
+
+### Styles
+
+- `IdentityMark` takes `style` in place of `className`; `GemieActivityLine` takes `style`, laid over
+  its own small primary line, in place of a `className` that replaced it.
+- `cn` (the class-name merger) is gone with NativeWind.
+- Classes that resolved to no style drew nothing and are gone (`text-error-primary` on the
+  connect-failure note).
 
 ### Hooks
 

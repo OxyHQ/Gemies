@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
  */
 
 vi.mock('react-native', async () => ({
+  ...(await import('../../support/style-stubs')).reactNativeStyles,
   View: (await import('../../support/panel-bloom-stubs')).host('View'),
 }));
 vi.mock('@oxy.so/bloom/typography', async () => {

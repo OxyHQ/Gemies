@@ -22,6 +22,7 @@ const { hosts } = vi.hoisted(() => ({
 }));
 
 vi.mock('react-native', async () => ({
+  ...(await import('../../support/style-stubs')).reactNativeStyles,
   ...(await hosts('View', 'Pressable', 'Text')),
   Platform: { OS: 'web' },
 }));
@@ -47,7 +48,8 @@ vi.mock('@oxy.so/bloom/hooks', async () => {
   };
 });
 vi.mock('@oxy.so/bloom/chat-composer', async () => await hosts('ReactionPicker'));
-vi.mock('@oxy.so/bloom/theme', () => ({
+vi.mock('@oxy.so/bloom/theme', async () => ({
+  ...(await import('../../support/style-stubs')).bloomTokenStyles,
   withAlpha: (color: string, alpha: number) => `${color}@${alpha}`,
   useTheme: () => ({
     colors: {
@@ -76,8 +78,9 @@ const action = (key: string, onPress = vi.fn()) => ({
   onPress,
 });
 const is = (node: ReactTestInstance, name: string) => (node.type as unknown) === name;
-const styleOf = (node: ReactTestInstance) =>
-  node.props.style as Record<string, unknown> | undefined;
+/** A node's style as React Native draws it: its style array merged in order. */
+const styleOf = (node: ReactTestInstance): Record<string, unknown> =>
+  Object.assign({}, ...[node.props.style].flat(Number.POSITIVE_INFINITY).filter(Boolean));
 
 function mount(
   side: 'user' | 'reply',
@@ -103,47 +106,48 @@ function mount(
 const outer = (root: ReactTestInstance) => root.findAll((n) => is(n, 'View'))[0]!;
 /** The line of icons and bubble inside it. */
 const row = (root: ReactTestInstance) =>
-  root.find(
-    (n) => is(n, 'View') && String(n.props.className ?? '').includes('flex-row items-center gap-2'),
-  );
-const group = (root: ReactTestInstance) =>
-  root.find((n) => is(n, 'View') && String(n.props.className ?? '').includes('gap-0.5'));
+  root.find((n) => is(n, 'View') && styleOf(n).flexDirection === 'row' && styleOf(n).gap === 8);
+/** The icons: 2 apart. */
+const isGroup = (n: ReactTestInstance) => is(n, 'View') && styleOf(n).gap === 2;
+const group = (root: ReactTestInstance) => root.find(isGroup);
+/** The pills, on the bubble's lower edge. */
+const isPillRow = (n: ReactTestInstance) => is(n, 'View') && styleOf(n).marginTop === -10;
 const labels = (root: ReactTestInstance) =>
   root.findAll((n) => is(n, 'Pressable')).map((b) => b.props.accessibilityLabel);
 
 describe('ChatBubble', () => {
   it("puts the person's bubble at the end in the theme's primary, icons first", () => {
     const root = mount('user', { onReply: vi.fn() });
-    expect(row(root).props.className).toContain('justify-end');
+    expect(styleOf(row(root)).justifyContent).toBe('flex-end');
     const children = row(root).children as ReactTestInstance[];
-    expect(String(children[0]!.props.className)).toContain('gap-0.5');
-    const bubble = children[1]!;
-    expect(styleOf(bubble)).toEqual({ backgroundColor: '#009957' });
-    for (const klass of ['rounded-3xl', 'px-4', 'py-3', 'max-w-[80%]']) {
-      expect(String(bubble.props.className)).toContain(klass);
-    }
+    expect(styleOf(children[0]!).gap).toBe(2);
+    expect(styleOf(children[1]!)).toMatchObject({
+      backgroundColor: '#009957',
+      borderRadius: 24,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      maxWidth: '80%',
+    });
   });
 
   it('puts a reply at the start in a neutral bubble, 8px tall, icons after it', () => {
     const root = mount('reply', { onReply: vi.fn() });
-    expect(row(root).props.className).toContain('justify-start');
+    expect(styleOf(row(root)).justifyContent).toBe('flex-start');
     const children = row(root).children as ReactTestInstance[];
-    const bubble = children[0]!;
-    expect(String(bubble.props.className)).toContain('bg-background-tertiary-default');
-    expect(String(bubble.props.className)).toContain('py-2');
-    expect(styleOf(bubble)).toBeUndefined();
-    expect(String(children[1]!.props.className)).toContain('gap-0.5');
+    // The neutral bubble: Bloom's popover token, as `bg-background-tertiary-default` drew it.
+    expect(styleOf(children[0]!)).toMatchObject({ backgroundColor: 'popover', paddingVertical: 8 });
+    expect(styleOf(children[1]!).gap).toBe(2);
   });
 
   it('shows the icons only while the row is hovered', () => {
     const root = mount('reply', { onReply: vi.fn() });
-    expect(styleOf(group(root))).toEqual({ opacity: 0 });
+    expect(styleOf(group(root)).opacity).toBe(0);
     expect(group(root).props.pointerEvents).toBe('none');
     act(() => outer(root).props.onPointerEnter());
-    expect(styleOf(group(root))).toEqual({ opacity: 1 });
+    expect(styleOf(group(root)).opacity).toBe(1);
     expect(group(root).props.pointerEvents).toBe('auto');
     act(() => outer(root).props.onPointerLeave());
-    expect(styleOf(group(root))).toEqual({ opacity: 0 });
+    expect(styleOf(group(root)).opacity).toBe(0);
   });
 
   it('has the three icons of the chat it is modelled on, in order: react, reply, more', () => {
@@ -194,17 +198,12 @@ describe('ChatBubble', () => {
     expect(pills).toHaveLength(2);
     act(() => pills[0]!.props.onPress());
     expect(onReact).toHaveBeenCalledWith('👍');
-    const rowOfPills = root.find(
-      (n) => is(n, 'View') && String(n.props.className ?? '').includes('-mt-2.5'),
-    );
-    expect(String(rowOfPills.props.className)).toContain('justify-end');
+    expect(styleOf(root.find(isPillRow)).justifyContent).toBe('flex-end');
   });
 
   it('draws no pill row without reactions', () => {
     const root = mount('reply');
-    expect(
-      root.findAll((n) => is(n, 'View') && String(n.props.className ?? '').includes('-mt-2.5')),
-    ).toHaveLength(0);
+    expect(root.findAll(isPillRow)).toHaveLength(0);
   });
 
   it('draws only the icons the turn can use: the person has no vote to cast on a question', () => {
@@ -214,8 +213,6 @@ describe('ChatBubble', () => {
 
   it('draws no icon group when there is nothing to offer', () => {
     const root = mount('reply');
-    expect(root.findAll((n) => String(n.props.className ?? '').includes('gap-0.5'))).toHaveLength(
-      0,
-    );
+    expect(root.findAll(isGroup)).toHaveLength(0);
   });
 });

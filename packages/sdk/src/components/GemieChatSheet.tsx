@@ -11,7 +11,7 @@ import {
   useState,
 } from 'react';
 import { useTheme } from '@oxy.so/bloom/theme';
-import { useWindowDimensions, View } from 'react-native';
+import { useWindowDimensions, View, StyleSheet } from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BREAKPOINTS } from '@oxy.so/bloom/styles';
@@ -257,7 +257,7 @@ const GemieChatSheetBody = forwardRef<GemieChatSheetRef, GemieChatSheetProps>(
     const conversationChrome = useCallback<NonNullable<GemieChatContentProps['chrome']>>(
       ({ participants, conversationId }) => ({
         header: (
-          <View className="pt-8">
+          <View style={styles.header}>
             <GemieChatHeader
               participants={participants}
               hasMessages
@@ -366,3 +366,7 @@ const GemieChatSheetBody = forwardRef<GemieChatSheetRef, GemieChatSheetProps>(
 );
 
 GemieChatSheet.displayName = 'GemieChatSheet';
+
+const styles = StyleSheet.create({
+  header: { paddingTop: 32 },
+});

@@ -45,6 +45,7 @@ import { ToolResultCard } from './ToolResultCard';
 import { ChatBubble } from './ChatBubble';
 import { TurnMenu } from './TurnMenu';
 import { TurnStatusLine } from './TurnStatusLine';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /**
  * What a row can do, built once by the thread so every memoised row sees the same object: the
@@ -128,6 +129,7 @@ export const ThreadRow = memo(function ThreadRow({
   workStartedAt,
   workEndedAt,
 }: ThreadRowProps) {
+  const styles = useStyles();
   const { t } = useLabels();
   const text = messageText(message);
   const isReply = message.role === 'assistant';
@@ -166,7 +168,7 @@ export const ThreadRow = memo(function ThreadRow({
       <Animated.View onLayout={onLayout}>
         {text.length === 0 && !attached ? null : (
           // Bloom's user turn, with the breathing room above it the thread has always had.
-          <View className="mt-2 w-full flex-col items-end">
+          <View style={styles.question}>
             <TurnMenu actions={questionActions} label={t('chat.turnActions')}>
               {bubbles ? (
                 // An agent's thread: the person's turn is a bubble in the theme's primary, never Bloom's
@@ -253,6 +255,7 @@ function ReplyTurn({
   workStartedAt,
   workEndedAt,
 }: ReplyTurnProps) {
+  const styles = useStyles();
   const { t } = useLabels();
   const { faviconUrl } = useGemieRuntime().host;
   const renderers = useToolRenderers();
@@ -425,11 +428,7 @@ function ReplyTurn({
 
   const replyBody =
     message.source === 'voice' ? (
-      <Text
-        className={
-          bubbled ? 'text-sm leading-5 text-foreground' : 'text-base leading-7 text-foreground'
-        }
-      >
+      <Text style={bubbled ? styles.bubbledVoiceReply : styles.voiceReply}>
         {text}
         {message.isStreaming ? '▌' : ''}
       </Text>
@@ -466,9 +465,9 @@ function ReplyTurn({
           words, while a text turn's placeholder — stamped `isStreaming` too — is the thinking
           indicator's until its first token arrives. */}
       {showsContent && (
-        <View className="w-full flex-col">
+        <View style={styles.reply}>
           {agent && agentAnchor ? (
-            <View className="mb-0.5">
+            <View style={styles.replyIdentity}>
               <AgentReplyIdentity
                 character={agentCharacterOf(agent)}
                 name={agent.name}
@@ -547,7 +546,7 @@ function ReplyTurn({
               ))}
               {inlineCanvases.map(({ key, canvas }) => (
                 <MessageBlockBoundary key={key}>
-                  <View className="rounded-2xl border border-border p-4" testID="shared-canvas">
+                  <View style={styles.canvas} testID="shared-canvas">
                     <CanvasComponent component={{ id: key, ...canvas }} />
                   </View>
                 </MessageBlockBoundary>
@@ -573,15 +572,11 @@ function ReplyTurn({
                 </MessageBlockBoundary>
               )}
               {agent && message.turnOutcome === 'failed' && text.length === 0 ? (
-                <Text className="text-sm text-muted-foreground">
-                  {t('chat.agentFailed', { name: agent.name })}
-                </Text>
+                <Text style={styles.muted}>{t('chat.agentFailed', { name: agent.name })}</Text>
               ) : null}
               {/* A requested run that ended with no answer: the app's words, never the run's. */}
               {agent && messageFailureOf(message.content) === 'task_unfinished' ? (
-                <Text className="text-sm text-muted-foreground">
-                  {t('chat.taskUnfinished', { name: agent.name })}
-                </Text>
+                <Text style={styles.muted}>{t('chat.taskUnfinished', { name: agent.name })}</Text>
               ) : null}
               {bubbled ? (
                 // Only the words are the bubble: the work log and the cards stay above it, whole.
@@ -605,3 +600,13 @@ function ReplyTurn({
     </>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  question: { marginTop: 8, width: '100%', flexDirection: 'column', alignItems: 'flex-end' },
+  reply: { width: '100%', flexDirection: 'column' },
+  replyIdentity: { marginBottom: 2 },
+  canvas: { borderRadius: 16, borderWidth: 1, borderColor: t.border, padding: 16 },
+  muted: { fontSize: 14, color: t.mutedForeground, lineHeight: 20 },
+  voiceReply: { fontSize: 16, lineHeight: 28, color: t.foreground },
+  bubbledVoiceReply: { fontSize: 14, lineHeight: 20, color: t.foreground },
+}));

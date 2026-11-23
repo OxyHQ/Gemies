@@ -1,4 +1,5 @@
 import React, { createContext, useContext } from 'react';
+import { bloomTokenStyles } from './style-stubs';
 
 /**
  * Bloom stubbed at its module boundary for the right-panel suites.
@@ -136,6 +137,7 @@ export const agentLogModule = () => ({
 export const typographyModule = () => ({ Text: host('Text'), Muted: host('Text') });
 
 export const themeModule = () => ({
+  ...bloomTokenStyles,
   useTheme: () => ({
     colors: {
       success: 'green',

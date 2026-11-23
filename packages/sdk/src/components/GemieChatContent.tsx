@@ -85,6 +85,7 @@ import { GemieThread } from './thread/GemieThread';
 import { ThreadSearch } from './thread/ThreadSearch';
 import { VoiceModeIcon } from './VoiceModeIcon';
 import { VoiceCallContext } from './voice/VoiceCallContext';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /** The agent a chat is opened on: its lead instead of Alia. */
 export interface GemieChatAgentRef {
@@ -357,6 +358,7 @@ function GemieConversationView({
   onStopReady,
   onDetachReady,
 }: ConversationViewProps) {
+  const styles = useStyles();
   const ownFlights = useAvatarFlights();
   const flights = sharedFlights ?? ownFlights;
   const labels = useLabels();
@@ -577,7 +579,7 @@ function GemieConversationView({
   const welcome = useMemo(
     () =>
       profileLoading ? null : (
-        <View className="items-center gap-8">
+        <View style={styles.welcome}>
           {group === undefined ? (
             <GemieWelcomeMessage greeting={greeting} subtitle={welcomeSubtitle} lead={lead} />
           ) : (
@@ -586,7 +588,7 @@ function GemieConversationView({
           {welcomeAccessory}
         </View>
       ),
-    [profileLoading, greeting, welcomeSubtitle, lead, group, welcomeAccessory],
+    [profileLoading, greeting, welcomeSubtitle, lead, group, welcomeAccessory, styles],
   );
 
   // ── The agent's offer to start the next stretch fresh ──
@@ -684,9 +686,9 @@ function GemieConversationView({
       // What is happening while a question is rewritten, and the way out of it. Drawn as the
       // status tab it replaces: the thread scrolls behind the composer, and a strip without the
       // tab's surface printed its words over the transcript's.
-      <View className="mx-7 h-[34px] flex-row items-center gap-2 rounded-t-2xl bg-background-tertiary-default px-2 py-1">
+      <View style={styles.editingBar}>
         <RiEditLine size="sm" />
-        <Text className="flex-1 text-xs text-muted-foreground" numberOfLines={1}>
+        <Text style={styles.editingLabel} numberOfLines={1}>
           {t('composer.editingMessage')}
         </Text>
         <Button appearance="subtle" tone="accent" size="xs" onPress={edit.cancel}>
@@ -806,7 +808,7 @@ function GemieConversationView({
             </GemieConversationOpenerProvider>
           </BubblesProvider>
           {!showsPast ? null : (
-            <View className="absolute inset-x-0 top-16 z-10 items-center" pointerEvents="box-none">
+            <View style={styles.backToLatest} pointerEvents="box-none">
               <Button appearance="outline" tone="neutral" size="sm" onPress={view.backToLatest}>
                 {t('chat.backToLatest')}
               </Button>
@@ -818,7 +820,7 @@ function GemieConversationView({
         </AiChatContainer>
       </InertWhen>
       {betweenGemies === null ? null : (
-        <View className="absolute inset-0 z-20">
+        <View style={styles.betweenGemies}>
           <GemieBetweenGemies conversationId={betweenGemies} onBack={closeBetweenGemies} />
         </View>
       )}
@@ -891,3 +893,29 @@ export function GemieChatContent({
     </GemieChatLabelsProvider>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  welcome: { alignItems: 'center', gap: 32 },
+  editingBar: {
+    marginHorizontal: 28,
+    height: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    backgroundColor: t.popover,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  editingLabel: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    fontSize: 12,
+    color: t.mutedForeground,
+    lineHeight: 16,
+  },
+  backToLatest: { position: 'absolute', insetInline: 0, top: 64, zIndex: 10, alignItems: 'center' },
+  betweenGemies: { position: 'absolute', inset: 0, zIndex: 20 },
+}));

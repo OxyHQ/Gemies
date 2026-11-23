@@ -44,7 +44,7 @@ import { useTheme } from '@oxy.so/bloom/theme';
 import { Muted, Text } from '@oxy.so/bloom/typography';
 import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useMemo, useState } from 'react';
-import { Platform, ScrollView, View } from 'react-native';
+import { Platform, ScrollView, View, StyleSheet } from 'react-native';
 
 /** One array for "nothing selected", so the memos below hold across renders. */
 const NO_MESSAGES: Message[] = [];
@@ -100,7 +100,7 @@ function PhaseRow({ step, isActive }: { step: PhaseStep; isActive: boolean }) {
   const label = t(STEP_LABEL_KEYS[step.type]);
   const ending = step.type === 'done' || step.type === 'failed';
   return (
-    <View className="flex-row items-center gap-1.5 py-1" accessible accessibilityLabel={label}>
+    <View style={styles.step} accessible accessibilityLabel={label}>
       <PhaseIcon type={step.type} />
       <Text variant={ending ? 'body-medium' : 'body-regular'}>
         {isActive ? <AgentLogShimmerText>{label}</AgentLogShimmerText> : label}
@@ -209,8 +209,8 @@ function ActivityTab({ entries }: { entries: AuditEntry[] }) {
           last={index === entries.length - 1}
           reduce={reduce}
         >
-          <View className="py-1">
-            <View className="flex-row items-center gap-1.5">
+          <View style={styles.entry}>
+            <View style={styles.entryHeader}>
               {entry.status === 'interrupted' ? (
                 <RiForbidLine size="xs" fill={colors.textSecondary} />
               ) : null}
@@ -242,11 +242,11 @@ function SelectionState({ status }: { status: 'loading' | 'failed' | 'gone' }) {
   if (status === 'loading') {
     // The steps are on their way: rows shaped like them, not a word about waiting.
     return (
-      <Skeleton.Region className="gap-4 p-3" testID="thought-loading">
+      <Skeleton.Region style={styles.loading} testID="thought-loading">
         {[0, 1, 2].map((row) => (
-          <View key={row} className="flex-row items-center gap-3">
+          <View key={row} style={styles.loadingRow}>
             <Skeleton.Circle size={20} />
-            <View className="flex-1 gap-1.5">
+            <View style={styles.loadingText}>
               <Skeleton.Box width={row === 1 ? '55%' : '75%'} height={13} borderRadius={6} />
               <Skeleton.Box width="40%" height={11} borderRadius={6} />
             </View>
@@ -397,9 +397,9 @@ export function ThoughtPanel({ onClose, outputActions }: ThoughtPanelProps) {
     );
 
   return (
-    <View className="min-h-0 flex-1 gap-2.5 pt-2">
-      <View className="h-[30px] flex-row items-center justify-between">
-        <View className="min-w-0 shrink">
+    <View style={styles.panel}>
+      <View style={styles.tabs}>
+        <View style={styles.tabToggle}>
           <TabToggle value={activeTab} onChange={setActiveTab} />
         </View>
         {!shell?.compact && (
@@ -415,8 +415,8 @@ export function ThoughtPanel({ onClose, outputActions }: ThoughtPanelProps) {
       </View>
 
       <ScrollView
-        className="flex-1 px-4"
-        contentContainerClassName="pb-4"
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {content}
@@ -437,3 +437,17 @@ function ToolGlyph({ toolName, fill }: { toolName: string | undefined; fill: str
   const ToolIcon = getToolIcon(toolName || '');
   return <ToolIcon width={14} height={14} fill={fill} />;
 }
+
+const styles = StyleSheet.create({
+  step: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
+  entry: { paddingVertical: 4 },
+  entryHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  loading: { gap: 16, padding: 12 },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  loadingText: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 6 },
+  panel: { minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 10, paddingTop: 8 },
+  tabs: { height: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tabToggle: { minWidth: 0, flexShrink: 1 },
+  scroll: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', paddingHorizontal: 16 },
+  scrollContent: { paddingBottom: 16 },
+});

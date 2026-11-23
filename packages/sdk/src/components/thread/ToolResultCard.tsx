@@ -35,7 +35,7 @@ import {
 } from '@oxy.so/bloom/segmented-control';
 import { Muted, Text } from '@oxy.so/bloom/typography';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /**
  * A tool result drawn inside the assistant turn, each card one block line of
@@ -170,9 +170,9 @@ function WeatherResult({ data }: { data: WeatherCardData }) {
     <AiChatMessageLine block>
       <Card>
         <CardHeader>
-          <View className="flex-row items-center gap-3">
+          <View style={styles.weatherHeader}>
             <IconCircle icon={conditionIcon(data.current.condition)} size="lg" />
-            <View className="min-w-0 flex-1">
+            <View style={styles.weatherText}>
               <Muted>{data.place}</Muted>
               <Text variant="title-1-medium">{degrees(data.current.temperature, unit)}</Text>
               <Muted>{t(`weather.condition.${data.current.condition}`)}</Muted>
@@ -230,7 +230,7 @@ function ScheduledTaskResult({ data }: { data: ScheduledTaskCardData }) {
           title={data.objective}
           subtitle={triggerLabel(data.trigger, t)}
           trailing={
-            <View className="flex-row items-center gap-2">
+            <View style={styles.trailing}>
               <Badge
                 variant="subtle"
                 color={data.enabled ? 'success' : 'default'}
@@ -252,3 +252,9 @@ function ScheduledTaskResult({ data }: { data: ScheduledTaskCardData }) {
     </AiChatMessageLine>
   );
 }
+
+const styles = StyleSheet.create({
+  weatherHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  weatherText: { minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  trailing: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+});

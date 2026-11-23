@@ -1,6 +1,6 @@
 import { useHaptics } from '@oxy.so/bloom/hooks';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, type StyleProp, View, type ViewStyle } from 'react-native';
 import type { GemieAvatarState } from './GemieAvatar';
 import Svg, { Path } from 'react-native-svg';
 import Animated, {
@@ -22,8 +22,8 @@ export interface IdentityMarkProps {
   size?: number;
   /** Animation state — spins while thinking/working, opacity-pulses while writing, still when idle. Default 'idle'. */
   state?: IdentityMarkState;
-  /** Layout classes for the outer box (color comes from `color`, not classes). */
-  className?: string;
+  /** Layout for the outer box (its size comes from `size`, its colour from `color`). */
+  style?: StyleProp<ViewStyle>;
   /**
    * Who the mark stands for, as a colour. An agent passes its own colour and
    * gets the same artwork at the same size, which is the whole of the
@@ -96,7 +96,7 @@ const GLYPH_PATH =
 export function IdentityMark({
   size = 24,
   state = 'idle',
-  className,
+  style,
   color,
   onPress,
   spinOnPress = false,
@@ -194,12 +194,7 @@ export function IdentityMark({
   // the flourish for its own sake.
   if (onPress === undefined && !spinOnPress) {
     return (
-      <View
-        accessibilityRole="image"
-        accessibilityLabel={accessibilityLabel}
-        className={className}
-        style={box}
-      >
+      <View accessibilityRole="image" accessibilityLabel={accessibilityLabel} style={[box, style]}>
         {glyph}
       </View>
     );
@@ -216,8 +211,7 @@ export function IdentityMark({
       // Nor a Tab stop: on web a Pressable is focusable by default, so the
       // flourish was an unlabelled stop in the keyboard order that did nothing.
       focusable={onPress !== undefined}
-      className={className}
-      style={box}
+      style={[box, style]}
     >
       {glyph}
     </Pressable>

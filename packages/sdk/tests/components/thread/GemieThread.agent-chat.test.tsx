@@ -31,7 +31,12 @@ vi.mock('react-native', async () => {
     (name: string) =>
     ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement(name, props, children);
-  return { View: host('View'), Text: host('Text'), Platform: { OS: 'web' } };
+  return {
+    ...(await import('../../support/style-stubs')).reactNativeStyles,
+    View: host('View'),
+    Text: host('Text'),
+    Platform: { OS: 'web' },
+  };
 });
 vi.mock('react-native-reanimated', async () => {
   const ReactModule = await import('react');
@@ -121,7 +126,7 @@ vi.mock('../../../src/components/thread/ToolResultCard', async () => ({
 vi.mock('../../../src/components/thread/NewConversationOffer', async () => ({
   NewConversationOffer: await stub('Offer')(),
 }));
-vi.mock('../../../src/components/Image', async () => ({ Image: await stub('Image')() }));
+vi.mock('expo-image', async () => ({ Image: await stub('Image')() }));
 vi.mock('../../../src/components/QuestionCard', async () => ({
   AskedQuestions: await stub('AskedQuestions')(),
 }));

@@ -81,7 +81,7 @@ vi.mock('../../../src/components/thread/ToolResultCard', async () => ({
 vi.mock('../../../src/components/thread/TurnStatusLine', async () => ({
   TurnStatusLine: await stub('StatusLine')(),
 }));
-vi.mock('../../../src/components/Image', async () => ({ Image: await stub('Image')() }));
+vi.mock('expo-image', async () => ({ Image: await stub('Image')() }));
 vi.mock('@oxy.so/bloom/agent-progress', async () => ({
   AgentProgress: await stub('AgentProgress')(),
 }));

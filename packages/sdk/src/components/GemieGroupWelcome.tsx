@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 import { useGemieFlights } from '../lib/flights';
 import { useLabels } from '../lib/labels';
 import type { GemieParticipant } from '../lib/participants';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /**
  * The empty chat of a GROUP: its members together, as Bloom's multi-agent chat draws them (one
@@ -12,6 +13,7 @@ import type { GemieParticipant } from '../lib/participants';
  * `empty:<agent id>` for the chat's flights, the anchor Bloom's own group chat flies from.
  */
 export function GemieGroupWelcome({ members }: { members: readonly GemieParticipant[] }) {
+  const styles = useStyles();
   const { t } = useLabels();
   const shared = useGemieFlights();
   const own = useAvatarFlights();
@@ -29,11 +31,23 @@ export function GemieGroupWelcome({ members }: { members: readonly GemieParticip
     [members],
   );
   return (
-    <View className="items-center gap-4">
+    <View style={styles.welcome}>
       <SelectedAgentPreview agents={agents} flights={shared ?? own} anchor="empty" />
-      <Text selectable={false} className="max-w-md shrink text-center text-4xl text-text-primary">
+      <Text selectable={false} style={styles.greeting}>
         {t('chat.groupWelcome')}
       </Text>
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  welcome: { alignItems: 'center', gap: 16 },
+  greeting: {
+    maxWidth: 448,
+    flexShrink: 1,
+    textAlign: 'center',
+    fontSize: 36,
+    color: t.foreground,
+    lineHeight: 40,
+  },
+}));

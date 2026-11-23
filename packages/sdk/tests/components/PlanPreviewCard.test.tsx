@@ -20,7 +20,10 @@ const { hosts } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('react-native', async () => hosts('View'));
+vi.mock('react-native', async () => ({
+  ...(await import('../support/style-stubs')).reactNativeStyles,
+  ...(await hosts('View')),
+}));
 vi.mock('react-native-reanimated', async () => ({ default: await hosts('View') }));
 vi.mock('../../src/animations', () => ({ planPreviewEnter: undefined }));
 vi.mock('../../src/lib/labels', () => ({ useLabels: () => ({ planTitle: "Here's my plan" }) }));
@@ -28,7 +31,10 @@ vi.mock('@oxy.so/bloom/card', async () => hosts('Card', 'CardBody', 'CardHeader'
 vi.mock('@oxy.so/bloom/item', async () => hosts('Item'));
 vi.mock('@oxy.so/bloom/typography', async () => hosts('Text'));
 vi.mock('@oxy.so/bloom/icons/RiListCheck3', () => ({ RiListCheck3: () => null }));
-vi.mock('@oxy.so/bloom/theme', () => ({ useTheme: () => ({ colors: { icon: '#000' } }) }));
+vi.mock('@oxy.so/bloom/theme', async () => ({
+  ...(await import('../support/style-stubs')).bloomTokenStyles,
+  useTheme: () => ({ colors: { icon: '#000' } }),
+}));
 vi.mock('@oxy.so/bloom/button', () => ({
   Button: () => {
     throw new Error('the plan card has nothing to press');

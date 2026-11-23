@@ -1,4 +1,3 @@
-/// <reference types="nativewind/types" />
 // @gemies/sdk/text — the chat without the voice call, and without bundling it
 // The same `GemieChatSheet`, `GemieChatScreen` and `GemieChatContent` as the root entry, but none of
 // them reaches the call's modules (its socket, protocol and audio engine): a text-only app takes
