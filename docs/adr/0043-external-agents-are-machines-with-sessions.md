@@ -49,11 +49,13 @@ prompt and a new gemie in the sidebar.
    - **Claude Code's permission questions are answered in the conversation.** The daemon runs an MCP
      server on the loopback, one path and one token per run, and names it `--permission-prompt-tool`.
      A question goes to Gemies as `approval-request` over the daemon's WebSocket (not an HTTP request
-     held open behind a load balancer), shows as a card (`alia.approval_request`), and the person's
+     held open behind a load balancer), shows as a card (`alia.cli_permission_request`), and the person's
      answer (`POST /agents/external/:agentId/approvals/:requestId`) goes back as `approval`.
      Unanswered (5 minutes), dropped or malformed is **deny**; the daemon honours only request ids it
      issued; a read-only agent never asks; the capability is negotiated (`auth-ok.features`), so an
-     older Gemies or daemon simply never asks. This is the third-party CLI's own question to its own
+     older Gemies or daemon simply never asks. The events carry their own names, `alia.cli_permission_*`,
+     not the retired `alia.approval_*` of ADR 0020 §3, which stays in force: no agent of Gemies asks
+     the person for approval, and `__tests__/noApprovals.test.ts` keeps that so. This is the third-party CLI's own question to its own
      user about their own computer: not an Oxy grant, consent or "reauthorise".
    - **Codex has no such hook** in `codex exec`; it keeps `sandbox_mode` (ADR 0031). `codex app-server`
      would be the way in.

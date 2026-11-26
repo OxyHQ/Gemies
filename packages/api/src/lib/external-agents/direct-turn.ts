@@ -127,7 +127,7 @@ export async function serveExternalDirectTurn(input: {
     if (!input.stream || res.writableEnded) return;
     if (event.kind === 'request') {
       res.write(
-        `event: alia.approval_request\ndata: ${JSON.stringify({
+        `event: alia.cli_permission_request\ndata: ${JSON.stringify({
           eventVersion: 1,
           requestId: event.requestId,
           agentId: input.agentId,
@@ -139,7 +139,7 @@ export async function serveExternalDirectTurn(input: {
       return;
     }
     res.write(
-      `event: alia.approval_resolved\ndata: ${JSON.stringify({
+      `event: alia.cli_permission_resolved\ndata: ${JSON.stringify({
         eventVersion: 1,
         requestId: event.requestId,
         decision: event.decision,

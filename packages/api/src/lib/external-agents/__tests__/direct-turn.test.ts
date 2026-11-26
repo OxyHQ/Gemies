@@ -203,7 +203,7 @@ describe('serveExternalDirectTurn: permission questions (ADR 0043 §5)', () => {
     await serve(res);
     expect(frames(res).filter((f) => f.event?.startsWith('alia.approval'))).toEqual([
       {
-        event: 'alia.approval_request',
+        event: 'alia.cli_permission_request',
         data: {
           eventVersion: 1,
           requestId: REQUEST,
@@ -214,7 +214,7 @@ describe('serveExternalDirectTurn: permission questions (ADR 0043 §5)', () => {
         },
       },
       {
-        event: 'alia.approval_resolved',
+        event: 'alia.cli_permission_resolved',
         data: { eventVersion: 1, requestId: REQUEST, decision: 'allow' },
       },
     ]);
