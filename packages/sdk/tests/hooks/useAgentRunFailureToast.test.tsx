@@ -10,10 +10,8 @@ vi.mock('@oxy.so/bloom/toast', () => ({ toast }));
 const labels = vi.hoisted(() => ({ t: (key: string) => key }));
 vi.mock('../../src/lib/labels', () => ({ useLabels: () => labels }));
 
-import {
-  AGENT_RUN_FAILURE_TOAST_ID,
-  useAgentRunFailureToast,
-} from '../../src/hooks/useAgentRunFailureToast';
+import { useAgentRunFailureToast } from '../../src/hooks/useAgentRunFailureToast';
+import { FAILED_TURN_TOAST_ID } from '../../src/hooks/useFailedTurnToast';
 
 let renderer: TestRenderer.ReactTestRenderer | null = null;
 beforeEach(() => vi.clearAllMocks());
@@ -48,7 +46,7 @@ describe('useAgentRunFailureToast', () => {
     expect(toast.error).toHaveBeenCalledWith(
       'chat.agentRun.taskFailed',
       expect.objectContaining({
-        id: AGENT_RUN_FAILURE_TOAST_ID,
+        id: FAILED_TURN_TOAST_ID,
         description: 'The external agent did not answer',
       }),
     );

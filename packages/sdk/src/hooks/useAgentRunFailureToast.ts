@@ -1,10 +1,9 @@
 import { useLabels } from '../lib/labels';
+import { FAILED_TURN_TOAST_ID } from './useFailedTurnToast';
 import type { AgentActivityState } from '../runtime/thread/agent-activity';
 import { toast } from '@oxy.so/bloom/toast';
 import { useEffect } from 'react';
 
-/** One toast for the run that failed, replaced by the next failure. */
-export const AGENT_RUN_FAILURE_TOAST_ID = 'agent-run-failure';
 const AGENT_RUN_FAILURE_TOAST_MS = 10_000;
 
 /**
@@ -12,7 +11,8 @@ const AGENT_RUN_FAILURE_TOAST_MS = 10_000;
  * thread keeps the person's words and the agent's, and a failure is not part of either. The words
  * are the server's (why it failed), under the app's own line. A run that ended well still leaves its
  * summary card (`AgentResultCard`); this is for the one that did not, unless the turn's own failure
- * toast already told it.
+ * toast already told it. The two share one toast id: the run's failure reaches the thread before the
+ * turn's does, and the turn's toast, which can Retry, replaces it instead of stacking beside it.
  */
 export function useAgentRunFailureToast(
   activity: AgentActivityState | null | undefined,
@@ -26,7 +26,7 @@ export function useAgentRunFailureToast(
   useEffect(() => {
     if (!failed) return;
     toast.error(t('chat.agentRun.taskFailed'), {
-      id: AGENT_RUN_FAILURE_TOAST_ID,
+      id: FAILED_TURN_TOAST_ID,
       description: detail,
       duration: AGENT_RUN_FAILURE_TOAST_MS,
     });
