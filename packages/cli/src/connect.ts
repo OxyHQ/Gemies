@@ -17,6 +17,7 @@
  * Outbound only: the daemon dials Gemies over WebSocket and drives the installed CLI under the
  * person's own login to it. Nothing listens on this machine.
  */
+import { existsSync, realpathSync, statSync } from 'node:fs';
 import { hostname, homedir } from 'node:os';
 import { resolve } from 'node:path';
 import chalk from 'chalk';
@@ -40,8 +41,12 @@ import {
   type ConnectableAgent,
 } from './external/redeem.js';
 import { runtimeFor } from './external/registry.js';
+import { expandHome } from './external/roots.js';
 import { serviceManagerFor, type RunCommand, type ServiceManager } from './external/service.js';
 import {
+  allowedRoots,
+  allowRoot,
+  disallowRoot,
   forgetAgent,
   forgetAllAgents,
   pairedAgents,
@@ -283,6 +288,7 @@ export async function serve(): Promise<void> {
       agentName: agent.name,
       runtime: runtimeFor(agent.cli),
       sessions: sessionStore(),
+      allowedRoots,
       cwd: agent.cwd ?? homedir(),
       write: agent.write !== false,
       credential: agent.credential,
@@ -361,4 +367,39 @@ export async function disconnect(options: { forget?: boolean }): Promise<void> {
   } else {
     console.log('The agents stay paired here: `gemies connect` installs the service again.');
   }
+}
+
+/**
+ * `gemies allow [folder]` — which folders sessions opened from Gemies may work in (ADR 0043).
+ * Gemies only asks for a folder; this computer decides, and a folder outside what is allowed here is
+ * refused. With no folder, lists them; `--remove` stops allowing one.
+ */
+export function allow(folder: string | undefined, options: { remove?: boolean }): void {
+  if (folder === undefined) {
+    const roots = allowedRoots();
+    if (roots.length === 0) {
+      console.log(
+        'No folder is allowed for sessions opened from Gemies yet. Allow one with `gemies allow <folder>`.',
+      );
+    }
+    for (const root of roots) console.log(root);
+    return;
+  }
+  const path = resolve(expandHome(folder));
+  if (options.remove) {
+    console.log(
+      disallowRoot(path) ? `No longer allowed: ${path}` : `${path} was not an allowed folder.`,
+    );
+    return;
+  }
+  if (!existsSync(path) || !statSync(path).isDirectory()) {
+    console.error(chalk.red(`${path} is not a folder on this computer.`));
+    process.exit(1);
+  }
+  const real = realpathSync(path);
+  console.log(
+    allowRoot(real)
+      ? chalk.green(`Sessions opened from Gemies may now work in ${real} and everything under it.`)
+      : `${real} was already allowed.`,
+  );
 }

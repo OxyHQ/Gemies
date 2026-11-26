@@ -112,6 +112,22 @@ describe('turns across instances', () => {
     expect(deltas).toEqual(['Hel', 'lo']);
   });
 
+  it('hands the folder of a session across instances', async () => {
+    const { ws, frames } = await daemonOnA();
+    const turn = b.runTurn({
+      agentId: 'agent-1',
+      task: 'a',
+      history: [],
+      threadKey: 'c-1',
+      cwd: '/home/ana/app',
+    });
+    await waitFor(() => frames.some((f) => f.type === 'turn'));
+    const frame = frames.find((f) => f.type === 'turn') as { turnId: string; cwd?: string };
+    expect(frame.cwd).toBe('/home/ana/app');
+    ws.send(JSON.stringify({ type: 'end', turnId: frame.turnId, text: 'ok' }));
+    await turn;
+  });
+
   it('carries a daemon error back to the instance that asked', async () => {
     const { ws, frames } = await daemonOnA();
     const turn = b.runTurn({ agentId: 'agent-1', task: 'x', history: [] });

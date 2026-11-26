@@ -27,6 +27,11 @@ export type ServerFrame =
       history: readonly ChatTurn[];
       /** The Gemies conversation this turn belongs to, when it belongs to one. */
       threadKey?: string;
+      /**
+       * The folder a session opened from the app works in (Gemies ADR 0043). Honoured only inside
+       * the roots this computer allows; absent, the agent works where it was paired.
+       */
+      cwd?: string;
     }
   | { type: 'cancel'; turnId: string }
   | { type: 'revoked' };

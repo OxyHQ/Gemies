@@ -48,6 +48,8 @@ export interface ExternalTurnInput {
   history: readonly ChatTurn[];
   /** The conversation this turn continues; lets the daemon resume the CLI's own session. */
   threadKey?: string;
+  /** The folder the conversation's session works in (ADR 0043). */
+  cwd?: string;
   onDelta?: (text: string) => void;
   timeoutMs?: number;
   signal?: AbortSignal;
@@ -101,6 +103,7 @@ type Command =
       task: string;
       history: readonly ChatTurn[];
       threadKey?: string;
+      cwd?: string;
       timeoutMs?: number;
     }
   | { kind: 'cancel'; turnId: string }
@@ -252,6 +255,7 @@ export function createExternalAgentRelay(
         task: input.task,
         history: input.history,
         ...(input.threadKey ? { threadKey: input.threadKey } : {}),
+        ...(input.cwd ? { cwd: input.cwd } : {}),
       });
     });
 
@@ -308,6 +312,7 @@ export function createExternalAgentRelay(
       task: command.task,
       history: command.history,
       ...(command.threadKey ? { threadKey: command.threadKey } : {}),
+      ...(command.cwd ? { cwd: command.cwd } : {}),
       signal: controller.signal,
       ...(command.timeoutMs === undefined ? {} : { timeoutMs: command.timeoutMs }),
       onDelta: (text) => publishEvent(command.turnId, { type: 'delta', text }),
@@ -422,6 +427,7 @@ export function createExternalAgentRelay(
             task: input.task,
             history: input.history,
             ...(input.threadKey ? { threadKey: input.threadKey } : {}),
+            ...(input.cwd ? { cwd: input.cwd } : {}),
             timeoutMs,
           };
           return cluster.publish(`${CMD_PREFIX}${input.agentId}`, JSON.stringify(command));

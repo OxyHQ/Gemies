@@ -25,6 +25,8 @@ interface Schema {
   agents: PairedAgent[];
   /** `<agentId>:<conversation>` -> the CLI's own session id, so a conversation continues it. */
   sessions: Record<string, string>;
+  /** Folders sessions opened from Gemies may work in, besides the one an agent was paired in. */
+  roots: string[];
 }
 
 const MAX_SESSIONS = 300;
@@ -42,7 +44,7 @@ export interface SessionStore {
 const store = new Conf<Schema>({
   projectName: 'alia-codea-cli',
   configName: 'external-agents',
-  defaults: { agents: [], sessions: {} },
+  defaults: { agents: [], sessions: {}, roots: [] },
   configFileMode: 0o600,
 });
 
@@ -107,4 +109,28 @@ export function sessionStore(): SessionStore {
       store.set('sessions', rest);
     },
   };
+}
+
+/** The folders its owner allowed sessions to work in (`gemies allow`). */
+export function allowedRoots(): string[] {
+  return store.get('roots');
+}
+
+/** Allows sessions in `folder` and everything under it. Returns false when it already was. */
+export function allowRoot(folder: string): boolean {
+  const roots = store.get('roots');
+  if (roots.includes(folder)) return false;
+  store.set('roots', [...roots, folder]);
+  return true;
+}
+
+/** Stops allowing `folder`. Returns false when it was not allowed. */
+export function disallowRoot(folder: string): boolean {
+  const roots = store.get('roots');
+  if (!roots.includes(folder)) return false;
+  store.set(
+    'roots',
+    roots.filter((root) => root !== folder),
+  );
+  return true;
 }

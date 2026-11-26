@@ -1,4 +1,7 @@
 import { WebSocketServer, type WebSocket as ServerSocket } from 'ws';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { startDaemon, type Daemon } from '../daemon.js';
 import type { SessionStore } from '../state.js';
@@ -489,5 +492,101 @@ describe('runProcess', () => {
         signal: new AbortController().signal,
       }),
     ).rejects.toThrow('is not installed');
+  });
+});
+
+describe('daemon: the folder of a session (Gemies ADR 0043)', () => {
+  let base: string;
+  let paired: string;
+  let other: string;
+  let outside: string;
+  const ran: string[] = [];
+  const cwdRuntime: ExternalRuntime = {
+    resumes: false,
+    async run({ cwd }: RuntimeRun) {
+      ran.push(cwd);
+      return 'done';
+    },
+  };
+
+  beforeEach(() => {
+    ran.length = 0;
+    base = realpathSync(mkdtempSync(join(tmpdir(), 'gemies-daemon-')));
+    paired = join(base, 'paired');
+    other = join(base, 'other');
+    outside = join(base, 'outside');
+    for (const dir of [paired, join(paired, 'sub'), other, outside])
+      mkdirSync(dir, { recursive: true });
+  });
+  afterEach(() => rmSync(base, { recursive: true, force: true }));
+
+  const ask = async (turnId: string, cwd?: string) => {
+    peers[0].send(
+      JSON.stringify({ type: 'turn', turnId, task: 'x', history: [], ...(cwd ? { cwd } : {}) }),
+    );
+  };
+
+  it('runs a turn without a folder where the agent was paired, and one inside it where it names', async () => {
+    start(cwdRuntime, { cwd: paired });
+    await until(() => peers.length > 0 && received.length > 0);
+    await ask('t1');
+    await until(() => received.some((f) => f.type === 'end' && f.turnId === 't1'));
+    await ask('t2', join(paired, 'sub'));
+    await until(() => received.some((f) => f.type === 'end' && f.turnId === 't2'));
+    expect(ran).toEqual([paired, join(paired, 'sub')]);
+  });
+
+  it('refuses a folder outside what this computer allows, without running the CLI', async () => {
+    start(cwdRuntime, { cwd: paired });
+    await until(() => peers.length > 0 && received.length > 0);
+    await ask('t1', outside);
+    await until(() => received.some((f) => f.type === 'error'));
+    expect(received.find((f) => f.type === 'error')).toMatchObject({
+      turnId: 't1',
+      message: expect.stringContaining('gemies allow'),
+    });
+    expect(ran).toEqual([]);
+  });
+
+  it('honours a root allowed later, with no restart', async () => {
+    const roots: string[] = [];
+    start(cwdRuntime, { cwd: paired, allowedRoots: () => roots });
+    await until(() => peers.length > 0 && received.length > 0);
+    await ask('t1', other);
+    await until(() => received.some((f) => f.type === 'error'));
+    roots.push(other);
+    await ask('t2', other);
+    await until(() => received.some((f) => f.type === 'end' && f.turnId === 't2'));
+    expect(ran).toEqual([other]);
+  });
+
+  it('runs sessions of different folders together, and one folder one turn at a time', async () => {
+    let running = 0;
+    let peak = 0;
+    const byFolder: Record<string, number> = {};
+    start(
+      {
+        resumes: false,
+        async run({ cwd }: RuntimeRun) {
+          running += 1;
+          byFolder[cwd] = (byFolder[cwd] ?? 0) + 1;
+          peak = Math.max(peak, running);
+          const sameFolderAtOnce = byFolder[cwd];
+          await new Promise((r) => setTimeout(r, 60));
+          running -= 1;
+          byFolder[cwd] -= 1;
+          if (sameFolderAtOnce > 1) throw new Error('two turns in one folder at once');
+          return 'done';
+        },
+      },
+      { cwd: paired, allowedRoots: () => [other] },
+    );
+    await until(() => peers.length > 0 && received.length > 0);
+    await ask('a1', paired);
+    await ask('a2', paired);
+    await ask('b1', other);
+    await until(() => received.filter((f) => f.type === 'end' || f.type === 'error').length === 3);
+    expect(received.filter((f) => f.type === 'error')).toEqual([]);
+    expect(peak).toBe(2);
   });
 });

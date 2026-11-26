@@ -26,6 +26,8 @@ const state = vi.hoisted(() => ({
   createLink: vi.fn(),
   revoke: vi.fn(),
   disconnect: vi.fn(),
+  openSession: vi.fn(),
+  folders: vi.fn(),
 }));
 
 vi.mock('../../../middleware/auth.js', () => ({
@@ -49,6 +51,8 @@ vi.mock('../../../db/agents/externalAgentRepository.js', () => ({
   replaceExternalLinkCredential: state.replaceCredential,
   createExternalLink: state.createLink,
   revokeExternalLink: state.revoke,
+  openExternalSession: state.openSession,
+  recentExternalFolders: state.folders,
   listExternalLinks: vi.fn(async () => [
     { agentId: 'a1', cli: 'codex', hostName: 'laptop', createdAt: 'x', lastConnectedAt: null },
     { agentId: 'a2', cli: 'claude', hostName: 'desk', createdAt: 'y', lastConnectedAt: null },
@@ -301,5 +305,72 @@ describe('GET and DELETE /agents/external', () => {
     expect(missing.status).toBe(404);
     expect(state.disconnect).not.toHaveBeenCalled();
     expect(state.deleteAgent).not.toHaveBeenCalled();
+  });
+});
+
+describe('sessions: POST /agents/external/:agentId/sessions and GET …/folders', () => {
+  const open = (agentId: string, body: unknown) => post(`/${agentId}/sessions`, body);
+
+  beforeEach(() => {
+    state.openSession.mockImplementation(async (_db, input) => ({
+      cwd: input.cwd,
+      agentId: input.agentId,
+      ownerOxyUserId: input.ownerOxyUserId,
+    }));
+    state.folders.mockResolvedValue(['/home/ana/app', '/home/ana/api']);
+  });
+
+  it('records the folder a conversation with the caller’s agent works in', async () => {
+    const response = await open('agent-1', { conversationId: 'c-1', cwd: '/home/ana/app' });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ conversationId: 'c-1', cwd: '/home/ana/app' });
+    expect(state.openSession).toHaveBeenCalledWith(expect.anything(), {
+      conversationId: 'c-1',
+      agentId: 'agent-1',
+      ownerOxyUserId: 'owner-1',
+      cwd: '/home/ana/app',
+    });
+  });
+
+  it('accepts home-relative and drive paths, and refuses anything else', async () => {
+    for (const cwd of ['~/code', '~', 'C:\\Users\\ana\\code', 'D:/code']) {
+      expect((await open('agent-1', { conversationId: 'c', cwd })).status).toBe(201);
+    }
+    state.openSession.mockClear();
+    for (const cwd of ['relative/path', '../up', '', 'a'.repeat(2000), '/ok\0bad']) {
+      expect((await open('agent-1', { conversationId: 'c', cwd })).status).toBe(400);
+    }
+    expect((await open('agent-1', { cwd: '/x' })).status).toBe(400);
+    expect((await open('agent-1', { conversationId: 'c', cwd: '/x', extra: 1 })).status).toBe(400);
+    expect(state.openSession).not.toHaveBeenCalled();
+  });
+
+  it('404s an agent that is not the caller’s, and never writes', async () => {
+    state.findLink.mockResolvedValue({ agentId: 'agent-1', ownerOxyUserId: 'someone-else' });
+    expect((await open('agent-1', { conversationId: 'c', cwd: '/x' })).status).toBe(404);
+    state.findLink.mockResolvedValue(undefined);
+    expect((await open('agent-9', { conversationId: 'c', cwd: '/x' })).status).toBe(404);
+    expect(state.openSession).not.toHaveBeenCalled();
+  });
+
+  it('does not let a conversation of another agent or person be taken over', async () => {
+    state.openSession.mockResolvedValue({
+      cwd: '/theirs',
+      agentId: 'agent-2',
+      ownerOxyUserId: 'owner-1',
+    });
+    expect((await open('agent-1', { conversationId: 'c', cwd: '/x' })).status).toBe(409);
+  });
+
+  it('lists the recent folders of the caller’s agent only', async () => {
+    const ok = await fetch(`${base}/agents/external/agent-1/folders`);
+    expect(await ok.json()).toEqual({ folders: ['/home/ana/app', '/home/ana/api'] });
+    expect(state.folders).toHaveBeenCalledWith(expect.anything(), {
+      agentId: 'agent-1',
+      ownerOxyUserId: 'owner-1',
+      limit: 10,
+    });
+    state.findLink.mockResolvedValue({ agentId: 'agent-1', ownerOxyUserId: 'someone-else' });
+    expect((await fetch(`${base}/agents/external/agent-1/folders`)).status).toBe(404);
   });
 });

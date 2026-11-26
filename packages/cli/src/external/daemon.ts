@@ -1,4 +1,5 @@
 import { framePrompt } from './prompt.js';
+import { resolveSessionCwd } from './roots.js';
 import type { SessionStore } from './state.js';
 import type { DaemonFrame, ExternalRuntime, ServerFrame } from './types.js';
 
@@ -22,6 +23,11 @@ export interface DaemonOptions {
   readonly maxBackoffMs?: number;
   /** The CLI's own sessions per conversation. Omitted: every turn starts fresh. */
   readonly sessions?: SessionStore;
+  /**
+   * The folders sessions opened from Gemies may work in, besides `cwd` (Gemies ADR 0043). Read at
+   * each turn, so allowing one needs no restart. Omitted: only `cwd` and what is under it.
+   */
+  readonly allowedRoots?: () => readonly string[];
   /** Consecutive refused handshakes before giving up (a network failure never counts). */
   readonly maxAuthFailures?: number;
 }
@@ -56,7 +62,8 @@ export function startDaemon(options: DaemonOptions): Daemon {
   let authFailures = 0;
   let reconnectTimer: NodeJS.Timeout | undefined;
   const turns = new Map<string, AbortController>();
-  let queue: Promise<void> = Promise.resolve();
+  /** One turn at a time per folder: two CLI runs in one directory would trample each other. */
+  const queues = new Map<string, Promise<void>>();
 
   let finish!: (exit: DaemonExit) => void;
   const done = new Promise<DaemonExit>((resolve) => {
@@ -76,6 +83,16 @@ export function startDaemon(options: DaemonOptions): Daemon {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(frame));
   };
 
+  /** Where a turn runs: the folder its session names if this computer allows it, else the paired one. */
+  const turnCwd = (frame: Extract<ServerFrame, { type: 'turn' }>): string | { message: string } => {
+    if (!frame.cwd) return options.cwd;
+    const resolved = resolveSessionCwd(frame.cwd, [
+      options.cwd,
+      ...(options.allowedRoots?.() ?? []),
+    ]);
+    return resolved.ok ? resolved.cwd : { message: resolved.message };
+  };
+
   const runTurn = async (
     ws: WebSocket,
     frame: Extract<ServerFrame, { type: 'turn' }>,
@@ -83,6 +100,12 @@ export function startDaemon(options: DaemonOptions): Daemon {
     const controller = new AbortController();
     turns.set(frame.turnId, controller);
     try {
+      const cwd = turnCwd(frame);
+      if (typeof cwd !== 'string') {
+        log(`turn ${frame.turnId.slice(0, 8)}: refused — ${cwd.message}`);
+        send(ws, { type: 'error', turnId: frame.turnId, message: cwd.message });
+        return;
+      }
       log(`turn ${frame.turnId.slice(0, 8)}: started`);
       const sessionKey =
         options.sessions && options.runtime.resumes && frame.threadKey
@@ -99,7 +122,7 @@ export function startDaemon(options: DaemonOptions): Daemon {
             write: options.write,
             resumed: resumeId !== undefined,
           }),
-          cwd: options.cwd,
+          cwd,
           write: options.write,
           signal: controller.signal,
           ...(resumeId ? { resumeId } : {}),
@@ -185,8 +208,14 @@ export function startDaemon(options: DaemonOptions): Daemon {
           break;
         case 'turn':
           if (!authenticated) return;
-          // One turn at a time: two CLI runs in one directory would trample each other.
-          queue = queue.then(() => runTurn(ws, frame));
+          {
+            const key = frame.cwd ?? options.cwd;
+            const next = (queues.get(key) ?? Promise.resolve()).then(() => runTurn(ws, frame));
+            queues.set(key, next);
+            void next.then(() => {
+              if (queues.get(key) === next) queues.delete(key);
+            });
+          }
           break;
         case 'cancel':
           turns.get(frame.turnId)?.abort();

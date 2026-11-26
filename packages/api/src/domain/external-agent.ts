@@ -44,6 +44,9 @@ export interface ChatTurn {
 /** How many earlier messages a direct chat turn carries to the daemon. */
 export const EXTERNAL_HISTORY_TURNS = 20;
 
+/** The longest folder path a session may name. */
+export const EXTERNAL_SESSION_CWD_MAX = 1024;
+
 /** How long a pairing code can be redeemed. */
 export const EXTERNAL_PAIRING_TTL_MS = 10 * 60 * 1000;
 
@@ -73,6 +76,11 @@ export type ServerFrame =
        * the CLI's own session for it. Absent for turns that are not part of one (a room, a conversation between gemies).
        */
       threadKey?: string;
+      /**
+       * The folder a session opened from the app works in (ADR 0043). The daemon honours it only
+       * inside the roots its owner allowed on that computer; absent, it works where it always did.
+       */
+      cwd?: string;
       history: readonly ChatTurn[];
     }
   | { type: 'cancel'; turnId: string }
