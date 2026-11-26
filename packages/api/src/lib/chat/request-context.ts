@@ -46,6 +46,7 @@ import { getDb } from '../../db/index.js';
 import type { UserMemoryProfile } from '../../db/memory/userMemoryRepository.js';
 import { getOrCreateUserCredits } from '../user-credits-helpers.js';
 import { reserveCredits, refundReservation, type CreditReservation } from '../credits-manager.js';
+import { isExternalAgent } from '../external-agents/turn.js';
 import type { Entitlements } from '../plan-access.js';
 import {
   buildTurnSkills,
@@ -1045,6 +1046,21 @@ export async function buildChatRequestContext(
     return null;
   }
 
+  /**
+   * A turn with an external agent (ADR 0030 §3) is answered by the person's own CLI, on their own
+   * subscription, on their own computer: it costs nothing here, so nothing here may refuse it for
+   * credits, a spent plan window or a credit authority that is down. Only a person's own session
+   * reaches it (`chat-completions.ts`); the reservation taken above, if any, is refunded at the
+   * route's release point, as it always was.
+   */
+  // An external agent is always a `local` gemie (ADR 0036), so only those are looked up: no other
+  // turn pays for the question.
+  const externalTurn =
+    isDirectUserSession &&
+    turnAgent.kind === 'agent' &&
+    turnAgent.agent.identity.source === 'local' &&
+    (await isExternalAgent(turnAgent.agent._id));
+
   // Validate credit reservation
   // Only return 402 if reserveCredits explicitly returned null (insufficient credits),
   // not if there was a DB error (original behavior: continue without credits on error)
@@ -1062,7 +1078,7 @@ export async function buildChatRequestContext(
      * limit to wait out: `retryAfter` is when the oldest spending turn in the
      * window ages out, and it drives the usage dialog's countdown.
      */
-    if (creditResult.window?.exhausted) {
+    if (!externalTurn && creditResult.window?.exhausted) {
       clearTimeout(globalTimer);
       const window = creditResult.window;
       const windowError = {
@@ -1089,7 +1105,7 @@ export async function buildChatRequestContext(
 
     // Oxy could not say whether this account holds a product grant. Never read
     // as "no grant" (legacy funding) and never as "out of credits" (402).
-    if (creditResult.authorityUnavailable) {
+    if (!externalTurn && creditResult.authorityUnavailable) {
       clearTimeout(globalTimer);
       const unavailable = {
         message: 'Credits are temporarily unavailable. Try again in a moment.',
@@ -1105,7 +1121,13 @@ export async function buildChatRequestContext(
       return null;
     }
 
-    if (paidHere && !creditReservation && !creditResult.error && localRuntime === null) {
+    if (
+      !externalTurn &&
+      paidHere &&
+      !creditReservation &&
+      !creditResult.error &&
+      localRuntime === null
+    ) {
       clearTimeout(globalTimer);
       const creditError = {
         message: "You've run out of credits. Add more or upgrade your plan to continue.",
