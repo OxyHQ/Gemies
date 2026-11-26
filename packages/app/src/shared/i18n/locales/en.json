@@ -603,6 +603,17 @@
     "searchThreadYou": "You",
     "searchThreadAgent": "Gemie",
     "backToLatest": "Back to the latest",
+    "approval": {
+      "allow": "Allow",
+      "deny": "Deny",
+      "resolved": {
+        "allow": "%{tool}: allowed",
+        "deny": "%{tool}: denied",
+        "expired": "%{tool}: timed out"
+      },
+      "sendFailed": "Your answer couldn't be sent. Try again.",
+      "title": "%{agent} wants to run %{tool}"
+    },
     "newConversationOffer": "Start a new conversation?",
     "newConversationAccept": "Start a new one",
     "newConversationDismiss": "Not now",

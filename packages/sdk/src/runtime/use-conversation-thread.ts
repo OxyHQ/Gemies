@@ -157,6 +157,8 @@ export function useConversationThread({
     suggestedNewConversation,
     dismissSuggestedNewConversation,
     agentRun,
+    approvals,
+    settleApproval,
     failedTurn,
     retryFailedTurn: retry,
     clearFailedTurn,
@@ -624,6 +626,8 @@ export function useConversationThread({
     suggestedNewConversation,
     dismissSuggestedNewConversation,
     agentRun,
+    approvals,
+    settleApproval,
     failedTurn,
     retryFailedTurn,
   };
