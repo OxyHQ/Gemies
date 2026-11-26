@@ -377,12 +377,10 @@ export const GemieThread = memo(function GemieThread({
           </View>
 
           {/* Agent execution — in-progress card or completed result card. A run that failed has no
-              card: it is told with a toast (`useAgentRunFailureToast`). */}
-          {agentActivity && agentActivity.eventCount > 0 ? (
+              card, finished or still open: it is told with a toast (`useAgentRunFailureToast`). */}
+          {agentActivity && agentActivity.eventCount > 0 && !agentActivity.hasError ? (
             agentActivity.isComplete ? (
-              agentActivity.hasError ? null : (
-                <AgentResultCard activity={agentActivity} />
-              )
+              <AgentResultCard activity={agentActivity} />
             ) : (
               <AgentTaskCard activity={agentActivity} />
             )
