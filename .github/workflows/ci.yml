@@ -229,7 +229,8 @@ jobs:
 
   race-finish:
     needs: race
-    if: needs.race.outputs.race == 'true'
+    # `!cancelled()`: an ancestor skipped on this event (provenance, a twin) must not skip it.
+    if: ${{ !cancelled() && needs.race.outputs.race == 'true' }}
     uses: OxyHQ/oxy/.github/workflows/seldon-race-finish.yml@main
     permissions:
       actions: read
@@ -252,7 +253,8 @@ jobs:
 
   race-2-finish:
     needs: race-2
-    if: needs.race-2.outputs.race == 'true'
+    # `!cancelled()`: an ancestor skipped on this event (provenance, a twin) must not skip it.
+    if: ${{ !cancelled() && needs.race-2.outputs.race == 'true' }}
     uses: OxyHQ/oxy/.github/workflows/seldon-race-finish.yml@main
     permissions:
       actions: read
@@ -504,7 +506,7 @@ jobs:
   lint-and-test-hosted:
     name: Lint & Test
     needs: race
-    if: ${{ needs.race.outputs.race == 'true' }}
+    if: ${{ !cancelled() && needs.race.outputs.race == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
@@ -656,7 +658,7 @@ jobs:
   frontend-typecheck-hosted:
     name: Frontend Typecheck
     needs: race
-    if: ${{ needs.race.outputs.race == 'true' }}
+    if: ${{ !cancelled() && needs.race.outputs.race == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
