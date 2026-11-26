@@ -44,6 +44,16 @@ export interface ChatTurn {
 /** How many earlier messages a direct chat turn carries to the daemon. */
 export const EXTERNAL_HISTORY_TURNS = 20;
 
+/** One tool the CLI is using, as the daemon reports it and the conversation shows it (ADR 0043 §5). */
+export interface ExternalActivity {
+  /** The CLI's own id for the call: the same id reports it starting and then finishing. */
+  readonly id: string;
+  readonly tool: string;
+  /** What it acts on (a path, a command, a pattern). Never a file's contents or an output. */
+  readonly summary?: string;
+  readonly status: 'running' | 'done' | 'error';
+}
+
 /** A session of the CLI that was begun in a terminal on the person's computer. */
 export interface TerminalSessionInfo {
   /** The CLI's own id: what `--resume` takes. */
@@ -121,4 +131,5 @@ export type DaemonFrame =
   | { type: 'delta'; turnId: string; text: string }
   | { type: 'end'; turnId: string; text?: string }
   | { type: 'error'; turnId: string; message: string }
+  | { type: 'activity'; turnId: string; activity: unknown }
   | { type: 'sessions'; requestId: string; sessions: readonly unknown[] };

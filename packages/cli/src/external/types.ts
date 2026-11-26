@@ -50,7 +50,18 @@ export type DaemonFrame =
   | { type: 'delta'; turnId: string; text: string }
   | { type: 'end'; turnId: string; text?: string }
   | { type: 'error'; turnId: string; message: string }
+  | { type: 'activity'; turnId: string; activity: ActivityEvent }
   | { type: 'sessions'; requestId: string; sessions: readonly TerminalSession[] };
+
+/** One tool a CLI is using (Gemies ADR 0043 §5): never a file's contents or a command's output. */
+export interface ActivityEvent {
+  /** The CLI's own id for the call: the same id reports it starting and then finishing. */
+  readonly id: string;
+  readonly tool: string;
+  /** What it acts on: a path, a command, a pattern. Short. */
+  readonly summary?: string;
+  readonly status: 'running' | 'done' | 'error';
+}
 
 export interface RuntimeRun {
   /** The full prompt: framing, history and the new message. */
@@ -60,6 +71,8 @@ export interface RuntimeRun {
   readonly write: boolean;
   readonly signal: AbortSignal;
   readonly onDelta: (text: string) => void;
+  /** Called as the CLI starts and finishes each tool it uses (Gemies ADR 0043 §5). */
+  readonly onActivity?: (activity: ActivityEvent) => void;
   /**
    * The CLI's own session to continue, when this conversation already has one. The prompt then
    * carries only the new message: the CLI remembers the rest.

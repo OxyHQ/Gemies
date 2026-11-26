@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { codexActivity } from './activity.js';
 import { codexToolArgs, toolsEnv } from './gemie-tools.js';
 import { lineSplitter, runProcess, tail } from './process.js';
 import type { ExternalRuntime } from './types.js';
@@ -10,13 +11,14 @@ import type { ExternalRuntime } from './types.js';
  *
  * `codex exec` writes the final message to `--output-last-message`, a file, which is the one stable
  * contract across versions — so the answer is read from there and arrives whole, not streamed. The
- * `--json` event stream is read only for `thread.started`, whose `thread_id` is the session that
- * `codex exec resume` continues; a line that does not parse is ignored.
+ * `--json` event stream is read for `thread.started`, whose `thread_id` is the session that
+ * `codex exec resume` continues, and for the tools it uses (`activity.ts`); a line that does not
+ * parse is ignored.
  */
 export function codexRuntime(command = 'codex'): ExternalRuntime {
   return {
     resumes: true,
-    async run({ prompt, cwd, write, signal, onDelta, resumeId, onSession, tools }) {
+    async run({ prompt, cwd, write, signal, onDelta, onActivity, resumeId, onSession, tools }) {
       const dir = await mkdtemp(join(tmpdir(), 'alia-codex-'));
       const answerFile = join(dir, 'answer.txt');
       try {
@@ -41,6 +43,7 @@ export function codexRuntime(command = 'codex'): ExternalRuntime {
             if (event.type === 'thread.started' && typeof event.thread_id === 'string') {
               onSession?.(event.thread_id);
             }
+            if (onActivity) for (const activity of codexActivity(event)) onActivity(activity);
           } catch {
             // Not an event line.
           }
