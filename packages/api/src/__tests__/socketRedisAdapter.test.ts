@@ -27,7 +27,9 @@ const { createAdapter, io, redis } = H;
 vi.mock('@socket.io/redis-adapter', () => ({ createAdapter: H.createAdapter }));
 // A constructor, not an arrow: `new Server(...)` is how socket.ts builds it.
 vi.mock('socket.io', () => ({
-  Server: vi.fn(() => H.io),
+  Server: vi.fn(function () {
+    return H.io;
+  }),
 }));
 vi.mock('../lib/redis.js', () => ({
   getRedisClient: () => H.redis.pub,
