@@ -7,7 +7,8 @@ import { APP_ROOT } from '@/shared/testing/app-root';
 /**
  * Twelve packages left the app manifest, and stay gone — seventeen since the
  * LiveKit call transport followed them, eighteen since device speech
- * recognition did (ADR 0017).
+ * recognition did (ADR 0017), and NativeWind with its Tailwind compile once nothing wrote
+ * `className`.
  *
  * They were removed by an import-based audit (#608 §11) that checked
  * every manifest entry against the specifiers the source really imports AND
@@ -66,6 +67,13 @@ const REMOVED = [
   // of 2026-11-11.
   ['@oxy.so/bloom-avatar-', 'native'],
   ['expo-', 'gl'],
+  // NativeWind and the Tailwind it compiled: the app styles through React Native styles and
+  // Bloom's tokens (Bloom 23 takes no `className`), and app-preset applies no NativeWind to an
+  // app that does not list it.
+  ['native', 'wind'],
+  ['react-native-', 'css'],
+  ['tailwind', 'css'],
+  ['@tailwindcss/', 'postcss'],
 ].map((parts) => parts.join(''));
 
 /** Every source file of the app, minus the installed packages and this gate. */
