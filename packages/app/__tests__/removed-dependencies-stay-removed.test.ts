@@ -66,6 +66,11 @@ const REMOVED = [
   // of 2026-11-11.
   ['@oxy.so/bloom-avatar-', 'native'],
   ['expo-', 'gl'],
+  // React Query's persisters: Services 15 keeps the account's data in bloom-data (one store per
+  // account, with its own durable copy), the app's React Query is memory only, and what must
+  // survive a restart is a bloom-data answer (`src/shared/api/account-data.ts`).
+  ['@tanstack/query-async-storage-', 'persister'],
+  ['@tanstack/react-query-persist-', 'client'],
 ].map((parts) => parts.join(''));
 
 /** Every source file of the app, minus the installed packages and this gate. */
