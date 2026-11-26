@@ -529,7 +529,9 @@ describe('a turn with an external agent costs nothing, so credits never refuse i
     const { ProductCreditAuthorityUnavailableError } = await import(
       '../../product-credit-access.js'
     );
-    reserveCredits.mockRejectedValue(new ProductCreditAuthorityUnavailableError());
+    reserveCredits.mockRejectedValue(
+      new ProductCreditAuthorityUnavailableError(new Error('oxy is down')),
+    );
     const { ctx, captured } = await turn();
     expect(captured.status).toBeNull();
     expect(ctx).not.toBeNull();
