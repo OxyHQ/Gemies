@@ -16,7 +16,7 @@ function short(value: unknown): string | undefined {
 }
 
 /** The part of a Claude Code tool's input that says what it acts on. */
-function claudeTarget(input: unknown): string | undefined {
+export function claudeTarget(input: unknown): string | undefined {
   if (input === null || typeof input !== 'object') return undefined;
   const i = input as Record<string, unknown>;
   return (

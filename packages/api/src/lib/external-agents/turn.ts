@@ -1,6 +1,10 @@
 import { getDb } from '../../db/index.js';
 import { hasExternalLink } from '../../db/agents/externalAgentRepository.js';
-import type { ChatTurn, ExternalActivity } from '../../domain/external-agent.js';
+import type {
+  ChatTurn,
+  ExternalActivity,
+  ExternalApprovalEvent,
+} from '../../domain/external-agent.js';
 import { log } from '../logger.js';
 
 export interface ExternalTurnResult {
@@ -31,6 +35,7 @@ export async function runExternalAgentTurn(input: {
   resumeId?: string;
   onTextDelta?: (text: string) => void;
   onActivity?: (activity: ExternalActivity) => void;
+  onApproval?: (event: ExternalApprovalEvent) => void;
   timeoutMs?: number;
   signal?: AbortSignal;
 }): Promise<ExternalTurnResult> {
@@ -47,6 +52,7 @@ export async function runExternalAgentTurn(input: {
       ...(input.resumeId ? { resumeId: input.resumeId } : {}),
       ...(input.onTextDelta ? { onDelta: input.onTextDelta } : {}),
       ...(input.onActivity ? { onActivity: input.onActivity } : {}),
+      ...(input.onApproval ? { onApproval: input.onApproval } : {}),
       ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
       ...(input.signal ? { signal: input.signal } : {}),
     });

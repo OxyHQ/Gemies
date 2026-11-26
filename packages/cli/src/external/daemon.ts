@@ -1,3 +1,9 @@
+import { randomUUID } from 'node:crypto';
+import {
+  startApprovalServer,
+  type ApprovalDecision,
+  type ApprovalServer,
+} from './approval-server.js';
 import { framePrompt } from './prompt.js';
 import { resolveSessionCwd } from './roots.js';
 import { listTerminalSessions, SESSION_ID } from './terminal-sessions.js';
@@ -31,9 +37,14 @@ export interface DaemonOptions {
    * each turn, so allowing one needs no restart. Omitted: only `cwd` and what is under it.
    */
   readonly allowedRoots?: () => readonly string[];
+  /** How long the person has to answer a permission question; later, it is denied. */
+  readonly approvalTimeoutMs?: number;
   /** Consecutive refused handshakes before giving up (a network failure never counts). */
   readonly maxAuthFailures?: number;
 }
+
+/** The person has this long to answer the CLI's question before it is denied. */
+const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 
 type DaemonExit =
   | { reason: 'stopped' }
@@ -65,6 +76,15 @@ export function startDaemon(options: DaemonOptions): Daemon {
   let authFailures = 0;
   let reconnectTimer: NodeJS.Timeout | undefined;
   const turns = new Map<string, AbortController>();
+  /** What this Gemies supports, from its `auth-ok` (an older one says nothing). */
+  let serverFeatures = new Set<string>();
+  /** Questions the CLI asked that the person has not answered yet. */
+  const pendingApprovals = new Map<
+    string,
+    { turnId: string; resolve: (decision: ApprovalDecision) => void }
+  >();
+  let approvalServer: Promise<ApprovalServer> | undefined;
+  const approvalTimeoutMs = options.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
   /** One turn at a time per folder: two CLI runs in one directory would trample each other. */
   const queues = new Map<string, Promise<void>>();
 
@@ -78,8 +98,19 @@ export function startDaemon(options: DaemonOptions): Daemon {
     stopped = true;
     clearTimeout(reconnectTimer);
     for (const controller of turns.values()) controller.abort();
+    denyApprovals();
+    void approvalServer?.then((server) => server.close()).catch(() => undefined);
     socket?.close();
     finish(reason);
+  };
+
+  /** Denies every question still waiting (the connection dropped, the turn ended, we are stopping). */
+  const denyApprovals = (turnId?: string): void => {
+    for (const [requestId, pending] of pendingApprovals) {
+      if (turnId !== undefined && pending.turnId !== turnId) continue;
+      pendingApprovals.delete(requestId);
+      pending.resolve('deny');
+    }
   };
 
   const send = (ws: WebSocket, frame: DaemonFrame) => {
@@ -102,6 +133,7 @@ export function startDaemon(options: DaemonOptions): Daemon {
   ): Promise<void> => {
     const controller = new AbortController();
     turns.set(frame.turnId, controller);
+    let approvalRun: ReturnType<ApprovalServer['register']> | undefined;
     try {
       const cwd = turnCwd(frame);
       if (typeof cwd !== 'string') {
@@ -109,6 +141,47 @@ export function startDaemon(options: DaemonOptions): Daemon {
         send(ws, { type: 'error', turnId: frame.turnId, message: cwd.message });
         return;
       }
+      // The person answers the CLI's permission questions in Gemies when both ends can carry them.
+      // A read-only agent never asks: it was told it cannot change anything.
+      approvalRun =
+        options.write && options.runtime.approvals && serverFeatures.has('approvals')
+          ? await (approvalServer ??= startApprovalServer()).then((server) =>
+              server.register(
+                (question) =>
+                  new Promise<ApprovalDecision>((resolve) => {
+                    const requestId = randomUUID();
+                    const resolved = (decision: 'allow' | 'deny' | 'expired') =>
+                      send(ws, {
+                        type: 'approval-resolved',
+                        turnId: frame.turnId,
+                        requestId,
+                        decision,
+                      });
+                    const timer = setTimeout(() => {
+                      pendingApprovals.delete(requestId);
+                      resolved('expired');
+                      resolve('deny');
+                    }, approvalTimeoutMs);
+                    pendingApprovals.set(requestId, {
+                      turnId: frame.turnId,
+                      resolve: (decision) => {
+                        clearTimeout(timer);
+                        resolved(decision);
+                        resolve(decision);
+                      },
+                    });
+                    send(ws, {
+                      type: 'approval-request',
+                      turnId: frame.turnId,
+                      requestId,
+                      tool: question.tool.slice(0, 120),
+                      ...(question.summary ? { summary: question.summary } : {}),
+                      expiresAt: new Date(Date.now() + approvalTimeoutMs).toISOString(),
+                    });
+                  }),
+              ),
+            )
+          : undefined;
       log(`turn ${frame.turnId.slice(0, 8)}: started`);
       const sessionKey =
         options.sessions && options.runtime.resumes && frame.threadKey
@@ -128,6 +201,7 @@ export function startDaemon(options: DaemonOptions): Daemon {
           cwd,
           write: options.write,
           signal: controller.signal,
+          ...(approvalRun ? { approvals: { url: approvalRun.url, token: approvalRun.token } } : {}),
           ...(resumeId ? { resumeId } : {}),
           ...(options.toolsUrl
             ? {
@@ -177,6 +251,8 @@ export function startDaemon(options: DaemonOptions): Daemon {
       log(`turn ${frame.turnId.slice(0, 8)}: failed — ${message}`);
       send(ws, { type: 'error', turnId: frame.turnId, message });
     } finally {
+      denyApprovals(frame.turnId);
+      approvalRun?.dispose();
       turns.delete(frame.turnId);
     }
   };
@@ -201,6 +277,7 @@ export function startDaemon(options: DaemonOptions): Daemon {
       }
       switch (frame.type) {
         case 'auth-ok':
+          serverFeatures = new Set(Array.isArray(frame.features) ? frame.features : []);
           authenticated = true;
           authFailures = 0;
           backoff = minBackoff;
@@ -237,6 +314,14 @@ export function startDaemon(options: DaemonOptions): Daemon {
               : [],
           });
           break;
+        case 'approval': {
+          const pending = pendingApprovals.get(frame.requestId);
+          if (pending) {
+            pendingApprovals.delete(frame.requestId);
+            pending.resolve(frame.decision === 'allow' ? 'allow' : 'deny');
+          }
+          break;
+        }
         case 'cancel':
           turns.get(frame.turnId)?.abort();
           break;
@@ -253,6 +338,7 @@ export function startDaemon(options: DaemonOptions): Daemon {
       gone = true;
       if (socket === ws) socket = null;
       for (const controller of turns.values()) controller.abort();
+      denyApprovals();
       if (stopped) return;
       log('disconnected');
       // Only a refusal counts toward giving up. An unreachable Gemies (a machine just booted, a

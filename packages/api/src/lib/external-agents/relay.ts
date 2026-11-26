@@ -22,12 +22,15 @@ import {
   markExternalLinkConnected,
 } from '../../db/agents/externalAgentRepository.js';
 import {
+  EXTERNAL_APPROVAL_REQUEST_ID,
   EXTERNAL_CLI_SESSION_ID,
   EXTERNAL_SESSION_CWD_MAX,
   EXTERNAL_TERMINAL_SESSIONS_MAX,
   EXTERNAL_TURN_TIMEOUT_MS,
   type ChatTurn,
   type ExternalActivity,
+  type ExternalApprovalDecision,
+  type ExternalApprovalEvent,
   type TerminalSessionInfo,
   type DaemonFrame,
   type ServerFrame,
@@ -46,6 +49,8 @@ const AUTH_TIMEOUT_MS = 5_000;
 const HEARTBEAT_INTERVAL_MS = 25_000;
 /** How long an instance waits for the one that holds the socket to take a turn it published. */
 const REMOTE_ACK_TIMEOUT_MS = 4_000;
+/** What this Gemies tells a daemon it can carry, beyond the first protocol (ADR 0043 §5). */
+const SERVER_FEATURES = ['approvals'];
 /** How long a daemon has to list the sessions its CLI has on disk. */
 const LIST_SESSIONS_TIMEOUT_MS = 10_000;
 
@@ -62,6 +67,8 @@ export interface ExternalTurnInput {
   onDelta?: (text: string) => void;
   /** Called as the CLI starts and finishes each tool it uses (ADR 0043 §5). */
   onActivity?: (activity: ExternalActivity) => void;
+  /** Called when the CLI asks the person for permission, and when that question closes. */
+  onApproval?: (event: ExternalApprovalEvent) => void;
   timeoutMs?: number;
   signal?: AbortSignal;
 }
@@ -86,6 +93,7 @@ interface PendingTurn {
   readonly agentId: string;
   readonly onDelta?: (text: string) => void;
   readonly onActivity?: (activity: ExternalActivity) => void;
+  readonly onApproval?: (event: ExternalApprovalEvent) => void;
   readonly resolve: (result: { response: string }) => void;
   readonly reject: (error: Error) => void;
   readonly timer: NodeJS.Timeout;
@@ -106,6 +114,7 @@ type TurnEvent =
   | { type: 'ack' }
   | { type: 'delta'; text: string }
   | { type: 'activity'; activity: ExternalActivity }
+  | { type: 'approval'; event: ExternalApprovalEvent }
   | { type: 'end'; text: string }
   | { type: 'error'; message: string; offline?: boolean }
   | { type: 'sessions'; sessions: TerminalSessionInfo[] };
@@ -122,6 +131,7 @@ type Command =
       timeoutMs?: number;
     }
   | { kind: 'list-sessions'; requestId: string }
+  | { kind: 'approval'; requestId: string; decision: ExternalApprovalDecision }
   | { kind: 'cancel'; turnId: string }
   /** The link was revoked, or its credential replaced, on another instance: drop the socket held here. */
   | { kind: 'revoke' }
@@ -141,6 +151,8 @@ export interface ExternalAgentRelay {
   readonly route: WebSocketRoute;
   /** Runs one turn on whichever instance holds the agent's socket. */
   runTurn(input: ExternalTurnInput): Promise<{ response: string }>;
+  /** The person's answer to a permission question, to the daemon that asked, wherever it is connected. */
+  answerApproval(agentId: string, requestId: string, decision: ExternalApprovalDecision): void;
   /** The sessions the agent's CLI has on its computer, wherever the daemon is connected. */
   listSessions(agentId: string): Promise<TerminalSessionInfo[]>;
   /** True when it is connected to any instance. */
@@ -153,6 +165,34 @@ export interface ExternalAgentRelay {
  * What a daemon says its CLI has. It is the person's own computer, but the answer is data from the
  * wire: every entry is checked, the rest dropped, and the list capped, before anything reads it.
  */
+const isDecision = (value: unknown): value is ExternalApprovalDecision =>
+  value === 'allow' || value === 'deny';
+
+/** A permission question or its closing, from the wire: checked and shortened before anyone reads it. */
+export function sanitizeApproval(frame: {
+  type: 'approval-request' | 'approval-resolved';
+  [key: string]: unknown;
+}): ExternalApprovalEvent | null {
+  const { requestId } = frame;
+  if (typeof requestId !== 'string' || !EXTERNAL_APPROVAL_REQUEST_ID.test(requestId)) return null;
+  if (frame.type === 'approval-resolved') {
+    const { decision } = frame;
+    return decision === 'allow' || decision === 'deny' || decision === 'expired'
+      ? { kind: 'resolved', requestId, decision }
+      : null;
+  }
+  const { tool, summary, expiresAt } = frame;
+  if (typeof tool !== 'string' || tool === '') return null;
+  if (typeof expiresAt !== 'string' || Number.isNaN(Date.parse(expiresAt))) return null;
+  return {
+    kind: 'request',
+    requestId,
+    tool: tool.slice(0, 120),
+    ...(typeof summary === 'string' && summary !== '' ? { summary: summary.slice(0, 200) } : {}),
+    expiresAt: new Date(expiresAt).toISOString(),
+  };
+}
+
 export function sanitizeActivity(raw: unknown): ExternalActivity | null {
   if (raw === null || typeof raw !== 'object') return null;
   const { id, tool, summary, status } = raw as Record<string, unknown>;
@@ -334,6 +374,7 @@ export function createExternalAgentRelay(
         agentId: input.agentId,
         ...(input.onDelta ? { onDelta: input.onDelta } : {}),
         ...(input.onActivity ? { onActivity: input.onActivity } : {}),
+        ...(input.onApproval ? { onApproval: input.onApproval } : {}),
         resolve,
         reject,
         timer,
@@ -404,6 +445,16 @@ export function createExternalAgentRelay(
         );
       return;
     }
+    if (command.kind === 'approval') {
+      if (typeof command.requestId === 'string' && isDecision(command.decision)) {
+        send(connection.ws, {
+          type: 'approval',
+          requestId: command.requestId,
+          decision: command.decision,
+        });
+      }
+      return;
+    }
     if (command.kind === 'cancel') {
       remoteTurns.get(command.turnId)?.abort();
       return;
@@ -424,6 +475,7 @@ export function createExternalAgentRelay(
       ...(command.timeoutMs === undefined ? {} : { timeoutMs: command.timeoutMs }),
       onDelta: (text) => publishEvent(command.turnId, { type: 'delta', text }),
       onActivity: (activity) => publishEvent(command.turnId, { type: 'activity', activity }),
+      onApproval: (event) => publishEvent(command.turnId, { type: 'approval', event }),
     })
       .then(({ response }) => publishEvent(command.turnId, { type: 'end', text: response }))
       .catch((err: unknown) =>
@@ -508,6 +560,8 @@ export function createExternalAgentRelay(
             clearTimeout(ackTimer);
           } else if (event.type === 'activity') {
             input.onActivity?.(event.activity);
+          } else if (event.type === 'approval') {
+            input.onApproval?.(event.event);
           } else if (event.type === 'delta') {
             text += event.text;
             input.onDelta?.(event.text);
@@ -640,7 +694,7 @@ export function createExternalAgentRelay(
       announce(frame.agentId);
       // Its owner's surfaces show it online now (`presence`, `docs/realtime.mdx`).
       signalAccount(link.ownerOxyUserId, 'presence', { agentId: frame.agentId, online: true });
-      send(ws, { type: 'auth-ok', agentId: frame.agentId });
+      send(ws, { type: 'auth-ok', agentId: frame.agentId, features: SERVER_FEATURES });
       void markExternalLinkConnected(getDb(), frame.agentId).catch((err: unknown) =>
         log.general.warn({ err }, 'Could not stamp external agent connection'),
       );
@@ -682,6 +736,15 @@ export function createExternalAgentRelay(
         const pending = ownedPending(agentId, frame.turnId);
         const activity = pending?.onActivity ? sanitizeActivity(frame.activity) : null;
         if (activity) pending?.onActivity?.(activity);
+        break;
+      }
+      case 'approval-request':
+      case 'approval-resolved': {
+        const pending = ownedPending(agentId, frame.turnId);
+        const event = pending?.onApproval
+          ? sanitizeApproval(frame as unknown as Parameters<typeof sanitizeApproval>[0])
+          : null;
+        if (event) pending?.onApproval?.(event);
         break;
       }
       case 'end': {
@@ -806,6 +869,16 @@ export function createExternalAgentRelay(
       return Promise.reject(new ExternalAgentOfflineError());
     },
 
+    answerApproval(agentId, requestId, decision) {
+      const local = connections.get(agentId);
+      if (local && local.ws.readyState === WebSocket.OPEN) {
+        send(local.ws, { type: 'approval', requestId, decision });
+        return;
+      }
+      // The socket may be held by another instance: it sends the answer on.
+      publishCommand(agentId, { kind: 'approval', requestId, decision });
+    },
+
     async isReachable(agentId) {
       if (connections.get(agentId)?.ws.readyState === WebSocket.OPEN) return true;
       if (!bus) return false;
@@ -868,6 +941,15 @@ export async function isExternalAgentReachable(agentId: string): Promise<boolean
 /** Hands one turn to the agent's daemon, wherever it is connected, and resolves with the full answer. */
 export function runExternalTurn(input: ExternalTurnInput): Promise<{ response: string }> {
   return current ? current.runTurn(input) : Promise.reject(new ExternalAgentOfflineError());
+}
+
+/** The person's answer to a permission question, to the daemon that asked (ADR 0043 §5). */
+export function answerExternalApproval(
+  agentId: string,
+  requestId: string,
+  decision: ExternalApprovalDecision,
+): void {
+  current?.answerApproval(agentId, requestId, decision);
 }
 
 /** The sessions the agent's CLI has on its computer, begun in a terminal (ADR 0043 §4). */

@@ -3,6 +3,7 @@
  * OxyHQ/Gemies' `packages/api/src/domain/external-agent.ts`; the two are kept boring on purpose.
  */
 
+import type { RunApprovals } from './approval-server.js';
 import type { GemieTools } from './gemie-tools.js';
 import type { TerminalSession } from './terminal-sessions.js';
 
@@ -19,7 +20,12 @@ export interface ChatTurn {
 }
 
 export type ServerFrame =
-  | { type: 'auth-ok'; agentId: string }
+  | {
+      type: 'auth-ok';
+      agentId: string;
+      /** What this Gemies can do beyond the first protocol; absent on one that predates them. */
+      features?: string[];
+    }
   | { type: 'auth-error'; reason: string }
   | {
       type: 'turn';
@@ -42,6 +48,8 @@ export type ServerFrame =
   /** Asks which sessions the CLI already has here, in the folders this computer allows. */
   | { type: 'list-sessions'; requestId: string }
   | { type: 'cancel'; turnId: string }
+  /** The person's answer to an `approval-request` (Gemies ADR 0043 §5). */
+  | { type: 'approval'; requestId: string; decision: 'allow' | 'deny' }
   | { type: 'revoked' };
 
 export type DaemonFrame =
@@ -51,6 +59,22 @@ export type DaemonFrame =
   | { type: 'end'; turnId: string; text?: string }
   | { type: 'error'; turnId: string; message: string }
   | { type: 'activity'; turnId: string; activity: ActivityEvent }
+  /** The CLI asks permission to use a tool; the turn waits for the person's `approval`. */
+  /** The question was answered, or ran out of time: the conversation can close its card. */
+  | {
+      type: 'approval-resolved';
+      turnId: string;
+      requestId: string;
+      decision: 'allow' | 'deny' | 'expired';
+    }
+  | {
+      type: 'approval-request';
+      turnId: string;
+      requestId: string;
+      tool: string;
+      summary?: string;
+      expiresAt: string;
+    }
   | { type: 'sessions'; requestId: string; sessions: readonly TerminalSession[] };
 
 /** One tool a CLI is using (Gemies ADR 0043 §5): never a file's contents or a command's output. */
@@ -74,6 +98,11 @@ export interface RuntimeRun {
   /** Called as the CLI starts and finishes each tool it uses (Gemies ADR 0043 §5). */
   readonly onActivity?: (activity: ActivityEvent) => void;
   /**
+   * The local server that asks the person (through Gemies) when the CLI needs permission. Only for a
+   * runtime that has `approvals`; without it a request the CLI was not allowed to make is refused.
+   */
+  readonly approvals?: RunApprovals;
+  /**
    * The CLI's own session to continue, when this conversation already has one. The prompt then
    * carries only the new message: the CLI remembers the rest.
    */
@@ -88,6 +117,8 @@ export interface RuntimeRun {
 export interface ExternalRuntime {
   /** Whether this CLI can continue a session by id (`RuntimeRun.resumeId`). */
   readonly resumes: boolean;
+  /** Whether this CLI can ask the person for permission through `RuntimeRun.approvals`. */
+  readonly approvals?: boolean;
   /** Resolves with the agent's full answer. Rejects with a message fit to show the person. */
   run(input: RuntimeRun): Promise<string>;
 }

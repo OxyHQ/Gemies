@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  claudeMcpArgs,
   claudeToolArgs,
   codexToolArgs,
   gemieToolsUrl,
@@ -106,5 +107,38 @@ describe('gemie tools for a run', () => {
         'GEMIES_CONVERSATION',
       );
     });
+  });
+});
+
+describe('claudeMcpArgs', () => {
+  const tools = { url: 'https://api.gemies.ai/mcp/agents/a1', credential: 'gxa_secret' };
+  const approvals = { url: 'http://127.0.0.1:41000/approve/abc', token: 'tok_secret' };
+
+  it('is empty when the run has neither tools nor a way to ask', () => {
+    expect(claudeMcpArgs({})).toEqual([]);
+  });
+
+  it('adds the local approval server as the permission prompt tool, beside Gemies’ tools', () => {
+    const args = claudeMcpArgs({ tools, approvals });
+    expect(args.slice(0, 2)).toEqual(['--permission-prompt-tool', 'mcp__gemies_approval__approve']);
+    const config = JSON.parse(args[args.indexOf('--mcp-config') + 1]);
+    expect(Object.keys(config.mcpServers)).toEqual(['gemies', 'gemies_approval']);
+    expect(config.mcpServers.gemies_approval).toEqual({
+      type: 'http',
+      url: approvals.url,
+      headers: { Authorization: 'Bearer ${GEMIES_APPROVAL_TOKEN}' },
+    });
+    // `--allowedTools` stays last, and names only Gemies' tools.
+    expect(args.slice(-2)).toEqual(['--allowedTools', 'mcp__gemies']);
+  });
+
+  it('never puts a token on the command line', () => {
+    expect(JSON.stringify(claudeMcpArgs({ tools, approvals }))).not.toMatch(/secret/);
+  });
+
+  it('can ask without Gemies’ tools', () => {
+    const args = claudeMcpArgs({ approvals });
+    expect(args).toContain('--permission-prompt-tool');
+    expect(args).not.toContain('--allowedTools');
   });
 });

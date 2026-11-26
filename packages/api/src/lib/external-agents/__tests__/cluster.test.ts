@@ -152,6 +152,37 @@ describe('turns across instances', () => {
     expect(seen).toEqual([{ id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'running' }]);
   });
 
+  it('carries a permission question to the instance that asked, and the answer back to the daemon', async () => {
+    const { ws, frames } = await daemonOnA();
+    const events: unknown[] = [];
+    const turn = b.runTurn({
+      agentId: 'agent-1',
+      task: 'a',
+      history: [],
+      onApproval: (e) => events.push(e),
+    });
+    await waitFor(() => frames.some((f) => f.type === 'turn'));
+    const { turnId } = frames.find((f) => f.type === 'turn') as { turnId: string };
+    const requestId = '11111111-2222-4333-8444-555555555555';
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    ws.send(
+      JSON.stringify({ type: 'approval-request', turnId, requestId, tool: 'Bash', expiresAt }),
+    );
+    await waitFor(() => events.length === 1);
+    expect(events[0]).toEqual({ kind: 'request', requestId, tool: 'Bash', expiresAt });
+
+    // The person answers on B; the daemon is held by A.
+    b.answerApproval('agent-1', requestId, 'deny');
+    await waitFor(() => frames.some((f) => f.type === 'approval'));
+    expect(frames.find((f) => f.type === 'approval')).toEqual({
+      type: 'approval',
+      requestId,
+      decision: 'deny',
+    });
+    ws.send(JSON.stringify({ type: 'end', turnId, text: 'ok' }));
+    await turn;
+  });
+
   it('lists a daemon’s sessions from another instance than the one holding it', async () => {
     const { ws, frames } = await daemonOnA();
     const listing = b.listSessions('agent-1');

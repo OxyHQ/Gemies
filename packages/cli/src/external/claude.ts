@@ -1,5 +1,6 @@
 import { claudeActivity } from './activity.js';
-import { claudeToolArgs, toolsEnv } from './gemie-tools.js';
+import { APPROVAL_TOKEN_ENV } from './approval-server.js';
+import { claudeMcpArgs, toolsEnv } from './gemie-tools.js';
 import { lineSplitter, runProcess, tail } from './process.js';
 import type { ActivityEvent, ExternalRuntime } from './types.js';
 
@@ -10,7 +11,19 @@ import type { ActivityEvent, ExternalRuntime } from './types.js';
 export function claudeRuntime(command = 'claude'): ExternalRuntime {
   return {
     resumes: true,
-    async run({ prompt, cwd, write, signal, onDelta, onActivity, resumeId, onSession, tools }) {
+    approvals: true,
+    async run({
+      prompt,
+      cwd,
+      write,
+      signal,
+      onDelta,
+      onActivity,
+      resumeId,
+      onSession,
+      tools,
+      approvals,
+    }) {
       let streamed = '';
       const openTools = new Map<string, ActivityEvent>();
       let result: { text: string; isError: boolean } | null = null;
@@ -58,10 +71,17 @@ export function claudeRuntime(command = 'claude'): ExternalRuntime {
           write ? 'acceptEdits' : 'default',
           ...(resumeId ? ['--resume', resumeId] : []),
           // Last: `--allowedTools` takes every argument after it, and the prompt is on stdin.
-          ...(tools ? claudeToolArgs(tools) : []),
+          ...claudeMcpArgs({ ...(tools ? { tools } : {}), ...(approvals ? { approvals } : {}) }),
         ],
         cwd,
-        ...(tools ? { env: toolsEnv(tools) } : {}),
+        ...(tools || approvals
+          ? {
+              env: {
+                ...(tools ? toolsEnv(tools) : process.env),
+                ...(approvals ? { [APPROVAL_TOKEN_ENV]: approvals.token } : {}),
+              },
+            }
+          : {}),
         stdin: prompt,
         signal,
         onStdout: lines.push,

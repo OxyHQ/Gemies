@@ -6,7 +6,7 @@
  * tools beside the answer; a turn that fails writes no result for a call it never finished.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ExternalActivity } from '../../../domain/external-agent.js';
+import type { ExternalActivity, ExternalApprovalEvent } from '../../../domain/external-agent.js';
 
 const state = vi.hoisted(() => ({
   session: undefined as { cwd: string; cliSessionId: string | null } | undefined,
@@ -180,5 +180,52 @@ describe('serveExternalDirectTurn', () => {
     expect(answered).toBe(false);
     expect(frames(res).some((f) => f.event === 'alia.tool_result')).toBe(false);
     expect(state.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('serveExternalDirectTurn: permission questions (ADR 0043 §5)', () => {
+  const REQUEST = '11111111-2222-4333-8444-555555555555';
+  const withApprovals = (events: ExternalApprovalEvent[]) =>
+    state.run.mockImplementation(
+      async (input: { onApproval?: (e: ExternalApprovalEvent) => void }) => {
+        for (const e of events) input.onApproval?.(e);
+        return { response: 'all done', tokensUsed: 0, creditsCharged: 0 };
+      },
+    );
+
+  it('writes the question and its closing as the two events the conversation turns into a card', async () => {
+    const expiresAt = '2026-11-26T12:00:00.000Z';
+    withApprovals([
+      { kind: 'request', requestId: REQUEST, tool: 'Bash', summary: 'bun test', expiresAt },
+      { kind: 'resolved', requestId: REQUEST, decision: 'allow' },
+    ]);
+    const res = fakeResponse();
+    await serve(res);
+    expect(frames(res).filter((f) => f.event?.startsWith('alia.approval'))).toEqual([
+      {
+        event: 'alia.approval_request',
+        data: {
+          eventVersion: 1,
+          requestId: REQUEST,
+          agentId: 'agent-1',
+          tool: 'Bash',
+          summary: 'bun test',
+          expiresAt,
+        },
+      },
+      {
+        event: 'alia.approval_resolved',
+        data: { eventVersion: 1, requestId: REQUEST, decision: 'allow' },
+      },
+    ]);
+  });
+
+  it('writes nothing when the response is not a stream, or has ended', async () => {
+    withApprovals([
+      { kind: 'request', requestId: REQUEST, tool: 'Bash', expiresAt: '2026-11-26T12:00:00.000Z' },
+    ]);
+    const res = fakeResponse();
+    await serve(res, { stream: false });
+    expect(frames(res).some((f) => f.event?.startsWith('alia.approval'))).toBe(false);
   });
 });

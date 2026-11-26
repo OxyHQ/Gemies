@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { makeChunk, writeContentChunk, writeStopChunk } from '../streaming-helpers.js';
-import type { ExternalActivity } from '../../domain/external-agent.js';
+import type { ExternalActivity, ExternalApprovalEvent } from '../../domain/external-agent.js';
 import { buildCompletionResponse } from '../chat/response-shapes.js';
 import type { SSEWriter } from '../chat/sse-writer.js';
 import { saveConversationResult, type LifecycleContext } from '../chat-lifecycle.js';
@@ -121,6 +121,32 @@ export async function serveExternalDirectTurn(input: {
     }
   };
 
+  // The CLI asking the person for permission, and that question closing: two named events the
+  // conversation turns into a card the person answers (`POST /agents/external/:id/approvals/:request`).
+  const onApproval = (event: ExternalApprovalEvent): void => {
+    if (!input.stream || res.writableEnded) return;
+    if (event.kind === 'request') {
+      res.write(
+        `event: alia.approval_request\ndata: ${JSON.stringify({
+          eventVersion: 1,
+          requestId: event.requestId,
+          agentId: input.agentId,
+          tool: event.tool,
+          ...(event.summary ? { summary: event.summary } : {}),
+          expiresAt: event.expiresAt,
+        })}\n\n`,
+      );
+      return;
+    }
+    res.write(
+      `event: alia.approval_resolved\ndata: ${JSON.stringify({
+        eventVersion: 1,
+        requestId: event.requestId,
+        decision: event.decision,
+      })}\n\n`,
+    );
+  };
+
   const result = await runExternalAgentTurn({
     agentId: input.agentId,
     task: input.reactionContext ? `${task}\n\n${input.reactionContext}` : task,
@@ -130,6 +156,7 @@ export async function serveExternalDirectTurn(input: {
     ...(session?.cliSessionId ? { resumeId: session.cliSessionId } : {}),
     signal: input.signal,
     onActivity,
+    onApproval,
     ...(input.stream
       ? {
           onTextDelta: (text: string) => {
