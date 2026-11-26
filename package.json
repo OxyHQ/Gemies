@@ -11,6 +11,7 @@
     "packages/app",
     "packages/sdk",
     "packages/server",
+    "packages/cli",
     "packages/integrations",
     "packages/gemies-os",
     "packages/gemies-os-protocol"

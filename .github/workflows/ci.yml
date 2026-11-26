@@ -405,6 +405,10 @@ jobs:
       - name: Check SDK entry types
         run: bun run --filter @gemies/sdk check:entry-types
 
+      # The daemon a person's computer runs (`gemies connect`, ADR 0043).
+      - name: Typecheck and test the Gemies CLI
+        run: bun run --filter @gemies/cli typecheck && bun run --filter @gemies/cli test
+
       - name: Typecheck server SDK
         run: bun run --filter @gemies/server typecheck
 
