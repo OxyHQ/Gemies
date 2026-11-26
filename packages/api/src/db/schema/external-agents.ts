@@ -118,6 +118,8 @@ export const externalAgentSessions = pgTable(
     agentId: text().notNull(),
     ownerOxyUserId: text().notNull(),
     cwd: text().notNull(),
+    /** The CLI's own id of a session begun in a terminal that this conversation continues (§4). */
+    cliSessionId: text(),
     createdAt: createdAt(),
   },
   (t) => [index('external_agent_sessions_agent_idx').on(t.agentId, t.createdAt)],

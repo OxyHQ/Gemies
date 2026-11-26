@@ -175,7 +175,13 @@ export async function recordExternalToolCall(
  */
 export async function openExternalSession(
   db: ApiDatabase,
-  input: { conversationId: string; agentId: string; ownerOxyUserId: string; cwd: string },
+  input: {
+    conversationId: string;
+    agentId: string;
+    ownerOxyUserId: string;
+    cwd: string;
+    cliSessionId?: string;
+  },
 ): Promise<{ cwd: string; agentId: string; ownerOxyUserId: string }> {
   await db.insert(externalAgentSessions).values(input).onConflictDoNothing();
   const [row] = await db
@@ -191,13 +197,16 @@ export async function openExternalSession(
   return row as { cwd: string; agentId: string; ownerOxyUserId: string };
 }
 
-/** The folder of a conversation's session with this agent, or `undefined` when it has none. */
-export async function findExternalSessionCwd(
+/**
+ * The folder, and the terminal session if it continues one, of a conversation's session with this
+ * agent; `undefined` when it has none.
+ */
+export async function findExternalSession(
   db: ApiDatabase,
   input: { conversationId: string; agentId: string },
-): Promise<string | undefined> {
+): Promise<{ cwd: string; cliSessionId: string | null } | undefined> {
   const [row] = await db
-    .select({ cwd: externalAgentSessions.cwd })
+    .select({ cwd: externalAgentSessions.cwd, cliSessionId: externalAgentSessions.cliSessionId })
     .from(externalAgentSessions)
     .where(
       and(
@@ -206,7 +215,7 @@ export async function findExternalSessionCwd(
       ),
     )
     .limit(1);
-  return row?.cwd;
+  return row;
 }
 
 /** The folders this agent's sessions worked in most recently, newest first, once each. */

@@ -279,6 +279,7 @@ export async function serve(): Promise<void> {
       agentId: agent.agentId,
       agentName: agent.name,
       runtime: runtimeFor(agent.cli),
+      cli: agent.cli,
       sessions: sessionStore(),
       allowedRoots,
       cwd: agent.cwd ?? homedir(),
