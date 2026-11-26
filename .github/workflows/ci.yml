@@ -1131,10 +1131,10 @@ jobs:
     if: always()
     needs:
       - changes
+      # Not race-finish nor race-2-finish: their reapers run on seldon-ci-light
+      # and only follow the cancellation, so needing them would wait on Seldon.
       - race
-      - race-finish
       - race-2
-      - race-2-finish
       - deploy-script-test
       - lint-and-test
       - lint-and-test-hosted
@@ -1186,7 +1186,7 @@ jobs:
           fi
 
           # The race's own jobs: skipped when not needed, never failed.
-          for job in race race-finish race-2 race-2-finish; do
+          for job in race race-2; do
             r="$(result "$job")"
             case "$r" in
               success | skipped) ;;
