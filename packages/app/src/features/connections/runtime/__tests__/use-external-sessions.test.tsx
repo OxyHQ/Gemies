@@ -9,7 +9,9 @@ vi.mock('@gemies/sdk/runtime', () => ({
   useCreateConversation: () => ({ run: api.createConversation, isPending: false }),
 }));
 
-const { isSessionFolder, useExternalSessions } = await import('../use-external-sessions');
+const { isAllowedFolder, isSessionFolder, useExternalSessions } = await import(
+  '../use-external-sessions'
+);
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -39,7 +41,11 @@ async function mount() {
 }
 
 beforeEach(() => {
-  api.get.mockResolvedValue({ data: { folders: ['/home/ana/app', '/home/ana/api'] } });
+  api.get.mockImplementation(async (url: string) =>
+    url.endsWith('/terminal-sessions')
+      ? { data: { sessions: [], roots: ['/home/ana/code'] } }
+      : { data: { folders: ['/home/ana/app', '/home/ana/api'] } },
+  );
   api.post.mockResolvedValue({ data: {} });
   api.createConversation.mockResolvedValue({ id: 'conv-9' });
 });
@@ -73,7 +79,43 @@ describe('isSessionFolder', () => {
   });
 });
 
+describe('isAllowedFolder', () => {
+  const roots = ['/home/ana/code', '/srv/work/'];
+
+  it('accepts a root and anything under it', () => {
+    for (const folder of ['/home/ana/code', '/home/ana/code/app/', '/srv/work/x']) {
+      expect(isAllowedFolder(folder, roots)).toBe(true);
+    }
+  });
+
+  it('refuses a folder outside, a sibling that starts alike, and a parent', () => {
+    for (const folder of ['/home', '/home/ana', '/home/ana/codex', '/etc']) {
+      expect(isAllowedFolder(folder, roots)).toBe(false);
+    }
+  });
+
+  it('judges nothing it cannot: no roots known, a home or drive path, a root it cannot compare', () => {
+    expect(isAllowedFolder('/anywhere', [])).toBe(true);
+    expect(isAllowedFolder('~/app', roots)).toBe(true);
+    expect(isAllowedFolder('C:\\work', roots)).toBe(true);
+    expect(isAllowedFolder('/home', ['~/code'])).toBe(true);
+  });
+});
+
 describe('useExternalSessions', () => {
+  it('reads the folders its computer allows, and none when the computer cannot say', async () => {
+    const hook = await mount();
+    expect(api.get).toHaveBeenCalledWith('/agents/external/agent-1/terminal-sessions');
+    expect(hook().allowedFolders).toEqual(['/home/ana/code']);
+    act(() => renderer?.unmount());
+    renderer = null;
+    api.get.mockImplementation(async (url: string) => {
+      if (url.endsWith('/terminal-sessions')) throw new Error('503');
+      return { data: { folders: [] } };
+    });
+    expect((await mount())().allowedFolders).toEqual([]);
+  });
+
   it('reads the recent folders of that agent', async () => {
     const hook = await mount();
     expect(api.get).toHaveBeenCalledWith('/agents/external/agent-1/folders');
@@ -92,8 +134,8 @@ describe('useExternalSessions', () => {
       conversationId: 'conv-9',
       cwd: '~/app',
     });
-    // The folder is now a recent one: the list is read again.
-    expect(api.get).toHaveBeenCalledTimes(2);
+    // The folder is now a recent one: that list is read again.
+    expect(api.get.mock.calls.filter(([url]) => String(url).endsWith('/folders'))).toHaveLength(2);
   });
 
   it('opens nothing for a path that is not absolute', async () => {

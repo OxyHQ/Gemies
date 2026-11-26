@@ -301,19 +301,17 @@ export function startDaemon(options: DaemonOptions): Daemon {
             });
           }
           break;
-        case 'list-sessions':
+        case 'list-sessions': {
           if (!authenticated) return;
+          const roots = [options.cwd, ...(options.allowedRoots?.() ?? [])];
           send(ws, {
             type: 'sessions',
             requestId: frame.requestId,
-            sessions: options.cli
-              ? listTerminalSessions({
-                  cli: options.cli,
-                  roots: [options.cwd, ...(options.allowedRoots?.() ?? [])],
-                })
-              : [],
+            sessions: options.cli ? listTerminalSessions({ cli: options.cli, roots }) : [],
+            roots: [...new Set(roots)],
           });
           break;
+        }
         case 'approval': {
           const pending = pendingApprovals.get(frame.requestId);
           if (pending) {

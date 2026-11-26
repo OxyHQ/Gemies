@@ -216,12 +216,16 @@ describe('external agent relay', () => {
           'junk',
           { id: 'no-title-00001', cwd: '/w', updatedAt: 'soon' },
         ],
+        roots: ['/home/ana/code', 'relative/path', '', 7, '/a\0b', '~/work', '/home/ana/code'],
       }),
     );
-    await expect(listing).resolves.toEqual([
-      { id: 'good-session-1', cwd: '/w', title: 'fix it', updatedAt: 5 },
-      { id: 'no-title-00001', cwd: '/w', title: 'no-title', updatedAt: 0 },
-    ]);
+    await expect(listing).resolves.toEqual({
+      sessions: [
+        { id: 'good-session-1', cwd: '/w', title: 'fix it', updatedAt: 5 },
+        { id: 'no-title-00001', cwd: '/w', title: 'no-title', updatedAt: 0 },
+      ],
+      roots: ['/home/ana/code', '~/work'],
+    });
   });
 
   it('ignores a listing for a request that is not its own, and fails when nobody is connected', async () => {

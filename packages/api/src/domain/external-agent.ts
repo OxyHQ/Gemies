@@ -90,6 +90,16 @@ export interface TerminalSessionInfo {
   readonly updatedAt: number;
 }
 
+/** What a daemon says about its computer: the CLI's sessions begun in a terminal, and where it lets sessions work. */
+export interface ExternalComputerListing {
+  readonly sessions: TerminalSessionInfo[];
+  /** Absolute folders (`/…`, `~/…`, a drive); empty when the daemon does not say. */
+  readonly roots: string[];
+}
+
+/** The most folders a listing carries. */
+export const EXTERNAL_ROOTS_MAX = 50;
+
 /** A session id as the CLIs write it; anything else is never stored or sent to a daemon. */
 export const EXTERNAL_CLI_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{7,99}$/;
 
@@ -174,4 +184,10 @@ export type DaemonFrame =
       expiresAt: string;
     }
   | { type: 'approval-resolved'; turnId: string; requestId: string; decision: string }
-  | { type: 'sessions'; requestId: string; sessions: readonly unknown[] };
+  | {
+      type: 'sessions';
+      requestId: string;
+      sessions: readonly unknown[];
+      /** The folders this computer allows sessions in (ADR 0043 §3). Absent on an older daemon. */
+      roots?: readonly unknown[];
+    };

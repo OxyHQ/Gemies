@@ -1,4 +1,5 @@
 import {
+  isAllowedFolder,
   isSessionFolder,
   useExternalSessions,
 } from '@/features/connections/runtime/use-external-sessions';
@@ -36,12 +37,14 @@ export function NewSessionDialog({
 }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { folders, open: openSession, opening } = useExternalSessions(agentId);
+  const { folders, allowedFolders, open: openSession, opening } = useExternalSessions(agentId);
   const [folder, setFolder] = useState('');
   const [touched, setTouched] = useState(false);
   const [starting, setStarting] = useState(false);
 
-  const valid = isSessionFolder(folder);
+  const wellFormed = isSessionFolder(folder);
+  const allowed = !wellFormed || isAllowedFolder(folder, allowedFolders);
+  const valid = wellFormed && allowed;
   const close = () => {
     setFolder('');
     setTouched(false);
@@ -94,11 +97,26 @@ export function NewSessionDialog({
             autoCorrect={false}
           />
           {touched && !valid ? (
-            <Muted>{t(`${K}.invalid`)}</Muted>
+            <Muted>{t(wellFormed ? `${K}.notAllowed` : `${K}.invalid`)}</Muted>
           ) : (
             <Muted>{t(`${K}.folderHint`)}</Muted>
           )}
         </View>
+        {allowedFolders.length > 0 ? (
+          <List
+            accessibilityLabel={t(`${K}.allowed`)}
+            style={{ width: '100%' }}
+            items={allowedFolders.map((root) => ({
+              id: root,
+              title: root,
+              label: root,
+              onPress: () => {
+                setFolder(root);
+                setTouched(false);
+              },
+            }))}
+          />
+        ) : null}
         {folders.length > 0 ? (
           <List
             accessibilityLabel={t(`${K}.recent`)}

@@ -16,6 +16,22 @@ export function isSessionFolder(path: string): boolean {
   return value !== '' && value.length <= 1024 && /^(?:\/|~(?:\/|$)|[A-Za-z]:[\\/])/.test(value);
 }
 
+/**
+ * Whether `folder` is inside one of `roots`, the folders the agent's computer allows (ADR 0043 §3).
+ * Only a hint to spare a round trip: the computer decides, and resolves symlinks, which this cannot.
+ * A path it cannot judge (`~/…`, a drive path, no roots known) passes.
+ */
+export function isAllowedFolder(folder: string, roots: readonly string[]): boolean {
+  const path = folder.trim().replace(/\/+$/, '');
+  if (roots.length === 0 || !path.startsWith('/')) return true;
+  const absolute = roots
+    .map((root) => root.replace(/\/+$/, ''))
+    .filter((root) => root.startsWith('/'));
+  // A root the app cannot compare (`~/work`) means it cannot rule anything out.
+  if (absolute.length < roots.length) return true;
+  return absolute.some((root) => path === root || path.startsWith(`${root}/`));
+}
+
 const EMPTY: string[] = [];
 
 /**
@@ -40,6 +56,18 @@ export function useExternalSessions(agentId: string) {
         .folders ?? EMPTY,
   });
 
+  // The folders its computer allows. It answers live, so an offline computer, or an older daemon
+  // that does not say, leaves the list empty and the dialog judges nothing.
+  const computer = useQuery({
+    queryKey: queryKeys.agents.externalComputer(agentId),
+    enabled: isAuthenticated,
+    refetchOnWindowFocus: false,
+    retry: false,
+    queryFn: async () =>
+      (await apiClient.get<{ roots?: string[] }>(API_ROUTES.agents.external.computer(agentId))).data
+        .roots ?? EMPTY,
+  });
+
   const open = useCallback(
     async (cwd: string): Promise<string> => {
       const folder = cwd.trim();
@@ -58,6 +86,8 @@ export function useExternalSessions(agentId: string) {
 
   return {
     folders: folders.data ?? EMPTY,
+    /** The folders its computer allows sessions in; empty when it cannot say. */
+    allowedFolders: computer.data ?? EMPTY,
     loadingFolders: isAuthenticated && folders.isPending && !folders.isError,
     open,
     opening: createConversation.isPending,

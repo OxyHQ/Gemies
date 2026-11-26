@@ -402,7 +402,7 @@ router.get(
       return res.status(404).json({ error: 'Not found' });
     }
     try {
-      res.json({ sessions: await listExternalAgentSessions(agentId) });
+      res.json(await listExternalAgentSessions(agentId));
     } catch (err: unknown) {
       if (!(err instanceof ExternalAgentOfflineError)) {
         log.general.warn({ err, agentId }, 'Could not list the terminal sessions of an agent');

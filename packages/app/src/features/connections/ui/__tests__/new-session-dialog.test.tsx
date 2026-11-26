@@ -8,12 +8,19 @@ const state = vi.hoisted(() => ({
   onClose: vi.fn(),
   error: vi.fn(),
   folders: ['/home/ana/app', '/home/ana/api'],
+  allowed: [] as string[],
 }));
 vi.mock('@/features/connections/runtime/use-external-sessions', () => ({
   // The real rule: absolute on the agent's computer.
   isSessionFolder: (path: string) => /^(?:\/|~(?:\/|$)|[A-Za-z]:[\\/])/.test(path.trim()),
+  // The real rule: inside one of the roots the computer allows, judged only for plain absolute paths.
+  isAllowedFolder: (path: string, roots: string[]) =>
+    roots.length === 0 ||
+    !path.startsWith('/') ||
+    roots.some((root) => path === root || path.startsWith(`${root}/`)),
   useExternalSessions: () => ({
     folders: state.folders,
+    allowedFolders: state.allowed,
     loadingFolders: false,
     open: state.open,
     opening: false,
@@ -47,9 +54,7 @@ import { NewSessionDialog } from '../new-session-dialog';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let renderer: ReactTestRenderer;
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  state.open.mockResolvedValue('conv-9');
+function mount() {
   act(() => {
     renderer = create(
       <NewSessionDialog
@@ -60,17 +65,25 @@ beforeEach(() => {
       />,
     );
   });
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  state.open.mockResolvedValue('conv-9');
+  state.allowed = [];
+  mount();
 });
 afterEach(() => act(() => renderer.unmount()));
 
 const field = () => renderer.root.findByType('TextFieldInput' as never);
 const dialog = () => renderer.root.findByType('Dialog' as never);
 const startAction = () => dialog().props.actions[0];
-const recent = () =>
-  renderer.root.findByType('List' as never).props.items as Array<{
-    id: string;
-    onPress: () => void;
-  }>;
+type Rows = Array<{ id: string; onPress: () => void }>;
+const lists = () => renderer.root.findAllByType('List' as never);
+const rowsOf = (label: string) =>
+  lists().find((list) => String(list.props.accessibilityLabel).endsWith(`.${label}`))?.props
+    .items as Rows | undefined;
+const recent = () => rowsOf('recent') as Rows;
 const type = (value: string) => act(() => field().props.onValueChange(value));
 
 describe('NewSessionDialog', () => {
@@ -119,5 +132,43 @@ describe('NewSessionDialog', () => {
     expect(state.onClose).not.toHaveBeenCalled();
     expect(state.push).not.toHaveBeenCalled();
     expect(field().props.value).toBe('/home/ana/app');
+  });
+});
+
+describe('NewSessionDialog: the folders its computer allows', () => {
+  beforeEach(() => {
+    act(() => renderer.unmount());
+    state.allowed = ['/home/ana/code', '/srv/work'];
+    mount();
+  });
+
+  it('offers them, ahead of the recent ones, and picking one fills the field', () => {
+    expect(lists().map((list) => String(list.props.accessibilityLabel).split('.').pop())).toEqual([
+      'allowed',
+      'recent',
+    ]);
+    act(() => rowsOf('allowed')![1]!.onPress());
+    expect(field().props.value).toBe('/srv/work');
+    expect(startAction().disabled).toBe(false);
+  });
+
+  it('blocks a folder outside them before asking the server, and says how to allow it', async () => {
+    type('/home');
+    expect(startAction().disabled).toBe(true);
+    await act(async () => {
+      startAction().onPress();
+    });
+    expect(state.open).not.toHaveBeenCalled();
+    expect(field().props.invalid).toBe(true);
+    expect(JSON.stringify(renderer.toJSON())).toContain('notAllowed');
+  });
+
+  it('lets in a folder under one, and a path it cannot judge', () => {
+    type('/home/ana/code/app');
+    expect(startAction().disabled).toBe(false);
+    type('~/anything');
+    expect(startAction().disabled).toBe(false);
+    type('/home/ana/codex');
+    expect(startAction().disabled).toBe(true);
   });
 });

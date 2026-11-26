@@ -244,7 +244,9 @@
           "recent": "Carpetas recientes",
           "invalid": "Usa una ruta absoluta: /…, ~/… o C:\\…",
           "start": "Empezar",
-          "startFailed": "No se pudo iniciar la sesión. Prueba de nuevo en un minuto."
+          "startFailed": "No se pudo iniciar la sesión. Prueba de nuevo en un minuto.",
+          "notAllowed": "Esa carpeta no está permitida en ese ordenador. Elige una de abajo o ejecuta `gemies allow <carpeta>` allí.",
+          "allowed": "Permitidas en ese ordenador"
         }
       }
     },

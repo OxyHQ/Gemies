@@ -413,13 +413,15 @@ describe('terminal sessions (ADR 0043 §4)', () => {
   });
 
   it('lists what the agent’s CLI has, for its owner only', async () => {
-    state.listTerminal.mockResolvedValue([
-      { id: 's-0000001', cwd: '/w', title: 't', updatedAt: 1 },
-    ]);
+    state.listTerminal.mockResolvedValue({
+      sessions: [{ id: 's-0000001', cwd: '/w', title: 't', updatedAt: 1 }],
+      roots: ['/home/ana/code'],
+    });
     const ok = await list();
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({
       sessions: [{ id: 's-0000001', cwd: '/w', title: 't', updatedAt: 1 }],
+      roots: ['/home/ana/code'],
     });
     expect(state.listTerminal).toHaveBeenCalledWith('agent-1');
 

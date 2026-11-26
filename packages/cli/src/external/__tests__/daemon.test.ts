@@ -631,14 +631,20 @@ describe('daemon: sessions begun in a terminal (Gemies ADR 0043 §4)', () => {
   });
 
   it('answers a request for the sessions here with the request’s id', async () => {
-    start(echo, { cli: 'opencode' });
+    start(echo, {
+      cli: 'opencode',
+      cwd: '/tmp/paired',
+      allowedRoots: () => ['/tmp/other', '/tmp/paired'],
+    });
     await until(() => peers.length > 0 && received.length > 0);
     peers[0].send(JSON.stringify({ type: 'list-sessions', requestId: 'r-1' }));
     await until(() => received.some((f) => f.type === 'sessions'));
+    // With the folders this computer allows: where it was paired, and what `gemies allow` added.
     expect(received.find((f) => f.type === 'sessions')).toEqual({
       type: 'sessions',
       requestId: 'r-1',
       sessions: [],
+      roots: ['/tmp/paired', '/tmp/other'],
     });
   });
 });
