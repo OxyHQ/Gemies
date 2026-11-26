@@ -97,7 +97,7 @@
     "react-native-audio-api": "0.13.6",
     "react-native-qrcode-svg": "^6.3.21",
     "react-test-renderer": "19.3.0",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   }
 }
