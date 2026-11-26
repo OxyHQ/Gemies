@@ -55,7 +55,10 @@ export function NewSessionDialog({
     try {
       const conversationId = await openSession(folder);
       close();
-      router.push(`/(app)/c/${conversationId}`);
+      // The agent's own thread (`/agents/<id>`, a gemie with no handle): its newest conversation is
+      // the one just opened, and the thread sends to that conversation as the agent. `/c/<id>` alone
+      // would open a loose chat that answers as Alia.
+      router.push(`/(app)/agents/${agentId}`);
     } catch (err) {
       console.error('Failed to open the session:', err);
       toast.error(t(`${K}.startFailed`));
