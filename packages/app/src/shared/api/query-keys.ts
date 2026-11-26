@@ -56,6 +56,8 @@ export const queryKeys = {
     mine: ['agents', 'mine'] as const,
     /** The coding-agent CLIs the person connected (Settings > External agents), with presence. */
     external: ['agents', 'external'] as const,
+    /** The folders an external agent's sessions worked in, newest first (ADR 0043). */
+    externalFolders: (agentId: string) => ['agents', 'external', agentId, 'folders'] as const,
     /** Owner-present work handshake, deliberately outside persisted account-query roots. */
     workAuthority: (ownerId: string, agentId: string) =>
       ['agent-work-authority', ownerId, agentId] as const,
