@@ -58,6 +58,10 @@ export const API_ROUTES = {
       list: '/agents/external',
       pair: '/agents/external/pair',
       remove: (agentId: string) => `/agents/external/${encodeURIComponent(agentId)}`,
+      /** Opens a session with it: the conversation and the folder it works in (ADR 0043). */
+      sessions: (agentId: string) => `/agents/external/${encodeURIComponent(agentId)}/sessions`,
+      /** The folders its sessions worked in most recently. */
+      folders: (agentId: string) => `/agents/external/${encodeURIComponent(agentId)}/folders`,
     },
     get: (id: string) => `/agents/${id}`,
     create: '/agents',
