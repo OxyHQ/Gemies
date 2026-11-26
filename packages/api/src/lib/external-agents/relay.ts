@@ -24,6 +24,7 @@ import {
 import {
   EXTERNAL_APPROVAL_REQUEST_ID,
   EXTERNAL_CLI_SESSION_ID,
+  EXTERNAL_ROOTS_MAX,
   EXTERNAL_SESSION_CWD_MAX,
   EXTERNAL_TERMINAL_SESSIONS_MAX,
   EXTERNAL_TURN_TIMEOUT_MS,
@@ -31,6 +32,7 @@ import {
   type ExternalActivity,
   type ExternalApprovalDecision,
   type ExternalApprovalEvent,
+  type ExternalComputerListing,
   type TerminalSessionInfo,
   type DaemonFrame,
   type ServerFrame,
@@ -117,7 +119,7 @@ type TurnEvent =
   | { type: 'approval'; event: ExternalApprovalEvent }
   | { type: 'end'; text: string }
   | { type: 'error'; message: string; offline?: boolean }
-  | { type: 'sessions'; sessions: TerminalSessionInfo[] };
+  | { type: 'sessions'; sessions: TerminalSessionInfo[]; roots: string[] };
 
 type Command =
   | {
@@ -154,7 +156,7 @@ export interface ExternalAgentRelay {
   /** The person's answer to a permission question, to the daemon that asked, wherever it is connected. */
   answerApproval(agentId: string, requestId: string, decision: ExternalApprovalDecision): void;
   /** The sessions the agent's CLI has on its computer, wherever the daemon is connected. */
-  listSessions(agentId: string): Promise<TerminalSessionInfo[]>;
+  listSessions(agentId: string): Promise<ExternalComputerListing>;
   /** True when it is connected to any instance. */
   isReachable(agentId: string): Promise<boolean>;
   disconnect(agentId: string, why: Disconnect): void;
@@ -205,6 +207,20 @@ export function sanitizeActivity(raw: unknown): ExternalActivity | null {
     ...(typeof summary === 'string' && summary !== '' ? { summary: summary.slice(0, 200) } : {}),
     status,
   };
+}
+
+/** The folders a daemon says it allows: absolute-looking, bounded, once each. */
+export function sanitizeRoots(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out = new Set<string>();
+  for (const entry of raw) {
+    if (out.size >= EXTERNAL_ROOTS_MAX) break;
+    if (typeof entry !== 'string' || entry === '' || entry.length > EXTERNAL_SESSION_CWD_MAX)
+      continue;
+    if (entry.includes('\0') || !/^(?:\/|~(?:\/|$)|[A-Za-z]:[\\/])/.test(entry)) continue;
+    out.add(entry);
+  }
+  return [...out];
 }
 
 export function sanitizeTerminalSessions(raw: unknown): TerminalSessionInfo[] {
@@ -264,7 +280,7 @@ export function createExternalAgentRelay(
     string,
     {
       agentId: string;
-      resolve: (sessions: TerminalSessionInfo[]) => void;
+      resolve: (listing: ExternalComputerListing) => void;
       reject: (error: Error) => void;
       timer: NodeJS.Timeout;
     }
@@ -308,7 +324,7 @@ export function createExternalAgentRelay(
     }
   };
 
-  const listLocalSessions = (agentId: string): Promise<TerminalSessionInfo[]> =>
+  const listLocalSessions = (agentId: string): Promise<ExternalComputerListing> =>
     new Promise((resolve, reject) => {
       const connection = connections.get(agentId);
       if (!connection || connection.ws.readyState !== WebSocket.OPEN) {
@@ -435,7 +451,9 @@ export function createExternalAgentRelay(
     if (command.kind === 'list-sessions' && typeof command.requestId === 'string') {
       const { requestId } = command;
       listLocalSessions(agentId)
-        .then((sessions) => publishEvent(requestId, { type: 'sessions', sessions }))
+        .then(({ sessions, roots }) =>
+          publishEvent(requestId, { type: 'sessions', sessions, roots }),
+        )
         .catch((err: unknown) =>
           publishEvent(requestId, {
             type: 'error',
@@ -610,10 +628,10 @@ export function createExternalAgentRelay(
   const listRemoteSessions = async (
     cluster: ClusterBus,
     agentId: string,
-  ): Promise<TerminalSessionInfo[]> => {
+  ): Promise<ExternalComputerListing> => {
     if (!(await cluster.hasPresence(agentId))) throw new ExternalAgentOfflineError();
     const requestId = randomUUID();
-    return new Promise<TerminalSessionInfo[]>((resolve, reject) => {
+    return new Promise<ExternalComputerListing>((resolve, reject) => {
       let done = false;
       let unsubscribe: (() => void) | undefined;
       const finish = (fn: () => void): void => {
@@ -637,7 +655,12 @@ export function createExternalAgentRelay(
             return;
           }
           if (event.type === 'sessions') {
-            finish(() => resolve(sanitizeTerminalSessions(event.sessions)));
+            finish(() =>
+              resolve({
+                sessions: sanitizeTerminalSessions(event.sessions),
+                roots: sanitizeRoots(event.roots),
+              }),
+            );
           } else if (event.type === 'error') {
             finish(() =>
               reject(
@@ -764,7 +787,10 @@ export function createExternalAgentRelay(
         if (!pending || pending.agentId !== agentId) return;
         clearTimeout(pending.timer);
         pendingLists.delete(frame.requestId);
-        pending.resolve(sanitizeTerminalSessions(frame.sessions));
+        pending.resolve({
+          sessions: sanitizeTerminalSessions(frame.sessions),
+          roots: sanitizeRoots(frame.roots),
+        });
         break;
       }
       case 'error': {
@@ -952,8 +978,11 @@ export function answerExternalApproval(
   current?.answerApproval(agentId, requestId, decision);
 }
 
-/** The sessions the agent's CLI has on its computer, begun in a terminal (ADR 0043 §4). */
-export function listExternalAgentSessions(agentId: string): Promise<TerminalSessionInfo[]> {
+/**
+ * What the agent's computer says about itself: the CLI's sessions begun in a terminal (ADR 0043 §4)
+ * and the folders it allows sessions in (§3).
+ */
+export function listExternalAgentSessions(agentId: string): Promise<ExternalComputerListing> {
   return current ? current.listSessions(agentId) : Promise.reject(new ExternalAgentOfflineError());
 }
 

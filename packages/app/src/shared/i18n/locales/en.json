@@ -263,7 +263,9 @@
           "recent": "Recent folders",
           "invalid": "Use an absolute path: /…, ~/… or C:\\…",
           "start": "Start",
-          "startFailed": "Couldn't start the session. Try again in a minute."
+          "startFailed": "Couldn't start the session. Try again in a minute.",
+          "notAllowed": "That folder is not allowed on that computer. Pick one below, or run `gemies allow <folder>` there.",
+          "allowed": "Allowed on that computer"
         }
       }
     },

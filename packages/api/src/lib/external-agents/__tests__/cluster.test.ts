@@ -196,11 +196,13 @@ describe('turns across instances', () => {
           { id: 'good-session-1', cwd: '/w', title: 'fix it', updatedAt: 5 },
           { id: '--bad; id', cwd: '/w', title: 'x', updatedAt: 1 },
         ],
+        roots: ['/home/ana/code'],
       }),
     );
-    await expect(listing).resolves.toEqual([
-      { id: 'good-session-1', cwd: '/w', title: 'fix it', updatedAt: 5 },
-    ]);
+    await expect(listing).resolves.toEqual({
+      sessions: [{ id: 'good-session-1', cwd: '/w', title: 'fix it', updatedAt: 5 }],
+      roots: ['/home/ana/code'],
+    });
   });
 
   it('says offline at once to a listing when no instance holds the agent', async () => {

@@ -75,7 +75,13 @@ export type DaemonFrame =
       summary?: string;
       expiresAt: string;
     }
-  | { type: 'sessions'; requestId: string; sessions: readonly TerminalSession[] };
+  | {
+      type: 'sessions';
+      requestId: string;
+      sessions: readonly TerminalSession[];
+      /** The folders this computer allows sessions in: where the agent was paired, and `gemies allow`. */
+      roots: readonly string[];
+    };
 
 /** One tool a CLI is using (Gemies ADR 0043 §5): never a file's contents or a command's output. */
 export interface ActivityEvent {
