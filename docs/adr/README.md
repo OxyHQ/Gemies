@@ -39,7 +39,7 @@ An ADR records a decision that is **in force now**, the context that forced it, 
 | [0039](./0039-external-agents-reach-their-tools-over-mcp.md) | An external agent reaches its gemie's tools as an MCP server | Accepted | 2026-11-13 |
 | [0040](./0040-realtime-over-one-socket.md) | Realtime over one socket: an account log, typed frames, the turn on SSE | Accepted | 2026-11-13 |
 | [0041](./0041-voice-turns-are-delegated-to-the-turn-pipeline.md) | Voice turns are delegated to the turn pipeline; the voice is a Kaana catalogue default | Accepted | 2026-11-14 |
-| [0043](./0043-external-agents-are-machines-with-sessions.md) | A computer is paired once; a coding CLI's gemie holds its sessions | Accepted (not built) | 2026-11-26 |
+| [0043](./0043-external-agents-are-machines-with-sessions.md) | A computer is paired once; a coding CLI's gemie holds its sessions | Accepted | 2026-11-26 |
 
 Companion document: [the compatibility window and sunset criteria](../migration/compatibility-window.md), which binds ADR 0002, ADR 0003 and ADR 0004 to measurable removal gates — for paths (a) and (c); path (b) left the window under ADR 0010.
 
