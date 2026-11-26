@@ -590,3 +590,55 @@ describe('daemon: the folder of a session (Gemies ADR 0043)', () => {
     expect(peak).toBe(2);
   });
 });
+
+describe('daemon: sessions begun in a terminal (Gemies ADR 0043 §4)', () => {
+  const seenResume: (string | undefined)[] = [];
+  const resuming: ExternalRuntime = {
+    resumes: true,
+    async run({ resumeId, onSession }: RuntimeRun) {
+      seenResume.push(resumeId);
+      onSession?.('next-session-id');
+      return 'done';
+    },
+  };
+  const turn = (turnId: string, extra: Record<string, unknown>) =>
+    peers[0].send(
+      JSON.stringify({ type: 'turn', turnId, task: 'x', history: [], threadKey: 'c-1', ...extra }),
+    );
+
+  beforeEach(() => {
+    seenResume.length = 0;
+  });
+
+  it('continues the terminal session a conversation was opened on, once, then its own', async () => {
+    const sessions = memorySessions();
+    start(resuming, { sessions });
+    await until(() => peers.length > 0 && received.length > 0);
+    turn('t1', { resumeId: 'terminal-session-1' });
+    await until(() => received.some((f) => f.type === 'end' && f.turnId === 't1'));
+    turn('t2', { resumeId: 'terminal-session-1' });
+    await until(() => received.some((f) => f.type === 'end' && f.turnId === 't2'));
+    // The CLI's own session of the first turn wins from then on.
+    expect(seenResume).toEqual(['terminal-session-1', 'next-session-id']);
+  });
+
+  it('ignores an id that is not a session id', async () => {
+    start(resuming, { sessions: memorySessions() });
+    await until(() => peers.length > 0 && received.length > 0);
+    turn('t1', { resumeId: '--dangerous; rm -rf /' });
+    await until(() => received.some((f) => f.type === 'end'));
+    expect(seenResume).toEqual([undefined]);
+  });
+
+  it('answers a request for the sessions here with the request’s id', async () => {
+    start(echo, { cli: 'opencode' });
+    await until(() => peers.length > 0 && received.length > 0);
+    peers[0].send(JSON.stringify({ type: 'list-sessions', requestId: 'r-1' }));
+    await until(() => received.some((f) => f.type === 'sessions'));
+    expect(received.find((f) => f.type === 'sessions')).toEqual({
+      type: 'sessions',
+      requestId: 'r-1',
+      sessions: [],
+    });
+  });
+});

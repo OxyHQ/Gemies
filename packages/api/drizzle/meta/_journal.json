@@ -1296,6 +1296,13 @@
       "when": 1795669825982,
       "tag": "0184_external_agent_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1795670182793,
+      "tag": "0185_external_sessions_continue_terminal_sessions",
+      "breakpoints": true
     }
   ]
 }

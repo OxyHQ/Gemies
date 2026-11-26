@@ -36,6 +36,7 @@ import {
   EXTERNAL_AGENT_CLI_COLORS,
   EXTERNAL_AGENT_CLI_LABELS,
   EXTERNAL_AGENT_CLIS,
+  EXTERNAL_CLI_SESSION_ID,
   EXTERNAL_PAIRING_TTL_MS,
   EXTERNAL_SESSION_CWD_MAX,
   type ExternalAgentCli,
@@ -55,7 +56,9 @@ import {
 } from '../../lib/external-agents/pairing-code.js';
 import {
   disconnectExternalAgent,
+  ExternalAgentOfflineError,
   isExternalAgentReachable,
+  listExternalAgentSessions,
 } from '../../lib/external-agents/relay.js';
 import { publishGemieChanged } from '../../lib/realtime/account.js';
 
@@ -327,6 +330,8 @@ const sessionSchema = z
       .min(1)
       .max(EXTERNAL_SESSION_CWD_MAX)
       .refine((value) => !value.includes('\0') && /^(?:\/|~(?:\/|$)|[A-Za-z]:[\\/])/.test(value)),
+    /** A session begun in a terminal this conversation continues (ADR 0043 §4). */
+    resumeId: z.string().regex(EXTERNAL_CLI_SESSION_ID).optional(),
   })
   .strict();
 
@@ -348,6 +353,7 @@ router.post(
       agentId,
       ownerOxyUserId: req.user.id,
       cwd: parsed.data.cwd,
+      ...(parsed.data.resumeId ? { cliSessionId: parsed.data.resumeId } : {}),
     });
     // A conversation id another agent or person already used is not this caller's to take over.
     if (session.agentId !== agentId || session.ownerOxyUserId !== req.user.id) {
@@ -374,6 +380,32 @@ router.get(
       limit: 10,
     });
     res.json({ folders });
+  }),
+);
+
+/**
+ * The sessions the agent's CLI already has on its computer, begun in a terminal, in the folders that
+ * computer allows: what the app offers to continue (ADR 0043 §4). Asks the daemon live; an offline
+ * computer answers 503, not an empty list.
+ */
+router.get(
+  '/external/:agentId/terminal-sessions',
+  authenticateToken,
+  route(async (req, res) => {
+    if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+    const agentId = String(req.params.agentId);
+    const link = await findExternalLink(getDb(), agentId);
+    if (link === undefined || link.ownerOxyUserId !== req.user.id) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    try {
+      res.json({ sessions: await listExternalAgentSessions(agentId) });
+    } catch (err: unknown) {
+      if (!(err instanceof ExternalAgentOfflineError)) {
+        log.general.warn({ err, agentId }, 'Could not list the terminal sessions of an agent');
+      }
+      res.status(503).json({ error: 'agent_unavailable' });
+    }
   }),
 );
 

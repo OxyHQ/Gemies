@@ -4,6 +4,7 @@
  */
 
 import type { GemieTools } from './gemie-tools.js';
+import type { TerminalSession } from './terminal-sessions.js';
 
 export const EXTERNAL_CLIS = ['claude', 'codex', 'opencode'] as const;
 export type ExternalCli = (typeof EXTERNAL_CLIS)[number];
@@ -32,7 +33,14 @@ export type ServerFrame =
        * the roots this computer allows; absent, the agent works where it was paired.
        */
       cwd?: string;
+      /**
+       * The CLI's own id of a session begun in a terminal that this conversation continues (Gemies
+       * ADR 0043 §4). Used only when this computer has not yet kept a session for the conversation.
+       */
+      resumeId?: string;
     }
+  /** Asks which sessions the CLI already has here, in the folders this computer allows. */
+  | { type: 'list-sessions'; requestId: string }
   | { type: 'cancel'; turnId: string }
   | { type: 'revoked' };
 
@@ -41,7 +49,8 @@ export type DaemonFrame =
   | { type: 'auth'; agentId: string; credential: string }
   | { type: 'delta'; turnId: string; text: string }
   | { type: 'end'; turnId: string; text?: string }
-  | { type: 'error'; turnId: string; message: string };
+  | { type: 'error'; turnId: string; message: string }
+  | { type: 'sessions'; requestId: string; sessions: readonly TerminalSession[] };
 
 export interface RuntimeRun {
   /** The full prompt: framing, history and the new message. */

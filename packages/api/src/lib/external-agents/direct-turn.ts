@@ -4,7 +4,7 @@ import { buildCompletionResponse } from '../chat/response-shapes.js';
 import type { SSEWriter } from '../chat/sse-writer.js';
 import { saveConversationResult, type LifecycleContext } from '../chat-lifecycle.js';
 import { getDb } from '../../db/index.js';
-import { findExternalSessionCwd } from '../../db/agents/externalAgentRepository.js';
+import { findExternalSession } from '../../db/agents/externalAgentRepository.js';
 import { externalHistoryOf } from './history.js';
 import { runExternalAgentTurn } from './turn.js';
 import type { ActorActivity } from '../realtime/activity.js';
@@ -46,8 +46,8 @@ export async function serveExternalDirectTurn(input: {
   }
 
   // A session opened from the app names the folder it works in (ADR 0043).
-  const cwd = input.lifecycle.conversationId
-    ? await findExternalSessionCwd(getDb(), {
+  const session = input.lifecycle.conversationId
+    ? await findExternalSession(getDb(), {
         conversationId: input.lifecycle.conversationId,
         agentId: input.agentId,
       })
@@ -58,7 +58,8 @@ export async function serveExternalDirectTurn(input: {
     task: input.reactionContext ? `${task}\n\n${input.reactionContext}` : task,
     history,
     ...(input.lifecycle.conversationId ? { threadKey: input.lifecycle.conversationId } : {}),
-    ...(cwd ? { cwd } : {}),
+    ...(session ? { cwd: session.cwd } : {}),
+    ...(session?.cliSessionId ? { resumeId: session.cliSessionId } : {}),
     signal: input.signal,
     ...(input.stream
       ? {
