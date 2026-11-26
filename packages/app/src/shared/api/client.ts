@@ -93,4 +93,7 @@ export function onApiSessionContextChange(listener: () => void): () => void {
     contextListeners.delete(listener);
   };
 }
+/** The app's API client, as a source that reads with it names it. */
+export type ApiClient = typeof apiClient;
+
 export default apiClient;

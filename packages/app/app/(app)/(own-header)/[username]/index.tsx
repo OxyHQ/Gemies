@@ -53,7 +53,7 @@ const AgentThreadPage = () => {
    */
   const handle = username?.replace(/^@+/, '') ?? '';
   const thread = useMemo(() => ({ handle }), [handle]);
-  const { data } = useAgentThread(thread, threadId);
+  const { value: data } = useAgentThread(thread, threadId);
   // A thread asked for by id is an agent's by construction; otherwise the account may be a person.
   const { person, isPending: profilePending } = usePersonProfile(
     threadId === undefined ? handle : '',

@@ -1,3 +1,4 @@
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -55,13 +56,19 @@ vi.mock('@/shared/api/client', () => ({
 }));
 
 vi.mock('@oxy.so/services/ui/client', () => ({
-  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true, isAccountCacheReady: true }),
+  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true }),
 }));
-// The SDK's runtime is a native-module barrel: only the key of the chat's agent profile is read.
-vi.mock('@gemies/sdk/runtime', () => ({
-  gemieQueryKeys: { agents: { profile: (id: string) => ['alia-agent-profile', id] as const } },
-}));
+// The SDK's runtime is a native-module barrel: its data helpers, and the chat's agent profile.
+vi.mock('@gemies/sdk/runtime', async () => {
+  const data = await import('@/shared/testing/sdk-runtime-data');
+  const agentProfile = data.answerSource('test.agent-profile', {
+    key: (_api: unknown, agentId: string) => agentId,
+    load: async () => null,
+  });
+  return { ...data, agentProfile, useGemieApi: () => ({}) };
+});
 
+import { agentProfile } from '@gemies/sdk/runtime';
 import { useCreateAgent, useDeleteAgent, useUpdateAgent } from '../use-agents';
 import { useMyAgents } from '../use-my-agents';
 
@@ -102,7 +109,7 @@ async function mount(): Promise<Harness> {
   function Probe() {
     const mine = useMyAgents();
     latest = {
-      list: (mine.data ?? []) as { name: string }[],
+      list: (mine.value ?? []) as { name: string }[],
       create: useCreateAgent(),
       update: useUpdateAgent(),
       remove: useDeleteAgent(),
@@ -112,9 +119,11 @@ async function mount(): Promise<Harness> {
 
   await act(async () => {
     renderer = create(
-      <QueryClientProvider client={client}>
-        <Probe />
-      </QueryClientProvider>,
+      <DataProvider store={new Store()}>
+        <QueryClientProvider client={client}>
+          <Probe />
+        </QueryClientProvider>
+      </DataProvider>,
     );
   });
   if (latest === undefined) throw new Error('the probe did not run');
@@ -208,16 +217,17 @@ describe('the sidebar’s list, after a write', () => {
   });
 
   it('makes the open chat read the agent again, so its header follows the edit', async () => {
-    // The header's avatar and name come from the SDK's profile query, not from the list.
+    // The header's avatar and name come from the SDK's profile (`agentProfile`), not from the list.
     server.mine = [{ _id: 'a1', name: 'One' }];
     const harness = await mount();
-    harness.client.setQueryData(['alia-agent-profile', 'a1'], { id: 'a1' });
+    const profile = vi.spyOn(agentProfile, 'invalidate');
 
     await act(async () => {
       await harness.update.mutateAsync({ id: 'a1', updates: { name: 'Two' } as never });
     });
 
-    expect(harness.client.getQueryState(['alia-agent-profile', 'a1'])?.isInvalidated).toBe(true);
+    expect(profile).toHaveBeenCalledWith(expect.anything(), 'a1');
+    profile.mockRestore();
   });
 
   it('asks the server again rather than patching a copy by hand', async () => {

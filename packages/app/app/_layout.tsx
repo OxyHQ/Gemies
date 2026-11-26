@@ -6,6 +6,7 @@ import { AgentAvatarProvider } from '@oxy.so/bloom/agent-avatar';
 import { BloomProvider } from '@oxy.so/bloom/provider';
 import { preventNativeSplashAutoHide, useHideNativeSplashWhenReady } from '@oxy.so/expo-splash';
 import { OxyProvider, useAccountColor, useOxy } from '@oxy.so/services/ui/client';
+import { QueryClientProvider } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import { Slot, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -14,7 +15,7 @@ import { Platform } from 'react-native';
 
 import { AppErrorBoundary } from '@/shell/error-boundary';
 import { bindApiClient, releaseApiClient } from '@/shared/api/client';
-import { ALIA_ACCOUNT_QUERIES } from '@/shared/api/query-keys';
+import { createAppQueryClient, followDataEnvironment } from '@/shared/api/query-client';
 import '@/shared/i18n';
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/shared/i18n';
 import { useI18nStore } from '@/shared/i18n/i18n-store';
@@ -35,6 +36,10 @@ const OXY_CLIENT_ID =
   process.env.EXPO_PUBLIC_OXY_CLIENT_ID ??
   'oxy_dk_f69446329297cf395ee13c39c78678c4602e2cd989b112de';
 const AUTH_REDIRECT_URI = Linking.createURL('/');
+
+// The app's own queries (Services and the SDK keep theirs in the account's bloom-data store).
+const queryClient = createAppQueryClient();
+followDataEnvironment();
 
 function AuthSetup({ children }: { children: React.ReactNode }) {
   const { oxyServices } = useOxy();
@@ -134,27 +139,28 @@ function RootLayout() {
     >
       <AgentAvatarProvider>
         <AppErrorBoundary>
-          <OxyProvider
-            baseURL={OXY_API_URL}
-            clientId={OXY_CLIENT_ID}
-            accountQueries={ALIA_ACCOUNT_QUERIES}
-            authRedirectUri={Platform.OS !== 'web' ? AUTH_REDIRECT_URI : undefined}
-            // Wires Alia's own i18n-js instance to Oxy's resolved language (the
-            // signed-in account's primary locale, or the device/guest locale
-            // when signed out) — Oxy decides WHICH language; `useI18nStore`
-            // keeps owning the translation catalogs and library. See ADR 0022
-            // in OxyHQServices (`docs/adr/0022-app-i18n-follows-oxy-language.md`).
-            language={{
-              supportedLocales: SUPPORTED_LOCALES,
-              fallbackLocale: DEFAULT_LOCALE,
-              onChange: useI18nStore.getState().setLocale,
-              onError: (error, locale) => {
-                console.error('Failed to follow the Oxy-resolved language', error, { locale });
-              },
-            }}
-          >
-            <AppContent />
-          </OxyProvider>
+          <QueryClientProvider client={queryClient}>
+            <OxyProvider
+              baseURL={OXY_API_URL}
+              clientId={OXY_CLIENT_ID}
+              authRedirectUri={Platform.OS !== 'web' ? AUTH_REDIRECT_URI : undefined}
+              // Wires Alia's own i18n-js instance to Oxy's resolved language (the
+              // signed-in account's primary locale, or the device/guest locale
+              // when signed out) — Oxy decides WHICH language; `useI18nStore`
+              // keeps owning the translation catalogs and library. See ADR 0022
+              // in OxyHQServices (`docs/adr/0022-app-i18n-follows-oxy-language.md`).
+              language={{
+                supportedLocales: SUPPORTED_LOCALES,
+                fallbackLocale: DEFAULT_LOCALE,
+                onChange: useI18nStore.getState().setLocale,
+                onError: (error, locale) => {
+                  console.error('Failed to follow the Oxy-resolved language', error, { locale });
+                },
+              }}
+            >
+              <AppContent />
+            </OxyProvider>
+          </QueryClientProvider>
         </AppErrorBoundary>
       </AgentAvatarProvider>
     </BloomProvider>

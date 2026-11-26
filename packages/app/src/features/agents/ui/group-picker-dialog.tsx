@@ -28,7 +28,7 @@ export function GroupPickerDialog() {
   const { t } = useTranslation();
   const open = useUIStore((s) => s.groupPickerOpen);
   const setOpen = useUIStore((s) => s.setGroupPickerOpen);
-  const { data: agents } = useMyAgents();
+  const { value: agents } = useMyAgents();
   const { start, starting } = useStartGroup();
   const flights = useAvatarFlights();
   const [selected, setSelected] = useState<string[]>([]);

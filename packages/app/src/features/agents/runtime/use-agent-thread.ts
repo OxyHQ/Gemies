@@ -1,15 +1,20 @@
 import {
   AGENT_ROUTES,
+  answerSource,
+  type GemieApi,
   type GemieThreadAddress,
+  gemieRead,
+  gemieThread,
+  retryThreadRead,
   threadKey,
+  useAnswer,
+  useGemieApi,
   usePrefetchConversation,
 } from '@gemies/sdk/runtime';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { type RecordView, skip, useStore, withStore } from '@oxy.so/bloom-data';
 import { useCallback } from 'react';
 import apiClient from '@/shared/api/client';
 import { API_ROUTES } from '@/shared/api/routes';
-import { queryKeys } from '@/shared/api/query-keys';
-import { errorStatus } from '@/shared/api/error-utils';
 
 /**
  * The permanent thread between the signed-in person and one agent.
@@ -37,6 +42,14 @@ import { errorStatus } from '@/shared/api/error-utils';
  * IDENTICALLY. A 403 would confirm the agent exists, which is exactly what an
  * unpublished agent's owner did not agree to — so the screen shows one message
  * for both and this hook does not retry either.
+ *
+ * ## One read, the SDK's
+ *
+ * The thread is the SDK's `gemieThread` answer (the same `GET`), held in the signed-in account's
+ * store and copied to its durable store: a reopened thread knows its conversation from the first
+ * frame, and the chat starting its next stretch reads it again (`useRefreshGemieThread`), so this
+ * screen and the chat never disagree about which stretch is live. One stretch named by
+ * `?threadId=` is read on its own (`threadStretch`), in memory only.
  */
 interface AgentThreadIdentity {
   _id: string;
@@ -56,58 +69,57 @@ export interface AgentThread {
   threadId?: string;
 }
 
-/** How long a thread's identity and conversation are good: they change when the person starts a stretch. */
+/** How long one stretch's answer is good: like the thread's, five minutes. */
 const THREAD_STALE_MS = 5 * 60 * 1000;
 
 /**
- * The thread's query, as a value: what `useAgentThread` runs and what a prefetch runs, so the two
- * are one question under one key and a prefetched thread is the one the screen reads.
+ * One stretch of a thread (`?threadId=`): which conversation it is, with the agent's identity.
+ * Memory only: a link to a past stretch is opened from a notification or a search, not drawn by the
+ * sidebar.
  */
-function agentThreadQuery(thread: GemieThreadAddress, threadId?: string) {
-  return {
-    // Under the SDK's key for the thread, so the chat starting its next stretch re-reads this.
-    queryKey: [...queryKeys.agents.thread(threadKey(thread)), threadId ?? 'default'] as const,
-    queryFn: async (): Promise<AgentThread> => {
-      if (threadId) {
-        const response = await apiClient.get<{
-          thread: { id: string; agentId: string };
-          conversationId: string | null;
-        }>(API_ROUTES.agents.threadById(threadId));
-        if (!response.data.conversationId)
-          throw new Error('Agent thread has no active conversation');
-        const identity = await apiClient.get<AgentThread>(AGENT_ROUTES.thread(thread));
-        return {
-          agent: identity.data.agent,
-          conversationId: response.data.conversationId,
-          threadId: response.data.thread.id,
-        };
-      }
-      const response = await apiClient.get<AgentThread>(AGENT_ROUTES.thread(thread));
-      return response.data;
-    },
-    // Fresh for a while, so opening a thread that was read a moment ago (or prefetched on the way
-    // to it) paints from the cache and does not ask again.
-    staleTime: THREAD_STALE_MS,
-    /**
-     * A 404 is an ANSWER here, not a failure to get one: the agent does not
-     * exist, or this person cannot reach it. Retrying re-asks a question that
-     * has already been answered, and does it three times before the screen is
-     * allowed to say so.
-     */
-    retry: (failureCount: number, error: unknown) => errorStatus(error) !== 404 && failureCount < 2,
-  };
-}
+export const threadStretch = answerSource('alia.thread-stretch', {
+  ...gemieRead,
+  key: (thread: GemieThreadAddress, threadId: string) => `${threadKey(thread)}\u0000${threadId}`,
+  stale: THREAD_STALE_MS,
+  /** A 404 is an ANSWER here, not a failure to get one (see above): it is never asked again. */
+  retry: retryThreadRead,
+  load: async ({ signal }, thread, threadId): Promise<AgentThread> => {
+    const response = await apiClient.get<{
+      thread: { id: string; agentId: string };
+      conversationId: string | null;
+    }>(API_ROUTES.agents.threadById(threadId), { signal });
+    if (!response.data.conversationId) throw new Error('Agent thread has no active conversation');
+    const identity = await apiClient.get<AgentThread>(AGENT_ROUTES.thread(thread), { signal });
+    return {
+      agent: identity.data.agent,
+      conversationId: response.data.conversationId,
+      threadId: response.data.thread.id,
+    };
+  },
+});
 
 /** Whether an address names a thread: a non-empty handle or gemie id. */
 function addresses(thread: GemieThreadAddress): boolean {
   return ('handle' in thread ? thread.handle : thread.gemieId).length > 0;
 }
 
-export function useAgentThread(thread: GemieThreadAddress, threadId?: string) {
-  return useQuery({
-    ...agentThreadQuery(thread, threadId),
-    enabled: addresses(thread),
-  });
+/** The thread's answer as this app reads it: the server sends the agent's colour too. */
+const asAgentThread = (view: RecordView<unknown>) => view as RecordView<AgentThread>;
+
+export function useAgentThread(
+  thread: GemieThreadAddress,
+  threadId?: string,
+): RecordView<AgentThread> {
+  const api = useGemieApi();
+  const addressed = addresses(thread);
+  const whole = asAgentThread(
+    useAnswer(gemieThread, ...(addressed && threadId === undefined ? [api, thread] : [skip])),
+  );
+  const stretch = useAnswer(
+    threadStretch,
+    ...(addressed && threadId !== undefined ? [thread, threadId] : [skip]),
+  );
+  return threadId === undefined ? whole : stretch;
 }
 
 /**
@@ -118,18 +130,23 @@ export function useAgentThread(thread: GemieThreadAddress, threadId?: string) {
  * caller says so with `hasThread`.
  */
 export function usePrefetchAgentThread(): (thread: GemieThreadAddress, hasThread: boolean) => void {
-  const queryClient = useQueryClient();
+  const api = useGemieApi();
+  const store = useStore();
   const prefetchConversation = usePrefetchConversation();
   return useCallback(
     (thread, hasThread) => {
       if (!hasThread || !addresses(thread)) return;
-      const query = agentThreadQuery(thread);
-      // Best effort, never retried: see `prefetchConversation` in the SDK.
-      void queryClient.prefetchQuery({ ...query, retry: false }).then(() => {
-        const thread = queryClient.getQueryData<AgentThread>(query.queryKey);
-        if (thread) prefetchConversation(thread.conversationId);
+      // Best effort: a read that fails leaves nothing behind (`fetch` never rejects).
+      void withStore(store, () => gemieThread.fetch(api, thread)).then(() => {
+        const held = withStore(store, () => heldThread(api, thread));
+        if (held) prefetchConversation(held.conversationId);
       });
     },
-    [queryClient, prefetchConversation],
+    [api, store, prefetchConversation],
   );
+}
+
+/** The thread the account's store holds for an address, if any (in the store in scope). */
+function heldThread(api: GemieApi, thread: GemieThreadAddress) {
+  return gemieThread.entity.get(gemieThread.key(api, thread))?.value;
 }

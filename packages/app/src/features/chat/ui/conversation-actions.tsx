@@ -1,20 +1,20 @@
 import { ALIA_GEMIE_ID, buildConversationMarkdown, exportFilename } from '@gemies/sdk/model';
 import type { GemieChatState } from '@gemies/sdk';
 import {
+  Conversations,
   type GemieThreadAddress,
   useDeleteConversation,
   useShareConversation,
 } from '@gemies/sdk/runtime';
+import { useStore, withStore } from '@oxy.so/bloom-data';
 import { confirm } from '@oxy.so/bloom/surfaces';
 import { toast } from '@oxy.so/bloom/toast';
-import { useQueryClient } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'expo-router';
 import { useCallback, useMemo } from 'react';
 import { deliverMarkdownFile, deliverShareLink } from '@/features/chat/runtime/conversation-share';
 import { useOpenAgentEditor } from '@/features/chat/runtime/use-open-agent-editor';
 import { useUIStore } from '@/features/chat/runtime/ui-store';
 import { ChatHeaderActions } from '@/features/chat/ui/chat-header-actions';
-import { queryKeys } from '@/shared/api/query-keys';
 import { useTranslation } from '@/shared/i18n/use-translation';
 
 interface ConversationActionsProps {
@@ -47,22 +47,20 @@ export function ConversationActions({
   shareable = true,
 }: ConversationActionsProps) {
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
+  const store = useStore();
   const router = useRouter();
   const pathname = usePathname();
   const { conversationId, getMessages, clearMessages, openSearch } = chat;
 
   /**
-   * Export the conversation as a Markdown document. The title is read out of the query cache at
-   * the moment of the export: the `alia.title` frame writes the generated title into the same key,
-   * so this sees it without a subscription of its own.
+   * Export the conversation as a Markdown document. The title is read from the account's store at
+   * the moment of the export: the `alia.title` frame writes the generated title into the same
+   * record, so this sees it without a subscription of its own.
    */
   const handleExport = useCallback(() => {
     if (conversationId === undefined) return;
-    const cached = queryClient.getQueryData<{ title?: string }>(
-      queryKeys.conversations.detail(conversationId),
-    );
-    const title = cached?.title?.trim() || agentName || t('chat.newChat');
+    const held = withStore(store, () => Conversations.get(conversationId));
+    const title = held?.title?.trim() || agentName || t('chat.newChat');
     const exportedAt = new Date();
     const markdown = buildConversationMarkdown({
       title,
@@ -74,7 +72,7 @@ export function ConversationActions({
     deliverMarkdownFile(exportFilename(title, exportedAt), markdown, title).catch(() => {
       toast.error(t('chat.exportFailed'));
     });
-  }, [queryClient, conversationId, getMessages, agentName, t]);
+  }, [store, conversationId, getMessages, agentName, t]);
 
   /**
    * Share the conversation: mint its read-only link (`POST /v1/conversations/:id/share`, 24 hours)
@@ -93,10 +91,8 @@ export function ConversationActions({
       toast.error(t('chat.shareFailed'));
       return;
     }
-    const cached = queryClient.getQueryData<{ title?: string }>(
-      queryKeys.conversations.detail(conversationId),
-    );
-    const title = cached?.title?.trim() || agentName || t('chat.newChat');
+    const held = withStore(store, () => Conversations.get(conversationId));
+    const title = held?.title?.trim() || agentName || t('chat.newChat');
     try {
       const outcome = await deliverShareLink(url, title, t('chatHeader.shareText'));
       if (outcome === 'copied') {
@@ -107,7 +103,7 @@ export function ConversationActions({
     } catch {
       toast.error(t('chatHeader.shareDeliverFailed'));
     }
-  }, [share, conversationId, queryClient, agentName, t]);
+  }, [share, conversationId, store, agentName, t]);
 
   /** End the conversation's link: whoever holds it can no longer read the conversation. */
   const handleStopSharing = useCallback(async () => {
@@ -142,7 +138,7 @@ export function ConversationActions({
     });
     if (!ok) return;
     try {
-      await deleteConversation.mutateAsync(conversationId);
+      await deleteConversation.run(conversationId);
       router.replace('/');
     } catch {
       // Reported by `useDeleteConversation`'s own error toast.

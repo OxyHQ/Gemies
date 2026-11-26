@@ -40,7 +40,7 @@ export function useSidebarSpaces({
 }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { data, isPending, isError, refetch } = useSpaces();
+  const { value: data, isLoading, status, refresh } = useSpaces();
   const { createSpace, updateSpace, deleteSpace, moveAgent, removeAgent } = useSpaceMutations();
   const closedIds = useSpacesOpenStore((state) => state.closedIds);
   const setSpaceOpen = useSpacesOpenStore((state) => state.setSpaceOpen);
@@ -169,9 +169,9 @@ export function useSidebarSpaces({
   return {
     spaces,
     /** The first read of the spaces is on its way and nothing is cached. */
-    isLoading: enabled && isPending,
-    isError,
-    retry: refetch,
+    isLoading: enabled && isLoading,
+    isError: status === 'error',
+    retry: refresh,
     openCreate,
     /** Put an agent in a space, or (`null`) take it out of the one it is in: the gemie row's menu. */
     move,

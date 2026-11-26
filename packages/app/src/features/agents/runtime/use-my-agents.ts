@@ -1,8 +1,10 @@
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useAnswer } from '@gemies/sdk/runtime';
+import { type RecordView, skip } from '@oxy.so/bloom-data';
 import { useOxy } from '@oxy.so/services/ui/client';
+import { useQueries } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
+import { myAgents } from '@/shared/api/account-data';
 import apiClient from '@/shared/api/client';
-import { API_ROUTES } from '@/shared/api/routes';
 import { queryKeys } from '@/shared/api/query-keys';
 import type { Agent } from '@/shared/contracts/agents';
 
@@ -24,27 +26,15 @@ import type { Agent } from '@/shared/contracts/agents';
  * keeps that true between loads; nothing else may sort it, because a second
  * order would only disagree with the one the next fetch brings.
  */
-export function useMyAgents() {
-  const { user, canUsePrivateApi, isAccountCacheReady } = useOxy();
+export function useMyAgents(): RecordView<Agent[]> {
+  const { user, canUsePrivateApi } = useOxy();
 
-  const query = useQuery({
-    queryKey: queryKeys.agents.mine,
-    queryFn: async ({ signal }): Promise<Agent[]> => {
-      const response = await apiClient.get<{ agents: Agent[] }>(API_ROUTES.agents.me, { signal });
-      return response.data.agents;
-    },
-    enabled: canUsePrivateApi && isAccountCacheReady,
-    staleTime: 1000 * 60 * 5,
-    // No timer: the account's realtime connection keeps it (`useAppRealtime`) — a thread's newest
-    // line and unread count from `conversation`, a computer online or away from `presence`, a gemie
-    // made, edited or deleted on any device from `gemies` — and a reconnect reads it once.
-    refetchOnWindowFocus: false,
-  });
-  // This handshake is not persisted. Each agent retries independently, without
+  const view = useAnswer(myAgents, ...(canUsePrivateApi ? [apiClient] : [skip]));
+  // This handshake is memory only. Each agent retries independently, without
   // blocking the sidebar or requiring another list refresh after an outage.
   const eligible =
-    canUsePrivateApi && isAccountCacheReady && user?.id
-      ? (query.data ?? []).filter(
+    canUsePrivateApi && user?.id
+      ? (view.value ?? []).filter(
           (agent) =>
             agent.ownerOxyAccountId === user.id &&
             agent.status === 'active' &&
@@ -66,7 +56,7 @@ export function useMyAgents() {
         query.state.status === 'error' && retryableActivation(query.state.error) ? 60_000 : false,
     })),
   });
-  return query;
+  return view;
 }
 
 function retryableActivation(error: unknown): boolean {

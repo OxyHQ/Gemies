@@ -50,7 +50,7 @@ export function flatConversations({
     pinned.has(conversation.id) ? 0 : favorite.has(conversation.id) ? 1 : 2;
   return conversationsForHistory(conversations, projects)
     .filter((conversation) => !inFolder.has(conversation.id))
-    .sort((a, b) => rank(a) - rank(b) || b.updatedAt.getTime() - a.updatedAt.getTime());
+    .sort((a, b) => rank(a) - rank(b) || Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 }
 
 /** The primary sidebar rows that are routes, keyed by the first path segment they own. */
@@ -78,7 +78,7 @@ export type HistoryBucket = (typeof HISTORY_BUCKETS)[number];
  * one day), keeping the incoming order inside each bucket. Empty buckets are
  * left out.
  */
-export function groupHistory<T extends { readonly updatedAt: Date }>(
+export function groupHistory<T extends { readonly updatedAt: string }>(
   rows: readonly T[],
   now: Date = new Date(),
 ): { key: HistoryBucket; items: T[] }[] {
@@ -87,7 +87,7 @@ export function groupHistory<T extends { readonly updatedAt: Date }>(
   const [today, yesterday, weekAgo] = [midnight(0), midnight(1), midnight(7)];
   const buckets = HISTORY_BUCKETS.map((key) => ({ key, items: [] as T[] }));
   for (const row of rows) {
-    const time = row.updatedAt.getTime();
+    const time = Date.parse(row.updatedAt);
     const index = time >= today ? 0 : time >= yesterday ? 1 : time >= weekAgo ? 2 : 3;
     buckets[index]!.items.push(row);
   }

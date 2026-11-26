@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { gemieQueryKeys } from '@gemies/sdk/runtime';
+import { agentProfile, useGemieApi } from '@gemies/sdk/runtime';
+import { type Store, useStore, withStore } from '@oxy.so/bloom-data';
 import { useOxy } from '@oxy.so/services/ui/client';
 import apiClient from '@/shared/api/client';
 import { API_ROUTES } from '@/shared/api/routes';
 import { queryKeys } from '@/shared/api/query-keys';
 import { errorStatus } from '@/shared/api/error-utils';
 import type { Agent, AgentCreate, AgentUpdate } from '@/shared/contracts/agents';
+import { refreshMyAgents } from '@/shared/api/account-data';
 
 /**
  * Reading and writing agents.
@@ -32,14 +34,13 @@ import type { Agent, AgentCreate, AgentUpdate } from '@/shared/contracts/agents'
  * in — so both are said out loud rather than left to a `refetchOnMount` to
  * paper over.
  */
-async function invalidateAgentLists(queryClient: QueryClient): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: queryKeys.agents.mine }),
-    // The prefix, not one filtered key: the catalogue is cached per filter, and
-    // a new agent belongs to every filter it matches rather than to the one the
-    // last screen happened to use.
-    queryClient.invalidateQueries({ queryKey: ['agents', 'catalogue'] }),
-  ]);
+async function invalidateAgentLists(queryClient: QueryClient, store: Store): Promise<void> {
+  // The person's own list is the account's (`myAgents`): on screen, it is read again at once.
+  withStore(store, refreshMyAgents);
+  // The prefix, not one filtered key: the catalogue is cached per filter, and
+  // a new agent belongs to every filter it matches rather than to the one the
+  // last screen happened to use.
+  await queryClient.invalidateQueries({ queryKey: ['agents', 'catalogue'] });
 }
 
 export interface AgentCatalogueParams {
@@ -146,6 +147,7 @@ export function useAgentByHandle(handle: string) {
 
 export function useCreateAgent() {
   const queryClient = useQueryClient();
+  const store = useStore();
 
   return useMutation({
     mutationFn: async (data: AgentCreate): Promise<Agent> => {
@@ -154,7 +156,7 @@ export function useCreateAgent() {
     },
     onSuccess: (agent) => {
       queryClient.setQueryData(queryKeys.agents.detail(agent._id), agent);
-      return invalidateAgentLists(queryClient);
+      return invalidateAgentLists(queryClient, store);
     },
   });
 }
@@ -171,6 +173,8 @@ export function useCreateAgent() {
  */
 export function useUpdateAgent() {
   const queryClient = useQueryClient();
+  const store = useStore();
+  const api = useGemieApi();
 
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: AgentUpdate }): Promise<Agent> => {
@@ -182,16 +186,17 @@ export function useUpdateAgent() {
     },
     onSuccess: (agent) => {
       queryClient.setQueryData(queryKeys.agents.detail(agent._id), agent);
-      // The chat reads the agent's profile through the SDK's own query: the header's avatar and the
-      // lead's name come from it, so an edit reaches them the way it reaches the sidebar's list.
-      void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.agents.profile(agent._id) });
-      return invalidateAgentLists(queryClient);
+      // The chat reads the agent's profile from the SDK (`agentProfile`): the header's avatar and
+      // the lead's name come from it, so an edit reaches them the way it reaches the sidebar's list.
+      withStore(store, () => agentProfile.invalidate(api, agent._id));
+      return invalidateAgentLists(queryClient, store);
     },
   });
 }
 
 export function useDeleteAgent() {
   const queryClient = useQueryClient();
+  const store = useStore();
 
   return useMutation({
     /**
@@ -210,7 +215,7 @@ export function useDeleteAgent() {
     onSuccess: (id) => {
       // The agent is gone, so its own entry is not merely stale.
       queryClient.removeQueries({ queryKey: queryKeys.agents.detail(id) });
-      return invalidateAgentLists(queryClient);
+      return invalidateAgentLists(queryClient, store);
     },
   });
 }

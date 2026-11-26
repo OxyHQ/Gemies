@@ -1,3 +1,4 @@
+import { useStore as useDataStore, withStore } from '@oxy.so/bloom-data';
 import { useQueryClient } from '@tanstack/react-query';
 import type { GemieRuntimeHost, GemieUsageFrame } from '@gemies/sdk/runtime';
 import { resolveFaviconUrl } from '@clarity.surf/sdk';
@@ -8,6 +9,7 @@ import type { CreditsInfo } from '@/features/billing/runtime/use-credits';
 import { parseContextUsage } from '@/features/chat/model/context-usage';
 import { useStore } from '@/features/chat/runtime/global-store';
 import { useModelStore } from '@/features/chat/runtime/model-store';
+import { refreshMyAgents } from '@/shared/api/account-data';
 import { useAgentRowPreview } from '@/features/chat/runtime/use-agent-row-preview';
 import type { UsageWarning } from '@/features/chat/runtime/use-credit-warnings';
 import { useUIStore } from '@/features/chat/runtime/ui-store';
@@ -38,6 +40,7 @@ export function useAliaHost(): GemieRuntimeHost {
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
+  const store = useDataStore();
   const previewAgentRow = useAgentRowPreview();
   const haptic = useHaptics();
 
@@ -83,7 +86,7 @@ export function useAliaHost(): GemieRuntimeHost {
           void queryClient.invalidateQueries({ queryKey: USER_MEMORY_QUERY_KEY });
         }
         if (name && AGENT_WRITING_TOOLS.has(name)) {
-          void queryClient.invalidateQueries({ queryKey: queryKeys.agents.mine });
+          withStore(store, refreshMyAgents);
         }
       },
       onArtifact: (artifact) => {
@@ -116,6 +119,6 @@ export function useAliaHost(): GemieRuntimeHost {
       },
       closeConversation: () => router.replace('/(app)'),
     }),
-    [queryClient, previewAgentRow, router, haptic],
+    [queryClient, store, previewAgentRow, router, haptic],
   );
 }

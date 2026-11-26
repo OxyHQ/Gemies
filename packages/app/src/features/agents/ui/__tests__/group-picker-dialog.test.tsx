@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({
   agents: Array.from({ length: 7 }, (_, index) => ({ _id: String(index), name: `Gemie ${index}` })),
 }));
 vi.mock('@/features/agents/runtime/use-my-agents', () => ({
-  useMyAgents: () => ({ data: state.agents }),
+  useMyAgents: () => ({ value: state.agents }),
 }));
 vi.mock('@/features/agents/runtime/use-start-group', () => ({
   useStartGroup: () => ({ start: state.start, starting: false }),

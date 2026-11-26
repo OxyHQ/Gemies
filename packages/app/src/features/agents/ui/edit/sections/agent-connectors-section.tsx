@@ -5,14 +5,14 @@ import { SettingsSkeletonRows } from '@/shared/ui/skeletons';
 import {
   ConnectorLogo,
   GrantSwitchRow,
-  connectorQueryKeys,
+  connections as connectionsSource,
   useConnections,
 } from '@gemies/sdk/connectors';
+import { useStore, withStore } from '@oxy.so/bloom-data';
 import { AgentCreatorSection } from '@oxy.so/bloom/agent-creator';
 import { Button } from '@oxy.so/bloom/button';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
-import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
@@ -30,8 +30,8 @@ const grantOf = (connectionId: string) => `mcp:${connectionId}`;
 export function AgentConnectorsSection({ agentId, name }: { agentId: string; name: string }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const { data: agents, isPending: agentsPending } = useMyAgents();
+  const store = useStore();
+  const { value: agents, isLoading: agentsPending } = useMyAgents();
   const connections = useConnections();
   const update = useUpdateAgent();
   const agent = agents?.find((candidate) => candidate._id === agentId);
@@ -43,17 +43,17 @@ export function AgentConnectorsSection({ agentId, name }: { agentId: string; nam
     try {
       await update.mutateAsync({ id: agentId, updates: { capabilityGrants: next } });
       // Settings › Connected says which gemies use each account.
-      await queryClient.invalidateQueries({ queryKey: connectorQueryKeys.connected });
+      withStore(store, () => connectionsSource.invalidateAll());
     } catch {
       toast.error(t('settings.saveFailed'));
     }
   };
 
-  const rows = (connections.data ?? []).filter((connection) => connection.status === 'running');
+  const rows = (connections.value ?? []).filter((connection) => connection.status === 'running');
 
   return (
     <AgentCreatorSection title={t(`${K}.title`)}>
-      {agentsPending || connections.isPending ? (
+      {agentsPending || connections.isLoading ? (
         <SettingsSkeletonRows control="switch" rows={2} />
       ) : (
         <>

@@ -12,7 +12,8 @@ export function useStartGroup() {
   const create = useCreateConversation();
   const start = useCallback(
     async (agentIds: readonly string[]): Promise<void> => {
-      const conversation = await create.mutateAsync({ agentIds });
+      const conversation = await create.run({ agentIds });
+      if (!conversation) return;
       router.push(`/(app)/c/${conversation.id}`);
     },
     [create, router],

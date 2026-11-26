@@ -33,7 +33,6 @@ import {
 } from '@/shared/routing/agent-address';
 import type { Agent } from '@/shared/contracts/agents';
 import { formatRelativeTime } from '@/shared/format/relative-time';
-import { queryKeys } from '@/shared/api/query-keys';
 import { GemieAvatar, agentCharacterOf, readAgentCharacter } from '@gemies/sdk';
 import type { Conversation } from '@gemies/sdk/model';
 import {
@@ -84,7 +83,6 @@ import type {
 import * as Skeleton from '@oxy.so/bloom/skeleton';
 import { confirm } from '@oxy.so/bloom/surfaces';
 import { ProfileButton, useAuth, useOxy } from '@oxy.so/services/ui/client';
-import { useQueryClient } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'expo-router';
 import { GemiesMark } from '@/shared/ui/gemies-mark';
 import React from 'react';
@@ -243,7 +241,6 @@ function useSidebarProps() {
   const pathname = usePathname();
   const shell = useAiChatShell();
   const settings = useAliaSettings();
-  const queryClient = useQueryClient();
   const prefetchConversation = usePrefetchConversation();
   const prefetchAgentThread = usePrefetchAgentThread();
   const onHoverIntent = useHoverIntent();
@@ -253,21 +250,25 @@ function useSidebarProps() {
   // Who is doing what, live, on every row ("Pepe is typing…"): the account's realtime activity.
   const activity = useSidebarActivity();
   const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isFetchNextPageError,
-    isPending,
-    isError,
-    refetch,
+    conversations: listed,
+    list: heldList,
+    more: fetchNextPage,
+    hasMore: hasNextPage,
+    isFetching,
+    isLoading,
+    status,
+    refresh: refetch,
   } = useConversations();
+  // A page read (or a refresh behind a list that is already drawn), as the SDK's own lists say it.
+  const isFetchingNextPage = isFetching && heldList !== undefined;
+  const isError = status === 'error';
   const {
-    data: myAgents,
-    isPending: agentsPending,
-    isError: agentsError,
-    refetch: retryAgents,
+    value: myAgents,
+    isLoading: agentsPending,
+    status: agentsStatus,
+    refresh: retryAgents,
   } = useMyAgents();
+  const agentsError = agentsStatus === 'error';
   const { isAuthenticated, user } = useOxy();
   const spacesUi = useSidebarSpaces({ enabled: isAuthenticated, agents: myAgents });
   const gemieHandlers = useGemieRowHandlers(spacesUi.move);
@@ -293,9 +294,9 @@ function useSidebarProps() {
     favoriteIds,
     toggleFavorite,
   } = useAccountCollections();
-  // `mutateAsync` is stable across renders; the mutation object is not, and the
+  // `run` is stable across renders; the action's view is not, and the
   // tree's rows (and their memoised menus) depend on this.
-  const { mutateAsync: deleteConversation } = useDeleteConversation();
+  const { run: deleteConversation } = useDeleteConversation();
   const renameConversation = useRenameConversation();
   const [renaming, setRenaming] = React.useState<Conversation | null>(null);
   const [projectDialogOpen, setProjectDialogOpen] = React.useState(false);
@@ -313,38 +314,24 @@ function useSidebarProps() {
     [router, closeNav],
   );
 
-  const conversations = React.useMemo(() => {
-    const all = data?.pages.flatMap((page) => page.conversations) ?? [];
-    return all.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
-  }, [data]);
+  const conversations = React.useMemo(
+    () => [...listed].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
+    [listed],
+  );
 
   // What the person's gemies say to each other (ADR 0042): theirs to read, never in the person's
   // own list. Their first page is enough for the sidebar; each one is a pair, reopened every time.
-  const { data: betweenGemiesData } = useConversations({ kind: 'gemies' });
-  const betweenGemies = React.useMemo(
-    () => betweenGemiesData?.pages[0]?.conversations ?? [],
-    [betweenGemiesData],
-  );
+  const { conversations: betweenGemies } = useConversations({ kind: 'gemies' });
 
   const openConversation = React.useCallback(
     (id: string) => {
-      // Seed the detail cache from the list so the chat renders at once.
-      if (!queryClient.getQueryData(queryKeys.conversations.detail(id))) {
-        const listed =
-          conversations.find((c) => c.id === id) ?? betweenGemies.find((c) => c.id === id);
-        if (listed) {
-          queryClient.setQueryData(
-            queryKeys.conversations.detail(id),
-            { ...listed, messages: [] },
-            { updatedAt: 0 },
-          );
-        }
-      }
+      // The chat renders at once from the row the list holds (the SDK's conversation shows a held
+      // row without messages while it is read).
       prefetchConversation(id);
       closeNav?.();
       router.replace(`/(app)/c/${id}`);
     },
-    [router, queryClient, prefetchConversation, conversations, betweenGemies, closeNav],
+    [router, prefetchConversation, closeNav],
   );
 
   /**
@@ -497,7 +484,7 @@ function useSidebarProps() {
         label: conv.title || t('sidebar.newConversation'),
         // A pinned chat says so with its glyph; the rest are title-only.
         icon: pinnedIds.includes(conv.id) ? RiPushpinLine : undefined,
-        meta: shortTime(conv.updatedAt),
+        meta: shortTime(new Date(conv.updatedAt)),
         onPrefetch: () => onHoverIntent(() => prefetchConversation(conv.id)),
         contextMenu: menu ?? undefined,
         actions:
@@ -984,14 +971,14 @@ function useSidebarProps() {
   // at a time: keep loading while a query is typed, so an older match is found
   // rather than silently missing.
   React.useEffect(() => {
-    if (searchQuery.trim() && hasNextPage && !isFetchingNextPage && !isFetchNextPageError) {
+    if (searchQuery.trim() && hasNextPage && !isFetchingNextPage && !isError) {
       void fetchNextPage();
     }
-  }, [searchQuery, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
+  }, [searchQuery, hasNextPage, isFetchingNextPage, isError, fetchNextPage]);
 
   /** While the first page loads, ghost rows; while a later one does, two more at the foot. */
   const content =
-    isAuthenticated && !data && isPending ? (
+    isAuthenticated && !heldList && isLoading ? (
       <HistorySkeleton />
     ) : isFetchingNextPage ? (
       <HistorySkeleton rows={2} />
@@ -1150,7 +1137,7 @@ function useSidebarProps() {
       <RenameConversationDialog
         conversation={renaming}
         onClose={() => setRenaming(null)}
-        onRename={(conv, title) => renameConversation.mutate({ id: conv.id, title })}
+        onRename={(conv, title) => void renameConversation.run(conv.id, title).catch(() => {})}
       />
       <FolderNameDialog
         state={folderDialog}

@@ -28,6 +28,8 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
 }));
 vi.mock('@/features/agents/runtime/share-agent', () => ({ shareAgent: vi.fn() }));
+// The person's agents are the account's data, built on the SDK's helpers (its barrel is native).
+vi.mock('@gemies/sdk/runtime', () => import('@/shared/testing/sdk-runtime-data'));
 
 import { useAgentDetailActions } from '../use-agent-detail-actions';
 import type { Agent } from '@/shared/contracts/agents';

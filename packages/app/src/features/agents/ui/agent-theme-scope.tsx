@@ -21,12 +21,8 @@ import { View } from 'react-native';
  */
 export function AgentThemeScope({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { data: agents } = useMyAgents();
-  const { data } = useConversations();
-  const conversations = useMemo(
-    () => data?.pages.flatMap((page) => page.conversations) ?? [],
-    [data],
-  );
+  const { value: agents } = useMyAgents();
+  const { conversations } = useConversations();
   const agent = useMemo(
     () => activeAgentFor({ pathname, agents: agents ?? [], conversations }),
     [pathname, agents, conversations],

@@ -6,9 +6,8 @@
  */
 
 import { importCollections, type LocalCollections, useGemieApi } from '@gemies/sdk/runtime';
-import { useQueryClient } from '@tanstack/react-query';
+import { useStore, withStore } from '@oxy.so/bloom-data';
 import { useEffect } from 'react';
-import { gemieQueryKeys } from '@gemies/sdk/runtime';
 import { AccountScopedKey } from '@/shared/state/account-scope';
 
 /** The keys the device-local stores wrote; read once more to bring them over, then removed. */
@@ -72,7 +71,7 @@ function list(raw: string | null): string[] {
 /** Bring this device's collections into the signed-in account, once. */
 export function useImportLocalCollections(userId: string | null): void {
   const api = useGemieApi();
-  const queryClient = useQueryClient();
+  const store = useStore();
   useEffect(() => {
     if (!userId) return;
     let current = true;
@@ -93,9 +92,9 @@ export function useImportLocalCollections(userId: string | null): void {
           local.projects.length ===
         0;
       if (!empty) {
-        const snapshot = await importCollections(api, local);
+        // The account's snapshot it answers is stored in the account's store (the action's settle).
+        await withStore(store, () => importCollections(api, local));
         if (!current) return;
-        queryClient.setQueryData(gemieQueryKeys.collections, snapshot);
       }
       // Kept nowhere on the device any more: the account holds them.
       await Promise.all(keys.map((key) => key.removeItem()));
@@ -105,5 +104,5 @@ export function useImportLocalCollections(userId: string | null): void {
     return () => {
       current = false;
     };
-  }, [userId, api, queryClient]);
+  }, [userId, api, store]);
 }

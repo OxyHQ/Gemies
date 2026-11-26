@@ -87,6 +87,11 @@ vi.mock('expo-router', () => ({
 }));
 
 vi.mock('@oxy.so/services/ui/client', () => ({
+  // The SDK's client reads the host's app assertion from here (ADR 0021); this host has none.
+  useAppAssertion: () => ({
+    getAppAssertion: async () => null,
+    getAppAssertionHeaders: async () => ({}),
+  }),
   useOxy: () => ({
     isAuthenticated: true,
     oxyServices: {

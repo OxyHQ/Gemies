@@ -1,10 +1,12 @@
+import { refreshMyAgents, spaces } from '@/shared/api/account-data';
 import apiClient from '@/shared/api/client';
 import { errorResponseData, errorStatus } from '@/shared/api/error-utils';
-import { queryKeys } from '@/shared/api/query-keys';
 import { API_ROUTES } from '@/shared/api/routes';
 import type { Space, SpaceCreate, SpaceErrorCode, SpaceUpdate } from '@/shared/contracts/spaces';
+import { refreshConversationLists, useAnswer, useConversationsClient } from '@gemies/sdk/runtime';
+import { type RecordView, skip, useStore, withStore } from '@oxy.so/bloom-data';
 import { useOxy } from '@oxy.so/services/ui/client';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 
 /**
  * Spaces (ADR 0028): the folders that group the person's own agents. A space is a server entity
@@ -12,18 +14,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
  * Spaces section: the list, and one mutation per thing the person can do to a space.
  */
 
-/** The person's spaces, with their members and rooms (`GET /spaces`). */
-export function useSpaces() {
-  const { canUsePrivateApi, isAccountCacheReady } = useOxy();
-  return useQuery({
-    queryKey: queryKeys.spaces.all,
-    queryFn: async ({ signal }): Promise<Space[]> => {
-      const response = await apiClient.get<{ spaces: Space[] }>(API_ROUTES.spaces.list, { signal });
-      return response.data.spaces ?? [];
-    },
-    enabled: canUsePrivateApi && isAccountCacheReady,
-    staleTime: 1000 * 60 * 5,
-  });
+/** The person's spaces, once the private API is usable. */
+export function useSpaces(): RecordView<Space[]> {
+  const { canUsePrivateApi } = useOxy();
+  return useAnswer(spaces, ...(canUsePrivateApi ? [apiClient] : [skip]));
 }
 
 /**
@@ -38,13 +32,14 @@ export function spaceErrorCode(error: unknown): SpaceErrorCode | undefined {
 
 /** Agents leave and join spaces, rooms appear and go: all three lists must be read again. */
 function useRefreshSpaces() {
-  const queryClient = useQueryClient();
+  const store = useStore();
+  const conversations = useConversationsClient();
   return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.spaces.all }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.mine }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all }),
-    ]);
+    withStore(store, () => {
+      spaces.invalidateAll();
+      refreshMyAgents();
+      refreshConversationLists(conversations);
+    });
 }
 
 /**

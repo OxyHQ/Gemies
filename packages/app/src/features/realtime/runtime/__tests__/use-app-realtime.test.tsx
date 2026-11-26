@@ -8,7 +8,8 @@ import { act, create } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 
 const handlers = vi.hoisted(() => new Map<string, (frame: { data: unknown }) => void>());
-vi.mock('@gemies/sdk/runtime', () => ({
+vi.mock('@gemies/sdk/runtime', async () => ({
+  ...(await import('@/shared/testing/sdk-runtime-data')),
   useGemieRealtime: () => ({ onStatus: () => () => undefined }),
   useRealtimeReset: () => undefined,
   useRealtimeEvent: (name: string, handler: (frame: { data: unknown }) => void) => {

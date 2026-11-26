@@ -1,31 +1,48 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store, withStore } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const get = vi.hoisted(() => vi.fn());
 const prefetchConversation = vi.hoisted(() => vi.fn());
 vi.mock('@/shared/api/client', () => ({ default: { get } }));
-vi.mock('@gemies/sdk/runtime', () => {
+vi.mock('@gemies/sdk/runtime', async () => {
+  const data = await import('@/shared/testing/sdk-runtime-data');
   // The SDK's addressing, as its `routes.ts` states it: by handle, or `id:<gemieId>` by id.
   type Address = { handle: string } | { gemieId: string };
+  const threadKey = (thread: Address) =>
+    'handle' in thread ? thread.handle : `id:${thread.gemieId}`;
+  const AGENT_ROUTES = {
+    thread: (thread: Address) =>
+      'handle' in thread ? `/agents/thread/${thread.handle}` : `/agents/${thread.gemieId}/thread`,
+  };
+  // The SDK's `gemieThread`: the thread's answer under its address, read through the SDK's client.
+  const gemieThread = data.answerSource('test.thread', {
+    key: (_api: unknown, thread: Address) => threadKey(thread),
+    retry: 0,
+    load: async (_request, api, thread) =>
+      ((await (api as { get: typeof get }).get(AGENT_ROUTES.thread(thread))) as { data: unknown })
+        .data,
+  });
   return {
+    ...data,
+    AGENT_ROUTES,
+    gemieThread,
+    retryThreadRead: () => false,
+    threadKey,
+    useGemieApi: () => ({ get }),
     usePrefetchConversation: () => prefetchConversation,
-    threadKey: (thread: Address) => ('handle' in thread ? thread.handle : `id:${thread.gemieId}`),
-    AGENT_ROUTES: {
-      thread: (thread: Address) =>
-        'handle' in thread ? `/agents/thread/${thread.handle}` : `/agents/${thread.gemieId}/thread`,
-    },
   };
 });
 
 const { usePrefetchAgentThread } = await import('../use-agent-thread');
+const { gemieThread } = await import('@gemies/sdk/runtime');
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 let renderer: ReactTestRenderer | null = null;
 
 function mount() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const store = new Store();
   let prefetch!: ReturnType<typeof usePrefetchAgentThread>;
   function Probe() {
     prefetch = usePrefetchAgentThread();
@@ -33,12 +50,16 @@ function mount() {
   }
   act(() => {
     renderer = create(
-      <QueryClientProvider client={client}>
+      <DataProvider store={store}>
         <Probe />
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
-  return { client, prefetch: (...args: Parameters<typeof prefetch>) => prefetch(...args) };
+  const held = (key: string) =>
+    withStore(store, () => gemieThread.entity.get(key))?.value as
+      | { conversationId: string }
+      | undefined;
+  return { held, prefetch: (...args: Parameters<typeof prefetch>) => prefetch(...args) };
 }
 
 afterEach(() => {
@@ -56,25 +77,21 @@ describe('reading an agent’s thread ahead of the press', () => {
     expect(get).not.toHaveBeenCalled();
   });
 
-  it('reads the thread and then the conversation behind it, under the key the screen reads', async () => {
+  it('reads the thread and then the conversation behind it, into the thread the screen reads', async () => {
     get.mockResolvedValue({ data: { agent: { _id: 'a1' }, conversationId: 'c9' } });
-    const { client, prefetch } = mount();
+    const { held, prefetch } = mount();
     prefetch({ handle: 'pepe' }, true);
     await vi.waitFor(() => expect(prefetchConversation).toHaveBeenCalledWith('c9'));
     expect(get).toHaveBeenCalledExactlyOnceWith('/agents/thread/pepe');
-    expect(client.getQueryData(['agent-thread', 'pepe', 'default'])).toMatchObject({
-      conversationId: 'c9',
-    });
+    expect(held('pepe')).toMatchObject({ conversationId: 'c9' });
   });
 
   it('reads a gemie with no handle by its id, under the SDK’s key for that thread', async () => {
     get.mockResolvedValue({ data: { agent: { _id: 'g1' }, conversationId: 'c7' } });
-    const { client, prefetch } = mount();
+    const { held, prefetch } = mount();
     prefetch({ gemieId: 'g1' }, true);
     await vi.waitFor(() => expect(prefetchConversation).toHaveBeenCalledWith('c7'));
     expect(get).toHaveBeenCalledExactlyOnceWith('/agents/g1/thread');
-    expect(client.getQueryData(['agent-thread', 'id:g1', 'default'])).toMatchObject({
-      conversationId: 'c7',
-    });
+    expect(held('id:g1')).toMatchObject({ conversationId: 'c7' });
   });
 });

@@ -1,3 +1,4 @@
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AxiosError, AxiosHeaders } from 'axios';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -8,9 +9,9 @@ vi.mock('@oxy.so/services/ui/client', () => ({
   useOxy: () => ({
     user: { id: 'owner' },
     canUsePrivateApi: fixtures.ready,
-    isAccountCacheReady: fixtures.ready,
   }),
 }));
+vi.mock('@gemies/sdk/runtime', () => import('@/shared/testing/sdk-runtime-data'));
 import { useMyAgents } from '../use-my-agents';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let renderer: ReactTestRenderer;
@@ -35,10 +36,12 @@ async function mount() {
   client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } });
   await act(async () => {
     renderer = create(
-      <QueryClientProvider client={client}>
-        <Probe />
-        <Probe />
-      </QueryClientProvider>,
+      <DataProvider store={new Store()}>
+        <QueryClientProvider client={client}>
+          <Probe />
+          <Probe />
+        </QueryClientProvider>
+      </DataProvider>,
     );
   });
   await settle();

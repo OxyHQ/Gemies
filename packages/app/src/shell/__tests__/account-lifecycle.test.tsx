@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,7 +16,6 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
   },
 }));
 vi.mock('@oxy.so/services/ui/client', () => ({
-  queryKeys: { accounts: { all: ['accounts'] }, sessions: { all: ['sessions'] } },
   useOxy: () => ({}),
   // The SDK reads the host's app assertion from here (ADR 0021); this host has none.
   useAppAssertion: () => ({
@@ -69,8 +68,8 @@ function seedAccountA(client: QueryClient) {
     memory: { settings: { recallEnabled: false }, preferences: { voice: 'male' } },
   });
   useLibraryStore.setState({ files: [{ _id: 'f1' } as never] });
-  client.setQueryData(['conversations'], { pages: [{ conversations: [{ id: 'c1' }] }] });
-  client.setQueryData(['accounts', 'current'], { id: 'A' });
+  client.setQueryData(['credits'], { balance: 10 });
+  client.setQueryData(['agents', 'detail', 'a1'], { _id: 'a1' });
 }
 
 function expectNothingOfA() {
@@ -93,27 +92,40 @@ beforeEach(() => {
 describe('resetAccountSession', () => {
   it('empties every store that held the previous account, and keeps the device’s layout', () => {
     seedAccountA(client);
-    resetAccountSession(client, null);
+    resetAccountSession(client);
     expectNothingOfA();
     // The device's, not the account's.
     expect(useUIStore.getState().rightPanelWidth).toBe(480);
   });
 
-  it('preserves the account cache Oxy already restored and resets unmanaged queries', async () => {
+  it('drops every query: all of them are the app’s own, and memory only', async () => {
     seedAccountA(client);
-    client.setQueryData(['conversations'], { pages: [{ conversations: [{ id: 'B-chat' }] }] });
-    client.setQueryData(['credits'], { balance: 10 });
-    resetAccountSession(client, 'B');
+    resetAccountSession(client);
     await vi.waitFor(() => expect(client.getQueryData(['credits'])).toBeUndefined());
-    expect(client.getQueryData(['conversations'])).toEqual({
-      pages: [{ conversations: [{ id: 'B-chat' }] }],
-    });
-    expect(client.getQueryData(['accounts', 'current'])).toEqual({ id: 'A' });
+    expect(client.getQueryData(['agents', 'detail', 'a1'])).toBeUndefined();
+  });
+
+  it('forgets a write still waiting for the network instead of replaying it as the next account', async () => {
+    const sent = vi.fn(async () => undefined);
+    onlineManager.setOnline(false);
+    try {
+      const write = client
+        .getMutationCache()
+        .build(client, { mutationKey: ['email-alerts-update'], mutationFn: sent });
+      void write.execute(undefined).catch(() => undefined);
+      await vi.waitFor(() => expect(write.state.isPaused).toBe(true));
+      resetAccountSession(client);
+      expect(client.getMutationCache().getAll()).toEqual([]);
+    } finally {
+      onlineManager.setOnline(true);
+    }
+    await client.resumePausedMutations();
+    expect(sent).not.toHaveBeenCalled();
   });
 
   it('retires the epoch a read in flight for the previous account took', () => {
     const taken = currentAccountEpoch();
-    resetAccountSession(client, 'B');
+    resetAccountSession(client);
     expect(isCurrentAccountEpoch(taken)).toBe(false);
   });
 });

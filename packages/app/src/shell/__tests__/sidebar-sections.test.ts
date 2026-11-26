@@ -16,8 +16,8 @@ function chat(id: string, updatedAt: Date, agentId?: string | null): Conversatio
   return {
     id,
     title: id,
-    createdAt: updatedAt,
-    updatedAt,
+    createdAt: updatedAt.toISOString(),
+    updatedAt: updatedAt.toISOString(),
     messages: [],
     ...(agentId === undefined ? {} : { agentId }),
   };

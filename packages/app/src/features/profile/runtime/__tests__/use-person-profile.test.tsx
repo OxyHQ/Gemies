@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 /** What `/@username` names when it is not an agent: a public account that is not a bot. */
 
 const query = vi.hoisted(() => ({
-  result: { data: undefined as unknown, isPending: false, isError: false },
+  result: { value: undefined as unknown, isLoading: false, status: 'success' as string },
   calls: [] as (string | null)[],
 }));
 vi.mock('@oxy.so/services/ui/client', () => ({
@@ -35,28 +35,32 @@ afterEach(() => {
   act(() => renderer?.unmount());
   renderer = null;
   query.calls.length = 0;
-  query.result = { data: undefined, isPending: false, isError: false };
+  query.result = { value: undefined, isLoading: false, status: 'success' };
 });
 
 describe('usePersonProfile', () => {
   it('is a person for a personal or organization account', () => {
     query.result = {
-      data: { username: 'maya', kind: 'personal' },
-      isPending: false,
-      isError: false,
+      value: { username: 'maya', kind: 'personal' },
+      isLoading: false,
+      status: 'success',
     };
     expect(read('maya').person).toMatchObject({ username: 'maya' });
-    query.result = { data: { username: 'maya' }, isPending: false, isError: false };
+    query.result = { value: { username: 'maya' }, isLoading: false, status: 'success' };
     expect(read('maya').person).toMatchObject({ username: 'maya' });
   });
 
   it('is nobody for a bot: an agent opens its thread', () => {
-    query.result = { data: { username: 'pepe', kind: 'bot' }, isPending: false, isError: false };
+    query.result = {
+      value: { username: 'pepe', kind: 'bot' },
+      isLoading: false,
+      status: 'success',
+    };
     expect(read('pepe').person).toBeUndefined();
   });
 
   it('is nobody and is not waiting for an empty username, and asks Oxy for none', () => {
-    query.result = { data: undefined, isPending: true, isError: false };
+    query.result = { value: undefined, isLoading: true, status: 'loading' };
     const state = read('');
     expect(state.person).toBeUndefined();
     expect(state.isPending).toBe(false);
@@ -64,9 +68,9 @@ describe('usePersonProfile', () => {
   });
 
   it('waits while the account is read, and reports a failed read', () => {
-    query.result = { data: undefined, isPending: true, isError: false };
+    query.result = { value: undefined, isLoading: true, status: 'loading' };
     expect(read('maya').isPending).toBe(true);
-    query.result = { data: undefined, isPending: false, isError: true };
+    query.result = { value: undefined, isLoading: false, status: 'error' };
     expect(read('maya')).toMatchObject({ isPending: false, isError: true, person: undefined });
   });
 });

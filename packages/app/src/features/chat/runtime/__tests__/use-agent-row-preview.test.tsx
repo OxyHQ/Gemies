@@ -1,10 +1,14 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store, withStore } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('@/shared/api/client', () => ({ default: { get: vi.fn() } }));
+vi.mock('@gemies/sdk/runtime', () => import('@/shared/testing/sdk-runtime-data'));
+
 import { useAgentRowPreview } from '../use-agent-row-preview';
-import { queryKeys } from '@/shared/api/query-keys';
+import { myAgents } from '@/shared/api/account-data';
 import type { Agent } from '@/shared/contracts/agents';
+import { ACCOUNT } from '@gemies/sdk/runtime';
 
 /**
  * The sidebar's agent row, while you are talking to that agent.
@@ -36,8 +40,10 @@ const agent = (over: Partial<Agent> = {}): Agent =>
   }) as Agent;
 
 function mount(seed?: Agent[]) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  if (seed !== undefined) client.setQueryData(queryKeys.agents.mine, seed);
+  // The person's agents live in the account's store (`myAgents`), which the sidebar draws.
+  const store = new Store();
+  if (seed !== undefined) withStore(store, () => myAgents.entity.put({ id: ACCOUNT, value: seed }));
+  const fetched = vi.spyOn(myAgents, 'invalidateAll');
   let preview: ReturnType<typeof useAgentRowPreview> | undefined;
   function Probe() {
     preview = useAgentRowPreview();
@@ -45,39 +51,33 @@ function mount(seed?: Agent[]) {
   }
   act(() => {
     renderer = create(
-      <QueryClientProvider client={client}>
+      <DataProvider store={store}>
         <Probe />
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
   if (preview === undefined) throw new Error('the preview hook did not run');
 
   return {
     preview,
-    rows: () => client.getQueryData<Agent[]>(queryKeys.agents.mine),
-    /** Counts every time the cached list is REPLACED, by data identity. */
+    rows: () => withStore(store, () => myAgents.entity.get(ACCOUNT))?.value,
+    /** Counts every time the held list is rewritten. */
     countWrites: () => {
-      let writes = 0;
-      let last = client.getQueryData<Agent[]>(queryKeys.agents.mine);
-      const unsubscribe = client.getQueryCache().subscribe(() => {
-        const now = client.getQueryData<Agent[]>(queryKeys.agents.mine);
-        if (now !== last) {
-          writes += 1;
-          last = now;
-        }
-      });
+      const writes = vi.spyOn(myAgents.entity, 'update');
       return {
         stop: () => {
-          unsubscribe();
-          return writes;
+          const count = writes.mock.calls.length;
+          writes.mockRestore();
+          return count;
         },
       };
     },
-    client,
+    fetched,
   };
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   if (renderer !== null) {
     act(() => renderer?.unmount());
     renderer = null;
@@ -86,15 +86,14 @@ afterEach(() => {
 
 describe('the agent row preview', () => {
   it('shows the line straight away, without asking the server', () => {
-    const { preview, rows, client } = mount([agent()]);
-    const asked = vi.spyOn(client, 'invalidateQueries');
+    const { preview, rows, fetched } = mount([agent()]);
 
     act(() => preview('a1', 'what I just sent'));
 
     expect(rows()?.[0]?.lastMessage).toBe('what I just sent');
     // A write, not a refetch: invalidating would fetch the whole list back to
     // be told a thing the client just said.
-    expect(asked).not.toHaveBeenCalled();
+    expect(fetched).not.toHaveBeenCalled();
   });
 
   it('replaces it with the answer when the turn is done', () => {

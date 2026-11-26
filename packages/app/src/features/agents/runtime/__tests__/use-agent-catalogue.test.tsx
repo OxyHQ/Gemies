@@ -12,8 +12,10 @@ const { get, oxy } = vi.hoisted(() => ({
   get: vi.fn(),
   oxy: { isAuthenticated: false, isPrivateApiPending: false },
 }));
-vi.mock('@gemies/sdk/runtime', () => ({
-  gemieQueryKeys: { agents: { profile: () => ['profile'] } },
+vi.mock('@gemies/sdk/runtime', async () => ({
+  ...(await import('@/shared/testing/sdk-runtime-data')),
+  agentProfile: { invalidate: () => undefined },
+  useGemieApi: () => ({}),
 }));
 vi.mock('@/shared/api/client', () => ({ default: { get } }));
 vi.mock('@oxy.so/services/ui/client', () => ({ useOxy: () => oxy }));

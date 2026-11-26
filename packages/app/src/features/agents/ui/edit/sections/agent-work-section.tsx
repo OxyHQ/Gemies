@@ -23,7 +23,7 @@ const DEFAULT_HEARTBEAT = 60;
  */
 export function AgentWorkSection({ agentId, name }: { agentId: string; name: string }) {
   const { t } = useTranslation();
-  const { data: agents, isPending } = useMyAgents();
+  const { value: agents, isLoading: isPending } = useMyAgents();
   const update = useUpdateAgent();
   const agent = agents?.find((candidate) => candidate._id === agentId);
   const interval = agent?.scheduleInterval ?? null;

@@ -39,9 +39,10 @@ export function AgentThreadScreen({
   resolving?: boolean;
 }) {
   const { t } = useTranslation();
-  const { data, isPending, isError } = useAgentThread(thread, threadId);
+  const { value: data, isLoading: isPending, status } = useAgentThread(thread, threadId);
+  const isError = status === 'error';
   // The agent as the person's own list has it, for the first frame.
-  const { data: mine } = useMyAgents();
+  const { value: mine } = useMyAgents();
   const known = mine?.find((agent) =>
     'handle' in thread ? agentHandle(agent) === thread.handle : agent._id === thread.gemieId,
   );

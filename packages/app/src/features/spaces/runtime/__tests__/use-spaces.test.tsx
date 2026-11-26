@@ -1,11 +1,15 @@
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * Spaces (ADR 0028): the requests the hooks send and what they refresh. The API client is doubled;
- * the hooks, their keys and their invalidation are real.
+ * the hooks, their answers in the account's store and what they mark stale are real.
  */
+
+/** What a change marked stale, in order: spaces, the person's agents, conversation lists. */
+const invalidated = vi.hoisted(() => [] as string[][]);
 
 const api = vi.hoisted(() => ({
   get: vi.fn(),
@@ -16,11 +20,17 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock('@oxy.so/services/ui/client', () => ({
-  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true, isAccountCacheReady: true }),
+  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true }),
 }));
 vi.mock('@/shared/api/client', () => ({ default: api }));
+vi.mock('@gemies/sdk/runtime', async () => ({
+  ...(await import('@/shared/testing/sdk-runtime-data')),
+  useConversationsClient: () => ({}),
+  refreshConversationLists: () => invalidated.push(['conversations']),
+}));
 
 const { spaceErrorCode, useSpaceMutations, useSpaces } = await import('../use-spaces');
+const { myAgents, spaces } = await import('@/shared/api/account-data');
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -47,9 +57,11 @@ async function mount() {
   }
   await act(async () => {
     renderer = create(
-      <QueryClientProvider client={client}>
-        <Probe />
-      </QueryClientProvider>,
+      <DataProvider store={store}>
+        <QueryClientProvider client={client}>
+          <Probe />
+        </QueryClientProvider>
+      </DataProvider>,
     );
   });
   await settle();
@@ -66,19 +78,24 @@ const space = {
   updatedAt: '2026-01-01T00:00:00Z',
 };
 
-let invalidated: unknown[][];
-
 /** The three lists a change to a space must read again: spaces, the person's agents, conversations. */
-const REFRESHED = [['spaces'], ['agents', 'mine'], ['conversations']];
+const REFRESHED = [['spaces'], ['my-agents'], ['conversations']];
+
+let store: Store;
 
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  invalidated = [];
-  const original = client.invalidateQueries.bind(client);
-  vi.spyOn(client, 'invalidateQueries').mockImplementation((filters) => {
-    invalidated.push([...((filters?.queryKey as unknown[]) ?? [])]);
-    return original(filters);
-  });
+  store = new Store();
+  invalidated.length = 0;
+  const watch = (source: { invalidateAll(): void }, name: string) => {
+    const original = source.invalidateAll.bind(source);
+    vi.spyOn(source, 'invalidateAll').mockImplementation(() => {
+      invalidated.push([name]);
+      original();
+    });
+  };
+  watch(spaces, 'spaces');
+  watch(myAgents, 'my-agents');
   api.get.mockReset().mockResolvedValue({ data: { spaces: [space] } });
   api.post.mockReset().mockResolvedValue({ data: { space } });
   api.patch.mockReset().mockResolvedValue({ data: { space } });
@@ -89,13 +106,14 @@ beforeEach(() => {
 afterEach(() => {
   act(() => renderer?.unmount());
   renderer = null;
+  vi.restoreAllMocks();
 });
 
 describe('space hooks', () => {
   it('reads the person’s spaces', async () => {
     const seen = await mount();
     expect(api.get).toHaveBeenCalledWith('/spaces', { signal: expect.any(AbortSignal) });
-    expect(seen.current.spaces.data).toEqual([space]);
+    expect(seen.current.spaces.value).toEqual([space]);
   });
 
   it('creates with the strict body it was given and refreshes spaces, agents and conversations', async () => {

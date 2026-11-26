@@ -60,7 +60,9 @@ vi.mock('@gemies/sdk/model', () => ({
   },
 }));
 vi.mock('@gemies/sdk/runtime', () => ({
-  useConversation: () => ({ data: world.title === undefined ? undefined : { title: world.title } }),
+  useConversation: () => ({
+    value: world.title === undefined ? undefined : { title: world.title },
+  }),
 }));
 vi.mock('@oxy.so/services/ui/client', () => ({
   useAuth: () => ({ isAuthenticated: world.authenticated, signIn: world.signIn }),

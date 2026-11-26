@@ -101,7 +101,7 @@ export const ConversationScreen = ({
   const { isDarkColorScheme } = useColorScheme();
   const insets = useSafeAreaInsets();
   const isFocused = useScreenOnShow();
-  const { data: conversationDetails } = useConversation(conversationId);
+  const { value: conversationDetails } = useConversation(conversationId);
 
   // The sidebar highlights the open conversation, and none on the new-chat screen.
   useEffect(() => {

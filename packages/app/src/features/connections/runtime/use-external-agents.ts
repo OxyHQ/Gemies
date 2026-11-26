@@ -2,6 +2,8 @@ import apiClient from '@/shared/api/client';
 import { API_ROUTES } from '@/shared/api/routes';
 import { queryKeys } from '@/shared/api/query-keys';
 import { useOxy } from '@oxy.so/services/ui/client';
+import { refreshMyAgents } from '@/shared/api/account-data';
+import { useStore, withStore } from '@oxy.so/bloom-data';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -33,6 +35,7 @@ const EMPTY: ExternalAgent[] = [];
 export function useExternalAgents(locale: string) {
   const { isAuthenticated } = useOxy();
   const queryClient = useQueryClient();
+  const store = useStore();
   const [invite, setInvite] = useState<PairingInvite | null>(null);
   const [inviteExpired, setInviteExpired] = useState(false);
   /**
@@ -87,9 +90,9 @@ export function useExternalAgents(locale: string) {
       // A reconnect code for it would reconnect nothing.
       setInvite((current) => (current?.agentId === agentId ? null : current));
       // The agent leaves the sidebar's list too.
-      await queryClient.invalidateQueries({ queryKey: queryKeys.agents.mine });
+      withStore(store, refreshMyAgents);
     },
-    [queryClient],
+    [queryClient, store],
   );
 
   return { agents, loading, invite, inviteExpired, createInvite, remove };
