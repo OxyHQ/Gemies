@@ -51,6 +51,9 @@ export const externalAgentPairings = pgTable(
  * `credential_hash` is the SHA-256 of the credential the daemon presents (ADR 0038). Null only on a
  * link paired before credentials existed, which the relay still lets the owner's Oxy session open
  * until it is reconnected; every link paired since has one.
+ *
+ * `machine_id` groups the links one pairing made (ADR 0043): a computer paired once serves a gemie
+ * per CLI it has, and those share it. Null on a link paired one CLI at a time, before machines.
  */
 export const externalAgentLinks = pgTable(
   'external_agent_links',
@@ -60,12 +63,14 @@ export const externalAgentLinks = pgTable(
     cli: text({ enum: EXTERNAL_AGENT_CLIS as unknown as [string, ...string[]] }).notNull(),
     hostName: text().notNull(),
     credentialHash: text(),
+    machineId: text(),
     createdAt: createdAt(),
     lastConnectedAt: timestamptz(),
     revokedAt: timestamptz(),
   },
   (t) => [
     index('external_agent_links_owner_idx').on(t.ownerOxyUserId),
+    index('external_agent_links_machine_idx').on(t.machineId),
     checkOneOf('external_agent_links_cli_check', t.cli, EXTERNAL_AGENT_CLIS),
   ],
 );

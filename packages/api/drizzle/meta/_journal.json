@@ -1282,6 +1282,13 @@
       "when": 1794681101351,
       "tag": "0182_oxy_tasks_are_retired",
       "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1795659255308,
+      "tag": "0183_external_links_have_a_machine",
+      "breakpoints": true
     }
   ]
 }

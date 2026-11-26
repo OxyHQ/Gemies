@@ -175,9 +175,33 @@ describe('POST /agents/external/redeem', () => {
       cli: 'codex',
       hostName: 'laptop',
       credentialHash: hashExternalAgentCredential(body.credential),
+      machineId: expect.any(String),
     });
     expect(JSON.stringify(state.createLink.mock.calls)).not.toContain(body.credential);
     expect(state.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('pairs a whole computer with one code: a gemie and a credential per CLI, sharing a machine', async () => {
+    state.createAgent
+      .mockResolvedValueOnce({ _id: 'agent-c' })
+      .mockResolvedValueOnce({ _id: 'agent-x' });
+    const response = await post('/redeem', {
+      code: valid.code,
+      clis: ['claude', 'codex'],
+      hostName: 'laptop',
+    });
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { machineId: string; agents: Redeemed[] };
+    expect(body.agents.map((a) => [a.agentId, a.name, a.cli])).toEqual([
+      ['agent-c', 'Claude Code · laptop', 'claude'],
+      ['agent-x', 'Codex · laptop', 'codex'],
+    ]);
+    expect(new Set(body.agents.map((a) => a.credential)).size).toBe(2);
+    const links = state.createLink.mock.calls.map((call) => call[1] as Record<string, unknown>);
+    expect(links.map((l) => l.machineId)).toEqual([body.machineId, body.machineId]);
+    expect(links.map((l) => l.credentialHash)).toEqual(
+      body.agents.map((a) => hashExternalAgentCredential(a.credential)),
+    );
   });
 
   it('reconnects an existing agent: a new credential, and the old one’s daemon cut off', async () => {
@@ -224,6 +248,10 @@ describe('POST /agents/external/redeem', () => {
       { ...valid, code: 'ABCD-EFGH-JKMN' },
       { ...valid, hostName: '' },
       { ...valid, extra: true },
+      { ...valid, clis: ['claude'] },
+      { code: valid.code, hostName: 'laptop' },
+      { code: valid.code, hostName: 'laptop', clis: [] },
+      { code: valid.code, hostName: 'laptop', clis: ['claude', 'claude'] },
     ]) {
       expect((await post('/redeem', body)).status).toBe(400);
     }
