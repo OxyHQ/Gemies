@@ -45,6 +45,7 @@ COPY packages/api/package.json ./packages/api/
 COPY packages/app/package.json ./packages/app/
 COPY packages/sdk/package.json ./packages/sdk/
 COPY packages/server/package.json ./packages/server/
+COPY packages/cli/package.json ./packages/cli/
 COPY packages/integrations/package.json ./packages/integrations/
 COPY packages/gemies-os/package.json ./packages/gemies-os/
 COPY packages/gemies-os-protocol/package.json ./packages/gemies-os-protocol/
@@ -76,6 +77,7 @@ COPY packages/api/package.json ./packages/api/
 COPY packages/app/package.json ./packages/app/
 COPY packages/sdk/package.json ./packages/sdk/
 COPY packages/server/package.json ./packages/server/
+COPY packages/cli/package.json ./packages/cli/
 COPY packages/integrations/package.json ./packages/integrations/
 COPY packages/gemies-os/package.json ./packages/gemies-os/
 COPY packages/gemies-os-protocol/package.json ./packages/gemies-os-protocol/
