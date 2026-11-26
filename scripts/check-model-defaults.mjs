@@ -70,6 +70,8 @@ export const NOT_A_CLIENT = {
     'the server. Its `alia-*` literals ARE the routing table — `internal/providers/lib/routing-profile-catalogue.ts` is the frozen set every other package resolves against.',
   'packages/server':
     'a transport. It streams whatever turn a backend hands it and never chooses, defaults or names a routing profile — `model` is an optional pass-through field on its request type.',
+  'packages/cli':
+    "the daemon a person's computer runs (`gemies connect`). It relays turns to the CLI the person is signed in to and never chooses, defaults or names a model or routing profile.",
   'packages/gemies-os':
     "the agents' sandbox host. It runs containers and files for an actor and never calls inference, so it has no model to choose, default or name.",
   'packages/gemies-os-protocol':
@@ -191,9 +193,9 @@ function main() {
   // Exact counts. Each list may only change in a diff that also changes the
   // number beside it, which is the review this gate exists to force.
   const counts = [
-    ['workspaces', workspaces.length, 7],
+    ['workspaces', workspaces.length, 8],
     ['TREES', TREES.length, 4],
-    ['NOT_A_CLIENT', Object.keys(NOT_A_CLIENT).length, 4],
+    ['NOT_A_CLIENT', Object.keys(NOT_A_CLIENT).length, 5],
   ];
   const partition = [
     ...counts

@@ -69,6 +69,7 @@ COPY packages/sdk/package.json ./packages/sdk/
 # a member whose package.json is missing from the build context fails the
 # install outright ("Workspace not found"), whatever `--filter` says.
 COPY packages/server/package.json ./packages/server/
+COPY packages/cli/package.json ./packages/cli/
 COPY packages/integrations/package.json ./packages/integrations/
 COPY packages/gemies-os/package.json ./packages/gemies-os/
 COPY packages/gemies-os-protocol/package.json ./packages/gemies-os-protocol/

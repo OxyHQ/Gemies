@@ -77,6 +77,7 @@ const CHECKED_ELSEWHERE: Readonly<Record<string, string>> = {
   '@alia/api': 'Lint & Test — "Typecheck API"',
   '@gemies/sdk': 'Lint & Test — "Typecheck SDK"',
   '@gemies/server': 'Lint & Test — "Typecheck server SDK"',
+  '@gemies/cli': 'Lint & Test — "Typecheck and test the Gemies CLI"',
   '@alia/integrations':
     'Integrations (Postgres) — "Typecheck integrations" (script is `type-check`)',
 };
@@ -154,8 +155,8 @@ function main(): void {
   // Exact counts. Each list may only change in a diff that also changes the
   // number beside it, which is the review this gate exists to force.
   const counts: readonly [string, number, number][] = [
-    ['workspaces', workspaces.length, 7],
-    ['CHECKED_ELSEWHERE', Object.keys(CHECKED_ELSEWHERE).length, 4],
+    ['workspaces', workspaces.length, 8],
+    ['CHECKED_ELSEWHERE', Object.keys(CHECKED_ELSEWHERE).length, 5],
     ['EXCLUDED', Object.keys(EXCLUDED).length, 0],
     ['NO_TYPECHECK', Object.keys(NO_TYPECHECK).length, 0],
   ];
