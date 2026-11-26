@@ -62,6 +62,9 @@ export const API_ROUTES = {
       sessions: (agentId: string) => `/agents/external/${encodeURIComponent(agentId)}/sessions`,
       /** The folders its sessions worked in most recently. */
       folders: (agentId: string) => `/agents/external/${encodeURIComponent(agentId)}/folders`,
+      /** The person's answer to a coding CLI's question during a turn (ADR 0043 §5). */
+      approval: (agentId: string, requestId: string) =>
+        `/agents/external/${encodeURIComponent(agentId)}/approvals/${encodeURIComponent(requestId)}`,
     },
     get: (id: string) => `/agents/${id}`,
     create: '/agents',

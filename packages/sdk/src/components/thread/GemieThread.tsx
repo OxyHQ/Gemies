@@ -32,6 +32,7 @@ import type { ThreadHistory } from '../../runtime/thread/thread-history';
 import type { AgentState } from '../../types';
 import { AgentResultCard } from './AgentResultCard';
 import { AgentTaskCard } from './AgentTaskCard';
+import { type ApprovalsProps, ApprovalCards } from './ApprovalCard';
 import { NewConversationOffer } from './NewConversationOffer';
 import { type ThreadActions, ThreadRow } from './ThreadRow';
 
@@ -81,6 +82,11 @@ export interface GemieThreadProps {
   /** Load one of this conversation's questions into the composer to rewrite it. */
   onStartEdit?: (userMessageId: string) => void;
   newConversationOffer?: NewConversationOfferProps;
+  /**
+   * A coding CLI asking its own user for permission to run something on their computer, while the
+   * turn waits (ADR 0043 §5). Drawn after the turns, where the person is looking.
+   */
+  approvals?: ApprovalsProps;
   /** The run an agent is on for this conversation: in progress, or the card it leaves. */
   agentActivity?: AgentActivityState | null;
   /**
@@ -136,6 +142,7 @@ export const GemieThread = memo(function GemieThread({
   onRegenerate,
   onStartEdit,
   newConversationOffer,
+  approvals,
   agentActivity,
   call,
   empty,
@@ -374,6 +381,10 @@ export const GemieThread = memo(function GemieThread({
               <AgentTaskCard activity={agentActivity} />
             )
           ) : null}
+
+          {approvals === undefined || approvals.entries.length === 0 ? null : (
+            <ApprovalCards {...approvals} />
+          )}
 
           {/* The agent's offer to start the next stretch fresh. Last in the list on purpose: it
               must not cover what is being read, and ignoring it has to leave the thread exactly as

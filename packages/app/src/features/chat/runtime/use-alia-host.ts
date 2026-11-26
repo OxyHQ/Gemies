@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'expo-router';
 import { useMemo, useRef } from 'react';
 import type { CreditsInfo } from '@/features/billing/runtime/use-credits';
 import { parseContextUsage } from '@/features/chat/model/context-usage';
+import { decideApproval } from '@/features/chat/runtime/decide-approval';
 import { useStore } from '@/features/chat/runtime/global-store';
 import { useModelStore } from '@/features/chat/runtime/model-store';
 import { useAgentRowPreview } from '@/features/chat/runtime/use-agent-row-preview';
@@ -97,6 +98,8 @@ export function useAliaHost(): GemieRuntimeHost {
       },
       onAgentTurn: ({ turnId, agentId, conversationId }) =>
         useUIStore.getState().openAgentPanel(turnId, agentId, conversationId),
+      // A coding CLI asked its user for permission mid-turn; the answer goes to Gemies.
+      onApprovalDecision: decideApproval,
       onTurnPreview: previewAgentRow,
       // The work of a turn is read in the right panel. A running turn's first tool opens it only
       // while nothing else is open: a reader who has the canvas up keeps it.

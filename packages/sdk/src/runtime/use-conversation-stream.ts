@@ -28,6 +28,15 @@ import {
 import { createRandomUuid } from './random-uuid';
 import { createChatTurnControl } from './chat-turn-control';
 import { awaitTurnPreparation } from './turn-preparation';
+import {
+  type ApprovalEntry,
+  type ApprovalOutcome,
+  parseApprovalRequest,
+  parseApprovalResolved,
+  stillPending,
+  withApprovalOutcome,
+  withApprovalRequest,
+} from './approvals';
 import { type GemieHostTools, HostOutcomeQueue, hostRequest } from './host-tools';
 import { API_ROUTES } from './routes';
 import { createSseFrameReader } from './sse-frame-reader';
@@ -243,6 +252,11 @@ export function useConversationStream({
    * was.
    */
   const [suggestedNewConversation, setSuggestedNewConversation] = useState<string | null>(null);
+  /**
+   * A coding CLI's questions to its own user, this turn's and any still waiting (`approvals.ts`).
+   * Held beside the messages, not in them: a question is not part of what was said.
+   */
+  const [approvals, setApprovals] = useState<ApprovalEntry[]>([]);
   /** The run a delegated agent started for this conversation (`alia.agent_turn`), or `null`. */
   const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
   /**
@@ -375,6 +389,7 @@ export function useConversationStream({
   const conversationRef = useRef(conversationId);
   useEffect(() => {
     setFailedTurn(null);
+    setApprovals([]);
     retryRef.current = null;
     turnOptionsRef.current.clear();
     // Outcomes answer this conversation's calls. The first turn of a new chat gives it its id,
@@ -424,6 +439,7 @@ export function useConversationStream({
     setConversationTitle(null);
     setSuggestedNewConversation(null);
     setAgentRun(null);
+    setApprovals([]);
     setFailedTurn(null);
     retryRef.current = null;
     turnOptionsRef.current.clear();
@@ -438,6 +454,8 @@ export function useConversationStream({
       // A new send answers the old failure, whether it is the retry or a fresh
       // message: either way the card comes down.
       setFailedTurn(null);
+      // The last turn's answered questions are history; one still waiting stays.
+      setApprovals(stillPending);
       retryRef.current = null;
 
       // Everything the send is about to change, so a turn that produces no real
@@ -1204,6 +1222,20 @@ export function useConversationStream({
                     );
                     continue;
                   }
+                  case 'alia.cli_permission_request': {
+                    const request = parseApprovalRequest(parsed);
+                    if (request) setApprovals((prev) => withApprovalRequest(prev, request));
+                    continue;
+                  }
+                  case 'alia.cli_permission_resolved': {
+                    const resolved = parseApprovalResolved(parsed);
+                    if (resolved) {
+                      setApprovals((prev) =>
+                        withApprovalOutcome(prev, resolved.requestId, resolved.outcome),
+                      );
+                    }
+                    continue;
+                  }
                   case 'alia.agent_turn': {
                     if (parsed.turnId) {
                       const run = {
@@ -1675,6 +1707,11 @@ export function useConversationStream({
     if (!isLoading) setComposerPhase('idle');
   }, [isLoading, setComposerPhase]);
 
+  /** The person's own answer, shown at once; the stream's `alia.cli_permission_resolved` repeats it. */
+  const settleApproval = useCallback((requestId: string, outcome: ApprovalOutcome) => {
+    setApprovals((prev) => withApprovalOutcome(prev, requestId, outcome));
+  }, []);
+
   /** Put the offer away. It wrote nothing, so there is nothing else to undo. */
   const dismissSuggestedNewConversation = useCallback(() => {
     setSuggestedNewConversation(null);
@@ -1700,6 +1737,8 @@ export function useConversationStream({
     suggestedNewConversation,
     dismissSuggestedNewConversation,
     agentRun,
+    approvals,
+    settleApproval,
     failedTurn,
     retryFailedTurn,
     clearFailedTurn,
