@@ -195,7 +195,7 @@ export function useDeleteAgent() {
 
   return useMutation({
     /**
-     * A gemie connected from someone's computer (`codea connect`) is removed by revoking its link:
+     * A gemie connected from someone's computer (`gemies connect`) is removed by revoking its link:
      * the API then deletes the gemie too, and the computer stops answering for it. Deleting the row
      * alone would leave the link pointing at nothing.
      */

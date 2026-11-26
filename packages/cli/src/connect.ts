@@ -33,7 +33,12 @@ import {
 } from './external/daemon-home.js';
 import { gemieToolsUrl } from './external/gemie-tools.js';
 import { runProcess } from './external/process.js';
-import { NEW_CODE_HINT, redeemCode, type ConnectableAgent } from './external/redeem.js';
+import {
+  NEW_CODE_HINT,
+  redeemCode,
+  redeemMachine,
+  type ConnectableAgent,
+} from './external/redeem.js';
 import { runtimeFor } from './external/registry.js';
 import { serviceManagerFor, type RunCommand, type ServiceManager } from './external/service.js';
 import {
@@ -72,7 +77,12 @@ async function installed(cli: ExternalCli): Promise<boolean> {
   return (await run(cli, ['--version'])).code === 0;
 }
 
-async function chooseCli(requested: string | undefined): Promise<ExternalCli | null> {
+/**
+ * The CLIs a pairing covers: the one asked for with `--cli`, or every supported CLI this computer has
+ * (Gemies ADR 0043: a computer is paired once and serves a gemie per CLI). Null, after saying why,
+ * when there is none.
+ */
+async function chooseClis(requested: string | undefined): Promise<ExternalCli[] | null> {
   if (requested !== undefined) {
     if (!isExternalCli(requested)) {
       console.error(chalk.red(`--cli must be one of: ${EXTERNAL_CLIS.join(', ')}`));
@@ -82,19 +92,15 @@ async function chooseCli(requested: string | undefined): Promise<ExternalCli | n
       console.error(chalk.red(`\`${requested}\` is not installed or not on the PATH.`));
       return null;
     }
-    return requested;
+    return [requested];
   }
   const found: ExternalCli[] = [];
   for (const cli of EXTERNAL_CLIS) if (await installed(cli)) found.push(cli);
-  if (found.length === 1) return found[0];
-  console.error(
-    chalk.red(
-      found.length === 0
-        ? `No supported CLI found (${EXTERNAL_CLIS.join(', ')}).`
-        : `Several CLIs are installed (${found.join(', ')}); pick one with --cli.`,
-    ),
-  );
-  return null;
+  if (found.length === 0) {
+    console.error(chalk.red(`No supported CLI found (${EXTERNAL_CLIS.join(', ')}).`));
+    return null;
+  }
+  return found;
 }
 
 const connectable = (agent: PairedAgent): agent is ConnectableAgent =>
@@ -150,20 +156,22 @@ export async function connect(
   const write = options.readOnly !== true;
 
   if (code !== undefined) {
-    const cli = await chooseCli(options.cli);
-    if (cli === null) process.exit(1);
-    const redeemed = await redeemCode({
-      apiBaseUrl,
-      code,
-      cli,
-      hostName: hostname().slice(0, 80) || 'this computer',
-    });
+    const clis = await chooseClis(options.cli);
+    if (clis === null) process.exit(1);
+    const hostName = hostname().slice(0, 80) || 'this computer';
+    // One CLI goes through the request every Gemies version understands; several pair the computer.
+    const redeemed =
+      clis.length === 1
+        ? await redeemCode({ apiBaseUrl, code, cli: clis[0], hostName })
+        : await redeemMachine({ apiBaseUrl, code, clis, hostName });
     if (typeof redeemed === 'string') {
       console.error(chalk.red(redeemed));
       process.exit(1);
     }
-    rememberAgent({ ...redeemed, cwd, write });
-    console.log(chalk.green(`Paired: ${redeemed.name}`));
+    for (const agent of Array.isArray(redeemed) ? redeemed : [redeemed]) {
+      rememberAgent({ ...agent, cwd, write });
+      console.log(chalk.green(`Paired: ${agent.name}`));
+    }
   } else if (options.cwd !== undefined || options.readOnly !== undefined) {
     // Without a code, the options move the agents already paired here.
     for (const agent of pairedAgents(apiBaseUrl)) {

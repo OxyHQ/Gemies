@@ -1,5 +1,5 @@
 /**
- * External-agent relay (ADR 0030) — the WebSocket a person's daemon (`codea connect`) holds open so
+ * External-agent relay (ADR 0030) — the WebSocket a person's daemon (`gemies connect`) holds open so
  * the agent it serves can be asked to take a turn.
  *
  * A client lends Gemies an AGENT and the server hands it TURNS. A turn is one `turn` frame down

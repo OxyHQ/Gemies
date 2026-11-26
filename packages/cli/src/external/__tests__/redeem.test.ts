@@ -1,6 +1,6 @@
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { redeemCode } from '../redeem.js';
+import { redeemCode, redeemMachine } from '../redeem.js';
 
 /**
  * Redeeming a pairing code (Gemies ADR 0038): one unauthenticated POST, the code being the whole
@@ -72,5 +72,54 @@ describe('redeemCode', () => {
         hostName: 'laptop',
       }),
     ).toMatch(/Could not reach Gemies/);
+  });
+});
+
+describe('redeemMachine', () => {
+  it('pairs every CLI with one code, keeping one credential per agent', async () => {
+    reply = {
+      status: 201,
+      body: {
+        machineId: 'm-1',
+        agents: [
+          { agentId: 'a-c', name: 'Claude Code · laptop', cli: 'claude', credential: 'gxa_c' },
+          { agentId: 'a-x', name: 'Codex · laptop', cli: 'codex', credential: 'gxa_x' },
+        ],
+      },
+    };
+    const agents = await redeemMachine({
+      apiBaseUrl,
+      code: 'ABCD-EFGH-JKMN-PQRS',
+      clis: ['claude', 'codex'],
+      hostName: 'laptop',
+    });
+    expect(agents).toEqual([
+      {
+        agentId: 'a-c',
+        name: 'Claude Code · laptop',
+        cli: 'claude',
+        apiBaseUrl,
+        credential: 'gxa_c',
+      },
+      { agentId: 'a-x', name: 'Codex · laptop', cli: 'codex', apiBaseUrl, credential: 'gxa_x' },
+    ]);
+    expect(seen[0].body).toEqual({
+      code: 'ABCD-EFGH-JKMN-PQRS',
+      clis: ['claude', 'codex'],
+      hostName: 'laptop',
+    });
+    expect(seen[0].headers.authorization).toBeUndefined();
+  });
+
+  it('says what to do when the code is refused or the server cannot pair several', async () => {
+    reply = { status: 400, body: { error: 'invalid_request' } };
+    expect(
+      await redeemMachine({
+        apiBaseUrl,
+        code: 'ABCD-EFGH-JKMN-PQRS',
+        clis: ['claude', 'codex'],
+        hostName: 'laptop',
+      }),
+    ).toMatch(/pick one with --cli/);
   });
 });

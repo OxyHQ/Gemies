@@ -43,7 +43,7 @@ describe('invite prompt', () => {
     for (const locale of ['en', 'es'] as const) {
       const prompt = buildInvitePrompt({ code: 'ABCD-EFGH-JKMN-PQRS', locale });
       expect(prompt).toContain(
-        'npx -y @alia-codea/cli@latest connect ABCD-EFGH-JKMN-PQRS --cli <claude|codex|opencode>',
+        'npx -y @gemies/cli@latest connect ABCD-EFGH-JKMN-PQRS --cli <claude|codex|opencode>',
       );
       expect(prompt).toContain('10');
       expect(prompt).toContain('"Connected"');

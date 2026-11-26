@@ -39,7 +39,7 @@ one column, no foreign key, UNIQUE.
 
 ### An external agent has no Oxy account (ADR 0036)
 
-A coding-agent CLI paired from its owner's computer (`codea connect`, ADR 0030) is a gemie whose
+A coding-agent CLI paired from its owner's computer (`gemies connect`, ADR 0030) is a gemie whose
 identity is its own row: `agents.identity = 'local'`, its name in `local_name`, its colour in
 `local_color` (the vocabulary of an account's `User.color`) and no `oxy_account_id`. Pairing mints
 no account.
@@ -58,7 +58,7 @@ no account.
   daemon redeems the single-use code with no session and keeps the agent's own credential
   (`gxa_…`, stored hashed on `external_agent_links`), which opens `/ws/external-agent` for that agent
   only. Removing the agent kills it; **Reconnect** in Settings replaces it.
-- **Autonomous.** `codea connect` installs the daemon as a per-user service (systemd `--user`,
+- **Autonomous.** `gemies connect` installs the daemon as a per-user service (systemd `--user`,
   LaunchAgent, Scheduled Task): it starts at login, restarts on failure and survives restarts, so
   nobody reconnects the agent (ADR 0038 §4).
 - **Its tools over MCP (ADR 0039).** `POST /mcp/agents/:id`, opened by that credential, serves

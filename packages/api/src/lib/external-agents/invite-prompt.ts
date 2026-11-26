@@ -8,7 +8,7 @@ export function inviteLocaleOf(value: unknown): InviteLocale {
 
 /** The command the pasted text runs; `@latest`, so a machine never pairs with a retired daemon. */
 function connectCommand(code: string): string {
-  return `npx -y @alia-codea/cli@latest connect ${code} --cli <claude|codex|opencode>`;
+  return `npx -y @gemies/cli@latest connect ${code} --cli <claude|codex|opencode>`;
 }
 
 /**
