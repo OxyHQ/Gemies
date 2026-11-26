@@ -54,8 +54,13 @@ describe('useAgentRunFailureToast', () => {
     );
   });
 
-  it('says nothing for a run that is still going, ended well, or never was', () => {
-    mount(run({ isComplete: false, hasError: true }));
+  it('tells a run that failed before it closed, with no panel waiting for it to finish', () => {
+    mount(run({ isComplete: false, hasError: true, lastError: 'open' }));
+    expect(toast.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('says nothing for a run that is going, ended well, or never was', () => {
+    mount(run({ isComplete: false, hasError: false }));
     mount(run({ hasError: false }));
     mount(null);
     expect(toast.error).not.toHaveBeenCalled();

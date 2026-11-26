@@ -20,7 +20,7 @@ export function useAgentRunFailureToast(
 ) {
   const { t } = useLabels();
   // When the turn itself failed, its own toast already says so (`useFailedTurnToast`).
-  const failed = activity?.isComplete === true && activity.hasError && !failedTurn;
+  const failed = activity?.hasError === true && !failedTurn;
   const detail = activity?.lastError ?? undefined;
 
   useEffect(() => {
