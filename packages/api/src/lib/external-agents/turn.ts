@@ -27,6 +27,7 @@ export async function runExternalAgentTurn(input: {
   task: string;
   history?: readonly ChatTurn[];
   threadKey?: string;
+  cwd?: string;
   onTextDelta?: (text: string) => void;
   timeoutMs?: number;
   signal?: AbortSignal;
@@ -40,6 +41,7 @@ export async function runExternalAgentTurn(input: {
       task: input.task,
       history: input.history ?? [],
       ...(input.threadKey ? { threadKey: input.threadKey } : {}),
+      ...(input.cwd ? { cwd: input.cwd } : {}),
       ...(input.onTextDelta ? { onDelta: input.onTextDelta } : {}),
       ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
       ...(input.signal ? { signal: input.signal } : {}),

@@ -170,6 +170,31 @@ describe('external agent relay', () => {
     expect(deltas).toEqual(['Hel', 'lo']);
   });
 
+  it('carries the folder of a session in the turn frame, and none for a turn without one', async () => {
+    const { ws, frames } = await connect();
+    await waitFor(() => frames.length > 0);
+    const withFolder = runExternalTurn({
+      agentId: 'agent-1',
+      task: 'a',
+      history: [],
+      threadKey: 'c-1',
+      cwd: '/home/ana/app',
+    });
+    await waitFor(() => frames.some((f) => f.type === 'turn'));
+    const first = frames.find((f) => f.type === 'turn') as { turnId: string; cwd?: string };
+    expect(first.cwd).toBe('/home/ana/app');
+    ws.send(JSON.stringify({ type: 'end', turnId: first.turnId, text: 'ok' }));
+    await withFolder;
+
+    frames.length = 0;
+    const plain = runExternalTurn({ agentId: 'agent-1', task: 'b', history: [] });
+    await waitFor(() => frames.some((f) => f.type === 'turn'));
+    const second = frames.find((f) => f.type === 'turn') as { turnId: string };
+    expect(second).not.toHaveProperty('cwd');
+    ws.send(JSON.stringify({ type: 'end', turnId: second.turnId, text: 'ok' }));
+    await plain;
+  });
+
   it('fails a turn when the daemon reports an error', async () => {
     const { ws, frames } = await connect();
     await waitFor(() => frames.length > 0);

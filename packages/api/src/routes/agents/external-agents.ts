@@ -26,6 +26,8 @@ import {
   createPairing,
   findExternalLink,
   listExternalLinks,
+  openExternalSession,
+  recentExternalFolders,
   redeemPairing,
   replaceExternalLinkCredential,
   revokeExternalLink,
@@ -35,6 +37,7 @@ import {
   EXTERNAL_AGENT_CLI_LABELS,
   EXTERNAL_AGENT_CLIS,
   EXTERNAL_PAIRING_TTL_MS,
+  EXTERNAL_SESSION_CWD_MAX,
   type ExternalAgentCli,
 } from '../../domain/external-agent.js';
 import { authenticateToken } from '../../middleware/auth.js';
@@ -310,6 +313,67 @@ router.get(
       })),
     );
     res.json({ agents });
+  }),
+);
+
+const sessionSchema = z
+  .object({
+    /** The conversation the app named before its first message. */
+    conversationId: z.string().trim().min(1).max(64),
+    /** An absolute path on the agent's computer: `/…`, `~/…`, or a drive (`C:\\…`). */
+    cwd: z
+      .string()
+      .trim()
+      .min(1)
+      .max(EXTERNAL_SESSION_CWD_MAX)
+      .refine((value) => !value.includes('\0') && /^(?:\/|~(?:\/|$)|[A-Za-z]:[\\/])/.test(value)),
+  })
+  .strict();
+
+/** Opens a session with an external agent: the conversation and the folder it works in (ADR 0043). */
+router.post(
+  '/external/:agentId/sessions',
+  authenticateToken,
+  route(async (req, res) => {
+    if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+    const parsed = sessionSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'invalid_request' });
+    const agentId = String(req.params.agentId);
+    const link = await findExternalLink(getDb(), agentId);
+    if (link === undefined || link.ownerOxyUserId !== req.user.id) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const session = await openExternalSession(getDb(), {
+      conversationId: parsed.data.conversationId,
+      agentId,
+      ownerOxyUserId: req.user.id,
+      cwd: parsed.data.cwd,
+    });
+    // A conversation id another agent or person already used is not this caller's to take over.
+    if (session.agentId !== agentId || session.ownerOxyUserId !== req.user.id) {
+      return res.status(409).json({ error: 'conversation_in_use' });
+    }
+    res.status(201).json({ conversationId: parsed.data.conversationId, cwd: session.cwd });
+  }),
+);
+
+/** The folders this agent worked in most recently: what the app offers for a new session. */
+router.get(
+  '/external/:agentId/folders',
+  authenticateToken,
+  route(async (req, res) => {
+    if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+    const agentId = String(req.params.agentId);
+    const link = await findExternalLink(getDb(), agentId);
+    if (link === undefined || link.ownerOxyUserId !== req.user.id) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const folders = await recentExternalFolders(getDb(), {
+      agentId,
+      ownerOxyUserId: req.user.id,
+      limit: 10,
+    });
+    res.json({ folders });
   }),
 );
 

@@ -3,7 +3,7 @@
 // No sign-in: the pairing code is the authorisation. The daemon runs as a per-user service.
 import { createRequire } from 'node:module';
 import { Command } from 'commander';
-import { connect, disconnect, serve, status } from './connect.js';
+import { allow, connect, disconnect, serve, status } from './connect.js';
 
 const require = createRequire(import.meta.url);
 const { version: VERSION } = require('../package.json') as { version: string };
@@ -44,6 +44,16 @@ program
   .option('--forget', 'Also forget the agents paired on this machine and their credentials')
   .action(async (options) => {
     await disconnect(options);
+  });
+
+program
+  .command('allow [folder]')
+  .description(
+    'Allow sessions opened from Gemies to work in a folder and everything under it. Gemies only asks for a folder; this computer decides. Without a folder, lists the allowed ones.',
+  )
+  .option('--remove', 'Stop allowing the folder')
+  .action((folder: string | undefined, options) => {
+    allow(folder, options);
   });
 
 // What the service runs; not meant to be typed.

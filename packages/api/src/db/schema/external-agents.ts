@@ -102,3 +102,23 @@ export const externalAgentToolCalls = pgTable(
     checkOneOf('external_agent_tool_calls_outcome_check', t.outcome, EXTERNAL_TOOL_CALL_OUTCOMES),
   ],
 );
+
+/**
+ * A session a person opened with an external agent from the app (ADR 0043): the conversation, and
+ * the folder on the agent's computer it works in. The daemon accepts the folder only inside the
+ * roots its owner allowed there, so a row here asks; it never grants.
+ *
+ * Keyed by the conversation, which the app names before the first message. No foreign keys: the
+ * conversation and the agent are created and deleted by flows this must not block.
+ */
+export const externalAgentSessions = pgTable(
+  'external_agent_sessions',
+  {
+    conversationId: text().primaryKey(),
+    agentId: text().notNull(),
+    ownerOxyUserId: text().notNull(),
+    cwd: text().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('external_agent_sessions_agent_idx').on(t.agentId, t.createdAt)],
+);

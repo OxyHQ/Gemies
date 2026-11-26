@@ -3,6 +3,7 @@ import type { ApiDatabase, Executor } from '../index.js';
 import {
   externalAgentLinks,
   externalAgentPairings,
+  externalAgentSessions,
   externalAgentToolCalls,
 } from '../schema/external-agents.js';
 import type { ExternalAgentCli, ExternalToolCallOutcome } from '../../domain/external-agent.js';
@@ -165,4 +166,64 @@ export async function recordExternalToolCall(
   },
 ): Promise<void> {
   await db.insert(externalAgentToolCalls).values(input);
+}
+
+/**
+ * Records the folder a conversation with an external agent works in. The first call wins: a session
+ * keeps its folder, so a replayed request cannot move a conversation somewhere else. Returns the
+ * stored folder.
+ */
+export async function openExternalSession(
+  db: ApiDatabase,
+  input: { conversationId: string; agentId: string; ownerOxyUserId: string; cwd: string },
+): Promise<{ cwd: string; agentId: string; ownerOxyUserId: string }> {
+  await db.insert(externalAgentSessions).values(input).onConflictDoNothing();
+  const [row] = await db
+    .select({
+      cwd: externalAgentSessions.cwd,
+      agentId: externalAgentSessions.agentId,
+      ownerOxyUserId: externalAgentSessions.ownerOxyUserId,
+    })
+    .from(externalAgentSessions)
+    .where(eq(externalAgentSessions.conversationId, input.conversationId))
+    .limit(1);
+  // The row exists: the insert made it or another one did.
+  return row as { cwd: string; agentId: string; ownerOxyUserId: string };
+}
+
+/** The folder of a conversation's session with this agent, or `undefined` when it has none. */
+export async function findExternalSessionCwd(
+  db: ApiDatabase,
+  input: { conversationId: string; agentId: string },
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ cwd: externalAgentSessions.cwd })
+    .from(externalAgentSessions)
+    .where(
+      and(
+        eq(externalAgentSessions.conversationId, input.conversationId),
+        eq(externalAgentSessions.agentId, input.agentId),
+      ),
+    )
+    .limit(1);
+  return row?.cwd;
+}
+
+/** The folders this agent's sessions worked in most recently, newest first, once each. */
+export async function recentExternalFolders(
+  db: ApiDatabase,
+  input: { agentId: string; ownerOxyUserId: string; limit: number },
+): Promise<string[]> {
+  const rows = await db
+    .select({ cwd: externalAgentSessions.cwd })
+    .from(externalAgentSessions)
+    .where(
+      and(
+        eq(externalAgentSessions.agentId, input.agentId),
+        eq(externalAgentSessions.ownerOxyUserId, input.ownerOxyUserId),
+      ),
+    )
+    .orderBy(desc(externalAgentSessions.createdAt))
+    .limit(input.limit * 5);
+  return [...new Set(rows.map((row) => row.cwd))].slice(0, input.limit);
 }
