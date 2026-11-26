@@ -229,3 +229,21 @@ describe('serveExternalDirectTurn: permission questions (ADR 0043 §5)', () => {
     expect(frames(res).some((f) => f.event?.startsWith('alia.cli_permission'))).toBe(false);
   });
 });
+
+describe('serveExternalDirectTurn: a turn that fails says why', () => {
+  it('hands the reason to the caller, so the turn is not recorded as a generic failure', async () => {
+    state.run.mockResolvedValue({
+      response: '',
+      tokensUsed: 0,
+      creditsCharged: 0,
+      error:
+        '/home is not a folder this computer allows. Run `gemies allow /home` there to allow it.',
+    });
+    const reasons: string[] = [];
+    const { answered } = await serve(fakeResponse(), { onFailure: (m: string) => reasons.push(m) });
+    expect(answered).toBe(false);
+    expect(reasons).toEqual([
+      '/home is not a folder this computer allows. Run `gemies allow /home` there to allow it.',
+    ]);
+  });
+});
