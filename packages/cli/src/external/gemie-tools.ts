@@ -18,6 +18,13 @@
  * the conversation is the owner's chat with this agent; a turn that names none simply cannot.
  */
 
+import {
+  APPROVAL_PROMPT_TOOL,
+  APPROVAL_SERVER,
+  APPROVAL_TOKEN_ENV,
+  type RunApprovals,
+} from './approval-server.js';
+
 export interface GemieTools {
   /** `<api>/mcp/agents/<agentId>`. */
   readonly url: string;
@@ -55,19 +62,42 @@ export function toolsEnv(tools: GemieTools, base: NodeJS.ProcessEnv = process.en
  * governance every call goes through, not again here.
  */
 export function claudeToolArgs(tools: GemieTools): string[] {
-  const config = {
-    mcpServers: {
-      [GEMIE_TOOLS_SERVER]: {
-        type: 'http',
-        url: tools.url,
-        headers: {
-          Authorization: `Bearer \${${CREDENTIAL_ENV}}`,
-          ...(tools.conversationId ? { [CONVERSATION_HEADER]: `\${${CONVERSATION_ENV}}` } : {}),
-        },
+  return claudeMcpArgs({ tools });
+}
+
+/**
+ * Claude Code's MCP configuration for one run: Gemies' tools (allowed), and, when the person can answer
+ * its permission prompts from Gemies, the local server that asks them (`approval-server.ts`) named as
+ * its permission prompt tool. Either, both or neither; neither gives no arguments.
+ */
+export function claudeMcpArgs(input: { tools?: GemieTools; approvals?: RunApprovals }): string[] {
+  const { tools, approvals } = input;
+  const mcpServers: Record<string, unknown> = {};
+  if (tools) {
+    mcpServers[GEMIE_TOOLS_SERVER] = {
+      type: 'http',
+      url: tools.url,
+      headers: {
+        Authorization: `Bearer \${${CREDENTIAL_ENV}}`,
+        ...(tools.conversationId ? { [CONVERSATION_HEADER]: `\${${CONVERSATION_ENV}}` } : {}),
       },
-    },
-  };
-  return ['--mcp-config', JSON.stringify(config), '--allowedTools', `mcp__${GEMIE_TOOLS_SERVER}`];
+    };
+  }
+  if (approvals) {
+    mcpServers[APPROVAL_SERVER] = {
+      type: 'http',
+      url: approvals.url,
+      headers: { Authorization: `Bearer \${${APPROVAL_TOKEN_ENV}}` },
+    };
+  }
+  if (Object.keys(mcpServers).length === 0) return [];
+  return [
+    ...(approvals ? ['--permission-prompt-tool', APPROVAL_PROMPT_TOOL] : []),
+    '--mcp-config',
+    JSON.stringify({ mcpServers }),
+    // Last: `--allowedTools` takes every argument after it, and the prompt is on stdin.
+    ...(tools ? ['--allowedTools', `mcp__${GEMIE_TOOLS_SERVER}`] : []),
+  ];
 }
 
 /** Codex: config overrides for this run; the bearer is read from the environment. */

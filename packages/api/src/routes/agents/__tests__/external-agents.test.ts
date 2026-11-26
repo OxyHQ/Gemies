@@ -29,6 +29,7 @@ const state = vi.hoisted(() => ({
   openSession: vi.fn(),
   folders: vi.fn(),
   listTerminal: vi.fn(),
+  answerApproval: vi.fn(),
 }));
 
 vi.mock('../../../middleware/auth.js', () => ({
@@ -63,6 +64,7 @@ vi.mock('../../../lib/external-agents/relay.js', () => ({
   isExternalAgentReachable: async (id: string) => state.online.has(id),
   disconnectExternalAgent: state.disconnect,
   listExternalAgentSessions: state.listTerminal,
+  answerExternalApproval: state.answerApproval,
   ExternalAgentOfflineError: class ExternalAgentOfflineError extends Error {},
 }));
 vi.mock('../../../lib/logger.js', () => {
@@ -430,5 +432,45 @@ describe('terminal sessions (ADR 0043 §4)', () => {
   it('says 503, not an empty list, when the computer cannot answer', async () => {
     state.listTerminal.mockRejectedValue(new Error('offline'));
     expect((await list()).status).toBe(503);
+  });
+});
+
+describe('POST /agents/external/:agentId/approvals/:requestId (ADR 0043 §5)', () => {
+  const REQUEST = '11111111-2222-4333-8444-555555555555';
+  const answer = (body: unknown, requestId = REQUEST, agentId = 'agent-1') =>
+    post(`/${agentId}/approvals/${requestId}`, body);
+
+  it('hands the owner’s answer to the daemon that asked', async () => {
+    state.online.add('agent-1');
+    expect((await answer({ decision: 'allow' })).status).toBe(204);
+    expect(state.answerApproval).toHaveBeenCalledWith('agent-1', REQUEST, 'allow');
+    expect((await answer({ decision: 'deny' })).status).toBe(204);
+    expect(state.answerApproval).toHaveBeenLastCalledWith('agent-1', REQUEST, 'deny');
+  });
+
+  it('answers for nobody else’s agent, and for none whose computer is gone', async () => {
+    state.online.add('agent-1');
+    state.findLink.mockResolvedValue({ agentId: 'agent-1', ownerOxyUserId: 'someone-else' });
+    expect((await answer({ decision: 'allow' })).status).toBe(404);
+    state.findLink.mockResolvedValue(undefined);
+    expect((await answer({ decision: 'allow' })).status).toBe(404);
+    state.findLink.mockResolvedValue({ agentId: 'agent-1', ownerOxyUserId: 'owner-1' });
+    state.online.clear();
+    expect((await answer({ decision: 'allow' })).status).toBe(404);
+    expect(state.answerApproval).not.toHaveBeenCalled();
+  });
+
+  it('refuses a decision other than allow or deny, extra fields, and an id that is not a request id', async () => {
+    state.online.add('agent-1');
+    for (const body of [
+      { decision: 'maybe' },
+      { decision: 'allow', extra: 1 },
+      {},
+      { decision: 'expired' },
+    ]) {
+      expect((await answer(body)).status).toBe(400);
+    }
+    expect((await answer({ decision: 'allow' }, 'not-a-request-id')).status).toBe(400);
+    expect(state.answerApproval).not.toHaveBeenCalled();
   });
 });

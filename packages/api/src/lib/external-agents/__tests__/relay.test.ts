@@ -24,6 +24,7 @@ import { hashExternalAgentCredential } from '../credential.js';
 import {
   disconnectExternalAgent,
   externalAgentRelayRoute,
+  answerExternalApproval,
   isExternalAgentReachable,
   listExternalAgentSessions as listSessionsOf,
   runExternalTurn,
@@ -100,7 +101,7 @@ describe('external agent relay', () => {
   it('opens a live link with its own credential and reports presence', async () => {
     const { frames } = await connect();
     await waitFor(() => frames.length > 0);
-    expect(frames[0]).toEqual({ type: 'auth-ok', agentId: 'agent-1' });
+    expect(frames[0]).toEqual({ type: 'auth-ok', agentId: 'agent-1', features: ['approvals'] });
     expect(await isExternalAgentReachable('agent-1')).toBe(true);
   });
 
@@ -143,6 +144,7 @@ describe('external agent relay', () => {
     expect(await firstFrame({ token: 'tok-nate', agentId: 'legacy' })).toEqual({
       type: 'auth-ok',
       agentId: 'legacy',
+      features: ['approvals'],
     });
   });
 
@@ -236,6 +238,82 @@ describe('external agent relay', () => {
     await waitFor(() => frames.some((f) => f.type === 'list-sessions'));
     ws.close();
     await expect(listing).rejects.toThrow(/disconnected/);
+  });
+
+  it('surfaces the tools the daemon reports, validated, tagged with their own turn only', async () => {
+    const { ws, frames } = await connect();
+    await waitFor(() => frames.length > 0);
+    const seen: unknown[] = [];
+    const turn = runExternalTurn({
+      agentId: 'agent-1',
+      task: 'a',
+      history: [],
+      onActivity: (a) => seen.push(a),
+    });
+    await waitFor(() => frames.some((f) => f.type === 'turn'));
+    const { turnId } = frames.find((f) => f.type === 'turn') as { turnId: string };
+    const send = (activity: unknown, id = turnId) =>
+      ws.send(JSON.stringify({ type: 'activity', turnId: id, activity }));
+    send({ id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'running' });
+    send({ id: 'a', tool: 'Read', summary: 'x'.repeat(500), status: 'done' });
+    send({ id: 'b', tool: 'Bash', status: 'exploded' });
+    send({ id: '', tool: 'Bash', status: 'running' });
+    send({ tool: 'Bash', status: 'running' });
+    send('junk');
+    send({ id: 'c', tool: 'Bash', status: 'running' }, 'another-turn');
+    ws.send(JSON.stringify({ type: 'end', turnId, text: 'ok' }));
+    await turn;
+    expect(seen).toEqual([
+      { id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'running' },
+      { id: 'a', tool: 'Read', summary: 'x'.repeat(200), status: 'done' },
+    ]);
+  });
+
+  it('surfaces a permission question and its closing, validated, and carries the answer to the daemon', async () => {
+    const { ws, frames } = await connect();
+    await waitFor(() => frames.length > 0);
+    const events: unknown[] = [];
+    const turn = runExternalTurn({
+      agentId: 'agent-1',
+      task: 'a',
+      history: [],
+      onApproval: (e) => events.push(e),
+    });
+    await waitFor(() => frames.some((f) => f.type === 'turn'));
+    const { turnId } = frames.find((f) => f.type === 'turn') as { turnId: string };
+    const requestId = '11111111-2222-4333-8444-555555555555';
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const send = (frame: object) => ws.send(JSON.stringify(frame));
+    send({
+      type: 'approval-request',
+      turnId,
+      requestId,
+      tool: 'Bash',
+      summary: 'x'.repeat(500),
+      expiresAt,
+    });
+    send({ type: 'approval-request', turnId, requestId: 'not-a-uuid', tool: 'Bash', expiresAt });
+    send({ type: 'approval-request', turnId, requestId, tool: '', expiresAt });
+    send({ type: 'approval-request', turnId, requestId, tool: 'Bash', expiresAt: 'tomorrow-ish' });
+    send({ type: 'approval-request', turnId: 'another-turn', requestId, tool: 'Bash', expiresAt });
+    send({ type: 'approval-resolved', turnId, requestId, decision: 'allow' });
+    send({ type: 'approval-resolved', turnId, requestId, decision: 'whatever' });
+    await waitFor(() => events.length === 2);
+
+    answerExternalApproval('agent-1', requestId, 'allow');
+    await waitFor(() => frames.some((f) => f.type === 'approval'));
+    expect(frames.find((f) => f.type === 'approval')).toEqual({
+      type: 'approval',
+      requestId,
+      decision: 'allow',
+    });
+
+    send({ type: 'end', turnId, text: 'ok' });
+    await turn;
+    expect(events).toEqual([
+      { kind: 'request', requestId, tool: 'Bash', summary: 'x'.repeat(200), expiresAt },
+      { kind: 'resolved', requestId, decision: 'allow' },
+    ]);
   });
 
   it('fails a turn when the daemon reports an error', async () => {
