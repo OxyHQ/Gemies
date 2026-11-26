@@ -43,8 +43,8 @@ async function mount() {
 beforeEach(() => {
   api.get.mockImplementation(async (url: string) =>
     url.endsWith('/terminal-sessions')
-      ? { data: { sessions: [], roots: ['/home/ana/code'] } }
-      : { data: { folders: ['/home/ana/app', '/home/ana/api'] } },
+      ? { data: { sessions: [], roots: ['/home/ana'] } }
+      : { data: { folders: ['/home/ana/app', '/home/ana/api', '/home'] } },
   );
   api.post.mockResolvedValue({ data: {} });
   api.createConversation.mockResolvedValue({ id: 'conv-9' });
@@ -106,7 +106,7 @@ describe('useExternalSessions', () => {
   it('reads the folders its computer allows, and none when the computer cannot say', async () => {
     const hook = await mount();
     expect(api.get).toHaveBeenCalledWith('/agents/external/agent-1/terminal-sessions');
-    expect(hook().allowedFolders).toEqual(['/home/ana/code']);
+    expect(hook().allowedFolders).toEqual(['/home/ana']);
     act(() => renderer?.unmount());
     renderer = null;
     api.get.mockImplementation(async (url: string) => {
@@ -116,7 +116,7 @@ describe('useExternalSessions', () => {
     expect((await mount())().allowedFolders).toEqual([]);
   });
 
-  it('reads the recent folders of that agent', async () => {
+  it('offers the recent folders of that agent that its computer still allows', async () => {
     const hook = await mount();
     expect(api.get).toHaveBeenCalledWith('/agents/external/agent-1/folders');
     expect(hook().folders).toEqual(['/home/ana/app', '/home/ana/api']);

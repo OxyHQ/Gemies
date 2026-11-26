@@ -4,7 +4,7 @@ import { queryKeys } from '@/shared/api/query-keys';
 import { useCreateConversation } from '@gemies/sdk/runtime';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 
 /**
  * Whether `path` names a folder the way the API accepts one (ADR 0043): absolute on the agent's
@@ -84,10 +84,18 @@ export function useExternalSessions(agentId: string) {
     [agentId, createConversation, queryClient],
   );
 
+  const allowedFolders = computer.data ?? EMPTY;
+  // A folder worked in once may no longer be allowed: it is not offered again, the computer would
+  // refuse it.
+  const recentFolders = useMemo(
+    () => (folders.data ?? EMPTY).filter((folder) => isAllowedFolder(folder, allowedFolders)),
+    [folders.data, allowedFolders],
+  );
+
   return {
-    folders: folders.data ?? EMPTY,
+    folders: recentFolders,
     /** The folders its computer allows sessions in; empty when it cannot say. */
-    allowedFolders: computer.data ?? EMPTY,
+    allowedFolders,
     loadingFolders: isAuthenticated && folders.isPending && !folders.isError,
     open,
     opening: createConversation.isPending,
