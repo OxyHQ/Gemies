@@ -20,6 +20,7 @@ import { useReadAloud } from '../../hooks/useReadAloud';
 import { useThoughtScope } from '../../hooks/useThoughtScope';
 import { useThreadRows } from '../../hooks/useThreadRows';
 import { useTimelineWindow } from '../../hooks/useTimelineWindow';
+import { useAgentRunFailureToast } from '../../hooks/useAgentRunFailureToast';
 import { useFailedTurnToast } from '../../hooks/useFailedTurnToast';
 import { copyText } from '../../lib/clipboard';
 import { messageText } from '../../lib/content-utils';
@@ -159,6 +160,7 @@ export const GemieThread = memo(function GemieThread({
   const { messages: pastMessages, loading: loadingHistory = false, loadMore } = historyProps ?? {};
 
   useFailedTurnToast(failedTurn, onRetryTurn);
+  useAgentRunFailureToast(agentActivity, failedTurn);
 
   const { rows, live, history, ids, arrived, dayLabels, seamIds, lastReplyIndex, timingOf } =
     useThreadRows({
@@ -374,10 +376,13 @@ export const GemieThread = memo(function GemieThread({
               .map((message, offset) => renderRow(message, timeline.start + offset))}
           </View>
 
-          {/* Agent execution — in-progress card or completed result card */}
+          {/* Agent execution — in-progress card or completed result card. A run that failed has no
+              card: it is told with a toast (`useAgentRunFailureToast`). */}
           {agentActivity && agentActivity.eventCount > 0 ? (
             agentActivity.isComplete ? (
-              <AgentResultCard activity={agentActivity} />
+              agentActivity.hasError ? null : (
+                <AgentResultCard activity={agentActivity} />
+              )
             ) : (
               <AgentTaskCard activity={agentActivity} />
             )

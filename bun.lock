@@ -249,7 +249,7 @@
     },
     "packages/sdk": {
       "name": "@gemies/sdk",
-      "version": "10.0.0",
+      "version": "10.0.1",
       "dependencies": {
         "socket.io-client": "^4.8.3",
         "zustand": "^5.0.15",
