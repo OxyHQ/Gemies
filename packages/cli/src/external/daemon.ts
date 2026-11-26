@@ -1,13 +1,16 @@
 import { framePrompt } from './prompt.js';
 import { resolveSessionCwd } from './roots.js';
+import { listTerminalSessions, SESSION_ID } from './terminal-sessions.js';
 import type { SessionStore } from './state.js';
-import type { DaemonFrame, ExternalRuntime, ServerFrame } from './types.js';
+import type { DaemonFrame, ExternalCli, ExternalRuntime, ServerFrame } from './types.js';
 
 export interface DaemonOptions {
   readonly wsUrl: string;
   readonly agentId: string;
   readonly agentName: string;
   readonly runtime: ExternalRuntime;
+  /** Which CLI this agent serves; lets it list that CLI's sessions begun in a terminal (ADR 0043). */
+  readonly cli?: ExternalCli;
   readonly cwd: string;
   readonly write: boolean;
   /**
@@ -145,7 +148,10 @@ export function startDaemon(options: DaemonOptions): Daemon {
             send(ws, { type: 'delta', turnId: frame.turnId, text: delta });
           },
         });
-      const resumeId = sessionKey ? options.sessions?.get(sessionKey) : undefined;
+      // The session this conversation kept here; else, once, the terminal session it was opened on.
+      const adopted =
+        frame.resumeId && SESSION_ID.test(frame.resumeId) ? frame.resumeId : undefined;
+      const resumeId = sessionKey ? (options.sessions?.get(sessionKey) ?? adopted) : undefined;
       let text: string;
       try {
         text = await attempt(resumeId);
@@ -216,6 +222,19 @@ export function startDaemon(options: DaemonOptions): Daemon {
               if (queues.get(key) === next) queues.delete(key);
             });
           }
+          break;
+        case 'list-sessions':
+          if (!authenticated) return;
+          send(ws, {
+            type: 'sessions',
+            requestId: frame.requestId,
+            sessions: options.cli
+              ? listTerminalSessions({
+                  cli: options.cli,
+                  roots: [options.cwd, ...(options.allowedRoots?.() ?? [])],
+                })
+              : [],
+          });
           break;
         case 'cancel':
           turns.get(frame.turnId)?.abort();

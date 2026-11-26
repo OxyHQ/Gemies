@@ -22,8 +22,12 @@ import {
   markExternalLinkConnected,
 } from '../../db/agents/externalAgentRepository.js';
 import {
+  EXTERNAL_CLI_SESSION_ID,
+  EXTERNAL_SESSION_CWD_MAX,
+  EXTERNAL_TERMINAL_SESSIONS_MAX,
   EXTERNAL_TURN_TIMEOUT_MS,
   type ChatTurn,
+  type TerminalSessionInfo,
   type DaemonFrame,
   type ServerFrame,
 } from '../../domain/external-agent.js';
@@ -41,6 +45,8 @@ const AUTH_TIMEOUT_MS = 5_000;
 const HEARTBEAT_INTERVAL_MS = 25_000;
 /** How long an instance waits for the one that holds the socket to take a turn it published. */
 const REMOTE_ACK_TIMEOUT_MS = 4_000;
+/** How long a daemon has to list the sessions its CLI has on disk. */
+const LIST_SESSIONS_TIMEOUT_MS = 10_000;
 
 export interface ExternalTurnInput {
   agentId: string;
@@ -50,6 +56,8 @@ export interface ExternalTurnInput {
   threadKey?: string;
   /** The folder the conversation's session works in (ADR 0043). */
   cwd?: string;
+  /** The terminal session this conversation continues (ADR 0043 §4). */
+  resumeId?: string;
   onDelta?: (text: string) => void;
   timeoutMs?: number;
   signal?: AbortSignal;
@@ -94,7 +102,8 @@ type TurnEvent =
   | { type: 'ack' }
   | { type: 'delta'; text: string }
   | { type: 'end'; text: string }
-  | { type: 'error'; message: string; offline?: boolean };
+  | { type: 'error'; message: string; offline?: boolean }
+  | { type: 'sessions'; sessions: TerminalSessionInfo[] };
 
 type Command =
   | {
@@ -104,8 +113,10 @@ type Command =
       history: readonly ChatTurn[];
       threadKey?: string;
       cwd?: string;
+      resumeId?: string;
       timeoutMs?: number;
     }
+  | { kind: 'list-sessions'; requestId: string }
   | { kind: 'cancel'; turnId: string }
   /** The link was revoked, or its credential replaced, on another instance: drop the socket held here. */
   | { kind: 'revoke' }
@@ -125,10 +136,36 @@ export interface ExternalAgentRelay {
   readonly route: WebSocketRoute;
   /** Runs one turn on whichever instance holds the agent's socket. */
   runTurn(input: ExternalTurnInput): Promise<{ response: string }>;
+  /** The sessions the agent's CLI has on its computer, wherever the daemon is connected. */
+  listSessions(agentId: string): Promise<TerminalSessionInfo[]>;
   /** True when it is connected to any instance. */
   isReachable(agentId: string): Promise<boolean>;
   disconnect(agentId: string, why: Disconnect): void;
   shutdown(): void;
+}
+
+/**
+ * What a daemon says its CLI has. It is the person's own computer, but the answer is data from the
+ * wire: every entry is checked, the rest dropped, and the list capped, before anything reads it.
+ */
+export function sanitizeTerminalSessions(raw: unknown): TerminalSessionInfo[] {
+  if (!Array.isArray(raw)) return [];
+  const out: TerminalSessionInfo[] = [];
+  for (const entry of raw) {
+    if (out.length >= EXTERNAL_TERMINAL_SESSIONS_MAX) break;
+    if (entry === null || typeof entry !== 'object') continue;
+    const { id, cwd, title, updatedAt } = entry as Record<string, unknown>;
+    if (typeof id !== 'string' || !EXTERNAL_CLI_SESSION_ID.test(id)) continue;
+    if (typeof cwd !== 'string' || cwd === '' || cwd.length > EXTERNAL_SESSION_CWD_MAX) continue;
+    if (cwd.includes('\0')) continue;
+    out.push({
+      id,
+      cwd,
+      title: typeof title === 'string' ? title.slice(0, 200) : id.slice(0, 8),
+      updatedAt: typeof updatedAt === 'number' && Number.isFinite(updatedAt) ? updatedAt : 0,
+    });
+  }
+  return out;
 }
 
 function parseFrame(data: WebSocket.RawData): DaemonFrame | null {
@@ -164,6 +201,15 @@ export function createExternalAgentRelay(
   const server = new WebSocketServer({ noServer: true });
   const connections = new Map<string, Connection>();
   const pendingTurns = new Map<string, PendingTurn>();
+  const pendingLists = new Map<
+    string,
+    {
+      agentId: string;
+      resolve: (sessions: TerminalSessionInfo[]) => void;
+      reject: (error: Error) => void;
+      timer: NodeJS.Timeout;
+    }
+  >();
   /** Turns a REMOTE instance asked this one to run, so a `cancel` can reach them. */
   const remoteTurns = new Map<string, AbortController>();
   let stopCommands: (() => void) | null = null;
@@ -194,7 +240,33 @@ export function createExternalAgentRelay(
     pendingTurns.delete(turnId);
   };
 
+  const failListsOf = (agentId: string, error: Error): void => {
+    for (const [requestId, pending] of pendingLists) {
+      if (pending.agentId !== agentId) continue;
+      clearTimeout(pending.timer);
+      pendingLists.delete(requestId);
+      pending.reject(error);
+    }
+  };
+
+  const listLocalSessions = (agentId: string): Promise<TerminalSessionInfo[]> =>
+    new Promise((resolve, reject) => {
+      const connection = connections.get(agentId);
+      if (!connection || connection.ws.readyState !== WebSocket.OPEN) {
+        reject(new ExternalAgentOfflineError());
+        return;
+      }
+      const requestId = randomUUID();
+      const timer = setTimeout(() => {
+        pendingLists.delete(requestId);
+        reject(new Error('The external agent did not list its sessions in time'));
+      }, LIST_SESSIONS_TIMEOUT_MS);
+      pendingLists.set(requestId, { agentId, resolve, reject, timer });
+      send(connection.ws, { type: 'list-sessions', requestId });
+    });
+
   const failTurnsOf = (agentId: string, error: Error): void => {
+    failListsOf(agentId, error);
     for (const [turnId, pending] of pendingTurns) {
       if (pending.agentId !== agentId) continue;
       settle(turnId, pending);
@@ -256,6 +328,7 @@ export function createExternalAgentRelay(
         history: input.history,
         ...(input.threadKey ? { threadKey: input.threadKey } : {}),
         ...(input.cwd ? { cwd: input.cwd } : {}),
+        ...(input.resumeId ? { resumeId: input.resumeId } : {}),
       });
     });
 
@@ -298,6 +371,19 @@ export function createExternalAgentRelay(
       });
       return;
     }
+    if (command.kind === 'list-sessions' && typeof command.requestId === 'string') {
+      const { requestId } = command;
+      listLocalSessions(agentId)
+        .then((sessions) => publishEvent(requestId, { type: 'sessions', sessions }))
+        .catch((err: unknown) =>
+          publishEvent(requestId, {
+            type: 'error',
+            message: err instanceof Error ? err.message : 'The external agent failed',
+            ...(err instanceof ExternalAgentOfflineError ? { offline: true } : {}),
+          }),
+        );
+      return;
+    }
     if (command.kind === 'cancel') {
       remoteTurns.get(command.turnId)?.abort();
       return;
@@ -313,6 +399,7 @@ export function createExternalAgentRelay(
       history: command.history,
       ...(command.threadKey ? { threadKey: command.threadKey } : {}),
       ...(command.cwd ? { cwd: command.cwd } : {}),
+      ...(command.resumeId ? { resumeId: command.resumeId } : {}),
       signal: controller.signal,
       ...(command.timeoutMs === undefined ? {} : { timeoutMs: command.timeoutMs }),
       onDelta: (text) => publishEvent(command.turnId, { type: 'delta', text }),
@@ -428,6 +515,7 @@ export function createExternalAgentRelay(
             history: input.history,
             ...(input.threadKey ? { threadKey: input.threadKey } : {}),
             ...(input.cwd ? { cwd: input.cwd } : {}),
+            ...(input.resumeId ? { resumeId: input.resumeId } : {}),
             timeoutMs,
           };
           return cluster.publish(`${CMD_PREFIX}${input.agentId}`, JSON.stringify(command));
@@ -439,6 +527,62 @@ export function createExternalAgentRelay(
           );
           finish(() => reject(new ExternalAgentOfflineError()));
         });
+    });
+  };
+
+  const listRemoteSessions = async (
+    cluster: ClusterBus,
+    agentId: string,
+  ): Promise<TerminalSessionInfo[]> => {
+    if (!(await cluster.hasPresence(agentId))) throw new ExternalAgentOfflineError();
+    const requestId = randomUUID();
+    return new Promise<TerminalSessionInfo[]>((resolve, reject) => {
+      let done = false;
+      let unsubscribe: (() => void) | undefined;
+      const finish = (fn: () => void): void => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        unsubscribe?.();
+        fn();
+      };
+      // The holder answers within LIST_SESSIONS_TIMEOUT_MS or reports why; this guards a vanished one.
+      const timer = setTimeout(
+        () => finish(() => reject(new ExternalAgentOfflineError())),
+        LIST_SESSIONS_TIMEOUT_MS + remoteAckTimeoutMs,
+      );
+      cluster
+        .subscribe(`${EVT_PREFIX}${requestId}`, (payload) => {
+          let event: TurnEvent;
+          try {
+            event = JSON.parse(payload) as TurnEvent;
+          } catch {
+            return;
+          }
+          if (event.type === 'sessions') {
+            finish(() => resolve(sanitizeTerminalSessions(event.sessions)));
+          } else if (event.type === 'error') {
+            finish(() =>
+              reject(
+                event.offline
+                  ? new ExternalAgentOfflineError(event.message)
+                  : new Error(event.message),
+              ),
+            );
+          }
+        })
+        .then((stop) => {
+          if (done) {
+            stop();
+            return;
+          }
+          unsubscribe = stop;
+          return cluster.publish(
+            `${CMD_PREFIX}${agentId}`,
+            JSON.stringify({ kind: 'list-sessions', requestId } satisfies Command),
+          );
+        })
+        .catch(() => finish(() => reject(new ExternalAgentOfflineError())));
     });
   };
 
@@ -520,6 +664,15 @@ export function createExternalAgentRelay(
         const tail = unstreamedTail(pending.text, response);
         if (tail) pending.onDelta?.(tail);
         pending.resolve({ response });
+        break;
+      }
+      case 'sessions': {
+        const pending =
+          typeof frame.requestId === 'string' ? pendingLists.get(frame.requestId) : undefined;
+        if (!pending || pending.agentId !== agentId) return;
+        clearTimeout(pending.timer);
+        pendingLists.delete(frame.requestId);
+        pending.resolve(sanitizeTerminalSessions(frame.sessions));
         break;
       }
       case 'error': {
@@ -617,6 +770,13 @@ export function createExternalAgentRelay(
       return Promise.reject(new ExternalAgentOfflineError());
     },
 
+    listSessions(agentId) {
+      const local = connections.get(agentId);
+      if (local && local.ws.readyState === WebSocket.OPEN) return listLocalSessions(agentId);
+      if (bus) return listRemoteSessions(bus, agentId);
+      return Promise.reject(new ExternalAgentOfflineError());
+    },
+
     async isReachable(agentId) {
       if (connections.get(agentId)?.ws.readyState === WebSocket.OPEN) return true;
       if (!bus) return false;
@@ -650,6 +810,9 @@ export function createExternalAgentRelay(
         settle(turnId, pending);
         pending.reject(new Error('Server shutting down'));
       }
+      for (const agentId of new Set([...pendingLists.values()].map((p) => p.agentId))) {
+        failListsOf(agentId, new Error('Server shutting down'));
+      }
       server.close();
     },
   };
@@ -676,6 +839,11 @@ export async function isExternalAgentReachable(agentId: string): Promise<boolean
 /** Hands one turn to the agent's daemon, wherever it is connected, and resolves with the full answer. */
 export function runExternalTurn(input: ExternalTurnInput): Promise<{ response: string }> {
   return current ? current.runTurn(input) : Promise.reject(new ExternalAgentOfflineError());
+}
+
+/** The sessions the agent's CLI has on its computer, begun in a terminal (ADR 0043 §4). */
+export function listExternalAgentSessions(agentId: string): Promise<TerminalSessionInfo[]> {
+  return current ? current.listSessions(agentId) : Promise.reject(new ExternalAgentOfflineError());
 }
 
 /** Cuts the agent's daemon off: it was revoked, or reconnected with a new credential. */

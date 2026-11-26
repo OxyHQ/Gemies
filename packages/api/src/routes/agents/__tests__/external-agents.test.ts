@@ -28,6 +28,7 @@ const state = vi.hoisted(() => ({
   disconnect: vi.fn(),
   openSession: vi.fn(),
   folders: vi.fn(),
+  listTerminal: vi.fn(),
 }));
 
 vi.mock('../../../middleware/auth.js', () => ({
@@ -61,6 +62,8 @@ vi.mock('../../../db/agents/externalAgentRepository.js', () => ({
 vi.mock('../../../lib/external-agents/relay.js', () => ({
   isExternalAgentReachable: async (id: string) => state.online.has(id),
   disconnectExternalAgent: state.disconnect,
+  listExternalAgentSessions: state.listTerminal,
+  ExternalAgentOfflineError: class ExternalAgentOfflineError extends Error {},
 }));
 vi.mock('../../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -372,5 +375,60 @@ describe('sessions: POST /agents/external/:agentId/sessions and GET …/folders'
     });
     state.findLink.mockResolvedValue({ agentId: 'agent-1', ownerOxyUserId: 'someone-else' });
     expect((await fetch(`${base}/agents/external/agent-1/folders`)).status).toBe(404);
+  });
+});
+
+describe('terminal sessions (ADR 0043 §4)', () => {
+  const open = (body: unknown) => post('/agent-1/sessions', body);
+  const list = () => fetch(`${base}/agents/external/agent-1/terminal-sessions`);
+
+  beforeEach(() => {
+    state.openSession.mockImplementation(async (_db, input) => ({
+      cwd: input.cwd,
+      agentId: input.agentId,
+      ownerOxyUserId: input.ownerOxyUserId,
+    }));
+  });
+
+  it('opens a conversation on a terminal session of the CLI', async () => {
+    const response = await open({
+      conversationId: 'c-1',
+      cwd: '/w',
+      resumeId: 'terminal-session-1',
+    });
+    expect(response.status).toBe(201);
+    expect(state.openSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ cliSessionId: 'terminal-session-1' }),
+    );
+  });
+
+  it('refuses a resume id that is not a session id, before anything is stored', async () => {
+    for (const resumeId of ['--dangerous; rm -rf', 'short', 'has space in it', 'x'.repeat(200)]) {
+      expect((await open({ conversationId: 'c-1', cwd: '/w', resumeId })).status).toBe(400);
+    }
+    expect(state.openSession).not.toHaveBeenCalled();
+  });
+
+  it('lists what the agent’s CLI has, for its owner only', async () => {
+    state.listTerminal.mockResolvedValue([
+      { id: 's-0000001', cwd: '/w', title: 't', updatedAt: 1 },
+    ]);
+    const ok = await list();
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({
+      sessions: [{ id: 's-0000001', cwd: '/w', title: 't', updatedAt: 1 }],
+    });
+    expect(state.listTerminal).toHaveBeenCalledWith('agent-1');
+
+    state.listTerminal.mockClear();
+    state.findLink.mockResolvedValue({ agentId: 'agent-1', ownerOxyUserId: 'someone-else' });
+    expect((await list()).status).toBe(404);
+    expect(state.listTerminal).not.toHaveBeenCalled();
+  });
+
+  it('says 503, not an empty list, when the computer cannot answer', async () => {
+    state.listTerminal.mockRejectedValue(new Error('offline'));
+    expect((await list()).status).toBe(503);
   });
 });

@@ -128,6 +128,30 @@ describe('turns across instances', () => {
     await turn;
   });
 
+  it('lists a daemon’s sessions from another instance than the one holding it', async () => {
+    const { ws, frames } = await daemonOnA();
+    const listing = b.listSessions('agent-1');
+    await waitFor(() => frames.some((f) => f.type === 'list-sessions'));
+    const ask = frames.find((f) => f.type === 'list-sessions') as { requestId: string };
+    ws.send(
+      JSON.stringify({
+        type: 'sessions',
+        requestId: ask.requestId,
+        sessions: [
+          { id: 'good-session-1', cwd: '/w', title: 'fix it', updatedAt: 5 },
+          { id: '--bad; id', cwd: '/w', title: 'x', updatedAt: 1 },
+        ],
+      }),
+    );
+    await expect(listing).resolves.toEqual([
+      { id: 'good-session-1', cwd: '/w', title: 'fix it', updatedAt: 5 },
+    ]);
+  });
+
+  it('says offline at once to a listing when no instance holds the agent', async () => {
+    await expect(b.listSessions('agent-none')).rejects.toThrow();
+  });
+
   it('carries a daemon error back to the instance that asked', async () => {
     const { ws, frames } = await daemonOnA();
     const turn = b.runTurn({ agentId: 'agent-1', task: 'x', history: [] });

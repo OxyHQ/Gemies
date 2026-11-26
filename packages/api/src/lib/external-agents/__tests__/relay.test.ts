@@ -25,6 +25,7 @@ import {
   disconnectExternalAgent,
   externalAgentRelayRoute,
   isExternalAgentReachable,
+  listExternalAgentSessions as listSessionsOf,
   runExternalTurn,
   shutdownExternalAgentRelay,
 } from '../relay.js';
@@ -193,6 +194,48 @@ describe('external agent relay', () => {
     expect(second).not.toHaveProperty('cwd');
     ws.send(JSON.stringify({ type: 'end', turnId: second.turnId, text: 'ok' }));
     await plain;
+  });
+
+  it('asks the daemon for its CLI’s sessions and keeps only well-formed entries', async () => {
+    const { ws, frames } = await connect();
+    await waitFor(() => frames.length > 0);
+    const listing = listSessionsOf('agent-1');
+    await waitFor(() => frames.some((f) => f.type === 'list-sessions'));
+    const ask = frames.find((f) => f.type === 'list-sessions') as { requestId: string };
+    ws.send(
+      JSON.stringify({
+        type: 'sessions',
+        requestId: ask.requestId,
+        sessions: [
+          { id: 'good-session-1', cwd: '/w', title: 'fix it', updatedAt: 5 },
+          { id: '--bad; id', cwd: '/w', title: 'x', updatedAt: 1 },
+          { id: 'no-folder-0001', cwd: '', title: 'x', updatedAt: 1 },
+          { id: 'nul-folder-001', cwd: '/a\0b', title: 'x', updatedAt: 1 },
+          'junk',
+          { id: 'no-title-00001', cwd: '/w', updatedAt: 'soon' },
+        ],
+      }),
+    );
+    await expect(listing).resolves.toEqual([
+      { id: 'good-session-1', cwd: '/w', title: 'fix it', updatedAt: 5 },
+      { id: 'no-title-00001', cwd: '/w', title: 'no-title', updatedAt: 0 },
+    ]);
+  });
+
+  it('ignores a listing for a request that is not its own, and fails when nobody is connected', async () => {
+    const { ws, frames } = await connect();
+    await waitFor(() => frames.length > 0);
+    ws.send(JSON.stringify({ type: 'sessions', requestId: 'never-asked', sessions: [] }));
+    await expect(listSessionsOf('agent-9')).rejects.toThrow(/not connected/);
+  });
+
+  it('fails a pending listing when the daemon drops', async () => {
+    const { ws, frames } = await connect();
+    await waitFor(() => frames.length > 0);
+    const listing = listSessionsOf('agent-1');
+    await waitFor(() => frames.some((f) => f.type === 'list-sessions'));
+    ws.close();
+    await expect(listing).rejects.toThrow(/disconnected/);
   });
 
   it('fails a turn when the daemon reports an error', async () => {
