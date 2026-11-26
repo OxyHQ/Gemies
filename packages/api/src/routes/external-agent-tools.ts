@@ -1,7 +1,7 @@
 /**
  * `/mcp/agents/:agentId` — an external agent's tools, as a remote MCP server (ADR 0039).
  *
- * The daemon (`codea connect`) hands this address to the CLI it drives, with the agent's own
+ * The daemon (`gemies connect`) hands this address to the CLI it drives, with the agent's own
  * credential (ADR 0038) as the bearer. That credential is the only thing that opens it: no Oxy
  * session, no other agent's credential. Revoking the agent revokes its link, which is what is read
  * here on every request, so its tools close with it.

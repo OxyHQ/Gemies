@@ -39,7 +39,7 @@ one column, no foreign key, UNIQUE.
 
 ### An external agent has no Oxy account (ADR 0036)
 
-A coding-agent CLI paired from its owner's computer (`codea connect`, ADR 0030) is a gemie whose
+A coding-agent CLI paired from its owner's computer (`gemies connect`, ADR 0030) is a gemie whose
 identity is its own row: `agents.identity = 'local'`, its name in `local_name`, its colour in
 `local_color` (the vocabulary of an account's `User.color`) and no `oxy_account_id`. Pairing mints
 no account.
@@ -58,9 +58,16 @@ no account.
   daemon redeems the single-use code with no session and keeps the agent's own credential
   (`gxa_…`, stored hashed on `external_agent_links`), which opens `/ws/external-agent` for that agent
   only. Removing the agent kills it; **Reconnect** in Settings replaces it.
-- **Autonomous.** `codea connect` installs the daemon as a per-user service (systemd `--user`,
+- **Autonomous.** `gemies connect` installs the daemon as a per-user service (systemd `--user`,
   LaunchAgent, Scheduled Task): it starts at login, restarts on failure and survives restarts, so
   nobody reconnects the agent (ADR 0038 §4).
+- **Paired once per computer, sessions in any folder (ADR 0043).** One code pairs every CLI the
+  computer has (a gemie and a credential each, `machine_id` groups them). **New session** in
+  Settings starts a conversation with the agent in a folder (`external_agent_sessions`); the daemon
+  works only inside the folder it was paired in or one allowed locally with `gemies allow`, symlinks
+  resolved. A session begun in a terminal can be continued (`GET …/terminal-sessions`). The tools the
+  CLI uses show in the conversation as steps (`activity`), and Claude Code's permission questions are
+  answered there (`approval-request` → card → `POST …/approvals/:requestId`); Codex keeps its sandbox.
 - **Its tools over MCP (ADR 0039).** `POST /mcp/agents/:id`, opened by that credential, serves
   what `ToolPipeline.forUser` builds for its owner from its grants (connected accounts, the web…),
   without Oxy apps, hosted inference or a memory of Gemies'. The daemon hands it to each run of

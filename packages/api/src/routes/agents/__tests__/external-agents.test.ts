@@ -26,6 +26,9 @@ const state = vi.hoisted(() => ({
   createLink: vi.fn(),
   revoke: vi.fn(),
   disconnect: vi.fn(),
+  openSession: vi.fn(),
+  folders: vi.fn(),
+  listTerminal: vi.fn(),
 }));
 
 vi.mock('../../../middleware/auth.js', () => ({
@@ -49,6 +52,8 @@ vi.mock('../../../db/agents/externalAgentRepository.js', () => ({
   replaceExternalLinkCredential: state.replaceCredential,
   createExternalLink: state.createLink,
   revokeExternalLink: state.revoke,
+  openExternalSession: state.openSession,
+  recentExternalFolders: state.folders,
   listExternalLinks: vi.fn(async () => [
     { agentId: 'a1', cli: 'codex', hostName: 'laptop', createdAt: 'x', lastConnectedAt: null },
     { agentId: 'a2', cli: 'claude', hostName: 'desk', createdAt: 'y', lastConnectedAt: null },
@@ -57,6 +62,8 @@ vi.mock('../../../db/agents/externalAgentRepository.js', () => ({
 vi.mock('../../../lib/external-agents/relay.js', () => ({
   isExternalAgentReachable: async (id: string) => state.online.has(id),
   disconnectExternalAgent: state.disconnect,
+  listExternalAgentSessions: state.listTerminal,
+  ExternalAgentOfflineError: class ExternalAgentOfflineError extends Error {},
 }));
 vi.mock('../../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -175,9 +182,33 @@ describe('POST /agents/external/redeem', () => {
       cli: 'codex',
       hostName: 'laptop',
       credentialHash: hashExternalAgentCredential(body.credential),
+      machineId: expect.any(String),
     });
     expect(JSON.stringify(state.createLink.mock.calls)).not.toContain(body.credential);
     expect(state.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('pairs a whole computer with one code: a gemie and a credential per CLI, sharing a machine', async () => {
+    state.createAgent
+      .mockResolvedValueOnce({ _id: 'agent-c' })
+      .mockResolvedValueOnce({ _id: 'agent-x' });
+    const response = await post('/redeem', {
+      code: valid.code,
+      clis: ['claude', 'codex'],
+      hostName: 'laptop',
+    });
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { machineId: string; agents: Redeemed[] };
+    expect(body.agents.map((a) => [a.agentId, a.name, a.cli])).toEqual([
+      ['agent-c', 'Claude Code · laptop', 'claude'],
+      ['agent-x', 'Codex · laptop', 'codex'],
+    ]);
+    expect(new Set(body.agents.map((a) => a.credential)).size).toBe(2);
+    const links = state.createLink.mock.calls.map((call) => call[1] as Record<string, unknown>);
+    expect(links.map((l) => l.machineId)).toEqual([body.machineId, body.machineId]);
+    expect(links.map((l) => l.credentialHash)).toEqual(
+      body.agents.map((a) => hashExternalAgentCredential(a.credential)),
+    );
   });
 
   it('reconnects an existing agent: a new credential, and the old one’s daemon cut off', async () => {
@@ -224,6 +255,10 @@ describe('POST /agents/external/redeem', () => {
       { ...valid, code: 'ABCD-EFGH-JKMN' },
       { ...valid, hostName: '' },
       { ...valid, extra: true },
+      { ...valid, clis: ['claude'] },
+      { code: valid.code, hostName: 'laptop' },
+      { code: valid.code, hostName: 'laptop', clis: [] },
+      { code: valid.code, hostName: 'laptop', clis: ['claude', 'claude'] },
     ]) {
       expect((await post('/redeem', body)).status).toBe(400);
     }
@@ -273,5 +308,127 @@ describe('GET and DELETE /agents/external', () => {
     expect(missing.status).toBe(404);
     expect(state.disconnect).not.toHaveBeenCalled();
     expect(state.deleteAgent).not.toHaveBeenCalled();
+  });
+});
+
+describe('sessions: POST /agents/external/:agentId/sessions and GET …/folders', () => {
+  const open = (agentId: string, body: unknown) => post(`/${agentId}/sessions`, body);
+
+  beforeEach(() => {
+    state.openSession.mockImplementation(async (_db, input) => ({
+      cwd: input.cwd,
+      agentId: input.agentId,
+      ownerOxyUserId: input.ownerOxyUserId,
+    }));
+    state.folders.mockResolvedValue(['/home/ana/app', '/home/ana/api']);
+  });
+
+  it('records the folder a conversation with the caller’s agent works in', async () => {
+    const response = await open('agent-1', { conversationId: 'c-1', cwd: '/home/ana/app' });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ conversationId: 'c-1', cwd: '/home/ana/app' });
+    expect(state.openSession).toHaveBeenCalledWith(expect.anything(), {
+      conversationId: 'c-1',
+      agentId: 'agent-1',
+      ownerOxyUserId: 'owner-1',
+      cwd: '/home/ana/app',
+    });
+  });
+
+  it('accepts home-relative and drive paths, and refuses anything else', async () => {
+    for (const cwd of ['~/code', '~', 'C:\\Users\\ana\\code', 'D:/code']) {
+      expect((await open('agent-1', { conversationId: 'c', cwd })).status).toBe(201);
+    }
+    state.openSession.mockClear();
+    for (const cwd of ['relative/path', '../up', '', 'a'.repeat(2000), '/ok\0bad']) {
+      expect((await open('agent-1', { conversationId: 'c', cwd })).status).toBe(400);
+    }
+    expect((await open('agent-1', { cwd: '/x' })).status).toBe(400);
+    expect((await open('agent-1', { conversationId: 'c', cwd: '/x', extra: 1 })).status).toBe(400);
+    expect(state.openSession).not.toHaveBeenCalled();
+  });
+
+  it('404s an agent that is not the caller’s, and never writes', async () => {
+    state.findLink.mockResolvedValue({ agentId: 'agent-1', ownerOxyUserId: 'someone-else' });
+    expect((await open('agent-1', { conversationId: 'c', cwd: '/x' })).status).toBe(404);
+    state.findLink.mockResolvedValue(undefined);
+    expect((await open('agent-9', { conversationId: 'c', cwd: '/x' })).status).toBe(404);
+    expect(state.openSession).not.toHaveBeenCalled();
+  });
+
+  it('does not let a conversation of another agent or person be taken over', async () => {
+    state.openSession.mockResolvedValue({
+      cwd: '/theirs',
+      agentId: 'agent-2',
+      ownerOxyUserId: 'owner-1',
+    });
+    expect((await open('agent-1', { conversationId: 'c', cwd: '/x' })).status).toBe(409);
+  });
+
+  it('lists the recent folders of the caller’s agent only', async () => {
+    const ok = await fetch(`${base}/agents/external/agent-1/folders`);
+    expect(await ok.json()).toEqual({ folders: ['/home/ana/app', '/home/ana/api'] });
+    expect(state.folders).toHaveBeenCalledWith(expect.anything(), {
+      agentId: 'agent-1',
+      ownerOxyUserId: 'owner-1',
+      limit: 10,
+    });
+    state.findLink.mockResolvedValue({ agentId: 'agent-1', ownerOxyUserId: 'someone-else' });
+    expect((await fetch(`${base}/agents/external/agent-1/folders`)).status).toBe(404);
+  });
+});
+
+describe('terminal sessions (ADR 0043 §4)', () => {
+  const open = (body: unknown) => post('/agent-1/sessions', body);
+  const list = () => fetch(`${base}/agents/external/agent-1/terminal-sessions`);
+
+  beforeEach(() => {
+    state.openSession.mockImplementation(async (_db, input) => ({
+      cwd: input.cwd,
+      agentId: input.agentId,
+      ownerOxyUserId: input.ownerOxyUserId,
+    }));
+  });
+
+  it('opens a conversation on a terminal session of the CLI', async () => {
+    const response = await open({
+      conversationId: 'c-1',
+      cwd: '/w',
+      resumeId: 'terminal-session-1',
+    });
+    expect(response.status).toBe(201);
+    expect(state.openSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ cliSessionId: 'terminal-session-1' }),
+    );
+  });
+
+  it('refuses a resume id that is not a session id, before anything is stored', async () => {
+    for (const resumeId of ['--dangerous; rm -rf', 'short', 'has space in it', 'x'.repeat(200)]) {
+      expect((await open({ conversationId: 'c-1', cwd: '/w', resumeId })).status).toBe(400);
+    }
+    expect(state.openSession).not.toHaveBeenCalled();
+  });
+
+  it('lists what the agent’s CLI has, for its owner only', async () => {
+    state.listTerminal.mockResolvedValue([
+      { id: 's-0000001', cwd: '/w', title: 't', updatedAt: 1 },
+    ]);
+    const ok = await list();
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({
+      sessions: [{ id: 's-0000001', cwd: '/w', title: 't', updatedAt: 1 }],
+    });
+    expect(state.listTerminal).toHaveBeenCalledWith('agent-1');
+
+    state.listTerminal.mockClear();
+    state.findLink.mockResolvedValue({ agentId: 'agent-1', ownerOxyUserId: 'someone-else' });
+    expect((await list()).status).toBe(404);
+    expect(state.listTerminal).not.toHaveBeenCalled();
+  });
+
+  it('says 503, not an empty list, when the computer cannot answer', async () => {
+    state.listTerminal.mockRejectedValue(new Error('offline'));
+    expect((await list()).status).toBe(503);
   });
 });

@@ -11,6 +11,7 @@
     "packages/app",
     "packages/sdk",
     "packages/server",
+    "packages/cli",
     "packages/integrations",
     "packages/gemies-os",
     "packages/gemies-os-protocol"
@@ -52,7 +53,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@oxy.so/bloom": "23.9.0",
+    "@oxy.so/bloom": "23.9.1",
     "@oxy.so/bloom-data": "0.1.2",
     "@oxy.so/core": "7.55.0",
     "@oxy.so/services": "15.0.0",

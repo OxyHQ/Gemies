@@ -234,7 +234,18 @@
         "reconnectFor": "Reconecta {{name}}.",
         "removed": "Gemie eliminado.",
         "removeFailed": "No se pudo eliminar el Gemie.",
-        "empty": "Todavía no hay Gemies externos."
+        "empty": "Aún no hay Gemies externos.",
+        "newSession": "Nueva sesión",
+        "session": {
+          "title": "Nueva sesión",
+          "folderLabel": "Carpeta en ese ordenador",
+          "folderPlaceholder": "/home/ana/app o ~/app",
+          "folderHint": "Una conversación nueva que trabaja en esa carpeta. El ordenador solo acepta las carpetas que permitiste allí con `gemies allow`.",
+          "recent": "Carpetas recientes",
+          "invalid": "Usa una ruta absoluta: /…, ~/… o C:\\…",
+          "start": "Empezar",
+          "startFailed": "No se pudo iniciar la sesión. Prueba de nuevo en un minuto."
+        }
       }
     },
     "assistant": {

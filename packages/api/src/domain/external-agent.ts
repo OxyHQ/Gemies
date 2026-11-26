@@ -2,7 +2,7 @@
  * Closed value sets and wire protocol for external agents (ADR 0030).
  *
  * A leaf module: the drizzle schema renders its CHECK from {@link EXTERNAL_AGENT_CLIS}, and the
- * daemon (`@alia-codea/cli`) mirrors the frame shapes below by hand, so keep them boring.
+ * daemon (`@gemies/cli`, `packages/cli`) mirrors the frame shapes below by hand, so keep them boring.
  */
 
 /** The coding-agent CLIs a daemon can drive. */
@@ -44,6 +44,25 @@ export interface ChatTurn {
 /** How many earlier messages a direct chat turn carries to the daemon. */
 export const EXTERNAL_HISTORY_TURNS = 20;
 
+/** A session of the CLI that was begun in a terminal on the person's computer. */
+export interface TerminalSessionInfo {
+  /** The CLI's own id: what `--resume` takes. */
+  readonly id: string;
+  readonly cwd: string;
+  readonly title: string;
+  /** Milliseconds since the epoch. */
+  readonly updatedAt: number;
+}
+
+/** A session id as the CLIs write it; anything else is never stored or sent to a daemon. */
+export const EXTERNAL_CLI_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{7,99}$/;
+
+/** The most terminal sessions one listing carries. */
+export const EXTERNAL_TERMINAL_SESSIONS_MAX = 40;
+
+/** The longest folder path a session may name. */
+export const EXTERNAL_SESSION_CWD_MAX = 1024;
+
 /** How long a pairing code can be redeemed. */
 export const EXTERNAL_PAIRING_TTL_MS = 10 * 60 * 1000;
 
@@ -73,8 +92,20 @@ export type ServerFrame =
        * the CLI's own session for it. Absent for turns that are not part of one (a room, a conversation between gemies).
        */
       threadKey?: string;
+      /**
+       * The folder a session opened from the app works in (ADR 0043). The daemon honours it only
+       * inside the roots its owner allowed on that computer; absent, it works where it always did.
+       */
+      cwd?: string;
+      /**
+       * The CLI's own id of a session begun in a terminal that this conversation continues
+       * (ADR 0043 §4). The daemon uses it only when it has kept no session for the conversation.
+       */
+      resumeId?: string;
       history: readonly ChatTurn[];
     }
+  /** Asks the daemon which sessions its CLI already has, in the folders that computer allows. */
+  | { type: 'list-sessions'; requestId: string }
   | { type: 'cancel'; turnId: string }
   | { type: 'revoked' };
 
@@ -89,4 +120,5 @@ export type DaemonFrame =
   | { type: 'auth'; agentId: string; credential?: string; token?: string }
   | { type: 'delta'; turnId: string; text: string }
   | { type: 'end'; turnId: string; text?: string }
-  | { type: 'error'; turnId: string; message: string };
+  | { type: 'error'; turnId: string; message: string }
+  | { type: 'sessions'; requestId: string; sessions: readonly unknown[] };

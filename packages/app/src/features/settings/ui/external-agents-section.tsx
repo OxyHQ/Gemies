@@ -2,6 +2,7 @@ import {
   useExternalAgents,
   type ExternalAgent,
 } from '@/features/connections/runtime/use-external-agents';
+import { NewSessionDialog } from '@/features/connections/ui/new-session-dialog';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { SettingsRowsSkeleton } from '@/shared/ui/skeletons';
 import { Button } from '@oxy.so/bloom/button';
@@ -34,6 +35,8 @@ export function ExternalAgentsSection() {
     locale ?? 'en',
   );
   const [creating, setCreating] = useState(false);
+  /** The agent a new session is being opened with (ADR 0043). */
+  const [sessionFor, setSessionFor] = useState<ExternalAgent | null>(null);
 
   const copyPrompt = async (prompt: string) => {
     await Clipboard.setStringAsync(prompt);
@@ -132,69 +135,88 @@ export function ExternalAgentsSection() {
     : [];
 
   return (
-    <SettingsProfilePage
-      sections={[
-        {
-          key: 'connect',
-          label: t('settings.connections.externalAgents.title'),
-          description: t('settings.connections.externalAgents.description'),
-          rows: [
-            {
-              key: 'create',
-              label: t('settings.connections.externalAgents.createLabel'),
-              description: t('settings.connections.externalAgents.createHint'),
-              control: (
-                <Button
-                  size="sm"
-                  appearance="outline"
-                  tone="neutral"
-                  leadingIcon={RiAddLine}
-                  disabled={creating}
-                  onPress={() => handleCreate()}
-                >
-                  {t('settings.connections.externalAgents.create')}
-                </Button>
-              ),
-            },
-            ...inviteRows,
-          ],
-        },
-        {
-          key: 'connected',
-          label: t('settings.connections.externalAgents.connectedTitle'),
-          rows: agents.length
-            ? agents.map((agent) => ({
-                key: agent.agentId,
-                label: agentLabel(agent),
-                description: agent.online
-                  ? t('settings.connections.externalAgents.online')
-                  : t('settings.connections.externalAgents.offline'),
+    <>
+      <SettingsProfilePage
+        sections={[
+          {
+            key: 'connect',
+            label: t('settings.connections.externalAgents.title'),
+            description: t('settings.connections.externalAgents.description'),
+            rows: [
+              {
+                key: 'create',
+                label: t('settings.connections.externalAgents.createLabel'),
+                description: t('settings.connections.externalAgents.createHint'),
                 control: (
-                  <View style={styles.row}>
-                    <Button
-                      size="sm"
-                      appearance="outline"
-                      tone="neutral"
-                      disabled={creating}
-                      onPress={() => handleCreate(agent.agentId)}
-                    >
-                      {t('settings.connections.externalAgents.reconnect')}
-                    </Button>
-                    <Button
-                      size="sm"
-                      appearance="outline"
-                      tone="neutral"
-                      onPress={() => handleRemove(agent)}
-                    >
-                      {t('settings.connections.externalAgents.remove')}
-                    </Button>
-                  </View>
+                  <Button
+                    size="sm"
+                    appearance="outline"
+                    tone="neutral"
+                    leadingIcon={RiAddLine}
+                    disabled={creating}
+                    onPress={() => handleCreate()}
+                  >
+                    {t('settings.connections.externalAgents.create')}
+                  </Button>
                 ),
-              }))
-            : [{ key: 'empty', label: t('settings.connections.externalAgents.empty') }],
-        },
-      ]}
-    />
+              },
+              ...inviteRows,
+            ],
+          },
+          {
+            key: 'connected',
+            label: t('settings.connections.externalAgents.connectedTitle'),
+            rows: agents.length
+              ? agents.map((agent) => ({
+                  key: agent.agentId,
+                  label: agentLabel(agent),
+                  description: agent.online
+                    ? t('settings.connections.externalAgents.online')
+                    : t('settings.connections.externalAgents.offline'),
+                  control: (
+                    <View style={styles.row}>
+                      <Button
+                        size="sm"
+                        appearance="outline"
+                        tone="neutral"
+                        disabled={!agent.online}
+                        onPress={() => setSessionFor(agent)}
+                      >
+                        {t('settings.connections.externalAgents.newSession')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        appearance="outline"
+                        tone="neutral"
+                        disabled={creating}
+                        onPress={() => handleCreate(agent.agentId)}
+                      >
+                        {t('settings.connections.externalAgents.reconnect')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        appearance="outline"
+                        tone="neutral"
+                        onPress={() => handleRemove(agent)}
+                      >
+                        {t('settings.connections.externalAgents.remove')}
+                      </Button>
+                    </View>
+                  ),
+                }))
+              : [{ key: 'empty', label: t('settings.connections.externalAgents.empty') }],
+          },
+        ]}
+      />
+      {sessionFor ? (
+        <NewSessionDialog
+          agentId={sessionFor.agentId}
+          name={agentLabel(sessionFor)}
+          open
+          onClose={() => setSessionFor(null)}
+        />
+      ) : null}
+    </>
   );
 }
 

@@ -112,6 +112,46 @@ describe('turns across instances', () => {
     expect(deltas).toEqual(['Hel', 'lo']);
   });
 
+  it('hands the folder of a session across instances', async () => {
+    const { ws, frames } = await daemonOnA();
+    const turn = b.runTurn({
+      agentId: 'agent-1',
+      task: 'a',
+      history: [],
+      threadKey: 'c-1',
+      cwd: '/home/ana/app',
+    });
+    await waitFor(() => frames.some((f) => f.type === 'turn'));
+    const frame = frames.find((f) => f.type === 'turn') as { turnId: string; cwd?: string };
+    expect(frame.cwd).toBe('/home/ana/app');
+    ws.send(JSON.stringify({ type: 'end', turnId: frame.turnId, text: 'ok' }));
+    await turn;
+  });
+
+  it('lists a daemon’s sessions from another instance than the one holding it', async () => {
+    const { ws, frames } = await daemonOnA();
+    const listing = b.listSessions('agent-1');
+    await waitFor(() => frames.some((f) => f.type === 'list-sessions'));
+    const ask = frames.find((f) => f.type === 'list-sessions') as { requestId: string };
+    ws.send(
+      JSON.stringify({
+        type: 'sessions',
+        requestId: ask.requestId,
+        sessions: [
+          { id: 'good-session-1', cwd: '/w', title: 'fix it', updatedAt: 5 },
+          { id: '--bad; id', cwd: '/w', title: 'x', updatedAt: 1 },
+        ],
+      }),
+    );
+    await expect(listing).resolves.toEqual([
+      { id: 'good-session-1', cwd: '/w', title: 'fix it', updatedAt: 5 },
+    ]);
+  });
+
+  it('says offline at once to a listing when no instance holds the agent', async () => {
+    await expect(b.listSessions('agent-none')).rejects.toThrow();
+  });
+
   it('carries a daemon error back to the instance that asked', async () => {
     const { ws, frames } = await daemonOnA();
     const turn = b.runTurn({ agentId: 'agent-1', task: 'x', history: [] });

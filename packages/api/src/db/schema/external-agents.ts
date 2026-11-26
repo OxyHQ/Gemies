@@ -1,6 +1,6 @@
 /**
  * External agents (ADR 0030): agents whose turns run on a person's own machine, in a coding-agent CLI
- * they are already logged in to, reached through a daemon (`codea connect`) that dials Alia.
+ * they are already logged in to, reached through a daemon (`gemies connect`) that dials Alia.
  *
  * Two small tables and nothing on `agents`: an external agent is an ordinary agent row plus a link
  * row, so the hot `agents` table gains no column, no CHECK and no migration lock.
@@ -51,6 +51,9 @@ export const externalAgentPairings = pgTable(
  * `credential_hash` is the SHA-256 of the credential the daemon presents (ADR 0038). Null only on a
  * link paired before credentials existed, which the relay still lets the owner's Oxy session open
  * until it is reconnected; every link paired since has one.
+ *
+ * `machine_id` groups the links one pairing made (ADR 0043): a computer paired once serves a gemie
+ * per CLI it has, and those share it. Null on a link paired one CLI at a time, before machines.
  */
 export const externalAgentLinks = pgTable(
   'external_agent_links',
@@ -60,12 +63,14 @@ export const externalAgentLinks = pgTable(
     cli: text({ enum: EXTERNAL_AGENT_CLIS as unknown as [string, ...string[]] }).notNull(),
     hostName: text().notNull(),
     credentialHash: text(),
+    machineId: text(),
     createdAt: createdAt(),
     lastConnectedAt: timestamptz(),
     revokedAt: timestamptz(),
   },
   (t) => [
     index('external_agent_links_owner_idx').on(t.ownerOxyUserId),
+    index('external_agent_links_machine_idx').on(t.machineId),
     checkOneOf('external_agent_links_cli_check', t.cli, EXTERNAL_AGENT_CLIS),
   ],
 );
@@ -96,4 +101,26 @@ export const externalAgentToolCalls = pgTable(
     checkOneOf('external_agent_tool_calls_risk_check', t.riskLevel, ['R0', 'R1', 'R2', 'R3']),
     checkOneOf('external_agent_tool_calls_outcome_check', t.outcome, EXTERNAL_TOOL_CALL_OUTCOMES),
   ],
+);
+
+/**
+ * A session a person opened with an external agent from the app (ADR 0043): the conversation, and
+ * the folder on the agent's computer it works in. The daemon accepts the folder only inside the
+ * roots its owner allowed there, so a row here asks; it never grants.
+ *
+ * Keyed by the conversation, which the app names before the first message. No foreign keys: the
+ * conversation and the agent are created and deleted by flows this must not block.
+ */
+export const externalAgentSessions = pgTable(
+  'external_agent_sessions',
+  {
+    conversationId: text().primaryKey(),
+    agentId: text().notNull(),
+    ownerOxyUserId: text().notNull(),
+    cwd: text().notNull(),
+    /** The CLI's own id of a session begun in a terminal that this conversation continues (§4). */
+    cliSessionId: text(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('external_agent_sessions_agent_idx').on(t.agentId, t.createdAt)],
 );

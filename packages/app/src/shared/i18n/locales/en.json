@@ -253,7 +253,18 @@
         "reconnectFor": "Reconnects {{name}}.",
         "removed": "Gemie removed.",
         "removeFailed": "Couldn't remove the Gemie.",
-        "empty": "No external Gemies yet."
+        "empty": "No external Gemies yet.",
+        "newSession": "New session",
+        "session": {
+          "title": "New session",
+          "folderLabel": "Folder on that computer",
+          "folderPlaceholder": "/home/ana/app or ~/app",
+          "folderHint": "A new conversation that works in this folder. The computer only accepts folders you allowed there with `gemies allow`.",
+          "recent": "Recent folders",
+          "invalid": "Use an absolute path: /…, ~/… or C:\\…",
+          "start": "Start",
+          "startFailed": "Couldn't start the session. Try again in a minute."
+        }
       }
     },
     "assistant": {
