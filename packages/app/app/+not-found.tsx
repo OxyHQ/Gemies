@@ -3,7 +3,7 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Screen } from '@oxy.so/bloom/screen';
 import { Stack, useRouter } from 'expo-router';
 import Head from 'expo-router/head';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 export default function NotFoundScreen() {
   const router = useRouter();
@@ -17,7 +17,7 @@ export default function NotFoundScreen() {
       </Head>
       <Stack.Screen options={{ title: t('dialogs.notFound.title'), headerShown: false }} />
       <Screen scroll="content">
-        <View className="flex-1 items-center justify-center p-6">
+        <View style={styles.centered}>
           <EmptyState
             title={t('dialogs.notFound.title')}
             description={t('dialogs.notFound.description')}
@@ -28,3 +28,14 @@ export default function NotFoundScreen() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  centered: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+});

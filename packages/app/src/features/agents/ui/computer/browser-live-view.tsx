@@ -5,6 +5,7 @@ import {
   View,
   type GestureResponderEvent,
   type LayoutChangeEvent,
+  StyleSheet,
 } from 'react-native';
 import { Button } from '@oxy.so/bloom/button';
 import { Chip } from '@oxy.so/bloom/chip';
@@ -92,11 +93,11 @@ export function BrowserLiveView({
 
   if (!open) {
     return (
-      <View className="gap-3 rounded-2xl bg-surface-subtle p-4" testID="browser-closed">
+      <View style={styles.closed} testID="browser-closed">
         <Text variant="body-medium">{t('agents.computer.browser.closed')}</Text>
         <Muted>{t('agents.computer.browser.closedHint')}</Muted>
-        <View className="flex-row items-end gap-2">
-          <View className="flex-1">
+        <View style={styles.field}>
+          <View style={styles.fieldInput}>
             <TextFieldInput
               label={t('agents.computer.browser.urlLabel')}
               placeholder={t('agents.computer.browser.urlPlaceholder')}
@@ -127,8 +128,8 @@ export function BrowserLiveView({
   }
 
   return (
-    <View className="gap-3" testID="browser-live">
-      <View className="flex-row flex-wrap items-center justify-between gap-2">
+    <View style={styles.live} testID="browser-live">
+      <View style={styles.toolbar}>
         <Chip size="lg">
           {owner
             ? t('agents.computer.browser.youInControl')
@@ -157,8 +158,8 @@ export function BrowserLiveView({
       </View>
       {!owner ? <Muted>{t('agents.computer.browser.takeControlHint')}</Muted> : null}
 
-      <View className="flex-row items-end gap-2">
-        <View className="flex-1">
+      <View style={styles.field}>
+        <View style={styles.fieldInput}>
           <TextFieldInput
             label={t('agents.computer.browser.urlLabel')}
             placeholder={browser.url || t('agents.computer.browser.urlPlaceholder')}
@@ -187,12 +188,7 @@ export function BrowserLiveView({
         onLayout={(event: LayoutChangeEvent) => setDrawn(event.nativeEvent.layout)}
         disabled={busy || !screenshot}
         testID="browser-screen"
-        style={{
-          width: '100%',
-          aspectRatio: BROWSER_VIEWPORT.width / BROWSER_VIEWPORT.height,
-          opacity: busy ? 0.6 : 1,
-        }}
-        className="overflow-hidden rounded-xl bg-surface-subtle"
+        style={[styles.screen, busy && styles.busyScreen]}
       >
         {screenshot ? (
           <Image
@@ -211,8 +207,8 @@ export function BrowserLiveView({
         </Text>
       ) : null}
 
-      <View className="flex-row items-end gap-2">
-        <View className="flex-1">
+      <View style={styles.field}>
+        <View style={styles.fieldInput}>
           <TextFieldInput
             label={t('agents.computer.browser.typeLabel')}
             placeholder={t('agents.computer.browser.typePlaceholder')}
@@ -229,7 +225,7 @@ export function BrowserLiveView({
         </Button>
       </View>
 
-      <View className="flex-row flex-wrap gap-2">
+      <View style={styles.keys}>
         {LIVE_VIEW_KEYS.map((key) => (
           <Button
             key={key}
@@ -266,3 +262,25 @@ export function BrowserLiveView({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  closed: { gap: 12, borderRadius: 16, padding: 16 },
+  field: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  fieldInput: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  live: { gap: 12 },
+  toolbar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  screen: {
+    overflow: 'hidden',
+    borderRadius: 12,
+    width: '100%',
+    aspectRatio: BROWSER_VIEWPORT.width / BROWSER_VIEWPORT.height,
+  },
+  busyScreen: { opacity: 0.6 },
+  keys: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+});

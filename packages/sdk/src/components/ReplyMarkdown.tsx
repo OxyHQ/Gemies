@@ -14,6 +14,7 @@ import {
 import { useLabels } from '../lib/labels';
 import type { ToolInvocation } from '../runtime/types';
 import { Banner, CompactList, Comparison, Credibility, RichImage, Timeline } from './RichBlocks';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 // Cheap pre-check: plain markdown (the overwhelmingly common case) skips the
 // six per-pattern regex scans below with a single pass.
@@ -239,10 +240,11 @@ function ReferenceList({
   entries: ReferenceEntry[];
   onCitationPress?: (source: CitationSource) => void;
 }) {
+  const styles = useStyles();
   const { t } = useLabels();
   return (
-    <View className="mt-3 gap-1 border-t border-border pt-3" accessibilityRole="list">
-      <Text className="text-xs font-medium text-muted-foreground">{t('thought.references')}</Text>
+    <View style={styles.references} accessibilityRole="list">
+      <Text style={styles.referencesHeading}>{t('thought.references')}</Text>
       {entries.map((entry) => {
         const press = () => {
           if (onCitationPress) onCitationPress(entry);
@@ -272,15 +274,15 @@ function ReferenceList({
             key={entry.id}
             accessibilityRole="link"
             accessibilityLabel={t('thought.sourceLabel', { n: entry.id, title: entry.title })}
-            className="flex-row items-start gap-2 rounded-md py-0.5 active:opacity-70"
+            style={({ pressed }) => [styles.reference, pressed ? styles.referencePressed : null]}
             onPress={onPress}
             {...webAnchor}
           >
-            <Text className="text-sm text-muted-foreground">[{entry.id}]</Text>
-            <Text className="flex-1 text-sm text-primary underline" numberOfLines={2}>
+            <Text style={styles.referenceId}>[{entry.id}]</Text>
+            <Text style={styles.referenceTitle} numberOfLines={2}>
               {entry.title}
             </Text>
-            <Text className="text-xs text-muted-foreground" numberOfLines={1}>
+            <Text style={styles.referenceDomain} numberOfLines={1}>
               {entry.domain}
             </Text>
           </Pressable>
@@ -371,3 +373,27 @@ export function ReplyMarkdown({
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  references: { marginTop: 12, gap: 4, borderTopWidth: 1, borderColor: t.border, paddingTop: 12 },
+  referencesHeading: { fontSize: 12, fontWeight: 500, color: t.mutedForeground, lineHeight: 16 },
+  reference: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderRadius: 6,
+    paddingVertical: 2,
+  },
+  referencePressed: { opacity: 0.7 },
+  referenceId: { fontSize: 14, color: t.mutedForeground, lineHeight: 20 },
+  referenceTitle: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    fontSize: 14,
+    color: t.primary,
+    textDecorationLine: 'underline',
+    lineHeight: 20,
+  },
+  referenceDomain: { fontSize: 12, color: t.mutedForeground, lineHeight: 16 },
+}));

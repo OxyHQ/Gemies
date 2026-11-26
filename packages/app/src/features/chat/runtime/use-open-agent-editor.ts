@@ -3,6 +3,8 @@ import { useUIStore } from '@/features/chat/runtime/ui-store';
 import { queryKeys } from '@/shared/api/query-keys';
 import type { Agent } from '@/shared/contracts/agents';
 import { useIsLargeScreen } from '@/shared/platform/use-is-large-screen';
+import { heldMyAgents } from '@/shared/api/account-data';
+import { useStore, withStore } from '@oxy.so/bloom-data';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
@@ -20,6 +22,7 @@ export function useOpenAgentEditor(): (agentId: string) => void {
   const router = useRouter();
   const isLargeScreen = useIsLargeScreen();
   const queryClient = useQueryClient();
+  const store = useStore();
   return useCallback(
     (agentId: string) => {
       if (isLargeScreen) {
@@ -28,11 +31,9 @@ export function useOpenAgentEditor(): (agentId: string) => void {
       }
       const known =
         queryClient.getQueryData<Agent>(queryKeys.agents.detail(agentId)) ??
-        queryClient
-          .getQueryData<Agent[]>(queryKeys.agents.mine)
-          ?.find((agent) => agent._id === agentId);
+        withStore(store, heldMyAgents)?.find((agent) => agent._id === agentId);
       router.push(agentEditRoute({ _id: agentId, handle: known?.handle ?? null }));
     },
-    [isLargeScreen, router, queryClient],
+    [isLargeScreen, router, queryClient, store],
   );
 }

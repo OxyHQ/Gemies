@@ -34,11 +34,14 @@ vi.mock('@/features/memory/runtime/use-user-data', () => ({
   USER_MEMORY_QUERY_KEY: ['user-memory'],
 }));
 vi.mock('@/shared/platform/device-info', () => ({ collectDeviceInfo: () => ({}) }));
+// The person's agents are the account's (`myAgents`): reading them again is `refreshMyAgents`.
+vi.mock('@/shared/api/account-data', () => ({
+  refreshMyAgents: () => invalidated.push('my-agents'),
+}));
 vi.mock('@/features/chat/runtime/decide-approval', () => ({ decideApproval: vi.fn() }));
 
 import { decideApproval } from '@/features/chat/runtime/decide-approval';
 import { useAliaHost } from '@/features/chat/runtime/use-alia-host';
-import { queryKeys } from '@/shared/api/query-keys';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -68,7 +71,7 @@ describe('a server tool finishing', () => {
     for (const name of ['createAgent', 'updateAgent']) {
       invalidated.length = 0;
       finish(name);
-      expect(invalidated, name).toContainEqual(queryKeys.agents.mine);
+      expect(invalidated, name).toContainEqual('my-agents');
     }
   });
 

@@ -1,119 +1,57 @@
+/**
+ * The conversation hooks: the person's conversations as their account's store holds them
+ * (`data/conversations.ts`), read and written in the store of the tree (`OxyProvider`'s, the
+ * signed-in account's).
+ *
+ * Reads wait for the private API (`canUsePrivateApi`): until then they observe nothing. Writes are
+ * the store's actions, each bound to the provider's client.
+ */
 import {
-  type QueryClient,
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+  type ActionView,
+  type ListView,
+  type RecordView,
+  skip,
+  useEntities,
+  useEntity,
+  useList,
+  useRecord,
+  useStore,
+  withStore,
+} from '@oxy.so/bloom-data';
 import { toast } from '@oxy.so/bloom/toast';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLabels } from '../lib/labels';
-import { type GemieApi, useGemieApi } from './api';
-import { type OfflineConversationStore, useGemieRuntime } from './config';
-import { errorMessage as getErrorMessage, errorStatus } from './error-utils';
-import { reviveConversationDates } from './conversation-dates';
-import { normalizeConversationMessages } from './message-history';
-import { gemieQueryKeys, type ConversationsFilter } from './query-keys';
-import { API_ROUTES } from './routes';
-import { createRandomUuid } from './random-uuid';
-import type { Conversation, ConversationsInfiniteData, ConversationsPage, Message } from './types';
-import type { RealtimeConnection } from '../realtime/connection';
-import { useGemieRealtime } from '../realtime/react';
+import { useGemieRealtime, useRealtimeEvent } from '../realtime/react';
+import type { RealtimeData } from '../realtime/contract';
+import { useGemieApi } from './api';
+import { useGemieRuntime } from './config';
+import {
+  type ConversationsClient,
+  type ConversationsFilter,
+  type CreateConversationInput,
+  type SaveConversationInput,
+  ConversationMessages,
+  Conversations,
+  clearConversation,
+  conversation,
+  conversationList,
+  conversationsKey,
+  createConversation,
+  deleteConversation,
+  heldConversation,
+  markConversationRead,
+  OfflineConversations,
+  refreshConversationLists,
+  renameConversation,
+  saveConversation,
+} from './data/conversations';
+import { errorMessage } from './error-utils';
+import type { Conversation } from './types';
+import { useBoundAction } from './use-bound-action';
 
-/** Conversation as returned by the API (timestamps are ISO strings, not Dates). */
-type ApiConversation = Omit<Conversation, 'createdAt' | 'updatedAt' | 'messages'> & {
-  createdAt: string;
-  updatedAt: string;
-  messages?: Message[];
-};
-
-const PAGE_SIZE = 20;
-const FIVE_MINUTES = 1000 * 60 * 5;
-
-/** A stable signal for a URL whose server-side conversation no longer exists. */
-export class ConversationNotFoundError extends Error {
-  readonly conversationId: string;
-
-  constructor(conversationId: string) {
-    super('Conversation not found');
-    this.conversationId = conversationId;
-    this.name = 'ConversationNotFoundError';
-  }
-}
-
-// Message content is either a plain string or a parts array; previews (titles,
-// lastMessage) need the flattened text either way.
-function messageText(message: Message | undefined): string {
-  const content = message?.content;
-  if (typeof content === 'string') return content;
-  if (!content) return '';
-  return content
-    .map((part) => (typeof part.text === 'string' ? part.text : ''))
-    .join(' ')
-    .trim();
-}
-
-/**
- * The offline copy of the conversations: what a session whose token failed
- * (a 401) reads and writes instead of the server. Without a store configured
- * it holds nothing, and the 401 is the caller's to handle.
- */
-class OfflineConversations {
-  private readonly store: OfflineConversationStore | null;
-
-  constructor(store: OfflineConversationStore | null) {
-    this.store = store;
-  }
-
-  get available(): boolean {
-    return this.store !== null;
-  }
-
-  async read(): Promise<Conversation[]> {
-    const stored = await this.store?.getItem();
-    if (!stored) return [];
-    return (JSON.parse(stored) as Conversation[]).map((conv) => ({
-      ...conv,
-      createdAt: new Date(conv.createdAt),
-      updatedAt: new Date(conv.updatedAt),
-    }));
-  }
-
-  async write(conversations: Conversation[]): Promise<void> {
-    await this.store?.setItem(JSON.stringify(conversations));
-  }
-
-  async remove(id: string): Promise<void> {
-    if (!this.store) return;
-    const stored = await this.store.getItem();
-    if (!stored) return;
-    try {
-      const conversations: Conversation[] = JSON.parse(stored);
-      const remaining = conversations.filter((conversation) => conversation.id !== id);
-      if (remaining.length !== conversations.length) {
-        await this.store.setItem(JSON.stringify(remaining));
-      }
-    } catch {
-      // A malformed offline cache cannot make a valid server response invalid.
-    }
-  }
-}
-
-/** What the conversation functions need: the API and the offline copy. */
-export interface ConversationsClient {
-  api: GemieApi;
-  offline: OfflineConversations;
-  /** Read at call time: the title of a chat created while signed out. */
-  newChatTitle: string;
-  /** The chat's app, which labels a conversation it creates (`GemieRuntimeConfig.app`). */
-  app: string | undefined;
-  /** Told the account's realtime cursor each read carried, so no event is lost behind it. */
-  realtime: RealtimeConnection | null;
-}
-
-/** The runtime's conversation client for the nearest provider. */
-function useConversationsClient(): ConversationsClient {
+/** The provider's conversation client: what every conversation read and write is given. */
+export function useConversationsClient(): ConversationsClient {
   const api = useGemieApi();
   const { offline, app } = useGemieRuntime();
   const { newChat } = useLabels();
@@ -130,566 +68,202 @@ function useConversationsClient(): ConversationsClient {
   );
 }
 
-async function fetchConversationsPage(
-  client: ConversationsClient,
-  pageParam: string | undefined,
-  { agentId, app, kind }: ConversationsFilter,
-  signal?: AbortSignal,
-): Promise<ConversationsPage> {
-  const { data } = await client.api.get<{
-    conversations: ApiConversation[];
-    nextCursor: string | null;
-    hasMore: boolean;
-    realtimeSeq?: number;
-  }>(API_ROUTES.conversations.list, {
-    signal,
-    params: {
-      limit: PAGE_SIZE,
-      ...(pageParam ? { cursor: pageParam } : {}),
-      ...(agentId === undefined ? {} : { agentId }),
-      ...(app === undefined ? {} : { app }),
-      ...(kind === undefined ? {} : { kind }),
-    },
-  });
-  if (typeof data.realtimeSeq === 'number') client.realtime?.noteSnapshot(data.realtimeSeq);
-  return {
-    conversations: data.conversations.map((conv) => ({
-      ...conv,
-      createdAt: new Date(conv.createdAt),
-      updatedAt: new Date(conv.updatedAt),
-      messages: [], // Don't include messages in list view
-    })),
-    nextCursor: data.nextCursor,
-    hasMore: data.hasMore,
-  };
+/** A list of conversations as a screen reads it: the list's view and its rows, in order. */
+export interface ConversationsView extends ListView<unknown> {
+  readonly conversations: readonly Conversation[];
 }
 
 /**
- * The person's conversations, newest first, a page at a time. The sidebar and the sheet read this.
- * Given `agentId`, only the conversations with that agent; given `app`, only the ones started in
- * that app — an embedding app's own list (`GET /v1/conversations?agentId=&app=`). Neither is
- * implied by the chat's `app`: the app that wants only its own says so here. Given
- * `kind: 'gemies'`, the conversations the person's gemies have with each other (ADR 0042), each
- * with both gemies in `members`.
+ * The person's conversations, newest first, a page at a time (`more()`). The sidebar and the
+ * sheet read this. Given `agentId`, only the conversations with that agent; given `app`, only the
+ * ones started in that app (`GET /v1/conversations?agentId=&app=`); given `kind: 'gemies'`, the
+ * conversations the person's gemies have with each other (ADR 0042), each with both gemies in
+ * `members`. A realtime reset makes it stale: read again at once on screen, else when next shown.
+ *
+ * While the session is unavailable (a 401) the person's own list shows the offline copy, when the
+ * runtime has one; it is a display fallback, never a server answer.
  */
-export function useConversations({ agentId, app, kind }: ConversationsFilter = {}) {
-  const { user, isAuthenticated, canUsePrivateApi, isAccountCacheReady } = useOxy();
+export function useConversations(filter: ConversationsFilter = {}): ConversationsView {
+  const { user, isAuthenticated, canUsePrivateApi } = useOxy();
   const client = useConversationsClient();
-  const accountId = user?.id;
   const { offline: offlineStore } = useGemieRuntime();
+  const { agentId, app, kind } = filter;
+  const key = conversationsKey(filter);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the key identifies the filter
+  const stableFilter = useMemo(() => ({ agentId, app, kind }), [key]);
+  const view = useList(conversationList, ...(canUsePrivateApi ? [client, stableFilter] : [skip]));
+  const rows = useEntities(Conversations, view.ids);
+
+  const accountId = user?.id;
   const [offline, setOffline] = useState<{
     accountId: string | undefined;
-    store: OfflineConversationStore | null | undefined;
-    data: ConversationsInfiniteData;
+    rows: readonly Conversation[];
   } | null>(null);
   useEffect(() => {
-    if (
-      !isAuthenticated ||
-      !isAccountCacheReady ||
-      agentId !== undefined ||
-      app !== undefined ||
-      kind !== undefined
-    )
-      return;
+    if (!isAuthenticated || key !== 'all') return;
     let current = true;
     void new OfflineConversations(offlineStore ?? null)
       .read()
-      .then((rows) => {
-        if (current && rows.length)
-          setOffline({
-            accountId,
-            store: offlineStore,
-            data: {
-              pages: [
-                {
-                  conversations: rows.map((row) => ({ ...row, messages: [] })),
-                  nextCursor: null,
-                  hasMore: false,
-                },
-              ],
-              pageParams: [undefined],
-            },
-          });
+      .then((stored) => {
+        if (current && stored.length) {
+          setOffline({ accountId, rows: stored.map(({ messages: _m, ...row }) => row) });
+        }
       })
       .catch(() => {
-        /* A damaged offline copy must not mask the server result. */
+        /* A damaged offline copy must not mask the server's answer. */
       });
     return () => {
       current = false;
     };
-  }, [accountId, offlineStore, isAuthenticated, isAccountCacheReady, agentId, app, kind]);
+  }, [accountId, offlineStore, isAuthenticated, key]);
 
-  const query = useInfiniteQuery({
-    queryKey:
-      agentId === undefined && app === undefined && kind === undefined
-        ? gemieQueryKeys.conversations.all
-        : gemieQueryKeys.conversations.filtered({ agentId, app, kind }),
-    queryFn: ({ pageParam, signal }) =>
-      fetchConversationsPage(client, pageParam, { agentId, app, kind }, signal),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
-    select: reviveConversationDates,
-    staleTime: FIVE_MINUTES,
-    retry: (count, error) => errorStatus(error) !== 401 && count < 2,
-    enabled: canUsePrivateApi && isAccountCacheReady,
-  });
-  // Offline content is a display fallback, never a fresh successful server answer.
-  const fallback =
-    isAuthenticated &&
-    isAccountCacheReady &&
-    agentId === undefined &&
-    app === undefined &&
-    kind === undefined &&
-    offline?.accountId === accountId &&
-    offline?.store === offlineStore
-      ? offline.data
-      : undefined;
-  return { ...query, data: query.data ?? fallback };
-}
-
-async function fetchConversation(client: ConversationsClient, id: string): Promise<Conversation> {
-  try {
-    const { data } = await client.api.get<ApiConversation & { realtimeSeq?: number }>(
-      API_ROUTES.conversations.get(id),
-    );
-    if (typeof data.realtimeSeq === 'number') client.realtime?.noteSnapshot(data.realtimeSeq);
-    return {
-      ...data,
-      createdAt: new Date(data.createdAt),
-      updatedAt: new Date(data.updatedAt),
-      messages: normalizeConversationMessages(data.messages || []),
-    };
-  } catch (error: unknown) {
-    const status = errorStatus(error);
-    // A server-side 404 is authoritative for an authenticated request. Keeping
-    // an older offline copy here resurrects a deleted conversation and makes
-    // every later read and write hit the same missing id again.
-    if (status === 404) {
-      await client.offline.remove(id);
-      throw new ConversationNotFoundError(id);
-    }
-
-    // An unavailable authenticated session can still read its offline copy.
-    if (status === 401) {
-      const conversation = (await client.offline.read()).find((c) => c.id === id);
-      if (conversation) {
-        return {
-          ...conversation,
-          messages: normalizeConversationMessages(conversation.messages || []),
-        };
-      }
-    }
-    throw error;
-  }
-}
-
-/** One conversation with its messages. */
-export function useConversation(id: string | undefined) {
-  const { isAuthenticated } = useOxy();
-  const client = useConversationsClient();
-
-  return useQuery({
-    queryKey: gemieQueryKeys.conversations.detail(id ?? ''),
-    queryFn: () => fetchConversation(client, id ?? ''),
-    enabled: isAuthenticated && !!id,
-    staleTime: FIVE_MINUTES,
-    // A missing conversation is deterministic. Retrying only repeats the same
-    // 404 and makes one stale local link look like an API outage in the console.
-    retry: false,
-  });
-}
-
-/** Read one conversation afresh, as `useConversation` would (a rewritten thread, reloaded). */
-export function useReadConversation(): (id: string) => Promise<Conversation> {
-  const client = useConversationsClient();
-  return useCallback((id) => fetchConversation(client, id), [client]);
+  const conversations = useMemo(() => {
+    const held = rows.filter((row): row is Conversation => row !== undefined);
+    if (view.list || !isAuthenticated || offline?.accountId !== accountId) return held;
+    return offline?.rows ?? held;
+  }, [rows, view.list, isAuthenticated, offline, accountId]);
+  return { ...view, conversations };
 }
 
 /**
- * The person has seen a conversation: its unread count goes to zero here at once and on every
- * other surface through the server's `conversation` event. Sent only when there is something
- * unread, so an open conversation costs nothing while nothing arrives.
+ * One conversation with its messages. A row the sidebar holds shows at once (without messages)
+ * while the conversation is read. A rewritten thread (a realtime `reload`, an edit or a
+ * regenerate on another device) is read again, and `onReload` hears it once it is read; a realtime
+ * reset makes it stale.
+ */
+export function useConversation(
+  id: string | undefined,
+  { onReload }: { onReload?: (fresh: Conversation) => void } = {},
+): RecordView<Conversation> {
+  const { canUsePrivateApi } = useOxy();
+  const client = useConversationsClient();
+  const store = useStore();
+  const view = useRecord(conversation, ...(canUsePrivateApi && id ? [client, id] : [skip]));
+  // Plain records, the same while unchanged: the row, and its messages once read.
+  const row = useEntity(Conversations, id, (held) => held);
+  const messages = useEntity(ConversationMessages, id, (held) => held?.messages);
+  const value = useMemo(() => (row && messages ? { ...row, messages } : row), [row, messages]);
+  useRealtimeEvent('conversation', (frame) => {
+    const data = frame.data as RealtimeData['conversation'];
+    if (!data.reload || id === undefined || data.conversation.id !== id) return;
+    void view.refresh().then(() => {
+      const read = withStore(store, () => ({
+        status: conversation.state(client, id).status,
+        fresh: heldConversation(id),
+      }));
+      if (read.status === 'success' && read.fresh) onReload?.(read.fresh);
+    });
+  });
+  return {
+    ...view,
+    value,
+    isLoading: view.isLoading && value === undefined,
+  };
+}
+
+/**
+ * Mark a conversation seen: its unread count goes to zero here at once and on every other surface
+ * through the server's `conversation` event. Send it only when there is something unread.
  */
 export function useMarkConversationRead(): (id: string) => void {
-  const queryClient = useQueryClient();
+  const store = useStore();
   const client = useConversationsClient();
   return useCallback(
     (id) => {
-      const update = (c: Conversation) => (c.id === id ? { ...c, unreadCount: 0 } : c);
-      queryClient.setQueriesData<ConversationsInfiniteData>(
-        { queryKey: gemieQueryKeys.conversations.all },
-        (old) =>
-          old?.pages
-            ? {
-                ...old,
-                pages: old.pages.map((page) => ({
-                  ...page,
-                  conversations: page.conversations.map(update),
-                })),
-              }
-            : old,
-      );
-      void client.api.post(API_ROUTES.conversations.read(id), {}).catch(() => undefined);
+      void withStore(store, () => markConversationRead(client, id)).catch(() => undefined);
     },
-    [queryClient, client],
+    [store, client],
   );
 }
 
-/** Prefetch a conversation's detail (call from the sidebar on press-in / hover). */
+/** Read a conversation ahead of its press (the sidebar's press-in or hover). Never retried. */
 export function usePrefetchConversation(): (id: string) => void {
-  const queryClient = useQueryClient();
+  const store = useStore();
   const client = useConversationsClient();
-  return useCallback((id) => prefetchConversation(queryClient, client, id), [queryClient, client]);
+  return useCallback(
+    (id) => {
+      void withStore(store, () => conversation.fetch(client, id));
+    },
+    [store, client],
+  );
 }
 
 /**
- * A prefetch is a favour to the press that may never come, so it never retries: a refusal (the
- * rate limit's 429 above all) is answered by the press's own fetch, whereas retrying it spends the
- * very budget that refused it, and a limiter that counts refused requests then never lets up.
+ * Read a conversation and the lists again: what changed it happened outside this client's reads
+ * (a voice call wrote its transcript on the server).
  */
-export function prefetchConversation(
-  queryClient: QueryClient,
-  client: ConversationsClient,
-  id: string,
-): void {
-  void queryClient.prefetchQuery({
-    queryKey: gemieQueryKeys.conversations.detail(id),
-    queryFn: () => fetchConversation(client, id),
-    staleTime: FIVE_MINUTES,
-    retry: false,
-  });
+export function useRefreshConversation(): (id: string) => void {
+  const store = useStore();
+  const client = useConversationsClient();
+  return useCallback(
+    (id) =>
+      withStore(store, () => {
+        void conversation.refresh(client, id);
+        refreshConversationLists(client);
+      }),
+    [store, client],
+  );
 }
 
-/** Put a conversation's row at the top of the first page (or make the first page). */
-function upsertOnTop(
-  old: ConversationsInfiniteData | undefined,
-  row: Conversation,
-  moveExisting: boolean,
-): ConversationsInfiniteData {
-  if (!old?.pages) {
-    return {
-      pages: [{ conversations: [row], nextCursor: null, hasMore: false }],
-      pageParams: [undefined],
-    };
-  }
-  const pages = [...old.pages];
-  if (moveExisting) {
-    // Remove the conversation from its current position (if it is in any page)
-    for (let i = 0; i < pages.length; i++) {
-      const page = pages[i] as ConversationsPage;
-      const existingIndex = page.conversations.findIndex((c) => c.id === row.id);
-      if (existingIndex >= 0) {
-        pages[i] = {
-          ...page,
-          conversations: [
-            ...page.conversations.slice(0, existingIndex),
-            ...page.conversations.slice(existingIndex + 1),
-          ],
-        };
-        break;
-      }
-    }
-  } else if (pages[0]?.conversations.some((c) => c.id === row.id)) {
-    return { ...old, pages };
-  }
-  // Always add to top of first page (most recently updated first)
-  if (pages[0]) {
-    pages[0] = { ...pages[0], conversations: [row, ...pages[0].conversations] };
-  }
-  return { ...old, pages };
+/** Tells the person a write failed, with the server's words when it sent some. */
+function useFailureToast(fallback: string): (error: unknown) => void {
+  return useCallback((error) => toast.error(errorMessage(error, fallback)), [fallback]);
 }
 
 /** Save a conversation's messages (and title). */
-export function useSaveConversation() {
-  const queryClient = useQueryClient();
-  const client = useConversationsClient();
+export function useSaveConversation(): ActionView<[input: SaveConversationInput], Conversation> {
   const labels = useLabels();
+  return useBoundAction(
+    saveConversation,
+    useConversationsClient(),
+    useFailureToast(labels.conversationSaveFailed),
+  );
+}
 
-  return useMutation({
-    retry: 1,
-    mutationFn: async ({
-      id,
-      messages,
-      title,
-    }: {
-      id: string;
-      messages: Message[];
-      title?: string;
-    }): Promise<Conversation> => {
-      const lastMessage = messageText(messages[messages.length - 1]).slice(0, 100) || undefined;
+/** Rename a conversation (`run(id, title)`); the whole thread is read fresh and saved back. */
+export function useRenameConversation(): ActionView<[id: string, title: string], Conversation> {
+  return useBoundAction(renameConversation, useConversationsClient());
+}
 
-      try {
-        const { data } = await client.api.post<ApiConversation>(API_ROUTES.conversations.save, {
-          conversationId: id,
-          messages,
-          ...(title && { title }),
-          ...(client.app === undefined ? {} : { app: client.app }),
-        });
-        return {
-          id: data.id,
-          title: data.title,
-          lastMessage: data.lastMessage,
-          source: data.source,
-          app: data.app,
-          createdAt: new Date(data.createdAt),
-          updatedAt: new Date(data.updatedAt),
-          messages,
-        };
-      } catch (error: unknown) {
-        // If unauthorized, save to the offline copy
-        if (errorStatus(error) === 401) {
-          const conversations = await client.offline.read();
-          const existingIndex = conversations.findIndex((c) => c.id === id);
-
-          const offlineTitle =
-            title ||
-            messageText(messages.find((m) => m.role === 'user')).slice(0, 50) ||
-            client.newChatTitle;
-          const conversation: Conversation = {
-            id,
-            title: offlineTitle,
-            lastMessage,
-            createdAt:
-              existingIndex >= 0
-                ? (conversations[existingIndex] as Conversation).createdAt
-                : new Date(),
-            updatedAt: new Date(),
-            messages,
-          };
-
-          const next = [...conversations];
-          if (existingIndex >= 0) next[existingIndex] = conversation;
-          else next.unshift(conversation);
-
-          await client.offline.write(next);
-          return conversation;
-        }
-        throw error;
-      }
-    },
-    onSuccess: (data) => {
-      queryClient.setQueryData(
-        gemieQueryKeys.conversations.all,
-        (old: ConversationsInfiniteData | undefined) =>
-          upsertOnTop(old, { ...data, messages: [] }, true),
-      );
-      // Update individual conversation cache with full data including messages
-      queryClient.setQueryData(gemieQueryKeys.conversations.detail(data.id), data);
-    },
-    onError: (error: unknown) => {
-      toast.error(getErrorMessage(error) || labels.conversationSaveFailed);
-    },
-  });
+/** Delete a conversation (`run(id)`). */
+export function useDeleteConversation(): ActionView<[id: string], string> {
+  const labels = useLabels();
+  return useBoundAction(
+    deleteConversation,
+    useConversationsClient(),
+    useFailureToast(labels.conversationDeleteFailed),
+  );
 }
 
 /**
- * Rename a conversation.
+ * Empty a conversation on the server, keeping the conversation (`run(id)`).
  *
- * The API has no title-only route: `POST /conversations` writes the title AND
- * replaces the messages. So the full thread is read fresh first (`staleTime:
- * 0` — the sidebar seeds the detail cache from the list with no messages, and
- * saving that seed would empty the thread) and saved back with the new title.
+ * The persistent half of "Clear conversation" (#553). The local half, `setMessages([])` in
+ * `useConversationThread`, is NOT enough on its own: the conversation's record still holds the
+ * history, and the thread's sync treats "record has messages, screen has none" as a data upgrade
+ * and hydrates them straight back. So the record is emptied here, and the caller resets its
+ * screen after `run` resolves, when there is no history left to restore. A refusal puts the
+ * messages back exactly as they were.
  */
-export function useRenameConversation() {
-  const queryClient = useQueryClient();
-  const client = useConversationsClient();
-  const save = useSaveConversation();
-
-  return useMutation({
-    mutationFn: async ({ id, title }: { id: string; title: string }) => {
-      const conversation = await queryClient.fetchQuery({
-        queryKey: gemieQueryKeys.conversations.detail(id),
-        queryFn: () => fetchConversation(client, id),
-        staleTime: 0,
-      });
-      return save.mutateAsync({ id, messages: conversation.messages, title });
-    },
-  });
-}
-
-/** Delete a conversation. */
-export function useDeleteConversation() {
-  const queryClient = useQueryClient();
-  const client = useConversationsClient();
-  const labels = useLabels();
-
-  return useMutation({
-    retry: 1,
-    mutationFn: async (id: string) => {
-      try {
-        await client.api.delete(API_ROUTES.conversations.remove(id));
-      } catch (error: unknown) {
-        // If unauthorized, delete from the offline copy
-        if (errorStatus(error) === 401) {
-          const conversations = await client.offline.read();
-          await client.offline.write(conversations.filter((c) => c.id !== id));
-        } else {
-          throw error;
-        }
-      }
-      return id;
-    },
-    onSuccess: (id) => {
-      queryClient.setQueryData(
-        gemieQueryKeys.conversations.all,
-        (old: ConversationsInfiniteData | undefined) => {
-          if (!old?.pages) return old;
-          return {
-            ...old,
-            pages: old.pages.map((page) => ({
-              ...page,
-              conversations: page.conversations.filter((c) => c.id !== id),
-            })),
-          };
-        },
-      );
-      queryClient.removeQueries({ queryKey: gemieQueryKeys.conversations.detail(id) });
-    },
-    onError: (error: unknown) => {
-      toast.error(getErrorMessage(error) || labels.conversationDeleteFailed);
-    },
-  });
-}
-
-/**
- * Empty a conversation on the server, keeping the conversation.
- *
- * The persistent half of "Clear conversation" (#553). The local half —
- * `setMessages([])` in `useGemieConversation` — is NOT enough on its own: the
- * detail query still holds the history, and the sync effect there treats
- * "cache has messages, screen has none" as a data upgrade and hydrates them
- * straight back, which is the bug. So the cache is emptied HERE, on success
- * only, and the caller resets its screen after `mutateAsync` resolves — by
- * which point React Query has run this `onSuccess`, so there is no longer a
- * history for the effect to restore. Nothing is touched optimistically: a
- * clear the server refused must leave the thread exactly as it was, because
- * the dialog that asked for it promised the opposite of "it will be back".
- *
- * The list entry keeps its place and loses its preview — the server dropped
- * `lastMessage` in the same transaction — and both queries are then
- * invalidated so whatever the server has (the moved `updatedAt`, a title it
- * may have kept) replaces the local guess.
- */
-export function useClearConversation() {
-  const queryClient = useQueryClient();
-  const client = useConversationsClient();
-
-  return useMutation({
-    retry: 1,
-    mutationFn: async (id: string) => {
-      try {
-        await client.api.delete(API_ROUTES.conversations.clearMessages(id));
-      } catch (error: unknown) {
-        // If unauthorized, clear the offline copy — the same branch a delete takes.
-        if (errorStatus(error) === 401) {
-          const conversations = await client.offline.read();
-          await client.offline.write(
-            conversations.map((c) =>
-              c.id === id
-                ? { ...c, messages: [], lastMessage: undefined, updatedAt: new Date() }
-                : c,
-            ),
-          );
-        } else {
-          throw error;
-        }
-      }
-      return id;
-    },
-    onSuccess: (id) => {
-      queryClient.setQueryData(
-        gemieQueryKeys.conversations.detail(id),
-        (old: Conversation | undefined) =>
-          old ? { ...old, messages: [], lastMessage: undefined } : old,
-      );
-      queryClient.setQueryData(
-        gemieQueryKeys.conversations.all,
-        (old: ConversationsInfiniteData | undefined) => {
-          if (!old?.pages) return old;
-          return {
-            ...old,
-            pages: old.pages.map((page) => ({
-              ...page,
-              conversations: page.conversations.map((c) =>
-                c.id === id ? { ...c, lastMessage: undefined } : c,
-              ),
-            })),
-          };
-        },
-      );
-      void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.conversations.detail(id) });
-      void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.conversations.all });
-    },
-  });
+export function useClearConversation(): ActionView<[id: string], string> {
+  return useBoundAction(clearConversation, useConversationsClient());
 }
 
 /**
  * Create a conversation (optionally the next stretch of an agent's thread).
  *
  * The next stretch of a thread whose open answered a `threadId` (Alia's: `useGemieThread`) is
- * `{ threadId }`; `{ agentId }` alone would start one more loose chat with her. Of any other
+ * `run({ threadId })`; `{ agentId }` alone would start one more loose chat with her. Of any other
  * gemie's thread it is `{ agentId }`.
  */
-export function useCreateConversation() {
-  const queryClient = useQueryClient();
-  const client = useConversationsClient();
+export function useCreateConversation(): ActionView<
+  [input?: CreateConversationInput],
+  Conversation
+> {
   const labels = useLabels();
-
-  return useMutation({
-    mutationFn: async (params?: {
-      agentId?: string;
-      /** Two to six agents: a group conversation, answered by each in turn. */
-      agentIds?: readonly string[];
-      /** The thread row whose next stretch this is (`GemieThreadInfo.threadId`). */
-      threadId?: string;
-    }): Promise<Conversation> => {
-      try {
-        const { data } = await client.api.post<ApiConversation>(API_ROUTES.conversations.create, {
-          ...(params?.agentId && { agentId: params.agentId }),
-          ...(params?.agentIds && { agentIds: params.agentIds }),
-          ...(params?.threadId && { threadId: params.threadId }),
-          ...(client.app === undefined ? {} : { app: client.app }),
-        });
-        return {
-          id: data.id,
-          title: data.title,
-          lastMessage: undefined,
-          source: data.source,
-          agentId: data.agentId,
-          memberAgentIds: data.memberAgentIds,
-          spaceId: data.spaceId,
-          threadId: data.threadId,
-          app: data.app,
-          createdAt: new Date(data.createdAt),
-          updatedAt: new Date(data.updatedAt),
-          messages: [],
-        };
-      } catch (error: unknown) {
-        // If unauthorized, create it in the offline copy
-        if (errorStatus(error) === 401 && client.offline.available) {
-          const conversation: Conversation = {
-            id: createRandomUuid(),
-            title: client.newChatTitle,
-            lastMessage: undefined,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            messages: [],
-          };
-          await client.offline.write([conversation, ...(await client.offline.read())]);
-          return conversation;
-        }
-        throw error;
-      }
-    },
-    onSuccess: (data) => {
-      queryClient.setQueryData(
-        gemieQueryKeys.conversations.all,
-        (old: ConversationsInfiniteData | undefined) => upsertOnTop(old, data, false),
-      );
-      queryClient.setQueryData(gemieQueryKeys.conversations.detail(data.id), data);
-    },
-    onError: (error: unknown) => {
-      toast.error(getErrorMessage(error) || labels.conversationCreateFailed);
-    },
-  });
+  return useBoundAction(
+    createConversation,
+    useConversationsClient(),
+    useFailureToast(labels.conversationCreateFailed),
+  );
 }

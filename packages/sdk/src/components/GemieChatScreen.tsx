@@ -35,6 +35,7 @@ import type { GemieToolRenderers } from '../lib/tool-renderers';
 import { useShareHandler } from '../hooks/useShareHandler';
 import type { GemieHostTools } from '../runtime/host-tools';
 import type { GemieConversationShare } from '../runtime/sharing';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 export interface GemieChatScreenProps {
   /** The agent the screen is with, any agent the person can reach; omitted, Alia. */
@@ -107,6 +108,7 @@ export function GemieChatScreen({
   voice,
   labels,
 }: GemieChatScreenProps) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   // The screen owns the whole window, so it keeps its composer out of both
   // system bars: the top inset clears the status bar, the bottom one the
@@ -139,10 +141,7 @@ export function GemieChatScreen({
 
   return (
     <AgentAvatarProvider>
-      <View
-        className="flex-1 bg-background-full"
-        style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
-      >
+      <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <KeyboardAvoidingView behavior="padding" automaticOffset style={{ flex: 1 }}>
           <GemieChatContent
             agent={agent}
@@ -168,3 +167,7 @@ export function GemieChatScreen({
     </AgentAvatarProvider>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  screen: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', backgroundColor: t.background },
+}));

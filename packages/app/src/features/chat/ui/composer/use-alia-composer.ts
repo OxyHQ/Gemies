@@ -104,7 +104,7 @@ export function useComposerMenu({
     [address],
   );
   const { active: modeActive, toggle: toggleMode } = useCapabilityModes();
-  const { data: installed = [] } = useConnections();
+  const { value: installed = [] } = useConnections();
   const { data: installedSkills = [] } = useInstalledSkills();
 
   /**

@@ -18,6 +18,7 @@ import { RiTerminalBoxLine } from '@oxy.so/bloom/icons/RiTerminalBoxLine';
 import { Muted, Text } from '@oxy.so/bloom/typography';
 import { useState } from 'react';
 import { View } from 'react-native';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /** Each event type's glyph, drawn inside its `Badge`. */
 const EVENT_ICONS: Record<string, BloomIconComponent> = {
@@ -70,6 +71,7 @@ function formatDuration(ms?: number): string {
 
 /** One event of the session, expandable to its full content and arguments. */
 export function SessionEventCard({ entry }: { entry: EventEntry }) {
+  const styles = useStyles();
   const [expanded, setExpanded] = useState(false);
 
   const isThreat = isThreatEntry(entry);
@@ -83,8 +85,8 @@ export function SessionEventCard({ entry }: { entry: EventEntry }) {
       accessibilityLabel={entry.type.replace(/_/g, ' ')}
     >
       <CardBody>
-        <View className="gap-1.5 py-1">
-          <View className="flex-row items-center gap-2">
+        <View style={styles.event}>
+          <View style={styles.header}>
             <Badge
               size="label-small"
               variant="subtle"
@@ -93,11 +95,11 @@ export function SessionEventCard({ entry }: { entry: EventEntry }) {
               content={entry.type.replace(/_/g, ' ')}
             />
             {entry.metadata?.toolName && (
-              <Muted numberOfLines={1} className="shrink text-sm text-muted-foreground">
+              <Muted numberOfLines={1} style={styles.toolName}>
                 {entry.metadata.toolName}
               </Muted>
             )}
-            <View className="flex-1" />
+            <View style={styles.spacer} />
             {entry.metadata?.durationMs && (
               <Muted>{formatDuration(entry.metadata.durationMs)}</Muted>
             )}
@@ -117,3 +119,10 @@ export function SessionEventCard({ entry }: { entry: EventEntry }) {
     </Card>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  event: { gap: 6, paddingVertical: 4 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  toolName: { flexShrink: 1, fontSize: 14, color: t.mutedForeground, lineHeight: 20 },
+  spacer: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+}));

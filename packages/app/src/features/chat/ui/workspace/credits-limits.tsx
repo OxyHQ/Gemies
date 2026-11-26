@@ -12,7 +12,7 @@ import { RiCloseLine } from '@oxy.so/bloom/icons/RiCloseLine';
 import { PageHeader } from '@oxy.so/bloom/page-header';
 import * as Skeleton from '@oxy.so/bloom/skeleton';
 import { useRouter } from 'expo-router';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /**
  * The right panel's credits slot: Bloom's `AgentLimitsCard` over `/credits`
@@ -44,7 +44,7 @@ export function CreditsLimits() {
   };
 
   return (
-    <View className="flex-1">
+    <View style={styles.fill}>
       {shell?.compact ? null : (
         <PageHeader
           title={t('credits.title')}
@@ -60,7 +60,7 @@ export function CreditsLimits() {
           }
         />
       )}
-      <View className="p-4">
+      <View style={styles.section}>
         {isLoading ? (
           <Skeleton.Box width="100%" height={112} borderRadius={16} />
         ) : (
@@ -82,3 +82,8 @@ export function CreditsLimits() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  section: { padding: 16 },
+});

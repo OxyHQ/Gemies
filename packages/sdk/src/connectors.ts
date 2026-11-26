@@ -1,4 +1,3 @@
-/// <reference types="nativewind/types" />
 /**
  * The connectors leaf entry: the remote MCP servers a person connects — the providers' own
  * (Notion, Linear, Slack…), the hundreds synced from the official MCP Registry — and their own MCP
@@ -22,10 +21,20 @@ export {
   CONNECTOR_STORE_PAGE_SIZE,
   CONNECTOR_TRUST,
   CONNECTORS_PATH,
+  addCustomConnector,
+  completeConnectorSignIn,
+  connectConnector,
   connectionOfTool,
-  connectorQueryKeys,
+  connections,
+  ConnectorEntries,
   connectorReturnTo,
+  connectorStore,
+  connectorStoreKey,
+  ConnectorStoreList,
   connectorStoreParams,
+  disconnectConnector,
+  reconnectConnector,
+  renameConnector,
   signInResult,
   useConnectionOfTool,
   useConnections,
@@ -40,7 +49,11 @@ export type {
   ConnectorCategory,
   ConnectorEntry,
   ConnectorSort,
+  ConnectorClient,
+  ConnectorStoreExtra,
   ConnectorStorePage,
   ConnectorStoreQuery,
+  ConnectorStoreView,
+  CustomConnectorInput,
   ConnectorTrust,
 } from './runtime/connectors';

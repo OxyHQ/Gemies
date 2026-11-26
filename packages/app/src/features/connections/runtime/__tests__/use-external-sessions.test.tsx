@@ -6,7 +6,7 @@ const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), createConversation:
 vi.mock('@/shared/api/client', () => ({ default: { get: api.get, post: api.post } }));
 vi.mock('@oxy.so/services/ui/client', () => ({ useOxy: () => ({ isAuthenticated: true }) }));
 vi.mock('@gemies/sdk/runtime', () => ({
-  useCreateConversation: () => ({ mutateAsync: api.createConversation, isPending: false }),
+  useCreateConversation: () => ({ run: api.createConversation, isPending: false }),
 }));
 
 const { isSessionFolder, useExternalSessions } = await import('../use-external-sessions');

@@ -1,4 +1,4 @@
-import { Image } from '@/shared/ui/image';
+import { Image } from 'expo-image';
 
 /**
  * The first frame of the Gemies welcome animation (clover, frog and paperclip, on transparent).

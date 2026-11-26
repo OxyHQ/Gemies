@@ -11,7 +11,7 @@ import { Muted, Text } from '@oxy.so/bloom/typography';
 import { useAuth } from '@oxy.so/services/ui/client';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 export default function ResetPasswordScreen() {
   const { t } = useTranslation();
@@ -77,12 +77,12 @@ export default function ResetPasswordScreen() {
     <AuthContainer>
       <AuthLogo />
 
-      <View className="gap-2">
+      <View style={styles.intro}>
         <Text variant="title-1-bold">{t('resetPassword.title')}</Text>
         <Muted>{t('resetPassword.subtitle')}</Muted>
       </View>
 
-      <View className="gap-3">
+      <View style={styles.fields}>
         <AuthError message={error} />
 
         <TextFieldInput
@@ -122,3 +122,8 @@ export default function ResetPasswordScreen() {
     </AuthContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  intro: { gap: 8 },
+  fields: { gap: 12 },
+});

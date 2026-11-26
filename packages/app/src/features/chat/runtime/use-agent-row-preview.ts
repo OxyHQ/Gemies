@@ -1,6 +1,6 @@
+import { useStore, withStore } from '@oxy.so/bloom-data';
 import { useCallback } from 'react';
-import { type QueryClient, useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/shared/api/query-keys';
+import { updateMyAgents } from '@/shared/api/account-data';
 import type { Agent } from '@/shared/contracts/agents';
 
 /**
@@ -75,7 +75,7 @@ export function byThreadActivity(a: Agent, b: Agent): number {
  * reloads.
  */
 export function useAgentRowPreview() {
-  const queryClient = useQueryClient();
+  const store = useStore();
 
   return useCallback(
     (agentId: string | null | undefined, text: string): void => {
@@ -84,39 +84,38 @@ export function useAgentRowPreview() {
       const line = text.trim();
       if (line.length === 0) return;
 
-      queryClient.setQueryData<Agent[]>(queryKeys.agents.mine, (current) => {
-        if (current === undefined) return current;
-        let changed = false;
-        const next = current.map((agent) => {
-          if (agent._id !== agentId) return agent;
-          changed = true;
-          return { ...agent, lastMessage: line, lastMessageAt: new Date().toISOString() };
-        });
-        // The same array back when this agent is not in the list, so a row that
-        // was not touched is not re-rendered for having been rebuilt.
-        if (!changed) return current;
-        // Every other row keeps the position the server gave it: it is the same
-        // comparator over the same unchanged fields, so sorting the list again
-        // can only move the row whose timestamp just changed.
-        return next.sort(byThreadActivity);
-      });
+      withStore(store, () =>
+        updateMyAgents((current) => {
+          let changed = false;
+          const next = current.map((agent) => {
+            if (agent._id !== agentId) return agent;
+            changed = true;
+            return { ...agent, lastMessage: line, lastMessageAt: new Date().toISOString() };
+          });
+          // The same array back when this agent is not in the list, so a row that
+          // was not touched is not re-rendered for having been rebuilt.
+          if (!changed) return current;
+          // Every other row keeps the position the server gave it: it is the same
+          // comparator over the same unchanged fields, so sorting the list again
+          // can only move the row whose timestamp just changed.
+          return next.sort(byThreadActivity);
+        }),
+      );
     },
-    [queryClient],
+    [store],
   );
 }
 
 /**
  * Write what the server says about one gemie's thread into its sidebar row — the newest line, when
- * it was said, and what is unread — and keep the list in the server's order. The realtime
+ * it was said, and what is unread — and keep the list in the server's order, in the store in scope. The realtime
  * `conversation` event's half of what `useAgentRowPreview` guesses on send.
  */
 export function patchAgentRow(
-  queryClient: QueryClient,
   agentId: string,
   patch: Pick<Agent, 'lastMessage' | 'lastMessageAt' | 'unreadCount'>,
 ): void {
-  queryClient.setQueryData<Agent[]>(queryKeys.agents.mine, (current) => {
-    if (current === undefined) return current;
+  updateMyAgents((current) => {
     let changed = false;
     const next = current.map((agent) => {
       if (agent._id !== agentId) return agent;

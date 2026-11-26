@@ -23,15 +23,18 @@ mapping is in [`CHANGELOG.md`](./CHANGELOG.md) under 1.0.0.
 bun add @gemies/sdk
 ```
 
-`react`, `react-native`, `@oxy.so/core`, `@oxy.so/services`, `@tanstack/react-query`
-(the conversation runtime's cache; `OxyProvider` mounts the client), `react-native-css`
-(the thread's images take `className`) and the Expo modules listed under `peerDependencies` in
+`react`, `react-native`, `@oxy.so/core`, `@oxy.so/services` (15 or later), `@oxy.so/bloom-data`
+(the conversation runtime's data lives in the signed-in account's store, the one `OxyProvider`
+opens with the session, so an account switch never shows the previous account's) and the Expo
+modules listed under `peerDependencies` in
 `package.json` — among them `expo-clipboard` and `expo-web-browser`, which the thread's copy
 button and its sources use — are yours to install. Metro
 must resolve package `exports` (`resolver.unstable_enablePackageExports = true`,
 the default in Expo SDK 53+), because every icon import is a subpath.
 
-The chat is built from Bloom (`@oxy.so/bloom`, a peer dependency): mount Bloom's
+The chat is built from Bloom (`@oxy.so/bloom` 23 or later, a peer dependency) and styled with
+React Native styles over Bloom's tokens: the SDK needs no NativeWind, react-native-css or Tailwind,
+and its components take `style`, never `className`. Mount Bloom's
 `BloomProvider` above it, with the one `KeyboardProvider` your app already has.
 The main and conversation sheets use Bloom's default content sizing: they grow and
 shrink with the chat up to the shared viewport limit. Bloom coordinates the Screen
@@ -350,7 +353,7 @@ Everything that is a conversation lives in `src/runtime`, in layers that depend 
 | Layer | What | Public names |
 | --- | --- | --- |
 | Transport | Alia's REST API over the signed-in person's Oxy client (token, refresh and the single 401 replay are Oxy's); the turn's SSE stream | `useGemieApi`, `GemieApiError` |
-| Model and state | the records, React Query keys and the cached lists; zustand stores for the composer drafts and the hand-off of a first message | `Message`, `Conversation`, `gemieQueryKeys`, `useComposerDraftStore`, `useConversationStore` |
+| Model and state | the records and their lists in the account's `@oxy.so/bloom-data` store (entities, sources and actions); zustand stores for the composer drafts and the hand-off of a first message | `Message`, `Conversation`, `Conversations`, `ConversationList`, `conversationList`, `conversationCollections`, `useComposerDraftStore`, `useConversationStore` |
 | Hooks | `useConversations` (the list, paginated), `useConversation` (one, with its history), `useCreateConversation`, `useRenameConversation`, `useDeleteConversation`, `useClearConversation`, and `useConversationThread`: the live thread of one conversation — messages, `sendMessage`, `createNewConversation`, `editMessage`, `regenerateMessage`, `retryFailedTurn`, `stopGeneration`, `clearConversation`, `startOver`, `ensureConversation` | `use…` |
 | UI | `GemieChatContent` (the conversation screen), `GemieChatScreen`, `GemieChatSheet`, `GemieThread`, `ThoughtPanel` | components |
 
@@ -448,7 +451,7 @@ The sheet and the Alia app differ ONLY in what they put there:
   renderUsageLimit={({ error, dismiss }) => <UsageLimitDialog error={error} onDismiss={dismiss} />}
 />
 function Sidebar() {
-  const { data } = useConversations(); // the very query the thread keeps up to date
+  const { conversations, more } = useConversations(); // the very list the thread keeps up to date
   …
 }
 ```

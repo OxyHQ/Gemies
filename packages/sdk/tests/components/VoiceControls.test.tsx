@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('react-native', async () => {
   const ReactModule = await import('react');
   return {
+    ...(await import('../support/style-stubs')).reactNativeStyles,
     View: ({ children }: React.PropsWithChildren) =>
       ReactModule.createElement('View', null, children),
   };

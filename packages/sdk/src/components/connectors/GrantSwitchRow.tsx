@@ -2,6 +2,7 @@ import { Switch } from '@oxy.so/bloom/switch';
 import { Text } from '@oxy.so/bloom/typography';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 export interface GrantSwitchRowProps {
   /** What the row grants, drawn before its name: a connector's logo, a platform's mark. */
@@ -31,17 +32,16 @@ export function GrantSwitchRow({
   onCheckedChange,
   first,
 }: GrantSwitchRowProps) {
+  const styles = useStyles();
   return (
-    <View
-      className={`flex-row items-center gap-2.5 py-2.5 pe-2.5 ${first ? '' : 'border-t border-border'}`}
-    >
+    <View style={[styles.row, !first && styles.divider]}>
       {leading}
-      <View className="flex-1 gap-0.5">
+      <View style={styles.text}>
         <Text variant="body-2-regular" numberOfLines={1}>
           {label}
         </Text>
         {detail ? (
-          <Text variant="body-2-regular" className="text-text-secondary" numberOfLines={1}>
+          <Text variant="body-2-regular" style={styles.detail} numberOfLines={1}>
             {detail}
           </Text>
         ) : null}
@@ -55,3 +55,16 @@ export function GrantSwitchRow({
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  text: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 2 },
+  detail: { color: t.mutedForeground },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingInlineEnd: 10,
+  },
+  divider: { borderTopWidth: 1, borderColor: t.border },
+}));

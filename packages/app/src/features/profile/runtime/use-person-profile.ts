@@ -9,8 +9,12 @@ import { useUserByUsername } from '@oxy.so/services/ui/client';
  * such account, or an agent's): the page tells those apart by `isPending`.
  */
 export function usePersonProfile(username: string) {
-  const query = useUserByUsername(username === '' ? null : username);
-  const account = query.data;
+  const view = useUserByUsername(username === '' ? null : username);
+  const account = view.value;
   const person = account && account.kind !== 'bot' ? account : undefined;
-  return { person, isPending: query.isPending && username !== '', isError: query.isError };
+  return {
+    person,
+    isPending: view.isLoading && username !== '',
+    isError: view.status === 'error',
+  };
 }

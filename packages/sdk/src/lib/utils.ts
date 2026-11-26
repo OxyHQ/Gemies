@@ -1,10 +1,3 @@
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
 /** Extract a human-readable message from an unknown caught error. */
 export function errorMessage(err: unknown, fallback = 'Something went wrong'): string {
   if (err instanceof Error) return err.message;
@@ -31,5 +24,5 @@ export function formatFileSize(bytes: number): string {
    * `Math.log` of them is `NaN`, and `sizes[NaN]` is undefined too.
    */
   const i = Math.min(sizes.length - 1, Math.max(0, Math.floor(Math.log(bytes) / Math.log(k))));
-  return `${String(Math.round((bytes / Math.pow(k, i)) * 100) / 100)} ${sizes[i]}`;
+  return `${String(Math.round((bytes / k ** i) * 100) / 100)} ${sizes[i]}`;
 }

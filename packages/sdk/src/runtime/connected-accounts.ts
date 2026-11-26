@@ -1,9 +1,20 @@
+import {
+  action,
+  type ActionView,
+  type RecordView,
+  skip,
+  useStore,
+  withStore,
+} from '@oxy.so/bloom-data';
 import { useOxy } from '@oxy.so/services/ui/client';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useGemieApi } from './api';
+import { useCallback, useEffect } from 'react';
+import { rereadOn } from '../realtime/reread';
+import { type GemieApi, useGemieApi } from './api';
+import { answerSource, useAnswer } from './data/answer';
+import { ACCOUNT, gemieRead } from './data/read';
 import { errorStatus } from './error-utils';
-import { gemieQueryKeys } from './query-keys';
 import { ACCOUNT_ROUTES } from './routes';
+import { useBoundAction } from './use-bound-action';
 
 /**
  * A person's connected accounts (ADR 0035 as amended): the WhatsApp and Telegram (Business,
@@ -85,65 +96,105 @@ export interface ConnectedAccountsAnswer {
   platforms: GemieAccountPlatform[];
 }
 
+/**
+ * The caller's accounts with their grants, and what can be connected: memory only (phone numbers
+ * and a live code never reach the disk). Read again when the realtime `connections` event says they
+ * changed, and after a reset.
+ */
+export const connectedAccounts = answerSource('gemies.connected-accounts', {
+  ...gemieRead,
+  key: (_api: GemieApi) => ACCOUNT,
+  load: async ({ signal }, api) =>
+    (await api.get<ConnectedAccountsAnswer>(ACCOUNT_ROUTES.all, { signal })).data,
+});
+
+rereadOn('connections', connectedAccounts);
+rereadOn('reset', connectedAccounts);
+
+/** The code of an account being connected, as its session reports it now. */
+export const connectedAccountQr = answerSource('gemies.connected-account-qr', {
+  ...gemieRead,
+  key: (_api: GemieApi, accountId: string) => accountId,
+  load: async ({ signal }, api, accountId) =>
+    (
+      await api.get<{ status: GemieAccountStatus; qr: string | null }>(
+        `${ACCOUNT_ROUTES.one(accountId)}/qr`,
+        { signal },
+      )
+    ).data,
+});
+
+/** An account's recent chats; one that has none to list (a 404) has none. */
+export const connectedAccountChats = answerSource('gemies.connected-account-chats', {
+  ...gemieRead,
+  key: (_api: GemieApi, accountId: string) => accountId,
+  load: async ({ signal }, api, accountId) => {
+    try {
+      const { data } = await api.get<{ chats: GemieAccountChat[] }>(
+        `${ACCOUNT_ROUTES.one(accountId)}/chats`,
+        { signal },
+      );
+      return data.chats;
+    } catch (error) {
+      if (errorStatus(error) === 404) return [];
+      throw error;
+    }
+  },
+});
+
 /** The caller's accounts, each as its session is now with its grants, and what can be connected. */
-export function useConnectedAccounts() {
+export function useConnectedAccounts(): RecordView<ConnectedAccountsAnswer> {
   const api = useGemieApi();
-  const { isAuthenticated } = useOxy();
-  return useQuery({
-    queryKey: gemieQueryKeys.accounts.all,
-    queryFn: async (): Promise<ConnectedAccountsAnswer> => {
-      const { data } = await api.get<ConnectedAccountsAnswer>(ACCOUNT_ROUTES.all);
-      return data;
-    },
-    enabled: isAuthenticated,
-  });
+  const { canUsePrivateApi } = useOxy();
+  return useAnswer(connectedAccounts, ...(canUsePrivateApi ? [api] : [skip]));
 }
+
+/** Reads the caller's accounts again, in the store of the tree. */
+function useRefreshConnectedAccounts(): () => void {
+  const api = useGemieApi();
+  const store = useStore();
+  return useCallback(
+    () => void withStore(store, () => connectedAccounts.refresh(api)),
+    [api, store],
+  );
+}
+
+/** How often a waiting code is read again: WhatsApp rotates its code every few seconds. */
+const QR_REFRESH_MS = 4000;
 
 /**
  * The code of an account being connected, refreshed while it waits (WhatsApp rotates its code
  * every few seconds; Telegram's link is renewed when it expires, and is gone once Telegram knows
- * who the person is). It stops once the session leaves `qr-pending`, and the list is re-read then,
- * so the account shows as it is.
+ * who the person is). It stops once the session leaves `qr-pending`, and the list is read again
+ * then, so the account shows as it is. Until the first read, the code the connection answered.
  */
-export function useConnectedAccountQr(link: GemieAccountLink | null) {
+export function useConnectedAccountQr(
+  link: GemieAccountLink | null,
+): RecordView<{ status: GemieAccountStatus; qr: string | null }> {
   const api = useGemieApi();
-  const queryClient = useQueryClient();
-  const accountId = link?.accountId ?? '';
-  return useQuery({
-    queryKey: gemieQueryKeys.accounts.qr(accountId),
-    queryFn: async (): Promise<{ status: GemieAccountStatus; qr: string | null }> => {
-      const { data } = await api.get<{ status: GemieAccountStatus; qr: string | null }>(
-        `${ACCOUNT_ROUTES.one(accountId)}/qr`,
-      );
-      if (data.status !== 'qr-pending') {
-        await queryClient.invalidateQueries({ queryKey: gemieQueryKeys.accounts.all });
-      }
-      return data;
-    },
-    enabled: link !== null,
-    initialData: link ? { status: 'qr-pending' as const, qr: link.qr } : undefined,
-    initialDataUpdatedAt: 0,
-    refetchInterval: (query) => (query.state.data?.status === 'qr-pending' ? 4000 : false),
-  });
+  const view = useAnswer(connectedAccountQr, ...(link ? [api, link.accountId] : [skip]));
+  const refreshAccounts = useRefreshConnectedAccounts();
+  const status = view.value?.status;
+  const { refresh } = view;
+  const waiting = link !== null && (status === undefined || status === 'qr-pending');
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setInterval(() => void refresh(), QR_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [waiting, refresh]);
+  useEffect(() => {
+    if (status !== undefined && status !== 'qr-pending') refreshAccounts();
+  }, [status, refreshAccounts]);
+  return {
+    ...view,
+    value: view.value ?? (link ? { status: 'qr-pending', qr: link.qr } : undefined),
+  };
 }
 
 /** An account's recent chats, read while the person chooses which ones it answers. */
-export function useConnectedAccountChats(accountId: string) {
+export function useConnectedAccountChats(accountId: string): RecordView<GemieAccountChat[]> {
   const api = useGemieApi();
-  return useQuery({
-    queryKey: gemieQueryKeys.accounts.chats(accountId),
-    queryFn: async (): Promise<GemieAccountChat[]> => {
-      try {
-        const { data } = await api.get<{ chats: GemieAccountChat[] }>(
-          `${ACCOUNT_ROUTES.one(accountId)}/chats`,
-        );
-        return data.chats;
-      } catch (error) {
-        if (errorStatus(error) === 404) return [];
-        throw error;
-      }
-    },
-  });
+  return useAnswer(connectedAccountChats, api, accountId);
 }
 
 /** What can be changed of an account: who answers it, and whom that gemie answers. */
@@ -155,44 +206,80 @@ export interface ConnectedAccountPatch {
   groupReplies?: GemieAccountGroupReplies;
 }
 
-/**
- * Connecting, granting, who answers, and removing (its session ends and its grants go).
- * Every write re-reads the list, so each screen that shows an account shows it as it now is.
- */
-export function useConnectedAccountMutations() {
+/** Draws a change to the held accounts, as the calling action's layer. */
+function drawAccounts(change: (accounts: ConnectedAccount[]) => ConnectedAccount[]): void {
+  connectedAccounts.entity.update(ACCOUNT, (held) => ({
+    ...held,
+    value: { ...held.value, accounts: change([...held.value.accounts]) },
+  }));
+}
+
+/** Every write ends with the list read again, so each screen shows the accounts as they now are. */
+const rereadAccounts = (api: GemieApi) => void connectedAccounts.refresh(api);
+
+/** Connects an account on a platform: the code (or link) that finishes it. */
+export const connectAccount = action({
+  run: async (api: GemieApi, platform: GemieAccountPlatform) =>
+    (await api.post<GemieAccountLink>(ACCOUNT_ROUTES.all, { platform })).data,
+  settle: (_link, api) => rereadAccounts(api),
+});
+
+/** Changes who answers an account and whom: drawn at once, put back if refused. */
+export const updateAccount = action({
+  optimistic: (_api: GemieApi, accountId: string, patch: ConnectedAccountPatch) =>
+    drawAccounts((accounts) =>
+      accounts.map((account) => (account._id === accountId ? { ...account, ...patch } : account)),
+    ),
+  run: async (api, accountId, patch) => {
+    await api.patch(ACCOUNT_ROUTES.one(accountId), patch);
+  },
+  settle: (_result, api) => rereadAccounts(api),
+});
+
+/** Grants an account to a gemie (`granted: true`) or revokes it: drawn at once, put back if refused. */
+export const grantAccount = action({
+  optimistic: (_api: GemieApi, accountId: string, gemieId: string, granted: boolean) =>
+    drawAccounts((accounts) =>
+      accounts.map((account) =>
+        account._id !== accountId
+          ? account
+          : {
+              ...account,
+              gemieIds: granted
+                ? [...account.gemieIds.filter((id) => id !== gemieId), gemieId]
+                : account.gemieIds.filter((id) => id !== gemieId),
+            },
+      ),
+    ),
+  run: async (api, accountId, gemieId, granted) => {
+    const path = ACCOUNT_ROUTES.grant(accountId, gemieId);
+    await (granted ? api.put(path) : api.delete(path));
+  },
+  settle: (_result, api) => rereadAccounts(api),
+});
+
+/** Removes an account (its session ends and its grants go): gone at once, back if refused. */
+export const removeAccount = action({
+  optimistic: (_api: GemieApi, accountId: string) =>
+    drawAccounts((accounts) => accounts.filter((account) => account._id !== accountId)),
+  run: async (api, accountId) => {
+    await api.delete(ACCOUNT_ROUTES.one(accountId));
+  },
+  settle: (_result, api) => rereadAccounts(api),
+});
+
+/** Connecting, granting, who answers, and removing, as a component calls them. */
+export function useConnectedAccountMutations(): {
+  connect: ActionView<[platform: GemieAccountPlatform], GemieAccountLink>;
+  update: ActionView<[accountId: string, patch: ConnectedAccountPatch], void>;
+  grant: ActionView<[accountId: string, gemieId: string, granted: boolean], void>;
+  remove: ActionView<[accountId: string], void>;
+} {
   const api = useGemieApi();
-  const queryClient = useQueryClient();
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: gemieQueryKeys.accounts.all });
-
-  const connect = useMutation({
-    mutationFn: async (platform: GemieAccountPlatform): Promise<GemieAccountLink> => {
-      const { data } = await api.post<GemieAccountLink>(ACCOUNT_ROUTES.all, { platform });
-      return data;
-    },
-    onSuccess: invalidate,
-  });
-
-  const update = useMutation({
-    mutationFn: async ({ accountId, ...patch }: ConnectedAccountPatch & { accountId: string }) => {
-      await api.patch(ACCOUNT_ROUTES.one(accountId), patch);
-    },
-    onSuccess: invalidate,
-  });
-
-  const grant = useMutation({
-    mutationFn: async (input: { accountId: string; gemieId: string; granted: boolean }) => {
-      const path = ACCOUNT_ROUTES.grant(input.accountId, input.gemieId);
-      await (input.granted ? api.put(path) : api.delete(path));
-    },
-    onSuccess: invalidate,
-  });
-
-  const remove = useMutation({
-    mutationFn: async (accountId: string) => {
-      await api.delete(ACCOUNT_ROUTES.one(accountId));
-    },
-    onSuccess: invalidate,
-  });
-
-  return { connect, update, grant, remove };
+  return {
+    connect: useBoundAction(connectAccount, api),
+    update: useBoundAction(updateAccount, api),
+    grant: useBoundAction(grantAccount, api),
+    remove: useBoundAction(removeAccount, api),
+  };
 }

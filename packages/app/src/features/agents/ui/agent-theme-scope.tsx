@@ -7,7 +7,7 @@ import { BloomColorScope } from '@oxy.so/bloom/theme';
 import { usePathname } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
-import { View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 
 /**
  * The app takes the colour of the agent you are with. On an agent's thread, or a chat that belongs
@@ -21,12 +21,8 @@ import { View } from 'react-native';
  */
 export function AgentThemeScope({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { data: agents } = useMyAgents();
-  const { data } = useConversations();
-  const conversations = useMemo(
-    () => data?.pages.flatMap((page) => page.conversations) ?? [],
-    [data],
-  );
+  const { value: agents } = useMyAgents();
+  const { conversations } = useConversations();
   const agent = useMemo(
     () => activeAgentFor({ pathname, agents: agents ?? [], conversations }),
     [pathname, agents, conversations],
@@ -38,7 +34,18 @@ export function AgentThemeScope({ children }: { children: ReactNode }) {
 
   return (
     <BloomColorScope colorPreset={color?.colorPreset} seed={color?.seed} asChild>
-      <View className="flex-1 web:z-auto">{children}</View>
+      <View style={styles.scope}>{children}</View>
     </BloomColorScope>
   );
 }
+
+const styles = StyleSheet.create({
+  scope: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    // react-native-web's View is a stacking context (`z-index: 0`); the scope is none, so the
+    // dialogs and menus inside it stack with the page's.
+    ...Platform.select({ web: { zIndex: 'auto' as unknown as number } }),
+  },
+});

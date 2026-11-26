@@ -1,9 +1,11 @@
-import { type GemieAgentProfile, gemieQueryKeys } from '@gemies/sdk/runtime';
+import { agentProfile, useGemieApi } from '@gemies/sdk/runtime';
+import { useStore, withStore } from '@oxy.so/bloom-data';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AvatarCharacter } from '@oxy.so/bloom/agent-avatar';
 import { useMemo } from 'react';
 import { queryKeys } from '@/shared/api/query-keys';
 import type { Agent } from '@/shared/contracts/agents';
+import { refreshMyAgents, updateMyAgents } from '@/shared/api/account-data';
 
 /** What of an agent the person sees all over the app and changes in the editor. */
 export interface AgentLook {
@@ -17,18 +19,21 @@ export interface AgentLook {
 /**
  * An edit of how an agent looks, shown EVERYWHERE the moment it is made.
  *
- * Every screen that draws an agent reads it from a query: the sidebar's rows from the person's
- * list, an open chat's header from the agent's profile, the detail screen from the agent itself.
+ * Every screen that draws an agent reads it from a record: the sidebar's rows from the person's
+ * list (`myAgents`), an open chat's header from the agent's profile (the SDK's `agentProfile`), the
+ * detail screen from the agent itself (a query).
  * The editor saves on a pause, and those queries only changed once the save had landed and they
  * had been read again, so a new avatar reached the editor at once and the rest of the app a second
- * or two later. Here the edit is written into the three queries as it is made, and the save
- * (and the read after it) only confirms it.
+ * or two later. Here the edit is written into the three as it is made, and the save (and the
+ * read after it) only confirms it.
  *
- * Only entries already in the cache are touched: an agent nobody has loaded has nothing to show
+ * Only entries already held are touched: an agent nobody has loaded has nothing to show
  * the edit on. A save that fails puts what the server holds back (`revert`).
  */
 export function useAgentLivePreview(agentId: string) {
   const queryClient = useQueryClient();
+  const store = useStore();
+  const api = useGemieApi();
   return useMemo(() => {
     const merge = <T extends { name?: unknown; character?: unknown; color?: unknown }>(
       current: T,
@@ -39,30 +44,39 @@ export function useAgentLivePreview(agentId: string) {
       for (const field of fields) if (look[field] !== undefined) patch[field] = look[field];
       return { ...current, ...patch };
     };
+    /** Everything that shows the agent reads what the server holds again. */
+    const reread = () => {
+      withStore(store, () => {
+        refreshMyAgents();
+        agentProfile.invalidate(api, agentId);
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
+    };
     return {
       show(look: AgentLook) {
-        queryClient.setQueryData<Agent[]>(queryKeys.agents.mine, (list) =>
-          list?.map((agent) =>
-            agent._id === agentId
-              ? merge(agent, look, ['name', 'tagline', 'character', 'color'])
-              : agent,
-          ),
-        );
+        withStore(store, () => {
+          updateMyAgents((list) =>
+            list.map((agent) =>
+              agent._id === agentId
+                ? merge(agent, look, ['name', 'tagline', 'character', 'color'])
+                : agent,
+            ),
+          );
+          // The profile has no tagline: its name and look are what the chat's header draws.
+          agentProfile.entity.update(agentId, (held) =>
+            held.value
+              ? { ...held, value: merge(held.value, look, ['name', 'character', 'color']) }
+              : undefined,
+          );
+        });
         queryClient.setQueryData<Agent>(queryKeys.agents.detail(agentId), (agent) =>
           agent ? merge(agent, look, ['name', 'tagline', 'character', 'color']) : agent,
         );
-        // The profile has no tagline: its name and look are what the chat's header draws.
-        queryClient.setQueryData<GemieAgentProfile>(
-          gemieQueryKeys.agents.profile(agentId),
-          (profile) => (profile ? merge(profile, look, ['name', 'character', 'color']) : profile),
-        );
       },
       /** The save did not land: read what the server holds again. */
-      revert() {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.agents.mine });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
-        void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.agents.profile(agentId) });
-      },
+      revert: reread,
+      /** The save landed: read it again, so every screen shows what the server stored. */
+      reread,
     };
-  }, [queryClient, agentId]);
+  }, [queryClient, store, api, agentId]);
 }

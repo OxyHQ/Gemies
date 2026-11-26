@@ -40,10 +40,10 @@ describe('the same opener on every top-level page', () => {
       expect(source).not.toMatch(/drawer-toggle/);
       expect(source).not.toContain('<DrawerToggle');
       expect(source).not.toContain('ContentPanel');
-      // Layout classes (rows, gaps, padding) are the page's; a page FRAME —
+      // Layout styles (rows, gaps, padding) are the page's; a page FRAME —
       // a background, a border or rounded corners — is the layout's alone.
       expect(source).not.toMatch(/surfaceClassName/);
-      expect(source).not.toMatch(/className="[^"]*\b(bg-|border|rounded)/);
+      expect(source).not.toMatch(/\b(backgroundColor|border\w*Width|borderColor|borderRadius)\b/);
     });
   }
 

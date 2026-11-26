@@ -44,7 +44,8 @@ export function useExternalSessions(agentId: string) {
     async (cwd: string): Promise<string> => {
       const folder = cwd.trim();
       if (!isSessionFolder(folder)) throw new Error('invalid_folder');
-      const conversation = await createConversation.mutateAsync({ agentId });
+      const conversation = await createConversation.run({ agentId });
+      if (!conversation) throw new Error('conversation_not_created');
       await apiClient.post(API_ROUTES.agents.external.sessions(agentId), {
         conversationId: conversation.id,
         cwd: folder,

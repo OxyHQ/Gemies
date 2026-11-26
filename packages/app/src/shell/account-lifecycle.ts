@@ -1,7 +1,5 @@
-import { ALIA_ACCOUNT_QUERIES } from '@/shared/api/query-keys';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from 'react';
-import { queryKeys as oxyQueryKeys } from '@oxy.so/services/ui/client';
 import { useConversationStore, useThoughtStore } from '@gemies/sdk/runtime';
 import { useStore } from '@/features/chat/runtime/global-store';
 import { useUIStore } from '@/features/chat/runtime/ui-store';
@@ -18,16 +16,19 @@ import {
  * What happens to the previous account's in-memory state when the signed-in
  * account changes: a sign-out, or a switch to another account (#608 §4).
  *
- * Oxy removes and restores its declared account queries before publishing the new account.
- * Alia resets its in-memory stores and only the queries outside that ownership policy.
- * Resetting Oxy-owned queries here races restoration and erases the new account's cache.
- * The epoch also advances so outstanding store reads cannot publish the old account.
+ * The account's data that must survive a restart (the sidebar's agents and spaces, and the SDK's
+ * conversations, collections and threads) lives in the account's bloom-data store, which Services
+ * swaps before the new account is published: nothing here touches it. Every React Query query and
+ * mutation is the app's own and memory only, so all of them are dropped: the queries are cancelled
+ * and reset (an observed one reads again, for the new account), and a write still waiting for the
+ * network is forgotten rather than replayed as the next account. The in-memory stores are reset,
+ * and the epoch advances so outstanding store reads cannot publish the old account.
  *
  * Signing IN from signed-out is not a change of owner: nothing was cached for
  * nobody, and the draft somebody typed before signing in is theirs. The caller
  * skips it (`useAccountLifecycle`).
  */
-export function resetAccountSession(queryClient: QueryClient, next: string | null): void {
+export function resetAccountSession(queryClient: QueryClient): void {
   advanceAccountEpoch();
 
   const ui = useUIStore.getState();
@@ -46,25 +47,8 @@ export function resetAccountSession(queryClient: QueryClient, next: string | nul
   useUserDataStore.setState(useUserDataStore.getInitialState(), true);
   useLibraryStore.setState(useLibraryStore.getInitialState(), true);
 
-  // Oxy owns the declared roots; this reset only covers the remaining product queries.
-  if (next !== null) {
-    const filters = { predicate: isAliaQuery };
-    void queryClient.cancelQueries(filters).then(() => queryClient.resetQueries(filters));
-  }
-}
-
-const OXY_QUERY_HEADS = new Set([
-  ...ALIA_ACCOUNT_QUERIES.roots,
-  ...Object.values(oxyQueryKeys).flatMap((group) => {
-    const all = (group as { all?: readonly unknown[] }).all;
-    return Array.isArray(all) && typeof all[0] === 'string' ? [all[0]] : [];
-  }),
-]);
-
-/** Queries whose account lifecycle is not already managed by Oxy. */
-function isAliaQuery(query: { queryKey: readonly unknown[] }): boolean {
-  const head = query.queryKey[0];
-  return !(typeof head === 'string' && OXY_QUERY_HEADS.has(head));
+  queryClient.getMutationCache().clear();
+  void queryClient.cancelQueries().then(() => queryClient.resetQueries());
 }
 
 /**
@@ -88,6 +72,6 @@ export function useAccountLifecycle(userId: string | null, sessionId: string | n
     const was = previous.current;
     previous.current = userId;
     if (was === null || was === userId) return;
-    resetAccountSession(queryClient, userId);
+    resetAccountSession(queryClient);
   }, [userId, queryClient]);
 }

@@ -16,7 +16,8 @@ import { describe, expect, it } from 'vitest';
  * colour could see it, and only an agent WITH a colour showed it at all, since
  * `undefined` renders no wrapper.
  *
- * So the shape is asserted: `asChild`, over a child that carries `flex-1`.
+ * So the shape is asserted: `asChild`, over a child whose style fills (`flexGrow: 1`, what
+ * `flex-1` drew).
  * Measured in Chromium at an 800px viewport, and this is what the numbers are:
  *
  *   | wrapper                | greeting top | composer top |
@@ -44,6 +45,18 @@ function scopeAndChild(text: string): string {
   return text.slice(start, childEnd + 1);
 }
 
+/** The scope's entry in the module's sheet (`scope: { … }`). */
+function scopeEntry(text: string): string {
+  const match = /\n {2}scope: \{[\s\S]*?\n {2}\},/.exec(text);
+  if (!match) throw new Error('no `scope` entry in the agent theme scope’s sheet');
+  return match[0];
+}
+
+/** Whether the scope's style fills the panel, as `flex-1` did. */
+function fills(text: string): boolean {
+  return /\bflexGrow: 1\b/.test(scopeEntry(text));
+}
+
 describe('the agent thread’s theme scope', () => {
   const opening = scopeAndChild(SOURCE);
 
@@ -61,7 +74,8 @@ describe('the agent thread’s theme scope', () => {
   });
 
   it('hands `asChild` an element that fills the panel', () => {
-    expect(opening).toMatch(/className="[^"]*\bflex-1\b/);
+    expect(opening).toContain('style={styles.scope}');
+    expect(fills(SOURCE)).toBe(true);
   });
 
   /**
@@ -71,7 +85,8 @@ describe('the agent thread’s theme scope', () => {
    * string that stopped matching when `bg-background` joined the list, and then
    * a loose one that hit the FIRST `flex-1` in the file — which belongs to the
    * loading state twenty lines up, not to the scope. Both left the subject
-   * untouched while reporting they had changed it.
+   * untouched while reporting they had changed it. The fill is read from the
+   * scope's own sheet entry, and broken there.
    */
   function withBrokenScope(edit: (opening: string) => string): string {
     const opening = scopeAndChild(SOURCE);
@@ -80,15 +95,21 @@ describe('the agent thread’s theme scope', () => {
 
   it.each([
     ['without asChild', withBrokenScope((o) => o.replace(' asChild', ''))],
-    ['without flex-1', withBrokenScope((o) => o.replace(/\bflex-1\s*/, ''))],
+    ['without its style', withBrokenScope((o) => o.replace(' style={styles.scope}', ''))],
+    [
+      'without the fill',
+      SOURCE.replace(scopeEntry(SOURCE), scopeEntry(SOURCE).replace(/flexGrow: 1,\s*/, '')),
+    ],
   ])('would catch a scope %s', (_label, broken) => {
-    // Both controls, because the two spellings of this bug produce the same
-    // collapsed screen and either one alone would leave the other unguarded.
+    // Every control, because each spelling of this bug produces the same
+    // collapsed screen and any one alone would leave the others unguarded.
     expect(broken).not.toBe(SOURCE);
 
     const brokenOpening = scopeAndChild(broken);
     const sound =
-      brokenOpening.includes('asChild') && /className="[^"]*\bflex-1\b/.test(brokenOpening);
+      brokenOpening.includes('asChild') &&
+      brokenOpening.includes('style={styles.scope}') &&
+      fills(broken);
 
     expect(sound).toBe(false);
   });

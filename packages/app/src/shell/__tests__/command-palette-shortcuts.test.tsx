@@ -32,7 +32,7 @@ vi.mock('@oxy.so/bloom/icons/RiStarFill', () => ({ RiStarFill: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiTeamLine', () => ({ RiTeamLine: () => null }));
 vi.mock('@oxy.so/bloom/icons/RiTimerLine', () => ({ RiTimerLine: () => null }));
 vi.mock('@gemies/sdk/runtime', () => ({
-  useConversations: () => ({ data: undefined }),
+  useConversations: () => ({ conversations: [] }),
   useConversationCollections: () => ({ collections: [], pinned: [], favorites: [] }),
 }));
 vi.mock('@/shared/i18n/use-translation', () => ({

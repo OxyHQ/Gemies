@@ -6,15 +6,17 @@ import { useConversation } from '@gemies/sdk/runtime';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo } from 'react';
 import { View } from 'react-native';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 const ChatConversationPage = () => {
+  const styles = useStyles();
   const { id, agentId } = useLocalSearchParams<{ id: string; agentId?: string }>();
   const router = useRouter();
   // A group conversation has no lead: its members, read from the conversation and the person's
   // own agents, are what the chat draws. The chat waits for them (its skeleton) rather than
   // greeting as Alia for a moment.
-  const { data: conversation } = useConversation(id);
-  const { data: agents } = useMyAgents();
+  const { value: conversation } = useConversation(id);
+  const { value: agents } = useMyAgents();
   const memberIds = conversation?.memberAgentIds;
   const group = useMemo(() => groupMembersOf(memberIds, agents), [memberIds, agents]);
   const waitingForMembers = memberIds !== undefined && memberIds.length > 0 && group === undefined;
@@ -27,7 +29,7 @@ const ChatConversationPage = () => {
   // and never writes in it, so it opens with no composer.
   if (conversation?.kind === 'gemies') {
     return (
-      <View className="flex-1 bg-background">
+      <View style={styles.surface}>
         <GemieBetweenGemies conversationId={id} onBack={back} />
       </View>
     );
@@ -44,3 +46,7 @@ const ChatConversationPage = () => {
 };
 
 export default ChatConversationPage;
+
+const useStyles = createTokenStyles((t) => ({
+  surface: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', backgroundColor: t.background },
+}));

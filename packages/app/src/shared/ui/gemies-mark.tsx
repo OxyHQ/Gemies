@@ -1,4 +1,4 @@
-import { Image } from '@/shared/ui/image';
+import { Image } from 'expo-image';
 
 /** The Gemies app icon (three gemies on green), the same image as the favicon and the PWA icon. */
 const GEMIES_ICON = require('../../../assets/images/gemies-icon.png');

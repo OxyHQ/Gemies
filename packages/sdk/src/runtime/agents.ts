@@ -1,7 +1,8 @@
+import { type RecordView, skip } from '@oxy.so/bloom-data';
 import { useOxy } from '@oxy.so/services/ui/client';
-import { useQuery } from '@tanstack/react-query';
-import { useGemieApi } from './api';
-import { gemieQueryKeys } from './query-keys';
+import { type GemieApi, useGemieApi } from './api';
+import { answerSource, useAnswer } from './data/answer';
+import { gemieRead } from './data/read';
 import { API_ROUTES } from './routes';
 
 /**
@@ -44,8 +45,6 @@ export const GEMIE_FEATURES = {
   documents: 'attachments.documents',
   images: 'attachments.images',
 } as const;
-
-const FIVE_MINUTES = 1000 * 60 * 5;
 
 /** A string, or nothing: the profile is read field by field rather than cast. */
 const text = (value: unknown): string | undefined =>
@@ -102,36 +101,56 @@ export function readAgentFeatures(value: unknown): GemieAgentFeature[] {
   });
 }
 
+/**
+ * The profile of an agent, by its id: copied to the account's durable store, so a chat opened on
+ * it draws its face and greeting from the first frame. `null` when the server's answer had no
+ * profile's shape.
+ */
+export const agentProfile = answerSource('gemies.agent-profile', {
+  ...gemieRead,
+  persist: true,
+  key: (_api: GemieApi, agentId: string) => agentId,
+  stale: 5 * 60_000,
+  retry: 1,
+  load: async ({ signal }, api, agentId) =>
+    readAgentProfile((await api.get<unknown>(API_ROUTES.agents.profile(agentId), { signal })).data),
+});
+
+/**
+ * What of Alia's features an agent offers the person present. A gate's state moves with the
+ * person's plan in another app, so it is read each time a chat opens (never fresh).
+ */
+export const agentFeatures = answerSource('gemies.agent-features', {
+  ...gemieRead,
+  key: (_api: GemieApi, agentId: string) => agentId,
+  retry: 1,
+  load: async ({ signal }, api, agentId) =>
+    readAgentFeatures(
+      (await api.get<unknown>(API_ROUTES.agents.features(agentId), { signal })).data,
+    ),
+});
+
 /** The profile of the agent `agentId`, or nothing for Alia (no id) and while it loads. */
-export function useAgentProfile(agentId: string | undefined) {
-  const { isAuthenticated } = useOxy();
+export function useAgentProfile(agentId: string | undefined): RecordView<GemieAgentProfile | null> {
+  const { canUsePrivateApi } = useOxy();
   const api = useGemieApi();
-  return useQuery({
-    queryKey: gemieQueryKeys.agents.profile(agentId ?? ''),
-    queryFn: async () =>
-      readAgentProfile((await api.get<unknown>(API_ROUTES.agents.profile(agentId ?? ''))).data),
-    enabled: agentId !== undefined && isAuthenticated,
-    staleTime: FIVE_MINUTES,
-    retry: 1,
-  });
+  return useAnswer(
+    agentProfile,
+    ...(agentId !== undefined && canUsePrivateApi ? [api, agentId] : [skip]),
+  );
 }
 
 /**
  * What of Alia's features the agent `agentId` offers the person present. Alia (no id) gates
- * nothing, so she has no answer to wait for; see `featureRows` for what the chat makes of it.
+ * nothing, so she has no answer to wait for; see `featureOffer` for what the chat makes of it.
  */
-export function useAgentFeatures(agentId: string | undefined) {
-  const { isAuthenticated } = useOxy();
+export function useAgentFeatures(agentId: string | undefined): RecordView<GemieAgentFeature[]> {
+  const { canUsePrivateApi } = useOxy();
   const api = useGemieApi();
-  return useQuery({
-    queryKey: gemieQueryKeys.agents.features(agentId ?? ''),
-    queryFn: async () =>
-      readAgentFeatures((await api.get<unknown>(API_ROUTES.agents.features(agentId ?? ''))).data),
-    enabled: agentId !== undefined && isAuthenticated,
-    // A gate's state moves with the person's plan in another app: read it each time the chat opens.
-    staleTime: 0,
-    retry: 1,
-  });
+  return useAnswer(
+    agentFeatures,
+    ...(agentId !== undefined && canUsePrivateApi ? [api, agentId] : [skip]),
+  );
 }
 
 /** How an attachment feature is offered: attached, an upsell, or not at all. */

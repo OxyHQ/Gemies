@@ -5,16 +5,17 @@ import { SettingsSkeletonRows } from '@/shared/ui/skeletons';
 import {
   ConnectorLogo,
   GrantSwitchRow,
-  connectorQueryKeys,
+  connections as connectionsSource,
   useConnections,
 } from '@gemies/sdk/connectors';
+import { useStore, withStore } from '@oxy.so/bloom-data';
 import { AgentCreatorSection } from '@oxy.so/bloom/agent-creator';
 import { Button } from '@oxy.so/bloom/button';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
-import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /** This section's own strings. */
 const K = 'agents.editor.connectors';
@@ -28,10 +29,11 @@ const grantOf = (connectionId: string) => `mcp:${connectionId}`;
  * it was given. Connecting more is the store's (`/connectors`).
  */
 export function AgentConnectorsSection({ agentId, name }: { agentId: string; name: string }) {
+  const styles = useStyles();
   const { t } = useTranslation();
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const { data: agents, isPending: agentsPending } = useMyAgents();
+  const store = useStore();
+  const { value: agents, isLoading: agentsPending } = useMyAgents();
   const connections = useConnections();
   const update = useUpdateAgent();
   const agent = agents?.find((candidate) => candidate._id === agentId);
@@ -43,23 +45,23 @@ export function AgentConnectorsSection({ agentId, name }: { agentId: string; nam
     try {
       await update.mutateAsync({ id: agentId, updates: { capabilityGrants: next } });
       // Settings › Connected says which gemies use each account.
-      await queryClient.invalidateQueries({ queryKey: connectorQueryKeys.connected });
+      withStore(store, () => connectionsSource.invalidateAll());
     } catch {
       toast.error(t('settings.saveFailed'));
     }
   };
 
-  const rows = (connections.data ?? []).filter((connection) => connection.status === 'running');
+  const rows = (connections.value ?? []).filter((connection) => connection.status === 'running');
 
   return (
     <AgentCreatorSection title={t(`${K}.title`)}>
-      {agentsPending || connections.isPending ? (
+      {agentsPending || connections.isLoading ? (
         <SettingsSkeletonRows control="switch" rows={2} />
       ) : (
         <>
           {rows.length === 0 ? (
-            <View className="py-2.5 pe-2.5">
-              <Text variant="body-2-regular" className="text-text-secondary">
+            <View style={styles.section}>
+              <Text variant="body-2-regular" style={styles.mutedText}>
                 {t(`${K}.empty`, { name })}
               </Text>
             </View>
@@ -90,7 +92,7 @@ export function AgentConnectorsSection({ agentId, name }: { agentId: string; nam
               />
             ))
           )}
-          <View className="flex-row border-t border-border py-2.5 pe-2.5">
+          <View style={styles.row}>
             <Button
               size="sm"
               appearance="outline"
@@ -105,3 +107,15 @@ export function AgentConnectorsSection({ agentId, name }: { agentId: string; nam
     </AgentCreatorSection>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  section: { paddingVertical: 10, paddingInlineEnd: 10 },
+  mutedText: { color: t.mutedForeground },
+  row: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderColor: t.border,
+    paddingVertical: 10,
+    paddingInlineEnd: 10,
+  },
+}));

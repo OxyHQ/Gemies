@@ -15,7 +15,7 @@ import { RiCloseCircleLine } from '@oxy.so/bloom/icons/RiCloseCircleLine';
 import { Item } from '@oxy.so/bloom/item';
 import { Muted, Text } from '@oxy.so/bloom/typography';
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /**
  * AgentResultCard — the summary an agent run leaves in the chat when it ends.
@@ -76,7 +76,7 @@ export const AgentResultCard = React.memo(function AgentResultCard({
   return (
     <Card>
       <CardHeader>
-        <View className="flex-row items-center gap-2">
+        <View style={styles.header}>
           <Badge
             variant="subtle"
             color={isSuccess ? 'success' : hasError ? 'error' : 'default'}
@@ -88,7 +88,7 @@ export const AgentResultCard = React.memo(function AgentResultCard({
                   : 'chat.agentRun.unknown',
             )}
           />
-          <View className="min-w-0 flex-1">
+          <View style={styles.title}>
             <Text variant="headline-semibold">
               {t(isSuccess ? 'chat.agentRun.taskComplete' : 'chat.agentRun.taskFailed')}
             </Text>
@@ -97,7 +97,7 @@ export const AgentResultCard = React.memo(function AgentResultCard({
         </View>
       </CardHeader>
       <CardBody>
-        <View className="gap-3">
+        <View style={styles.body}>
           <Muted>{stats.join(' · ')}</Muted>
 
           {hasError && lastError ? <Admonition type="error">{lastError}</Admonition> : null}
@@ -122,4 +122,10 @@ export const AgentResultCard = React.memo(function AgentResultCard({
       </CardBody>
     </Card>
   );
+});
+
+const styles = StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  body: { gap: 12 },
 });

@@ -1,4 +1,3 @@
-/// <reference types="nativewind/types" />
 // @gemies/sdk/voice — Alia voice surface
 // The voice call (speech to speech through Alia's /v1/voice/session and Kaana),
 // its audio engine, audio visualisation, ambient wave and sound effects. Split

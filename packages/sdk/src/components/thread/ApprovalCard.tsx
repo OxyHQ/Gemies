@@ -1,7 +1,7 @@
 import { Notification } from '@oxy.so/bloom/notification';
 import { Muted } from '@oxy.so/bloom/typography';
 import React, { useCallback, useState } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useLabels } from '../../lib/labels';
 import {
   ApprovalExpiredError,
@@ -85,7 +85,7 @@ function ApprovalCard({
 
   if (entry.outcome !== 'pending') {
     return (
-      <View className="px-4 py-1" accessibilityRole="text">
+      <View style={styles.resolved} accessibilityRole="text">
         <Muted>{t(`chat.approval.resolved.${entry.outcome}`, { tool: entry.tool })}</Muted>
       </View>
     );
@@ -112,3 +112,7 @@ function ApprovalCard({
     />
   );
 }
+
+const styles = StyleSheet.create({
+  resolved: { paddingHorizontal: 16, paddingVertical: 4 },
+});

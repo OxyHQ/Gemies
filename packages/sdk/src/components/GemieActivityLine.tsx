@@ -1,13 +1,14 @@
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 import { memo } from 'react';
-import { Text } from 'react-native';
+import { type StyleProp, Text, type TextStyle } from 'react-native';
 import { useConversationActivityText } from '../realtime/activity-text';
 
 export { activityText, useConversationActivityText } from '../realtime/activity-text';
 
 export interface GemieActivityLineProps {
   conversationId: string | null | undefined;
-  /** Classes for the line (NativeWind); a small muted line by default. */
-  className?: string;
+  /** Laid over the line's own look: small text in the theme's primary. */
+  style?: StyleProp<TextStyle>;
 }
 
 /**
@@ -16,13 +17,18 @@ export interface GemieActivityLineProps {
  */
 export const GemieActivityLine = memo(function GemieActivityLine({
   conversationId,
-  className = 'text-xs text-primary',
+  style,
 }: GemieActivityLineProps) {
+  const styles = useStyles();
   const text = useConversationActivityText(conversationId);
   if (!text) return null;
   return (
-    <Text className={className} numberOfLines={1} accessibilityLiveRegion="polite">
+    <Text style={[styles.line, style]} numberOfLines={1} accessibilityLiveRegion="polite">
       {text}
     </Text>
   );
 });
+
+const useStyles = createTokenStyles((t) => ({
+  line: { fontSize: 12, lineHeight: 16, color: t.primary },
+}));

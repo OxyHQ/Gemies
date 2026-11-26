@@ -14,7 +14,7 @@ import {
 } from '@oxy.so/bloom/select';
 import { TextFieldInput } from '@oxy.so/bloom/text-field';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 interface FormField {
   name: string;
@@ -43,7 +43,7 @@ export function FormRenderer({ data, onSubmit }: FormRendererProps) {
   };
 
   return (
-    <View className="gap-4">
+    <View style={styles.fields}>
       {fields.map((field, i) =>
         field.type === 'checkbox' ? (
           <Checkbox
@@ -92,10 +92,15 @@ export function FormRenderer({ data, onSubmit }: FormRendererProps) {
           canvas without a path back into the conversation — and the button
           used to render regardless, a Submit that did nothing (#608, rule 6). */}
       {onSubmit === undefined ? null : (
-        <View className="mt-2">
+        <View style={styles.submit}>
           <Button onPress={() => onSubmit(formValues)}>{t('panels.form.submit')}</Button>
         </View>
       )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  fields: { gap: 16 },
+  submit: { marginTop: 8 },
+});

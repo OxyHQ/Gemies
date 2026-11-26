@@ -1,4 +1,3 @@
-/// <reference types="nativewind/types" />
 /**
  * The connected-accounts leaf entry (ADR 0035 as amended): the WhatsApp and Telegram accounts a
  * person connects once and grants to their gemies. `GemieConnectedAccounts` is Settings ›
@@ -14,6 +13,13 @@ export {
   GEMIE_ACCOUNT_PLATFORMS,
   GEMIE_ACCOUNT_REPLIES,
   GEMIE_ACCOUNT_STATUSES,
+  connectAccount,
+  connectedAccountChats,
+  connectedAccountQr,
+  connectedAccounts,
+  grantAccount,
+  removeAccount,
+  updateAccount,
   useConnectedAccountChats,
   useConnectedAccountMutations,
   useConnectedAccountQr,

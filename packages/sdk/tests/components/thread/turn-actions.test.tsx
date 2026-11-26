@@ -156,7 +156,7 @@ vi.mock('../../../src/components/thread/TurnStatusLine', async () => ({
 vi.mock('../../../src/components/thread/NewConversationOffer', async () => ({
   NewConversationOffer: await stub('Offer')(),
 }));
-vi.mock('../../../src/components/Image', async () => ({ Image: await stub('Image')() }));
+vi.mock('expo-image', async () => ({ Image: await stub('Image')() }));
 vi.mock('@oxy.so/bloom/agent-progress', async () => ({
   AgentProgress: await stub('AgentProgress')(),
 }));
@@ -220,13 +220,13 @@ vi.mock('../../../src/runtime/use-conversation-stream', () => ({
   }),
 }));
 vi.mock('../../../src/runtime/conversations', () => ({
-  ConversationNotFoundError: class ConversationNotFoundError extends Error {},
-  useConversation: () => ({ data: undefined, isLoading: false, isFetching: false }),
-  useCreateConversation: () => ({ mutateAsync: async () => ({}) }),
-  useDeleteConversation: () => ({ mutateAsync: async () => {} }),
-  useReadConversation: () => async () => ({ messages: [] }),
+  useConversation: () => ({ value: undefined, isLoading: false, isFetching: false }),
+  useCreateConversation: () => ({ run: async () => ({}) }),
+  useDeleteConversation: () => ({ run: async () => {} }),
   useMarkConversationRead: () => () => undefined,
-  useClearConversation: () => ({ mutateAsync: async () => {} }),
+  useConversationsClient: () => ({}),
+  useRefreshConversation: () => () => undefined,
+  useClearConversation: () => ({ run: async () => {} }),
 }));
 vi.mock('../../../src/runtime/attachment-utils', () => ({
   buildMessageContent: async (text: string) => ({ content: text, dropped: [] }),
@@ -236,11 +236,10 @@ vi.mock('@oxy.so/services/ui/client', () => ({
     user: { id: 'me' },
     isAuthenticated: true,
     canUsePrivateApi: true,
-    isAccountCacheReady: true,
   }),
 }));
 
-const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query');
+const { DataProvider, Store } = await import('@oxy.so/bloom-data');
 const { BloomThemeProvider } = await import('@oxy.so/bloom/theme');
 const { GemieThread } = await import('../../../src/components/thread/GemieThread');
 const { useConversationThread, useTurnEdit, useComposerDraftStore } = await import(
@@ -285,13 +284,13 @@ function Harness({ callActive = false }: { callActive?: boolean }) {
 
 let renderer: ReactTestRenderer | null = null;
 async function mount(props: { callActive?: boolean } = {}): Promise<ReactTestRenderer> {
-  const client = new QueryClient();
+  const client = new Store();
   await act(async () => {
     renderer = create(
       <BloomThemeProvider mode="light">
-        <QueryClientProvider client={client}>
+        <DataProvider store={client}>
           <Harness {...props} />
-        </QueryClientProvider>
+        </DataProvider>
       </BloomThemeProvider>,
     );
   });

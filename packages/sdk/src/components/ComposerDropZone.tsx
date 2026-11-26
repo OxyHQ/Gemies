@@ -3,6 +3,7 @@ import { useLabels } from '../lib/labels';
 import { Text } from '@oxy.so/bloom/typography';
 import React from 'react';
 import { Platform, View } from 'react-native';
+import { createTokenStyles, tokenAlpha } from '@oxy.so/bloom/theme';
 /**
  * Dropping files onto the composer, on web, where such a gesture exists.
  *
@@ -141,6 +142,7 @@ export function useComposerDropTarget({
  * with people who do both.
  */
 export function ComposerDropOverlay({ visible, enabled }: { visible: boolean; enabled: boolean }) {
+  const styles = useStyles();
   const labels = useLabels();
   if (!visible) return null;
   return (
@@ -149,11 +151,9 @@ export function ComposerDropOverlay({ visible, enabled }: { visible: boolean; en
       accessibilityRole="alert"
       accessibilityLiveRegion="polite"
       // 26: the corner Bloom's composer pill wears at one line and past it.
-      className="absolute inset-0 z-20 items-center justify-center rounded-[26px] border-2 border-dashed border-primary bg-background/90"
+      style={styles.dropZone}
     >
-      <Text className="text-sm font-medium text-foreground">
-        {enabled ? labels.dropHint : labels.dropUnavailable}
-      </Text>
+      <Text style={styles.hint}>{enabled ? labels.dropHint : labels.dropUnavailable}</Text>
     </View>
   );
 }
@@ -233,3 +233,19 @@ export function useComposerPasteTarget({
     return () => document.removeEventListener('paste', onPaste);
   }, [elementId]);
 }
+
+const useStyles = createTokenStyles((t) => ({
+  dropZone: {
+    position: 'absolute',
+    inset: 0,
+    zIndex: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 26,
+    borderStyle: 'dashed',
+    borderWidth: 2,
+    borderColor: t.primary,
+    backgroundColor: tokenAlpha(t.background, 0.9),
+  },
+  hint: { fontSize: 14, fontWeight: 500, color: t.foreground, lineHeight: 20 },
+}));

@@ -16,7 +16,7 @@ import { Textarea } from '@oxy.so/bloom/textarea';
 import { toast } from '@oxy.so/bloom/toast';
 import { Muted, Text } from '@oxy.so/bloom/typography';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /**
  * What people said about the agent, and the caller's own review — written,
@@ -87,7 +87,7 @@ export function AgentReviewsSection({
       {showForm && (
         <Card appearance="outline">
           <CardBody>
-            <View className="gap-3 py-1">
+            <View style={styles.form}>
               <RatingInput
                 value={draft.rating || null}
                 onChange={draft.setRating}
@@ -100,7 +100,7 @@ export function AgentReviewsSection({
                 rows={3}
                 autoResize
               />
-              <View className="flex-row justify-end gap-2">
+              <View style={styles.formActions}>
                 <Button
                   size="sm"
                   tone="neutral"
@@ -127,13 +127,13 @@ export function AgentReviewsSection({
       {reviews.length === 0 && !showForm ? (
         <Muted>{t('agents.noReviews')}</Muted>
       ) : (
-        <View className="gap-3">
+        <View style={styles.reviews}>
           {reviews.map((review) => (
-            <View key={review._id} className="gap-1">
-              <View className="flex-row items-center gap-2">
+            <View key={review._id} style={styles.review}>
+              <View style={styles.reviewHeader}>
                 <Text variant="body-medium">{review.userId?.username || 'User'}</Text>
                 <Rating value={review.rating} size="sm" />
-                <View className="flex-1" />
+                <View style={styles.spacer} />
                 {viewerId !== null && review.userId?._id === viewerId && (
                   <Button
                     size="xs"
@@ -153,3 +153,12 @@ export function AgentReviewsSection({
     </AgentDetailSection>
   );
 }
+
+const styles = StyleSheet.create({
+  form: { gap: 12, paddingVertical: 4 },
+  formActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  reviews: { gap: 12 },
+  review: { gap: 4 },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  spacer: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+});

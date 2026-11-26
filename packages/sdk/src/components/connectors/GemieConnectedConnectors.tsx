@@ -18,6 +18,7 @@ import {
   useConnectorActions,
 } from '../../runtime/connectors';
 import { ConnectorLogo } from './ConnectorLogo';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /** This component's own strings. */
 const K = 'gemie.connectors';
@@ -46,6 +47,7 @@ export function GemieConnectedConnectors({
   onBrowse,
   t = englishCopy,
 }: GemieConnectedConnectorsProps) {
+  const styles = useStyles();
   const connections = useConnections();
   const actions = useConnectorActions({ returnTo: connectorReturnTo(nativeScheme) });
   const [pending, setPending] = useState<string | null>(null);
@@ -54,7 +56,7 @@ export function GemieConnectedConnectors({
   const reconnect = async (connection: Connection) => {
     setPending(connection._id);
     try {
-      const done = await actions.reconnect.mutateAsync(connection._id);
+      const done = await actions.reconnect.run(connection._id);
       if (done?.status === 'running') {
         toast.success(t(`${K}.reconnected`, { name: connection.displayName }));
       }
@@ -77,7 +79,7 @@ export function GemieConnectedConnectors({
     if (!ok) return;
     setPending(connection._id);
     try {
-      await actions.disconnect.mutateAsync(connection._id);
+      await actions.disconnect.run(connection._id);
       toast.success(t(`${K}.disconnected`, { name }));
     } catch {
       toast.error(t(`${K}.disconnectFailed`));
@@ -86,22 +88,27 @@ export function GemieConnectedConnectors({
     }
   };
 
-  if (connections.isPending) return <ConnectedSkeleton />;
+  if (connections.isLoading) return <ConnectedSkeleton />;
 
-  if (connections.isError) {
+  if (connections.status === 'error') {
     return (
-      <View className="items-start gap-2 py-2.5">
-        <Text variant="body-2-regular" className="text-text-secondary">
+      <View style={styles.failure}>
+        <Text variant="body-2-regular" style={styles.muted}>
           {t(`${K}.connected.loadFailed`)}
         </Text>
-        <Button size="sm" appearance="outline" tone="neutral" onPress={() => connections.refetch()}>
+        <Button
+          size="sm"
+          appearance="outline"
+          tone="neutral"
+          onPress={() => void connections.refresh()}
+        >
           {t(`${K}.store.retry`)}
         </Button>
       </View>
     );
   }
 
-  const rows = connections.data ?? [];
+  const rows = connections.value ?? [];
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -114,9 +121,9 @@ export function GemieConnectedConnectors({
   }
 
   return (
-    <View className="gap-1">
-      <View className="flex-row items-center justify-between gap-3 pb-1">
-        <Text variant="body-2-regular" className="flex-1 text-text-secondary">
+    <View style={styles.connections}>
+      <View style={styles.intro}>
+        <Text variant="body-2-regular" style={styles.description}>
           {t(`${K}.connected.description`)}
         </Text>
         <Button size="sm" appearance="outline" tone="neutral" onPress={onBrowse}>
@@ -124,17 +131,14 @@ export function GemieConnectedConnectors({
         </Button>
       </View>
       {rows.map((connection, index) => (
-        <View
-          key={connection._id}
-          className={`gap-2 py-3 ${index === 0 ? '' : 'border-t border-border'}`}
-        >
-          <View className="flex-row items-center gap-3">
+        <View key={connection._id} style={[styles.connectionRow, index > 0 && styles.divider]}>
+          <View style={styles.connection}>
             <ConnectorLogo name={connection.displayName} logoUrl={connection.logoUrl} size={36} />
-            <View className="flex-1 gap-0.5">
+            <View style={styles.connectionText}>
               <Text variant="body-2-semibold" numberOfLines={1}>
                 {connection.displayName}
               </Text>
-              <Text variant="body-2-regular" className="text-text-secondary" numberOfLines={1}>
+              <Text variant="body-2-regular" style={styles.muted} numberOfLines={1}>
                 {[
                   connection.accountLabel ??
                     (connection.source === 'custom' ? connection.config.url : null),
@@ -152,16 +156,16 @@ export function GemieConnectedConnectors({
             />
           </View>
           {connection.status !== 'running' && connection.statusMessage ? (
-            <Text variant="body-2-regular" className="text-text-secondary">
+            <Text variant="body-2-regular" style={styles.muted}>
               {connection.statusMessage}
             </Text>
           ) : null}
           {connection.usedBy.length > 0 ? (
-            <Text variant="body-2-regular" className="text-text-secondary">
+            <Text variant="body-2-regular" style={styles.muted}>
               {t(`${K}.usedBy`, { names: connection.usedBy.map((gemie) => gemie.name).join(', ') })}
             </Text>
           ) : null}
-          <View className="flex-row flex-wrap gap-2">
+          <View style={styles.actions}>
             {connection.status !== 'running' ? (
               <Button
                 size="sm"
@@ -210,7 +214,7 @@ export function GemieConnectedConnectors({
         onClose={() => setRenaming(null)}
         onSave={async (accountLabel) => {
           if (!renaming) return;
-          await actions.rename.mutateAsync({ id: renaming._id, accountLabel });
+          await actions.rename.run(renaming._id, accountLabel);
         }}
         t={t}
       />
@@ -291,13 +295,14 @@ function RenameDialog({
 
 /** The list's shape while it is read: rows, never a spinner. */
 function ConnectedSkeleton() {
+  const styles = useStyles();
   return (
     <Skeleton.Region>
-      <View className="gap-4 py-2.5">
+      <View style={styles.loading}>
         {[0, 1].map((index) => (
-          <View key={index} className="flex-row items-center gap-3">
+          <View key={index} style={styles.connection}>
             <Skeleton.Box width={36} height={36} borderRadius={8} />
-            <View className="flex-1 gap-1.5">
+            <View style={styles.loadingText}>
               <Skeleton.Box width={140} height={14} />
               <Skeleton.Box width={200} height={12} />
             </View>
@@ -307,3 +312,24 @@ function ConnectedSkeleton() {
     </Skeleton.Region>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  failure: { alignItems: 'flex-start', gap: 8, paddingVertical: 10 },
+  muted: { color: t.mutedForeground },
+  connections: { gap: 4 },
+  intro: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingBottom: 4,
+  },
+  description: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', color: t.mutedForeground },
+  connection: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  connectionText: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 2 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  loading: { gap: 16, paddingVertical: 10 },
+  loadingText: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 6 },
+  connectionRow: { gap: 8, paddingVertical: 12 },
+  divider: { borderTopWidth: 1, borderColor: t.border },
+}));

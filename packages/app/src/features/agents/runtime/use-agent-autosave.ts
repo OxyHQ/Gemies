@@ -1,7 +1,4 @@
 import { readAgentLook } from '@gemies/sdk';
-import { gemieQueryKeys } from '@gemies/sdk/runtime';
-import { queryKeys } from '@/shared/api/query-keys';
-import { useQueryClient } from '@tanstack/react-query';
 import type { AvatarCharacter } from '@oxy.so/bloom/agent-avatar';
 import { errorStatus, errorMessage as getErrorMessage } from '@/shared/api/error-utils';
 import { useAgentLivePreview } from '@/features/agents/runtime/use-agent-live-preview';
@@ -239,7 +236,6 @@ export function useAgentIdentityAutosave(agent: Agent) {
   const { t } = useTranslation();
   const { oxyServices } = useOxy();
   const updateAgent = useUpdateAgent();
-  const queryClient = useQueryClient();
   const look = useAgentLivePreview(agent._id);
   const [identity, setIdentity] = useState<IdentityDraft>(() => ({
     name: agent.name ?? '',
@@ -326,11 +322,7 @@ export function useAgentIdentityAutosave(agent: Agent) {
         savedHandle.current = trimmed;
         // The name, the handle and the colour are the account's: everything that shows them (the
         // sidebar's list, the open chat's header through the SDK's profile) reads them again.
-        void Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.agents.mine }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agent._id) }),
-          queryClient.invalidateQueries({ queryKey: gemieQueryKeys.agents.profile(agent._id) }),
-        ]);
+        look.reread();
         toast.success(t('agents.autoSaved'), { id: SAVE_TOAST_ID });
       } catch (error: unknown) {
         toast.dismiss(SAVE_TOAST_ID);
@@ -356,7 +348,7 @@ export function useAgentIdentityAutosave(agent: Agent) {
         look.revert();
       }
     },
-    [agent._id, agent.identity, oxyServices, updateAgent.mutateAsync, queryClient, look, t],
+    [agent._id, agent.identity, oxyServices, updateAgent.mutateAsync, look, t],
   );
 
   const scheduleSave = useDebouncedWrite(saveIdentity);

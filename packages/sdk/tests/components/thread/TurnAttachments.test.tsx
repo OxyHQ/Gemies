@@ -14,11 +14,12 @@ const host = vi.hoisted(() => (name: string) => async () => {
     ReactModule.createElement(name, props, children);
 });
 vi.mock('react-native', async () => ({
+  ...(await import('../../support/style-stubs')).reactNativeStyles,
   View: await host('View')(),
   Linking: { openURL: vi.fn() },
   Platform: { OS: 'web' },
 }));
-vi.mock('../../../src/components/Image', async () => ({ Image: await host('Image')() }));
+vi.mock('expo-image', async () => ({ Image: await host('Image')() }));
 vi.mock('@oxy.so/bloom/message-media', async () => ({
   FileMessage: await host('FileMessage')(),
   ImageMessage: await host('ImageMessage')(),

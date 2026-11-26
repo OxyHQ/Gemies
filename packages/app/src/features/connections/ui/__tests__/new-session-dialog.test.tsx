@@ -23,7 +23,10 @@ vi.mock('expo-router', () => ({ useRouter: () => ({ push: state.push }) }));
 vi.mock('@/shared/i18n/use-translation', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
-vi.mock('react-native', () => ({ View: ({ children }: React.PropsWithChildren) => children }));
+vi.mock('react-native', async () => ({
+  ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
+  View: ({ children }: React.PropsWithChildren) => children,
+}));
 vi.mock('@oxy.so/bloom/typography', () => ({
   Muted: ({ children }: React.PropsWithChildren) => React.createElement('Muted', null, children),
 }));

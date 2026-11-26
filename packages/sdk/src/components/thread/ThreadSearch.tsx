@@ -9,7 +9,7 @@ import { ListItem } from '@oxy.so/bloom/list';
 import { Search } from '@oxy.so/bloom/search';
 import { Muted } from '@oxy.so/bloom/typography';
 import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, StyleSheet } from 'react-native';
 
 /**
  * Searching what was said in this thread, across every conversation in it.
@@ -49,7 +49,8 @@ function hitDay(createdAt: string, locale: string): string {
 export const ThreadSearch = ({ thread, onJump, onClose }: ThreadSearchProps) => {
   const { t, locale } = useLabels();
   const [query, setQuery] = useState('');
-  const { data: hits, isFetching, isError } = useThreadSearch(thread, query);
+  const { value: hits, isFetching, status } = useThreadSearch(thread, query);
+  const isError = status === 'error';
 
   /**
    * Told apart deliberately: nothing typed is not a search that found nothing.
@@ -60,12 +61,12 @@ export const ThreadSearch = ({ thread, onJump, onClose }: ThreadSearchProps) => 
   const found = hits ?? [];
 
   return (
-    <View className="absolute inset-x-0 top-0 z-20 px-4 pt-4" pointerEvents="box-none">
-      <View className="w-full max-w-[768px] self-center">
+    <View style={styles.overlay} pointerEvents="box-none">
+      <View style={styles.column}>
         <Card elevation="m">
           <CardBody>
-            <View className="flex-row items-center gap-2">
-              <View className="flex-1">
+            <View style={styles.searchRow}>
+              <View style={styles.search}>
                 <Search
                   label={t('chat.searchThreadPlaceholder')}
                   value={query}
@@ -87,15 +88,15 @@ export const ThreadSearch = ({ thread, onJump, onClose }: ThreadSearchProps) => 
             </View>
 
             {!asked ? (
-              <View className="px-1 py-4">
+              <View style={styles.hint}>
                 <Muted>{t('chat.searchThreadHint')}</Muted>
               </View>
             ) : isError ? (
-              <View className="px-1 py-4">
+              <View style={styles.hint}>
                 <Muted>{t('chat.searchThreadFailed')}</Muted>
               </View>
             ) : found.length === 0 ? (
-              <View className="px-1 py-4">
+              <View style={styles.hint}>
                 <Muted>
                   {isFetching ? t('chat.searchThreadSearching') : t('chat.searchThreadEmpty')}
                 </Muted>
@@ -105,7 +106,7 @@ export const ThreadSearch = ({ thread, onJump, onClose }: ThreadSearchProps) => 
                 // A height in px, not a percentage of a parent that has none:
                 // measured in Chromium, the list otherwise sized itself to its
                 // content and spilled the results over the thread behind it.
-                className="mt-2 max-h-96"
+                style={styles.results}
                 keyboardShouldPersistTaps="handled"
               >
                 {found.map((hit) => (
@@ -128,3 +129,19 @@ export const ThreadSearch = ({ thread, onJump, onClose }: ThreadSearchProps) => 
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  overlay: {
+    position: 'absolute',
+    insetInline: 0,
+    top: 0,
+    zIndex: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  column: { width: '100%', maxWidth: 768, alignSelf: 'center' },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  search: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  hint: { paddingHorizontal: 4, paddingVertical: 16 },
+  results: { marginTop: 8, maxHeight: 384 },
+});

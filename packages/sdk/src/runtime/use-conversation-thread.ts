@@ -1,6 +1,6 @@
 import { toast } from '@oxy.so/bloom/toast';
 import { useOxy } from '@oxy.so/services/ui/client';
-import { useQueryClient } from '@tanstack/react-query';
+import { useStore, withStore } from '@oxy.so/bloom-data';
 import { useCallback, useEffect, useId, useMemo, useRef } from 'react';
 import { useGemieActivityStore } from '../lib/activity-store';
 import { turnActivityState } from '../lib/turn-state';
@@ -14,22 +14,24 @@ import { useGemieRuntime } from './config';
 import { releaseAttachments, useComposerDraftStore } from './composer-draft-store';
 import { useConversationStore } from './conversation-store';
 import {
-  ConversationNotFoundError,
   useClearConversation,
   useConversation,
   useCreateConversation,
   useDeleteConversation,
   useMarkConversationRead,
-  useReadConversation,
 } from './conversations';
-import { gemieQueryKeys } from './query-keys';
+import {
+  bumpConversation,
+  ConversationNotFoundError,
+  forgetConversation,
+  mergeMessages,
+} from './data/conversations';
 import { reportDroppedAttachments, useStartConversation } from './use-start-conversation';
 import { createRoomLedger } from './room-events';
 import { applyMessageReaction, type MessageReactionSnapshot } from './message-reactions';
 import { useConversationStream } from './use-conversation-stream';
 import { useRoomEvents } from './use-room-events';
 import { useGemieRealtime } from '../realtime/react';
-import { bumpConversation, mergeMessages } from '../realtime/cache';
 import type { RealtimeData } from '../realtime/contract';
 import { normalizeConversationMessages } from './message-history';
 import type { Message, SendOptions } from './types';
@@ -102,7 +104,7 @@ export function useConversationThread({
   clientContext,
   hostTools,
 }: UseConversationThreadOptions = {}) {
-  const queryClient = useQueryClient();
+  const store = useStore();
   const labels = useLabels();
   const { host } = useGemieRuntime();
   const { user } = useOxy();
@@ -114,27 +116,31 @@ export function useConversationThread({
   const wasLoadingRef = useRef(false);
 
   const pendingInitialMessage = useConversationStore((state) => state.pendingInitialMessage);
+  // A rewritten thread (an edit or a regenerate on another device) is read again and replaces
+  // the screen's, unless a turn of this device is writing it now.
+  const loadingRef = useRef(false);
   const {
-    data: conversation,
+    value: conversation,
     error: conversationQueryError,
     isLoading: conversationQueryLoading,
     isFetching: conversationFetching,
-  } = useConversation(conversationId || '');
-  const createConversationMutation = useCreateConversation();
-  const { mutateAsync: deleteConversation } = useDeleteConversation();
-  const { mutateAsync: clearMessages } = useClearConversation();
+  } = useConversation(conversationId || undefined, {
+    onReload: (fresh) => {
+      if (!loadingRef.current) setMessages(fresh.messages ?? []);
+    },
+  });
+  const { run: createConversation } = useCreateConversation();
+  const { run: deleteConversation } = useDeleteConversation();
+  const { run: clearMessages } = useClearConversation();
 
   // A missing row is not a transient loading failure and the URL cannot become
-  // useful by staying open. Remove its cached detail/list state and return to a
-  // valid composer; the query itself has retries disabled, so this happens once.
+  // useful by staying open. Drop it from the account's store (its record and every
+  // list) and return to a valid composer; its read is never retried, so this happens once.
   useEffect(() => {
     if (!(conversationQueryError instanceof ConversationNotFoundError)) return;
-    queryClient.removeQueries({
-      queryKey: gemieQueryKeys.conversations.detail(conversationQueryError.conversationId),
-    });
-    void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.conversations.all });
+    withStore(store, () => forgetConversation(conversationQueryError.conversationId));
     host.closeConversation?.();
-  }, [conversationQueryError, queryClient, host]);
+  }, [conversationQueryError, store, host]);
 
   // One per open conversation: which speaking turn each message draws (the request's and the room's).
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new conversation is a new ledger
@@ -220,8 +226,10 @@ export function useConversationThread({
   useEffect(() => {
     if (wasLoadingRef.current === isLoading) return;
     wasLoadingRef.current = isLoading;
-    if (isLoading && conversationId) bumpConversation(queryClient, conversationId, lastUserText);
-  }, [isLoading, conversationId, queryClient, lastUserText]);
+    if (isLoading && conversationId) {
+      withStore(store, () => bumpConversation(conversationId, lastUserText));
+    }
+  }, [isLoading, conversationId, store, lastUserText]);
 
   // Sync chatId and load messages when conversation changes or when
   // seeded cache data upgrades to full data (messages go from empty to populated).
@@ -251,17 +259,14 @@ export function useConversationThread({
 
   // What this conversation gained elsewhere — a gemie writing on its own, a group member, another
   // device — arrives as the `conversation` event: merged by id, so the copy this device drew under
-  // the same id is replaced, never doubled. A rewritten thread (an edit or a regenerate on another
-  // device) is read again, unless a turn of this device is writing it now.
+  // the same id is replaced, never doubled.
   const realtime = useGemieRealtime();
-  const readConversation = useReadConversation();
   const markRead = useMarkConversationRead();
   // Opening a conversation with something unread reads it.
   const openUnread = (conversation?.unreadCount ?? 0) > 0;
   useEffect(() => {
     if (conversationId && openUnread) markRead(conversationId);
   }, [conversationId, openUnread, markRead]);
-  const loadingRef = useRef(isLoading);
   loadingRef.current = isLoading;
   useEffect(() => {
     if (!conversationId || !realtime) return;
@@ -274,20 +279,8 @@ export function useConversationThread({
         const incoming = normalizeConversationMessages(data.appended);
         setMessages((prev) => mergeMessages(prev, incoming));
       }
-      if (data.reload && !loadingRef.current) {
-        void queryClient
-          .fetchQuery({
-            queryKey: gemieQueryKeys.conversations.detail(conversationId),
-            queryFn: () => readConversation(conversationId),
-            staleTime: 0,
-          })
-          .then((fresh) => {
-            if (!loadingRef.current) setMessages(fresh.messages);
-          })
-          .catch(() => undefined);
-      }
     });
-  }, [conversationId, realtime, setMessages, queryClient, readConversation, markRead]);
+  }, [conversationId, realtime, setMessages, markRead]);
 
   // Send pending initial message for new conversations
   useEffect(() => {
@@ -397,15 +390,11 @@ export function useConversationThread({
    */
   const ensureConversation = useCallback(async (): Promise<string | undefined> => {
     if (conversationId) return conversationId;
-    try {
-      const created = await createConversationMutation.mutateAsync({ agentId });
-      host.openConversation?.(created.id);
-      return created.id;
-    } catch {
-      // useCreateConversation.onError already told the person.
-      return undefined;
-    }
-  }, [conversationId, createConversationMutation, agentId, host]);
+    // A refusal was already told (useCreateConversation's toast).
+    const created = await createConversation({ agentId }).catch(() => undefined);
+    if (created) host.openConversation?.(created.id);
+    return created?.id;
+  }, [conversationId, createConversation, agentId, host]);
 
   /** Leave this thread for an empty one. Nothing is deleted: the conversation stays in the list. */
   const startOver = useCallback(() => {
@@ -550,9 +539,9 @@ export function useConversationThread({
    * and nothing else, and the sync effect above, seeing a cached history and
    * no messages, read that as a data upgrade and hydrated it straight back
    * under a dialog that had just promised the action could not be undone.
-   * `useClearConversation` empties the cache in its `onSuccess`, which has run
-   * by the time `mutateAsync` resolves, so the local reset that follows has
-   * nothing left to be undone by.
+   * `useClearConversation` empties the conversation's record, settled by the
+   * time `run` resolves, so the local reset that follows has nothing left to be
+   * undone by.
    *
    * A turn still streaming is stopped first rather than refused: the person
    * has just confirmed they want the thread empty, and an answer that kept
@@ -564,8 +553,8 @@ export function useConversationThread({
    * finished and stored, so the clear removes it — and the clear that follows
    * is of a thread nothing is writing to.
    *
-   * A refusal keeps everything: the screen is not reset, the cache is not
-   * touched, and the error is surfaced — a cleared view whose history returns
+   * A refusal keeps everything: the screen is not reset, the record is put
+   * back as it was, and the error is surfaced — a cleared view whose history returns
    * on the next fetch is exactly the state this exists to end. A turn that
    * could not be stopped is such a refusal.
    *

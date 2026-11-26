@@ -31,17 +31,15 @@ import {
 } from '../../runtime/connected-accounts';
 import { GrantSwitchRow } from '../connectors/GrantSwitchRow';
 import { K, PLATFORM_LABELS, PlatformMark, accountName, statusText } from './account-parts';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /** The value the answering select gives "nobody answers on its own". */
 const NOBODY = '';
 
 /** One row of the list: the same rhythm as a settings row, a divider above all but the first. */
 function Row({ children, first }: { children: React.ReactNode; first?: boolean }) {
-  return (
-    <View className={`gap-3 py-2.5 pe-2.5 ${first ? '' : 'border-t border-border'}`}>
-      {children}
-    </View>
-  );
+  const styles = useStyles();
+  return <View style={[styles.listRow, !first && styles.divider]}>{children}</View>;
 }
 
 function Choice<T extends string>({
@@ -57,9 +55,10 @@ function Choice<T extends string>({
   disabled: boolean;
   onChange: (value: T) => void;
 }) {
+  const styles = useStyles();
   return (
-    <View className="gap-1">
-      <Text variant="body-2-regular" className="text-text-secondary">
+    <View style={styles.choice}>
+      <Text variant="body-2-regular" style={styles.muted}>
         {label}
       </Text>
       <Select
@@ -107,16 +106,17 @@ function Code({ value }: { value: string | null | undefined }) {
  * second step is left.
  */
 function TelegramSteps({ link, t }: { link: string | null; t: Translate }) {
+  const styles = useStyles();
   return (
-    <View className="gap-2">
-      <Text variant="body-2-regular" className="text-text-secondary">
+    <View style={styles.steps}>
+      <Text variant="body-2-regular" style={styles.muted}>
         {t(`${K}.telegram.note`)}
       </Text>
       {link ? (
         <>
           <Text variant="body-2-regular">{t(`${K}.telegram.step1`)}</Text>
           <Text variant="body-2-regular">{t(`${K}.telegram.step2`)}</Text>
-          <View className="flex-row">
+          <View style={styles.actions}>
             <Button size="sm" onPress={() => void Linking.openURL(link)}>
               {t(`${K}.telegram.open`)}
             </Button>
@@ -147,7 +147,8 @@ function ConnectingAccount({
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const { data } = useConnectedAccountQr(link);
+  const styles = useStyles();
+  const { value: data } = useConnectedAccountQr(link);
   const status = data?.status ?? 'qr-pending';
   const label = PLATFORM_LABELS[platform];
 
@@ -170,13 +171,13 @@ function ConnectingAccount({
       ) : (
         <>
           <Text variant="body-2-semibold">{t(`${K}.scanTitle`, { platform: label })}</Text>
-          <Text variant="body-2-regular" className="text-text-secondary">
+          <Text variant="body-2-regular" style={styles.muted}>
             {t(`${K}.scan.${platform}`)}
           </Text>
           <Code value={data?.qr} />
         </>
       )}
-      <View className="flex-row">
+      <View style={styles.actions}>
         <Button size="sm" appearance="outline" tone="neutral" onPress={onCancel}>
           {t(`${K}.cancel`)}
         </Button>
@@ -187,7 +188,7 @@ function ConnectingAccount({
 
 /** A Telegram account the person left before finishing: its steps, kept until it is connected. */
 function PendingTelegram({ account, t }: { account: ConnectedAccount; t: Translate }) {
-  const { data } = useConnectedAccountQr({ accountId: account._id, qr: null });
+  const { value: data } = useConnectedAccountQr({ accountId: account._id, qr: null });
   return <TelegramSteps link={data?.qr ?? null} t={t} />;
 }
 
@@ -203,12 +204,13 @@ function ChosenChats({
   saving: boolean;
   t: Translate;
 }) {
-  const { data: chats, isPending } = useConnectedAccountChats(account._id);
+  const styles = useStyles();
+  const { value: chats, isLoading } = useConnectedAccountChats(account._id);
 
-  if (isPending) {
+  if (isLoading) {
     return (
       <Skeleton.Region>
-        <View className="gap-2">
+        <View style={styles.steps}>
           {[0, 1, 2].map((row) => (
             <Skeleton.Box key={row} width={180} height={14} />
           ))}
@@ -218,16 +220,16 @@ function ChosenChats({
   }
   if (!chats?.length) {
     return (
-      <Text variant="body-2-regular" className="text-text-secondary">
+      <Text variant="body-2-regular" style={styles.muted}>
         {t(`${K}.noChats`)}
       </Text>
     );
   }
   return (
-    <View className="gap-1">
+    <View style={styles.choice}>
       {chats.map((chat) => (
-        <View key={chat.chatId} className="flex-row items-center justify-between gap-3 py-1">
-          <Text variant="body-2-regular" numberOfLines={1} className="flex-1">
+        <View key={chat.chatId} style={styles.chat}>
+          <Text variant="body-2-regular" numberOfLines={1} style={styles.chatName}>
             {chat.kind === 'group' ? t(`${K}.groupChat`, { name: chat.name }) : chat.name}
           </Text>
           <Switch
@@ -265,10 +267,11 @@ function Answering({
   saving: boolean;
   t: Translate;
 }) {
+  const styles = useStyles();
   const answering = gemies.find((gemie) => gemie.id === account.answeringGemieId) ?? null;
   const telegram = account.platform === 'telegram';
   return (
-    <View className="gap-3">
+    <View style={styles.settings}>
       <Choice
         label={t(`${K}.answeringLabel`)}
         value={answering?.id ?? NOBODY}
@@ -280,13 +283,13 @@ function Answering({
         onChange={(id) => save({ answeringGemieId: id === NOBODY ? null : id })}
       />
       {answering === null ? (
-        <Text variant="body-2-regular" className="text-text-secondary">
+        <Text variant="body-2-regular" style={styles.muted}>
           {t(`${K}.answeringNone`)}
         </Text>
       ) : (
         <>
           {telegram && account.status === 'connected' && account.canReply === false ? (
-            <Text variant="body-2-regular" className="text-text-secondary">
+            <Text variant="body-2-regular" style={styles.muted}>
               {t(`${K}.telegram.cannotReply`, { name: answering.name })}
             </Text>
           ) : null}
@@ -333,6 +336,7 @@ function AccountRow({
   gemies: readonly GrantableGemie[];
   t: Translate;
 }) {
+  const styles = useStyles();
   const { update, grant, remove } = useConnectedAccountMutations();
   const platform = PLATFORM_LABELS[account.platform] ?? account.platform;
   const name = accountName(account);
@@ -345,7 +349,7 @@ function AccountRow({
   const save = useCallback(
     async (patch: ConnectedAccountPatch) => {
       try {
-        await update.mutateAsync({ accountId: account._id, ...patch });
+        await update.run(account._id, patch);
       } catch {
         toast.error(t(`${K}.saveFailed`));
       }
@@ -355,7 +359,7 @@ function AccountRow({
 
   const setGranted = async (gemieId: string, granted: boolean) => {
     try {
-      await grant.mutateAsync({ accountId: account._id, gemieId, granted });
+      await grant.run(account._id, gemieId, granted);
     } catch {
       toast.error(t(`${K}.saveFailed`));
     }
@@ -373,7 +377,7 @@ function AccountRow({
     });
     if (!ok) return;
     try {
-      await remove.mutateAsync(account._id);
+      await remove.run(account._id);
       toast.success(t(`${K}.removed`, { platform }));
     } catch {
       toast.error(t(`${K}.removeFailed`));
@@ -382,12 +386,12 @@ function AccountRow({
 
   return (
     <Row>
-      <View className="flex-row flex-wrap items-center justify-between gap-3">
+      <View style={styles.account}>
         <PlatformMark platform={account.platform} size={28} />
-        <View className="flex-1 gap-0.5">
+        <View style={styles.accountText}>
           <Text variant="body-2-semibold">{name}</Text>
           <Text variant="body-2-regular">{statusText(account, t)}</Text>
-          <Text variant="body-2-regular" className="text-text-secondary">
+          <Text variant="body-2-regular" style={styles.muted}>
             {account.lastActiveAt
               ? t(`${K}.lastMessage`, { when: new Date(account.lastActiveAt).toLocaleString() })
               : t(`${K}.noMessagesYet`)}
@@ -411,7 +415,7 @@ function AccountRow({
         <>
           <View>
             <Text variant="body-2-semibold">{t(`${K}.usedBy`)}</Text>
-            <Text variant="body-2-regular" className="text-text-secondary">
+            <Text variant="body-2-regular" style={styles.muted}>
               {t(`${K}.usedByHint`)}
             </Text>
             {gemies.map((gemie, index) => (
@@ -454,7 +458,9 @@ export interface GemieConnectedAccountsProps {
  * Alia apps draw this same panel. Only what this deployment can connect is offered.
  */
 export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccountsProps) {
-  const { data, isPending, isError, isFetching, refetch } = useConnectedAccounts();
+  const styles = useStyles();
+  const { value: data, isLoading, status, isFetching, refresh } = useConnectedAccounts();
+  const isError = status === 'error';
   const { connect, remove } = useConnectedAccountMutations();
   const [connecting, setConnecting] = useState<{
     platform: GemieAccountPlatform;
@@ -465,12 +471,14 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
     platform: GemieAccountPlatform;
     reason: string;
   } | null>(null);
+  /** The platform the last connection asked for, whose button spins while it runs. */
+  const [asked, setAsked] = useState<GemieAccountPlatform | null>(null);
   const finished = useCallback(() => setConnecting(null), []);
 
-  if (isPending) {
+  if (isLoading) {
     return (
       <Skeleton.Region>
-        <View className="gap-3 py-2.5">
+        <View style={styles.loading}>
           <Skeleton.Box width={260} height={14} />
           <Skeleton.Box width={160} height={14} />
         </View>
@@ -481,7 +489,9 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
   const handleConnect = async (platform: GemieAccountPlatform) => {
     setConnectFailure(null);
     try {
-      setConnecting({ platform, link: await connect.mutateAsync(platform) });
+      setAsked(platform);
+      const link = await connect.run(platform);
+      if (link) setConnecting({ platform, link });
     } catch (error) {
       setConnectFailure({ platform, reason: errorMessage(error, t(`${K}.tryAgain`)) });
     }
@@ -490,7 +500,7 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
   const handleCancel = async () => {
     const pending = connecting;
     setConnecting(null);
-    if (pending) await remove.mutateAsync(pending.link.accountId).catch(() => {});
+    if (pending) await remove.run(pending.link.accountId).catch(() => {});
   };
 
   /**
@@ -502,16 +512,16 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
     return (
       <View>
         <Row first>
-          <Text variant="body-2-regular" className="text-text-secondary">
+          <Text variant="body-2-regular" style={styles.muted}>
             {t(`${K}.loadFailed`)}
           </Text>
-          <View className="flex-row">
+          <View style={styles.actions}>
             <Button
               size="sm"
               appearance="outline"
               tone="neutral"
               loading={isFetching}
-              onPress={() => void refetch()}
+              onPress={() => void refresh()}
             >
               {t(`${K}.retry`)}
             </Button>
@@ -531,7 +541,7 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
   return (
     <View>
       <Row first>
-        <Text variant="body-2-regular" className="text-text-secondary">
+        <Text variant="body-2-regular" style={styles.muted}>
           {t(`${K}.description`)}
         </Text>
       </Row>
@@ -550,17 +560,17 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
         <Row>
           <Text variant="body-2-semibold">{t(`${K}.connect`)}</Text>
           {platforms.length === 0 ? (
-            <Text variant="body-2-regular" className="text-text-secondary">
+            <Text variant="body-2-regular" style={styles.muted}>
               {t(`${K}.unavailable`)}
             </Text>
           ) : null}
           {platforms.includes('telegram') ? (
-            <Text variant="body-2-regular" className="text-text-secondary">
+            <Text variant="body-2-regular" style={styles.muted}>
               {t(`${K}.telegram.note`)}
             </Text>
           ) : null}
           {platforms.length === 0 ? null : (
-            <View className="flex-row flex-wrap gap-2">
+            <View style={styles.platforms}>
               {platforms.map((platform) => (
                 <Button
                   key={platform}
@@ -570,7 +580,7 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
                   accessibilityLabel={t(`${K}.connectNamed`, {
                     platform: PLATFORM_LABELS[platform],
                   })}
-                  loading={connect.isPending && connect.variables === platform}
+                  loading={connect.isPending && asked === platform}
                   disabled={connect.isPending}
                   onPress={() => handleConnect(platform)}
                 >
@@ -580,18 +590,14 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
             </View>
           )}
           {connectFailure ? (
-            <View className="gap-2">
-              <Text
-                variant="body-2-regular"
-                className="text-error-primary"
-                accessibilityRole="alert"
-              >
+            <View style={styles.steps}>
+              <Text variant="body-2-regular" accessibilityRole="alert" style={styles.failure}>
                 {t(`${K}.connectFailed`, {
                   platform: PLATFORM_LABELS[connectFailure.platform],
                   reason: connectFailure.reason,
                 })}
               </Text>
-              <View className="flex-row">
+              <View style={styles.actions}>
                 <Button
                   size="sm"
                   appearance="outline"
@@ -609,3 +615,33 @@ export function GemieConnectedAccounts({ t = englishCopy }: GemieConnectedAccoun
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  // A connect failure, in Bloom's error role.
+  failure: { color: t.destructive },
+  choice: { gap: 4 },
+  muted: { color: t.mutedForeground },
+  steps: { gap: 8 },
+  actions: { flexDirection: 'row' },
+  chat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  chatName: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  settings: { gap: 12 },
+  account: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  accountText: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 2 },
+  loading: { gap: 12, paddingVertical: 10 },
+  platforms: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  listRow: { gap: 12, paddingVertical: 10, paddingInlineEnd: 10 },
+  divider: { borderTopWidth: 1, borderColor: t.border },
+}));

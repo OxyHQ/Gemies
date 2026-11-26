@@ -29,8 +29,6 @@ export type {
   AutomationResource,
   AutomationTrigger,
   Conversation,
-  ConversationsInfiniteData,
-  ConversationsPage,
   Message,
   MessageContent,
   SendOptions,

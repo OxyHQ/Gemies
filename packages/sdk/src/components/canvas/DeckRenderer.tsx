@@ -1,6 +1,7 @@
 import { Muted, Text } from '@oxy.so/bloom/typography';
 import { View } from 'react-native';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 interface DeckSlide {
   title: string;
@@ -19,15 +20,13 @@ interface DeckRendererProps {
  * (Astro opens a deck in a tab of its own); here it is read like a document.
  */
 export function DeckRenderer({ data }: DeckRendererProps) {
+  const styles = useStyles();
   const slides = Array.isArray(data.slides) ? data.slides : [];
   return (
-    <View className="gap-3">
+    <View style={styles.deck}>
       {slides.map((slide, i) => (
-        <View
-          key={i}
-          className="gap-2 rounded-2xl border border-border bg-background-tertiary-default p-4"
-        >
-          <View className="flex-row items-baseline justify-between gap-2">
+        <View key={i} style={styles.slide}>
+          <View style={styles.slideHeader}>
             <Text variant="body-semibold">{slide.title}</Text>
             <Muted>{i + 1}</Muted>
           </View>
@@ -41,3 +40,21 @@ export function DeckRenderer({ data }: DeckRendererProps) {
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  deck: { gap: 12 },
+  slide: {
+    gap: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: t.border,
+    backgroundColor: t.popover,
+    padding: 16,
+  },
+  slideHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+}));

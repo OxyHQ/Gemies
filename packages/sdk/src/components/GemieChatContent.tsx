@@ -30,7 +30,6 @@ import { ScrollToBottomButton } from '@oxy.so/bloom/chat-screen';
 import { RiEditLine } from '@oxy.so/bloom/icons/RiEditLine';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   type ReactNode,
   useCallback,
@@ -68,8 +67,8 @@ import { GEMIE_FEATURES, featureOffer, useAgentFeatures, useAgentProfile } from 
 import { type GemieRuntimeHost, GemieRuntimeProvider, useGemieRuntime } from '../runtime/config';
 import { type GemieHostTools, APP_SLUG } from '../runtime/host-tools';
 import { useCreateConversation } from '../runtime/conversations';
-import { gemieQueryKeys } from '../runtime/query-keys';
-import { type GemieThreadAddress, threadKey } from '../runtime/routes';
+import { useRefreshGemieThread } from '../runtime/use-gemie-thread';
+import type { GemieThreadAddress } from '../runtime/routes';
 import type { Message } from '../runtime/types';
 import { useAgentActivity } from '../runtime/use-agent-activity';
 import { useConversationThread } from '../runtime/use-conversation-thread';
@@ -86,6 +85,7 @@ import { GemieThread } from './thread/GemieThread';
 import { ThreadSearch } from './thread/ThreadSearch';
 import { VoiceModeIcon } from './VoiceModeIcon';
 import { VoiceCallContext } from './voice/VoiceCallContext';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /** The agent a chat is opened on: its lead instead of Alia. */
 export interface GemieChatAgentRef {
@@ -358,22 +358,22 @@ function GemieConversationView({
   onStopReady,
   onDetachReady,
 }: ConversationViewProps) {
+  const styles = useStyles();
   const ownFlights = useAvatarFlights();
   const flights = sharedFlights ?? ownFlights;
   const labels = useLabels();
   const { t } = labels;
   const runtime = useGemieRuntime();
-  const queryClient = useQueryClient();
   const { user, isAuthenticated } = useOxy();
   const agentId = agent?.id;
 
   // ── Who leads: the agent the chat was opened on, or Alia ──
-  const { data: profile, isLoading: profileLoading } = useAgentProfile(agentId);
+  const { value: profile, isLoading: profileLoading } = useAgentProfile(agentId);
   const lead = useMemo(
     () => (group === undefined ? leadOf(profile) : groupParticipants(group).lead),
     [group, profile],
   );
-  const { data: features } = useAgentFeatures(agentId);
+  const { value: features } = useAgentFeatures(agentId);
 
   // A failure reaches the host's handler when it has one, and Bloom's toast otherwise.
   const reportError = useCallback(
@@ -581,7 +581,7 @@ function GemieConversationView({
   const welcome = useMemo(
     () =>
       profileLoading ? null : (
-        <View className="items-center gap-8">
+        <View style={styles.welcome}>
           {group === undefined ? (
             <GemieWelcomeMessage greeting={greeting} subtitle={welcomeSubtitle} lead={lead} />
           ) : (
@@ -590,11 +590,12 @@ function GemieConversationView({
           {welcomeAccessory}
         </View>
       ),
-    [profileLoading, greeting, welcomeSubtitle, lead, group, welcomeAccessory],
+    [profileLoading, greeting, welcomeSubtitle, lead, group, welcomeAccessory, styles],
   );
 
   // ── The agent's offer to start the next stretch fresh ──
-  const createConversation = useCreateConversation();
+  const { run: createConversation } = useCreateConversation();
+  const refreshThread = useRefreshGemieThread();
   /**
    * Take the agent up on its offer: start the next stretch of this thread.
    *
@@ -616,21 +617,17 @@ function GemieConversationView({
       void startOver();
       return;
     }
-    const key = threadKey(threadAddress);
-    createConversation.mutate(next, {
-      onSuccess: () => {
-        void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.threads.all(key) });
-        // And the history with it: the stretch that was live becomes history the moment a new
-        // one is active, and the pages held were fetched before its last turns existed.
-        void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.threads.messages(key) });
-      },
-    });
+    // Created, the thread is read again and moves onto it; a refusal was already told.
+    createConversation(next).then(
+      () => refreshThread(threadAddress),
+      () => undefined,
+    );
   }, [
     agentId,
     threadAddress,
     threadRowId,
     createConversation,
-    queryClient,
+    refreshThread,
     dismissSuggestedNewConversation,
     startOver,
   ]);
@@ -707,9 +704,9 @@ function GemieConversationView({
       // What is happening while a question is rewritten, and the way out of it. Drawn as the
       // status tab it replaces: the thread scrolls behind the composer, and a strip without the
       // tab's surface printed its words over the transcript's.
-      <View className="mx-7 h-[34px] flex-row items-center gap-2 rounded-t-2xl bg-background-tertiary-default px-2 py-1">
+      <View style={styles.editingBar}>
         <RiEditLine size="sm" />
-        <Text className="flex-1 text-xs text-muted-foreground" numberOfLines={1}>
+        <Text style={styles.editingLabel} numberOfLines={1}>
           {t('composer.editingMessage')}
         </Text>
         <Button appearance="subtle" tone="accent" size="xs" onPress={edit.cancel}>
@@ -830,7 +827,7 @@ function GemieConversationView({
             </GemieConversationOpenerProvider>
           </BubblesProvider>
           {!showsPast ? null : (
-            <View className="absolute inset-x-0 top-16 z-10 items-center" pointerEvents="box-none">
+            <View style={styles.backToLatest} pointerEvents="box-none">
               <Button appearance="outline" tone="neutral" size="sm" onPress={view.backToLatest}>
                 {t('chat.backToLatest')}
               </Button>
@@ -842,7 +839,7 @@ function GemieConversationView({
         </AiChatContainer>
       </InertWhen>
       {betweenGemies === null ? null : (
-        <View className="absolute inset-0 z-20">
+        <View style={styles.betweenGemies}>
           <GemieBetweenGemies conversationId={betweenGemies} onBack={closeBetweenGemies} />
         </View>
       )}
@@ -915,3 +912,29 @@ export function GemieChatContent({
     </GemieChatLabelsProvider>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  welcome: { alignItems: 'center', gap: 32 },
+  editingBar: {
+    marginHorizontal: 28,
+    height: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    backgroundColor: t.popover,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  editingLabel: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    fontSize: 12,
+    color: t.mutedForeground,
+    lineHeight: 16,
+  },
+  backToLatest: { position: 'absolute', insetInline: 0, top: 64, zIndex: 10, alignItems: 'center' },
+  betweenGemies: { position: 'absolute', inset: 0, zIndex: 20 },
+}));

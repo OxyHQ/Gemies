@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({
   agents: Array.from({ length: 7 }, (_, index) => ({ _id: String(index), name: `Gemie ${index}` })),
 }));
 vi.mock('@/features/agents/runtime/use-my-agents', () => ({
-  useMyAgents: () => ({ data: state.agents }),
+  useMyAgents: () => ({ value: state.agents }),
 }));
 vi.mock('@/features/agents/runtime/use-start-group', () => ({
   useStartGroup: () => ({ start: state.start, starting: false }),
@@ -25,7 +25,10 @@ vi.mock('@/shared/i18n/use-translation', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 vi.mock('@gemies/sdk', () => ({ readAgentCharacter: () => ({ preset: 'blue_beret' }) }));
-vi.mock('react-native', () => ({ View: ({ children }: React.PropsWithChildren) => children }));
+vi.mock('react-native', async () => ({
+  ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
+  View: ({ children }: React.PropsWithChildren) => children,
+}));
 vi.mock('@oxy.so/bloom/agent-avatar', () => ({ AgentAvatar: () => null }));
 vi.mock('@oxy.so/bloom/avatar-flight', () => ({ useAvatarFlights: () => undefined }));
 vi.mock('@oxy.so/bloom/multi-agent-chat/selected-agent-preview', () => ({

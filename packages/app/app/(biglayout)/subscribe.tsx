@@ -31,7 +31,7 @@ import { useAuth, useOxy } from '@oxy.so/services/ui/client';
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { useWindowDimensions, View } from 'react-native';
+import { useWindowDimensions, View, StyleSheet } from 'react-native';
 import { errorMessage as getErrorMessage } from '@/shared/api/error-utils';
 function buildTiers(apiPlans: SubscriptionPlan[], t: (key: string) => string): PricingTier[] {
   return apiPlans.map((plan, index) => ({
@@ -244,13 +244,13 @@ function SubscribeContent() {
   return (
     <Screen scroll="content" header={<SubscribeHeader title={t('subscribe.title')} t={t} />}>
       <ScreenScrollView>
-        <View className="mx-auto w-full max-w-[1200px]">
-          <View className="items-center px-6 pb-8 pt-2">
+        <View style={styles.page}>
+          <View style={styles.hero}>
             <BillingToggle value={billingPeriod} onChange={setBillingPeriod} t={t} />
           </View>
 
           {paymentReview && (
-            <View className="items-center gap-2 pb-6">
+            <View style={styles.paymentReview}>
               <Text>{t('subscribe.paymentReview')}</Text>
               <Button onPress={() => Linking.openURL('https://peable.to')}>
                 {t('subscribe.reviewPayment')}
@@ -258,7 +258,7 @@ function SubscribeContent() {
             </View>
           )}
           {nativePlan && (
-            <View className="items-center pb-6">
+            <View style={styles.nativePlan}>
               <Button onPress={() => Linking.openURL('https://accounts.oxy.so/payments')}>
                 {t('billing.manageOxySubscription')}
               </Button>
@@ -304,3 +304,10 @@ function SubscribeContent() {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  page: { marginHorizontal: 'auto', width: '100%', maxWidth: 1200 },
+  hero: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 8, paddingBottom: 32 },
+  paymentReview: { alignItems: 'center', gap: 8, paddingBottom: 24 },
+  nativePlan: { alignItems: 'center', paddingBottom: 24 },
+});

@@ -1,7 +1,7 @@
 import type { ComposerLoaderPhase } from '@oxy.so/bloom/composer-loader';
 import { ASK_USER_QUESTION_TOOL } from '../tools';
 import { useOxy } from '@oxy.so/services/ui/client';
-import { useQueryClient } from '@tanstack/react-query';
+import { useStore, withStore } from '@oxy.so/bloom-data';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { canvasResultOf } from '../lib/canvas-result';
 import { useLabels } from '../lib/labels';
@@ -16,7 +16,7 @@ import {
   readErrorResponseBody,
 } from './error-utils';
 import { memberDraftId, buildOutboundMessages, isMemberDraftOf } from './message-history';
-import { gemieQueryKeys } from './query-keys';
+import { Conversations } from './data/conversations';
 import {
   applyRoomEvent,
   claimMemberTurn,
@@ -48,14 +48,7 @@ import {
 } from './stream-events';
 import { hasUsableStreamOutput, type StreamOutputEvidence } from './stream-outcome';
 import { failureDetail, readGemieMeta, type FailedTurn } from './turn-failure';
-import type {
-  AgentRun,
-  Conversation,
-  ConversationsInfiniteData,
-  Message,
-  SendOptions,
-  ToolInvocation,
-} from './types';
+import type { AgentRun, Message, SendOptions, ToolInvocation } from './types';
 import { UsageLimitError } from './usage-limit-error';
 import { useGemieRealtime } from '../realtime/react';
 
@@ -281,7 +274,7 @@ export function useConversationStream({
   const turnOptionsRef = useRef(new Map<string, Pick<SendOptions, 'mcpServerId' | 'skillNames'>>());
   const { oxyServices, user } = useOxy();
   const appAssertionHeaders = useAppAssertionHeaders();
-  const queryClient = useQueryClient();
+  const store = useStore();
   const abortControllerRef = useRef<AbortController | null>(null);
   const turnControlRef = useRef<ReturnType<typeof createChatTurnControl> | null>(null);
   // A Stop acknowledgement can outlive its stream, thread, or the next send.
@@ -1130,25 +1123,9 @@ export function useConversationStream({
                   }
                   case 'alia.title': {
                     if (parsed.title && parsed.conversationId) {
-                      queryClient.setQueryData(
-                        gemieQueryKeys.conversations.detail(parsed.conversationId),
-                        (old: Conversation | undefined) =>
-                          old ? { ...old, title: parsed.title } : old,
-                      );
-                      queryClient.setQueriesData(
-                        { queryKey: gemieQueryKeys.conversations.all },
-                        (old: ConversationsInfiniteData | undefined) => {
-                          if (!old?.pages) return old;
-                          return {
-                            ...old,
-                            pages: old.pages.map((page) => ({
-                              ...page,
-                              conversations: page.conversations.map((c) =>
-                                c.id === parsed.conversationId ? { ...c, title: parsed.title } : c,
-                              ),
-                            })),
-                          };
-                        },
+                      // One record: the thread, the sidebar and every list show the new title.
+                      withStore(store, () =>
+                        Conversations.merge(parsed.conversationId, { title: parsed.title }),
                       );
                       setConversationTitle(parsed.title);
                     }
@@ -1624,7 +1601,7 @@ export function useConversationStream({
       labels,
       oxyServices,
       appAssertionHeaders,
-      queryClient,
+      store,
       conversationId,
       model,
       agentId,

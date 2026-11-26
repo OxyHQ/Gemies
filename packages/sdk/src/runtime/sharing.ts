@@ -1,9 +1,10 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { action, type RecordView, skip, useAction } from '@oxy.so/bloom-data';
 import { useMemo } from 'react';
 import { gemiesSharedConversationUrl } from '../lib/origins';
-import { useGemieApi } from './api';
+import { type GemieApi, useGemieApi } from './api';
 import { useGemieRuntime } from './config';
-import { gemieQueryKeys } from './query-keys';
+import { answerSource, useAnswer } from './data/answer';
+import { gemieRead } from './data/read';
 import { API_ROUTES } from './routes';
 import type { Message, ToolInvocation } from './types';
 
@@ -20,48 +21,55 @@ export interface GemieConversationShare {
 /** How long a share link lives unless the caller says otherwise, in hours (the API takes 1–168). */
 export const DEFAULT_SHARE_TTL_HOURS = 24;
 
+/** Mints a conversation's read-only link (1–168 hours). Nothing is held: the link is the answer. */
+export const shareConversation = action({
+  run: async (
+    api: GemieApi,
+    conversationId: string,
+    ttlHours: number = DEFAULT_SHARE_TTL_HOURS,
+  ): Promise<GemieConversationShare> => {
+    const hours = Math.min(168, Math.max(1, Math.round(ttlHours)));
+    const { data } = await api.post<{ token?: unknown; expiresAt?: unknown }>(
+      API_ROUTES.conversations.share(conversationId),
+      { ttlHours: hours },
+    );
+    if (typeof data?.token !== 'string' || typeof data.expiresAt !== 'string') {
+      throw new Error('The share link came back without a token.');
+    }
+    return {
+      conversationId,
+      token: data.token,
+      url: gemiesSharedConversationUrl(data.token),
+      expiresAt: data.expiresAt,
+    };
+  },
+});
+
+/** Ends a conversation's link: the token stops answering. */
+export const revokeConversationShare = action({
+  run: async (api: GemieApi, conversationId: string): Promise<void> => {
+    await api.delete(API_ROUTES.conversations.share(conversationId));
+  },
+});
+
 /** Mint and revoke a conversation's share link, as the signed-in person. */
 export function useShareConversation() {
   const api = useGemieApi();
-  const share = useMutation({
-    mutationFn: async ({
-      conversationId,
-      ttlHours = DEFAULT_SHARE_TTL_HOURS,
-    }: {
-      conversationId: string;
-      ttlHours?: number;
-    }): Promise<GemieConversationShare> => {
-      const hours = Math.min(168, Math.max(1, Math.round(ttlHours)));
-      const { data } = await api.post<{ token?: unknown; expiresAt?: unknown }>(
-        API_ROUTES.conversations.share(conversationId),
-        { ttlHours: hours },
-      );
-      if (typeof data?.token !== 'string' || typeof data.expiresAt !== 'string') {
-        throw new Error('The share link came back without a token.');
-      }
-      return {
-        conversationId,
-        token: data.token,
-        url: gemiesSharedConversationUrl(data.token),
-        expiresAt: data.expiresAt,
-      };
-    },
-  });
-  const revoke = useMutation({
-    mutationFn: async (conversationId: string): Promise<void> => {
-      await api.delete(API_ROUTES.conversations.share(conversationId));
-    },
-  });
+  const share = useAction(shareConversation);
+  const revoke = useAction(revokeConversationShare);
+  const { run: runShare, isPending: isSharing } = share;
+  const { run: runRevoke } = revoke;
   return useMemo(
     () => ({
       /** Mint the link of `conversationId` (1–168 hours, default 24). */
+      // The action has no key, so every call runs and resolves with its link.
       share: (conversationId: string, ttlHours?: number) =>
-        share.mutateAsync({ conversationId, ttlHours }),
+        runShare(api, conversationId, ttlHours) as Promise<GemieConversationShare>,
       /** End the link: the token stops answering. */
-      revoke: (conversationId: string) => revoke.mutateAsync(conversationId),
-      isSharing: share.isPending,
+      revoke: (conversationId: string) => runRevoke(api, conversationId),
+      isSharing,
     }),
-    [share, revoke],
+    [api, runShare, runRevoke, isSharing],
   );
 }
 
@@ -191,27 +199,32 @@ export class SharedConversationGoneError extends Error {
 }
 
 /**
- * A conversation somebody shared, read by its token. The route needs no session, so it is fetched
+ * A conversation somebody shared, by its token. The route needs no session, so it is fetched
  * plainly rather than through the signed-in Oxy client: a person who is not signed in can read it.
+ * A token that answers nothing is not asked again.
  */
-export function useSharedConversation(token: string | undefined) {
+export const sharedConversation = answerSource('gemies.shared-conversation', {
+  ...gemieRead,
+  key: (_apiUrl: string, token: string) => token,
+  retry: (failureCount, error) =>
+    !(error instanceof SharedConversationGoneError) && failureCount <= 2,
+  load: async ({ signal }, apiUrl, token) => {
+    const response = await fetch(new URL(API_ROUTES.shared(token), apiUrl).toString(), {
+      headers: { Accept: 'application/json' },
+      signal,
+    });
+    if (response.status === 404 || response.status === 410) throw new SharedConversationGoneError();
+    if (!response.ok) throw new Error(`Shared conversation failed with status ${response.status}`);
+    const shared = readSharedConversation(await response.json());
+    if (shared === null) throw new Error('The shared conversation had an unexpected shape.');
+    return shared;
+  },
+});
+
+/** A conversation somebody shared, read by its token. */
+export function useSharedConversation(
+  token: string | undefined,
+): RecordView<GemieSharedConversationData> {
   const { apiUrl } = useGemieRuntime();
-  return useQuery({
-    queryKey: gemieQueryKeys.shared(token ?? ''),
-    queryFn: async (): Promise<GemieSharedConversationData> => {
-      const response = await fetch(new URL(API_ROUTES.shared(token ?? ''), apiUrl).toString(), {
-        headers: { Accept: 'application/json' },
-      });
-      if (response.status === 404 || response.status === 410) {
-        throw new SharedConversationGoneError();
-      }
-      if (!response.ok)
-        throw new Error(`Shared conversation failed with status ${response.status}`);
-      const shared = readSharedConversation(await response.json());
-      if (shared === null) throw new Error('The shared conversation had an unexpected shape.');
-      return shared;
-    },
-    enabled: token !== undefined && token !== '',
-    retry: (count, error) => !(error instanceof SharedConversationGoneError) && count < 2,
-  });
+  return useAnswer(sharedConversation, ...(token ? [apiUrl, token] : [skip]));
 }

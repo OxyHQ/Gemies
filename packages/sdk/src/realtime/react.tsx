@@ -2,12 +2,12 @@
  * The realtime connection in React (`docs/realtime.mdx`).
  *
  * {@link GemieRealtimeProvider} is mounted by `GemieRuntimeProvider`: it holds the signed-in
- * account's connection to the runtime's API and keeps the runtime's caches and the activity store
+ * account's connection to the runtime's API and keeps the account's store and the activity store
  * in step with it. Everything else only listens: {@link useRealtimeEvent} for a type,
  * {@link useRealtimeTopic} for an agent run, {@link useConversationActivity} for "typing…".
  */
 
-import { QueryClientContext } from '@tanstack/react-query';
+import { useStore } from '@oxy.so/bloom-data';
 import { useOxy } from '@oxy.so/services/ui/client';
 import {
   createContext,
@@ -19,7 +19,7 @@ import {
   useState,
 } from 'react';
 import { useRealtimeActivityStore } from './activity';
-import { attachRealtimeCache } from './cache';
+import { attachRealtimeStore } from './store';
 import { acquireRealtime, type RealtimeConnection, type RealtimeListener } from './connection';
 import type { RealtimeActivity, RealtimeFrame, RealtimeType } from './contract';
 
@@ -96,7 +96,7 @@ function attachActivity(connection: RealtimeConnection): () => void {
 
 /**
  * Mounted by `GemieRuntimeProvider`: the account's connection for everything below, wired into the
- * runtime's caches and the activity store. A nested provider on the same API shares its parent's.
+ * account's store and the activity store. A nested provider on the same API shares its parent's.
  */
 export function GemieRealtimeProvider({
   apiUrl,
@@ -108,17 +108,17 @@ export function GemieRealtimeProvider({
   const parent = useContext(RealtimeContext);
   const inherited = parent !== null && parent.apiUrl === apiUrl;
   const connection = useHeldConnection(apiUrl, !inherited);
-  // A host without React Query has no runtime caches to keep; it still hears activity.
-  const queryClient = useContext(QueryClientContext);
+  // The store is the signed-in account's: a switch re-attaches the connection to the next one.
+  const store = useStore();
   useEffect(() => {
     if (inherited || !connection) return;
-    const detachCache = queryClient ? attachRealtimeCache(connection, queryClient) : undefined;
+    const detachStore = attachRealtimeStore(connection, store);
     const detachActivity = attachActivity(connection);
     return () => {
-      detachCache?.();
+      detachStore();
       detachActivity();
     };
-  }, [inherited, connection, queryClient]);
+  }, [inherited, connection, store]);
   const value = useMemo<RealtimeHold>(
     () => (inherited && parent ? parent : { apiUrl, connection }),
     [inherited, parent, apiUrl, connection],

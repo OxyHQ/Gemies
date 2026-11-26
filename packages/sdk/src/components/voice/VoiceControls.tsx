@@ -10,6 +10,7 @@ import { VoiceControls as BloomVoiceControls, type VoiceState } from '@oxy.so/bl
 import { View } from 'react-native';
 import { VOICE_CONTROLS_LABELS, type VoiceControlsLabels } from '../../lib/voice-controls-labels';
 import type { RoomState, AgentState, VoiceCallState } from '../../types';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 export { VOICE_CONTROLS_LABELS, type VoiceControlsLabels };
 
@@ -70,17 +71,14 @@ export function VoiceControls({
   callState,
   labels: labelOverrides,
 }: VoiceControlsProps) {
+  const styles = useStyles();
   const labels = { ...VOICE_CONTROLS_LABELS, ...labelOverrides };
   const statusText = getStatusText(roomState, agentState, isMuted, notice, labels, callState);
 
   return (
-    <View className="items-center gap-4 pb-6 pt-4">
+    <View style={styles.controls}>
       {statusText ? (
-        <Text
-          className="text-lg font-medium text-text-primary"
-          accessibilityLiveRegion="polite"
-          aria-live="polite"
-        >
+        <Text style={styles.status} accessibilityLiveRegion="polite" aria-live="polite">
           {statusText}
         </Text>
       ) : null}
@@ -104,3 +102,8 @@ export function VoiceControls({
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  controls: { alignItems: 'center', gap: 16, paddingTop: 16, paddingBottom: 24 },
+  status: { fontSize: 18, fontWeight: 500, color: t.foreground, lineHeight: 28 },
+}));

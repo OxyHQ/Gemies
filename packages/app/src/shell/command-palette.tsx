@@ -30,19 +30,17 @@ export function CommandPalette() {
   const [query, setQuery] = React.useState('');
   const router = useRouter();
   const { t } = useTranslation();
-  const { data: conversationsData } = useConversations();
+  const { conversations: all } = useConversations();
   const toggleShortcutsDialog = useUIStore((s) => s.toggleShortcutsDialog);
   const favoriteIds = useConversationCollections().favorites;
 
   const conversations = React.useMemo(() => {
-    if (!conversationsData?.pages) return [];
-    const all = conversationsData.pages.flatMap((page) => page.conversations);
     // At rest the palette is a shortlist of what you were just doing; once
     // there is a query it searches far wider.
     return query.trim()
       ? all.slice(0, SEARCHABLE_CONVERSATIONS)
       : all.slice(0, RESTING_CONVERSATIONS);
-  }, [conversationsData, query]);
+  }, [all, query]);
 
   const runCommand = React.useCallback((command: () => void) => {
     setOpen(false);

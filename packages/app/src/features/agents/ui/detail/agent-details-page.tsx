@@ -6,7 +6,7 @@ import type { Agent } from '@/shared/contracts/agents';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { DetailSkeleton } from '@/shared/ui/skeletons';
 import { Stack, useRouter } from 'expo-router';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /**
  * An agent's page for a route that has looked the agent up: its skeleton while that is in flight,
@@ -29,7 +29,7 @@ export function AgentDetailsPage({
 
   if (pending && agent === undefined) {
     return (
-      <View className="flex-1">
+      <View style={styles.fill}>
         <Stack.Screen options={{ headerBackVisible: true }} />
         <DetailSkeleton />
       </View>
@@ -50,3 +50,7 @@ export function AgentDetailsPage({
 
   return <AgentDetail agent={agent} />;
 }
+
+const styles = StyleSheet.create({
+  fill: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+});

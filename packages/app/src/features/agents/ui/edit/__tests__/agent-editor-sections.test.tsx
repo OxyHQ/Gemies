@@ -37,7 +37,10 @@ const mine = vi.hoisted(() => ({ agents: undefined as unknown, pending: false })
 const connections = vi.hoisted(() => ({ list: [] as unknown[] }));
 const updateAgent = vi.hoisted(() => vi.fn());
 
-vi.mock('react-native', async () => hosts('View', 'Text'));
+vi.mock('react-native', async () => ({
+  ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
+  ...(await hosts('View', 'Text')),
+}));
 vi.mock('@oxy.so/bloom/agent-creator', async () =>
   hosts('AgentCreatorField', 'AgentCreatorSection'),
 );
@@ -85,8 +88,8 @@ vi.mock('@gemies/sdk/connectors', async () => ({
         ReactModule.createElement('Switch', props),
       );
   })(),
-  connectorQueryKeys: { connected: ['gemie-connectors', 'connected'] },
-  useConnections: () => ({ data: connections.list, isPending: false }),
+  connections: { invalidateAll: () => undefined },
+  useConnections: () => ({ value: connections.list, isLoading: false }),
 }));
 vi.mock('expo-router', () => ({ useRouter: () => ({ push: () => {} }) }));
 vi.mock('@oxy.so/bloom/surfaces', () => ({ confirm }));
@@ -101,7 +104,7 @@ vi.mock('@/shared/api/client', () => ({
   onApiSessionContextChange: () => () => {},
 }));
 vi.mock('@/features/agents/runtime/use-my-agents', () => ({
-  useMyAgents: () => ({ data: mine.agents, isPending: mine.pending }),
+  useMyAgents: () => ({ value: mine.agents, isLoading: mine.pending }),
 }));
 vi.mock('@/features/agents/runtime/use-agents', () => ({
   useUpdateAgent: () => ({ mutateAsync: updateAgent, isPending: false }),

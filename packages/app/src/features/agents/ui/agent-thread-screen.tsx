@@ -1,6 +1,6 @@
 import type { GemieThreadAddress } from '@gemies/sdk/runtime';
 import { AiChatMobileHeader } from '@oxy.so/bloom/ai-chat';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { agentDisplayName } from '@/features/agents/model/identity';
 import { useAgentThread } from '@/features/agents/runtime/use-agent-thread';
 import { useMyAgents } from '@/features/agents/runtime/use-my-agents';
@@ -39,9 +39,10 @@ export function AgentThreadScreen({
   resolving?: boolean;
 }) {
   const { t } = useTranslation();
-  const { data, isPending, isError } = useAgentThread(thread, threadId);
+  const { value: data, isLoading: isPending, status } = useAgentThread(thread, threadId);
+  const isError = status === 'error';
   // The agent as the person's own list has it, for the first frame.
-  const { data: mine } = useMyAgents();
+  const { value: mine } = useMyAgents();
   const known = mine?.find((agent) =>
     'handle' in thread ? agentHandle(agent) === thread.handle : agent._id === thread.gemieId,
   );
@@ -60,7 +61,7 @@ export function AgentThreadScreen({
   if (isError && !resolving) {
     return (
       <ChatWorkspace header={<AiChatMobileHeader title="Gemies" />}>
-        <View className="flex-1 justify-center">
+        <View style={styles.container}>
           <EmptyState title={t('agents.notFound')} />
         </View>
       </ChatWorkspace>
@@ -105,3 +106,7 @@ export function AgentThreadScreen({
     />
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', justifyContent: 'center' },
+});

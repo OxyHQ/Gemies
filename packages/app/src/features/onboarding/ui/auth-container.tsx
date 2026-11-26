@@ -1,5 +1,5 @@
-import * as React from 'react';
-import { View } from 'react-native';
+import type * as React from 'react';
+import { View, StyleSheet } from 'react-native';
 import { KeyboardAwareScrollView } from '@/shared/platform/keyboard';
 
 export interface AuthContainerProps {
@@ -18,12 +18,18 @@ export function AuthContainer({ children }: AuthContainerProps) {
   return (
     <KeyboardAwareScrollView
       bottomOffset={20}
-      className="flex-1"
-      contentContainerClassName="grow justify-center p-6"
+      style={styles.scroller}
+      contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      <View className="w-full max-w-[384px] self-center gap-6">{children}</View>
+      <View style={styles.column}>{children}</View>
     </KeyboardAwareScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  scroller: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  content: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  column: { width: '100%', maxWidth: 384, gap: 24, alignSelf: 'center' },
+});

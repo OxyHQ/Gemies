@@ -8,6 +8,7 @@ import { Button } from '@oxy.so/bloom/button';
 import { RiCloseLine } from '@oxy.so/bloom/icons/RiCloseLine';
 import { Text } from '@oxy.so/bloom/typography';
 import { ScrollView, View } from 'react-native';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /** The avatar size of the locked editor's header. */
 const AVATAR = 56;
@@ -23,21 +24,22 @@ const AVATAR = 56;
  * for her yet, so the header draws her the way the sidebar does.
  */
 export function LockedGemieEditor({ agent, onClose }: { agent: Agent; onClose?: () => void }) {
+  const styles = useStyles();
   const { t } = useTranslation();
   const isAlia = agent._id === ALIA_GEMIE_ID;
   const name = isAlia ? 'Alia' : agentDisplayName(agent);
 
   return (
-    <View className="flex-1 bg-background" testID="locked-gemie-editor">
-      <View className="flex-row items-center gap-3 border-b border-border px-4 py-3">
+    <View style={styles.surface} testID="locked-gemie-editor">
+      <View style={styles.row}>
         {isAlia ? (
           <GemieAvatar size={AVATAR} portrait />
         ) : (
           <AgentAvatar character={readAgentCharacter(agent.character, agent.color)} size={AVATAR} />
         )}
-        <View className="flex-1 gap-0.5">
+        <View style={styles.headerText}>
           <Text variant="body-2-semibold">{name}</Text>
-          <Text variant="body-2-regular" className="text-text-secondary" numberOfLines={2}>
+          <Text variant="body-2-regular" style={styles.mutedText} numberOfLines={2}>
             {isAlia ? t('gemies.aliaTagline') : agent.tagline}
           </Text>
         </View>
@@ -53,8 +55,8 @@ export function LockedGemieEditor({ agent, onClose }: { agent: Agent; onClose?: 
           />
         ) : null}
       </View>
-      <ScrollView contentContainerClassName="gap-4 p-4">
-        <Text variant="body-2-regular" className="text-text-secondary">
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text variant="body-2-regular" style={styles.mutedText}>
           {t('agents.editor.lockedIdentity', { name })}
         </Text>
         <AgentAccountsSection agentId={agent._id} name={name} />
@@ -62,3 +64,19 @@ export function LockedGemieEditor({ agent, onClose }: { agent: Agent; onClose?: 
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  surface: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', backgroundColor: t.background },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderColor: t.border,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  headerText: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 2 },
+  mutedText: { color: t.mutedForeground },
+  content: { gap: 16, padding: 16 },
+}));

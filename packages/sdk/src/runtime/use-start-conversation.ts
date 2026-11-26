@@ -63,7 +63,7 @@ export interface StartConversationOptions {
 export function useStartConversation({ agentId }: { agentId?: string } = {}) {
   const labels = useLabels();
   const { host } = useGemieRuntime();
-  const { mutateAsync: createConversation } = useCreateConversation();
+  const { run: createConversation } = useCreateConversation();
   const upload = useDocumentUpload();
 
   return useCallback(
@@ -79,20 +79,9 @@ export function useStartConversation({ agentId }: { agentId?: string } = {}) {
       const built =
         attachments.length > 0 ? await buildMessageContent(text, attachments, upload) : null;
       reportDroppedAttachments(built?.dropped, labels);
-      try {
-        const conversation = await createConversation({ agentId });
-        useConversationStore.getState().setPendingInitialMessage({
-          conversationId: conversation.id,
-          content: built ? built.content : text,
-          text,
-          attachments,
-          mcpServerId: options?.mcpServerId ?? null,
-          skillNames: options?.skillNames ?? [],
-        });
-        host.openConversation?.(conversation.id);
-        return true;
-      } catch {
-        // useCreateConversation.onError already shows the toast.
+      // A refusal was already told (useCreateConversation's toast): the draft comes back.
+      const conversation = await createConversation({ agentId }).catch(() => undefined);
+      if (conversation === undefined) {
         useComposerDraftStore.getState().restore(draft, {
           text,
           attachments,
@@ -101,6 +90,16 @@ export function useStartConversation({ agentId }: { agentId?: string } = {}) {
         });
         return false;
       }
+      useConversationStore.getState().setPendingInitialMessage({
+        conversationId: conversation.id,
+        content: built ? built.content : text,
+        text,
+        attachments,
+        mcpServerId: options?.mcpServerId ?? null,
+        skillNames: options?.skillNames ?? [],
+      });
+      host.openConversation?.(conversation.id);
+      return true;
     },
     [labels, host, createConversation, agentId, upload],
   );

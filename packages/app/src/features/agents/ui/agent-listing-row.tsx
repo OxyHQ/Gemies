@@ -8,6 +8,7 @@ import { ListItem } from '@oxy.so/bloom/list';
 import { Text } from '@oxy.so/bloom/typography';
 import React from 'react';
 import { View } from 'react-native';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /**
  * One agent in the catalogue, as a row: its mark, its name with "by author" after it, its tagline
@@ -24,6 +25,7 @@ export const AgentListingRow = React.memo(function AgentListingRow({
   onPress: (id: string) => void;
   onChat: (id: string) => void;
 }) {
+  const styles = useStyles();
   const { t } = useTranslation();
   const name = agentDisplayName(agent);
   const author = agent.authorName?.trim();
@@ -42,13 +44,10 @@ export const AgentListingRow = React.memo(function AgentListingRow({
         </View>
       }
       title={
-        <Text numberOfLines={1} className="text-sm font-medium text-text-primary">
+        <Text numberOfLines={1} style={styles.name}>
           {name}
           {author ? (
-            <Text className="text-sm font-normal text-text-secondary">
-              {' '}
-              {t('agents.byAuthor', { name: author })}
-            </Text>
+            <Text style={styles.author}> {t('agents.byAuthor', { name: author })}</Text>
           ) : null}
         </Text>
       }
@@ -67,3 +66,8 @@ export const AgentListingRow = React.memo(function AgentListingRow({
     />
   );
 });
+
+const useStyles = createTokenStyles((t) => ({
+  name: { fontSize: 14, fontWeight: 500, color: t.foreground, lineHeight: 20 },
+  author: { fontSize: 14, fontWeight: 400, color: t.mutedForeground, lineHeight: 20 },
+}));

@@ -8,6 +8,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { useGemieRealtime } from '@gemies/sdk/runtime';
 import { errorMessage as getErrorMessage } from '@/shared/api/error-utils';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
+import { TERMINAL_BACKGROUND, TERMINAL_ERROR } from './terminal-palette';
 interface AgentTerminalProps {
   agentId: string;
 }
@@ -71,6 +73,7 @@ export function AgentTerminal({ agentId }: AgentTerminalProps) {
 // ---------------------------------------------------------------------------
 
 function WebTerminal({ agentId }: AgentTerminalProps) {
+  const styles = useStyles();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<any>(null);
   const fitAddonRef = useRef<any>(null);
@@ -239,15 +242,15 @@ function WebTerminal({ agentId }: AgentTerminalProps) {
 
   if (error) {
     return (
-      <View className="flex-1 bg-[#0d0d0d] items-center justify-center p-4">
-        <Text className="text-red-400 text-sm">{error}</Text>
+      <View style={styles.failed}>
+        <Text style={styles.error}>{error}</Text>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-[#0d0d0d] overflow-hidden rounded-lg border border-border">
-      {!ready && <LinesSkeleton className="absolute inset-0 z-10" />}
+    <View style={styles.terminal}>
+      {!ready && <LinesSkeleton style={styles.connecting} />}
       <div
         ref={containerRef}
         style={{
@@ -374,6 +377,7 @@ const TERMINAL_HTML = `
 `;
 
 function NativeTerminal({ agentId }: AgentTerminalProps) {
+  const styles = useStyles();
   const webViewRef = useRef<any>(null);
   const realtime = useGemieRealtime();
   const [webViewReady, setWebViewReady] = useState(false);
@@ -474,15 +478,15 @@ function NativeTerminal({ agentId }: AgentTerminalProps) {
 
   if (error) {
     return (
-      <View className="flex-1 bg-[#0d0d0d] items-center justify-center p-4">
-        <Text className="text-red-400 text-sm">{error}</Text>
+      <View style={styles.failed}>
+        <Text style={styles.error}>{error}</Text>
       </View>
     );
   }
 
   if (!WebViewComponent) {
     return (
-      <View className="flex-1 bg-[#0d0d0d]">
+      <View style={styles.loading}>
         <LinesSkeleton />
       </View>
     );
@@ -491,7 +495,7 @@ function NativeTerminal({ agentId }: AgentTerminalProps) {
   const RNWebView = WebViewComponent;
 
   return (
-    <View className="flex-1 bg-[#0d0d0d] overflow-hidden rounded-lg border border-border">
+    <View style={styles.terminal}>
       <RNWebView
         ref={webViewRef}
         source={{ html: TERMINAL_HTML }}
@@ -504,3 +508,28 @@ function NativeTerminal({ agentId }: AgentTerminalProps) {
     </View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  failed: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: TERMINAL_BACKGROUND,
+    padding: 16,
+  },
+  error: { fontSize: 14, lineHeight: 20, color: TERMINAL_ERROR },
+  terminal: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'hidden',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: t.border,
+    backgroundColor: TERMINAL_BACKGROUND,
+  },
+  loading: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', backgroundColor: TERMINAL_BACKGROUND },
+  connecting: { position: 'absolute', inset: 0, zIndex: 10 },
+}));

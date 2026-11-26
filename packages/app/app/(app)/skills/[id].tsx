@@ -29,7 +29,7 @@ import { Muted, Text } from '@oxy.so/bloom/typography';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Linking, ScrollView, View } from 'react-native';
+import { Linking, ScrollView, View, StyleSheet } from 'react-native';
 
 /**
  * One skill, in full.
@@ -146,7 +146,7 @@ export default function SkillDetailScreen() {
       : []),
     ...(skill.compatibility
       ? [
-          <View key="k1" className="gap-2">
+          <View key="k1" style={styles.block}>
             <Text variant="headline-semibold">{t('skills.compatibility')}</Text>
             <Muted>{skill.compatibility}</Muted>
           </View>,
@@ -154,9 +154,9 @@ export default function SkillDetailScreen() {
       : []),
     ...(skill.allowedTools.length > 0
       ? [
-          <View key="k2" className="gap-2">
+          <View key="k2" style={styles.block}>
             <Text variant="headline-semibold">{t('skills.declaredTools')}</Text>
-            <View className="flex-row flex-wrap gap-1.5">
+            <View style={styles.tools}>
               {skill.allowedTools.map((tool) => (
                 <Badge
                   key={tool}
@@ -170,7 +170,7 @@ export default function SkillDetailScreen() {
           </View>,
         ]
       : []),
-    <View key="k3" className="gap-2">
+    <View key="k3" style={styles.block}>
       <Text variant="headline-semibold">{t('skills.instructions')}</Text>
       {skill.publisher ? (
         <Muted>{t('skills.untrusted', { publisher: skill.publisher })}</Muted>
@@ -181,7 +181,7 @@ export default function SkillDetailScreen() {
         <ReplyMarkdown content={version.body} />
       ) : null}
     </View>,
-    <View key="k4" className="gap-2">
+    <View key="k4" style={styles.block}>
       <Text variant="headline-semibold">{t('skills.files')}</Text>
       {partial ? (
         <LinesSkeleton lines={2} />
@@ -240,12 +240,8 @@ export default function SkillDetailScreen() {
             : undefined,
         }}
       />
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerClassName="w-full self-center gap-6 px-4 pb-12 pt-4"
-        contentContainerStyle={{ maxWidth: PAGE_MAX_WIDTH }}
-      >
-        <View className="flex-row gap-4">
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        <View style={styles.header}>
           {/* The one cover on this screen is the one that may move: an
             explicit opt-in, honoured on native only and not under reduced
             motion. Shelves never pass it (#545). */}
@@ -256,7 +252,7 @@ export default function SkillDetailScreen() {
             title={skill.displayName}
             animated
           />
-          <View className="flex-1 items-start gap-1">
+          <View style={styles.headerText}>
             <Text variant="title-2-semibold">{skill.displayName}</Text>
             <Muted>{skill.name}</Muted>
             {skill.publisher ? (
@@ -308,3 +304,19 @@ export default function SkillDetailScreen() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  block: { gap: 8 },
+  tools: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  content: {
+    width: '100%',
+    gap: 24,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 48,
+    maxWidth: PAGE_MAX_WIDTH,
+  },
+  header: { flexDirection: 'row', gap: 16 },
+  headerText: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', alignItems: 'flex-start', gap: 4 },
+});

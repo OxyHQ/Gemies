@@ -1,6 +1,7 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useStore, withStore } from '@oxy.so/bloom-data';
 import { useEffect, useMemo } from 'react';
-import { gemieQueryKeys } from '../runtime/query-keys';
+import { useConversationsClient } from '../runtime/conversations';
+import { conversation } from '../runtime/data/conversations';
 import { type ThoughtScope, useThoughtStore } from '../runtime/thought-store';
 import type { FailedTurn } from '../runtime/turn-failure';
 import type { Message } from '../runtime/types';
@@ -24,8 +25,8 @@ export interface UseThoughtScopeOptions {
  * this only while the open selection belongs to the same conversation, so a new-chat screen
  * mounted underneath cannot blank a panel opened here.
  *
- * A load that failed is read off the query cache at the moment the memo recomputes: the load's
- * end is what flips `conversationLoading`, so the read is fresh exactly when it matters.
+ * A load that failed is read off the conversation's read state at the moment the memo recomputes:
+ * the load's end is what flips `conversationLoading`, so the read is fresh exactly when it matters.
  */
 export function useThoughtScope({
   conversationId,
@@ -34,14 +35,14 @@ export function useThoughtScope({
   isLoading,
   failedTurn,
 }: UseThoughtScopeOptions): ThoughtScope {
-  const queryClient = useQueryClient();
+  const store = useStore();
+  const client = useConversationsClient();
   const sync = useThoughtStore((s) => s.sync);
 
   const scope = useMemo<ThoughtScope>(() => {
     const loadFailed =
       conversationId !== undefined &&
-      queryClient.getQueryState(gemieQueryKeys.conversations.detail(conversationId))?.status ===
-        'error';
+      withStore(store, () => conversation.state(client, conversationId)).status === 'error';
     return {
       conversationId: conversationId ?? null,
       messages,
@@ -49,7 +50,7 @@ export function useThoughtScope({
       isLoading,
       failedTurn,
     };
-  }, [conversationId, messages, conversationLoading, isLoading, failedTurn, queryClient]);
+  }, [conversationId, messages, conversationLoading, isLoading, failedTurn, store, client]);
 
   useEffect(() => {
     sync(scope);

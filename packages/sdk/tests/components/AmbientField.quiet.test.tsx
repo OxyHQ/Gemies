@@ -81,6 +81,7 @@ vi.mock('@oxy.so/bloom/hooks', () => ({ usePrefersReducedMotion: () => rea.reduc
 vi.mock('react-native', async () => {
   const ReactModule = await import('react');
   return {
+    ...(await import('../support/style-stubs')).reactNativeStyles,
     View: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement('View', props, children),
     Platform: { OS: 'web' },

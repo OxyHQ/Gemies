@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@oxy.so/bloom/dropdown-menu';
 import { useInteractionState } from '@oxy.so/bloom/hooks';
-import { useTheme, withAlpha } from '@oxy.so/bloom/theme';
+import { createTokenStyles, useTheme, withAlpha } from '@oxy.so/bloom/theme';
 import { type ComponentProps, type ReactNode, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { useLabels } from '../../lib/labels';
@@ -48,6 +48,7 @@ export function ChatBubble({
   /** The words. A function is handed the colour text takes on the person's bubble (the theme's). */
   children: ReactNode | ((foreground: string | undefined) => ReactNode);
 }) {
+  const styles = useStyles();
   const { t } = useLabels();
   const theme = useTheme();
   const { state: hovered, onIn, onOut } = useInteractionState();
@@ -62,8 +63,7 @@ export function ChatBubble({
   const hasIcons = onReact !== undefined || onReply !== undefined || menu.length > 0;
   const icons = !hasIcons ? null : (
     <View
-      className="shrink-0 flex-row items-center gap-0.5"
-      style={{ opacity: shown ? 1 : 0 }}
+      style={[styles.icons, { opacity: shown ? 1 : 0 }]}
       pointerEvents={shown ? 'auto' : 'none'}
     >
       {onReact === undefined ? null : (
@@ -89,18 +89,17 @@ export function ChatBubble({
   );
   return (
     <View
-      className="w-full py-2"
+      style={styles.turn}
       {...(Platform.OS === 'web' ? { onPointerEnter: onIn, onPointerLeave: onOut } : {})}
     >
-      <View
-        className={`w-full flex-row items-center gap-2 ${mine ? 'justify-end' : 'justify-start'}`}
-      >
+      <View style={[styles.bubbleRow, mine && styles.mineBubbleRow]}>
         {mine ? icons : null}
         <View
-          className={`min-w-0 max-w-[80%] rounded-3xl px-4 ${
-            mine ? 'py-3' : 'bg-background-tertiary-default py-2'
-          }`}
-          style={mineColors ? { backgroundColor: mineColors.background } : undefined}
+          style={[
+            styles.bubble,
+            mine ? styles.mineBubble : styles.theirBubble,
+            mineColors ? { backgroundColor: mineColors.background } : undefined,
+          ]}
         >
           {typeof children === 'function' ? children(mineColors?.foreground) : children}
         </View>
@@ -108,11 +107,7 @@ export function ChatBubble({
       </View>
       {reactions.length === 0 ? null : (
         // The reactions sit on the bubble's lower edge, as the chat this is modelled on draws them.
-        <View
-          className={`-mt-2.5 flex-row flex-wrap items-center gap-1 ${
-            mine ? 'justify-end me-2.5' : 'justify-start ms-2.5'
-          }`}
-        >
+        <View style={[styles.reactions, mine ? styles.mineReactions : styles.theirReactions]}>
           {reactions.map((emoji) => (
             <ReactionPill
               key={emoji}
@@ -128,6 +123,7 @@ export function ChatBubble({
 
 /** One reaction under a bubble: the emoji on a wash of the theme's primary, ringed in the surface. */
 function ReactionPill({ emoji, onPress }: { emoji: string; onPress?: () => void }) {
+  const styles = useStyles();
   const theme = useTheme();
   const { t } = useLabels();
   const { state: hovered, onIn, onOut } = useInteractionState();
@@ -140,14 +136,16 @@ function ReactionPill({ emoji, onPress }: { emoji: string; onPress?: () => void 
       accessibilityState={{ selected: true }}
       disabled={onPress === undefined}
       onPress={onPress}
-      className="h-[22px] flex-row items-center rounded-full px-2"
-      style={{
-        backgroundColor: withAlpha(theme.colors.primary, hovered ? 0.16 : 0.12),
-        borderWidth: 2,
-        borderColor: theme.colors.background,
-      }}
+      style={[
+        styles.reaction,
+        {
+          backgroundColor: withAlpha(theme.colors.primary, hovered ? 0.16 : 0.12),
+          borderWidth: 2,
+          borderColor: theme.colors.background,
+        },
+      ]}
     >
-      <Text className="text-sm leading-none">{emoji}</Text>
+      <Text style={styles.reactionEmoji}>{emoji}</Text>
     </Pressable>
   );
 }
@@ -233,6 +231,7 @@ function IconButton({
   onPress,
   ...rest
 }: { label: string; icon: Glyph } & Omit<ComponentProps<typeof Pressable>, 'children'>) {
+  const styles = useStyles();
   const theme = useTheme();
   const { state: hovered, onIn, onOut } = useInteractionState();
   return (
@@ -243,8 +242,10 @@ function IconButton({
       onPress={onPress}
       onHoverIn={onIn}
       onHoverOut={onOut}
-      className="size-6 items-center justify-center rounded-full"
-      style={{ backgroundColor: hovered ? theme.colors.backgroundSecondary : undefined }}
+      style={[
+        styles.iconButton,
+        { backgroundColor: hovered ? theme.colors.backgroundSecondary : undefined },
+      ]}
     >
       <Icon
         width={16}
@@ -254,3 +255,43 @@ function IconButton({
     </Pressable>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  icons: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 2 },
+  turn: { width: '100%', paddingVertical: 8 },
+  reaction: {
+    height: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 9999,
+    paddingHorizontal: 8,
+  },
+  reactionEmoji: { fontSize: 14, lineHeight: 14 },
+  iconButton: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9999,
+  },
+  bubbleRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 8,
+  },
+  mineBubbleRow: { justifyContent: 'flex-end' },
+  bubble: { minWidth: 0, maxWidth: '80%', borderRadius: 24, paddingHorizontal: 16 },
+  mineBubble: { paddingVertical: 12 },
+  theirBubble: { backgroundColor: t.popover, paddingVertical: 8 },
+  reactions: {
+    marginTop: -10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 4,
+  },
+  mineReactions: { justifyContent: 'flex-end', marginInlineEnd: 10 },
+  theirReactions: { justifyContent: 'flex-start', marginInlineStart: 10 },
+}));

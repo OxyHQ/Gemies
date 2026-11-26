@@ -12,7 +12,7 @@ import type { GemieTelegramBotAnswer } from '@/features/agents/runtime/use-gemie
 import { queryKeys } from '@/shared/api/query-keys';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 
 const AGENT_ID = 'fixture-gemie';
 
@@ -61,7 +61,7 @@ export default function TelegramBotFixture() {
   }, [queryClient]);
   if (!ready) return null;
   return (
-    <ScrollView contentContainerClassName="p-4">
+    <ScrollView contentContainerStyle={styles.content}>
       <AgentTelegramBotSection
         agentId={AGENT_ID}
         name="Eusebio"
@@ -70,3 +70,7 @@ export default function TelegramBotFixture() {
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  content: { padding: 16 },
+});

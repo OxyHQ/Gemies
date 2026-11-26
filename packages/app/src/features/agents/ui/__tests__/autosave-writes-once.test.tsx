@@ -87,6 +87,11 @@ vi.mock('expo-router', () => ({
 }));
 
 vi.mock('@oxy.so/services/ui/client', () => ({
+  // The SDK's client reads the host's app assertion from here (ADR 0021); this host has none.
+  useAppAssertion: () => ({
+    getAppAssertion: async () => null,
+    getAppAssertionHeaders: async () => ({}),
+  }),
   useOxy: () => ({
     isAuthenticated: true,
     oxyServices: {
@@ -103,6 +108,7 @@ vi.mock('react-native', async () => {
     ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement(name, props, children);
   return {
+    ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
     Platform: {
       OS: 'web',
       select: (spec: Record<string, unknown>) => spec.web,

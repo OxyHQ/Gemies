@@ -8,7 +8,10 @@ const data = vi.hoisted(() => ({
     { role: 'assistant', content: 'Hello again.', agent: { id: 'eusebio', name: 'Eusebio' } },
   ],
 }));
-vi.mock('react-native', () => ({ View: 'View' }));
+vi.mock('react-native', async () => ({
+  ...(await import('../support/style-stubs')).reactNativeStyles,
+  View: 'View',
+}));
 vi.mock('@oxy.so/bloom/typography', () => ({ Text: 'Text' }));
 vi.mock('@oxy.so/bloom/agent-avatar', () => ({
   AgentAvatarProvider: ({ children }: React.PropsWithChildren) => children,
@@ -22,7 +25,7 @@ vi.mock('../../src/runtime/config', () => ({
 }));
 vi.mock('../../src/runtime/sharing', () => ({
   SharedConversationGoneError: class extends Error {},
-  useSharedConversation: () => ({ data, isLoading: false }),
+  useSharedConversation: () => ({ value: data, isLoading: false }),
   sharedMessages: () =>
     data.messages.map((message, index) => ({
       id: `shared-${index}`,

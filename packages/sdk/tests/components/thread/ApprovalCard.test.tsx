@@ -20,7 +20,8 @@ const drawn = vi.hoisted(() => ({
   line: null as null | string,
 }));
 
-vi.mock('react-native', () => ({
+vi.mock('react-native', async () => ({
+  ...(await import('../../support/style-stubs')).reactNativeStyles,
   View: (props: { children?: React.ReactNode }) => props.children ?? null,
 }));
 vi.mock('@oxy.so/bloom/notification', () => ({

@@ -20,6 +20,7 @@ import {
 } from '../runtime/sharing';
 import { GemieThread } from './thread/GemieThread';
 import { ThreadSkeleton } from './thread/ThreadSkeleton';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 export interface GemieSharedConversationProps {
   /** The share link's token. */
@@ -31,22 +32,23 @@ export interface GemieSharedConversationProps {
 }
 
 function SharedThread({ token }: { token: string }) {
+  const styles = useStyles();
   const { t } = useLabels();
-  const { data, error, isLoading } = useSharedConversation(token);
+  const { value: data, error, isLoading } = useSharedConversation(token);
   const threadRef = useRef<AiChatThreadHandle | null>(null);
   const messages = useMemo(() => (data ? sharedMessages(data) : []), [data]);
 
   if (isLoading) {
     return (
-      <View className="w-full max-w-4xl flex-1 self-center px-4">
+      <View style={styles.loading}>
         <ThreadSkeleton />
       </View>
     );
   }
   if (error || !data) {
     return (
-      <View className="flex-1 items-center justify-center px-6">
-        <Text className="text-center text-base text-muted-foreground">
+      <View style={styles.failure}>
+        <Text style={styles.failureText}>
           {error instanceof SharedConversationGoneError
             ? t('chat.sharedGone')
             : t('chat.sharedFailed')}
@@ -55,9 +57,9 @@ function SharedThread({ token }: { token: string }) {
     );
   }
   return (
-    <View className="flex-1">
+    <View style={styles.conversation}>
       {data.title ? (
-        <Text className="px-4 pt-4 text-lg font-semibold text-foreground" numberOfLines={2}>
+        <Text style={styles.title} numberOfLines={2}>
           {data.title}
         </Text>
       ) : null}
@@ -77,3 +79,33 @@ export function GemieSharedConversation({ token, apiUrl, labels }: GemieSharedCo
     </AgentAvatarProvider>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  loading: {
+    width: '100%',
+    maxWidth: 896,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+  },
+  failure: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  failureText: { textAlign: 'center', fontSize: 16, color: t.mutedForeground, lineHeight: 24 },
+  conversation: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  title: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    fontSize: 18,
+    fontWeight: 600,
+    color: t.foreground,
+    lineHeight: 28,
+  },
+}));

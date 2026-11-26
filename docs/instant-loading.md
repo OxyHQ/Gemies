@@ -20,47 +20,55 @@ la pantalla ocupa su sitio desde el primer fotograma y nada se mueve cuando lleg
 4. **Nada de textos de carga**: no existen claves `*.loading` ni cadenas «Loading»/«Cargando» sobre
    pantallas. El esqueleto se anuncia a los lectores de pantalla con la etiqueta localizada de
    Bloom.
-5. **Los datos de una pantalla son una consulta** (React Query), nunca un `fetch` desde un
-   `useEffect` a un `useState`: la consulta sirve lo que ya hay (esta sesión o la caché de la
-   cuenta) y lo refresca detrás. Una consulta que dibuja una pantalla no lleva `gcTime: 0`, que la
-   tiraría al desmontarse, y una pantalla que espera dibuja su esqueleto, nunca `null`.
+5. **Los datos de una pantalla son una lectura que sirve lo que ya hay**, nunca un `fetch` desde
+   un `useEffect` a un `useState`: una respuesta de bloom-data en el almacén de la cuenta (lo que
+   el sidebar dibuja: `useMyAgents`, `useSpaces` y lo del SDK) o una consulta de React Query (el
+   resto, en memoria). Las dos sirven lo que ya hay (esta sesión o el disco de la cuenta) y lo
+   refrescan detrás. Una consulta que dibuja una pantalla no lleva `gcTime: 0`, que la tiraría al
+   desmontarse, y una pantalla que espera dibuja su esqueleto, nunca `null`.
 
 ## Por qué es rápido de verdad
 
-- **Caché persistida por cuenta** (`ALIA_ACCOUNT_QUERIES`, `src/shared/api/query-keys.ts`): las
-  listas que ve primero quien vuelve (agentes, el hilo de un agente, las conversaciones del
-  sidebar, el perfil del agente, las skills) se guardan por cuenta y se pintan al abrir, mientras
-  se refrescan detrás. No se persisten la facturación ni nada firmado.
-- **Los mensajes recientes de las conversaciones recientes también**, acotados
-  (`src/shared/api/persisted-conversations.ts`): las 20 conversaciones actualizadas más
-  recientemente, de cada una sus últimos 40 mensajes, como mucho 150 KB por conversación, solo
-  texto (una imagen puede ser un data URL o una URL firmada que caduca) y nunca un turno que se
-  está emitiendo o que el servidor aún no guardó. Las demás no se escriben y salen de memoria si
-  nadie las mira. Volver a una conversación la pinta al instante y la refresca detrás. Van en la
-  caché de la cuenta, como el resto: nunca las lee otra cuenta del dispositivo (Alia, Mention y
-  Commons comparten UID en Android, así que la clave es la cuenta, no la app), un cambio de cuenta
-  las saca de memoria y cerrar sesión las borra.
-- **La caché sobrevive a los despliegues**: `ALIA_ACCOUNT_QUERIES.dataVersion` es
-  `PERSISTED_DATA_STAMP` (`src/shared/api/persisted-data-version.ts`: la versión de la forma de lo
-  persistido más la del SDK). `@oxy.so/services` solo tira la caché cuando cambia ese sello o su
-  propia versión. Si cambia un tipo de lo persistido, `__tests__/persisted-data-version.test.ts`
-  falla hasta que se sube la versión: un olvido es un test rojo, no una pantalla rota. Otra cuenta no puede hidratarlas y cerrar sesión las borra (lo hace Oxy);
-  `useAccountLifecycle` descarta las consultas de Alia al cambiar de cuenta.
+- **Los datos de la cuenta viven en su almacén de bloom-data**, que abre el `OxyProvider` de
+  `@oxy.so/services` 15 (un fichero SQLite por cuenta en un dispositivo, una base IndexedDB en la
+  web): lo que ve primero quien vuelve se pinta desde el disco al abrir y se refresca detrás.
+  - **Del SDK** (`@gemies/sdk` 10, que los persiste él con las cotas que tenía la caché de la app):
+    las conversaciones del sidebar, sus colecciones (carpetas, proyectos, fijadas, favoritas), el
+    perfil de un agente, el hilo de un agente (`gemieThread`, lo que abre `/@handle` al instante)
+    y los últimos mensajes de las conversaciones recientes (las 20 escritas más recientemente, de
+    cada una sus últimos 40 mensajes terminados, como mucho 150 KB, solo texto y nunca un turno que
+    se está emitiendo o que el servidor aún no guardó).
+  - **De la app** (`src/shared/api/account-data.ts`): los agentes de la persona (`myAgents`) y sus
+    espacios (`spaces`), que dibuja el sidebar. Son respuestas de bloom-data persistidas en el
+    almacén de la cuenta; quien los cambia (un evento en tiempo real, una edición, un mensaje
+    enviado) escribe o los marca obsoletos ahí mismo.
+  - Otra cuenta del dispositivo nunca los lee (cada cuenta tiene su almacén: Alia, Mention y
+    Commons comparten UID en Android, así que la clave es la cuenta, no la app), un cambio de
+    cuenta abre el almacén de la siguiente antes de publicarla y cerrar sesión lo borra. No se
+    persisten la facturación ni nada firmado.
+- **La forma de lo persistido tiene versión**: `persist: { version: PERSISTED_DATA_VERSION }`
+  (`src/shared/api/persisted-data-version.ts`). El almacén tira las filas de un tipo cuando cambia
+  su versión. Si cambia un tipo de lo persistido, `__tests__/persisted-data-version.test.ts` falla
+  hasta que se sube la versión: un olvido es un test rojo, no una pantalla rota. Lo del SDK lo
+  versiona el SDK.
+- **Todo lo demás es React Query y vive en memoria**: el cliente es de la app
+  (`src/shared/api/query-client.ts`, montado encima del `OxyProvider`), y un cambio de cuenta
+  cancela y reinicia todas sus consultas y olvida las escrituras que esperaban la red
+  (`useAccountLifecycle`): ninguna se repite como la cuenta siguiente. El catálogo de agentes, la
+  ficha de un agente y las skills se piden de nuevo en cada arranque.
 - **Prefetch por intención**: pasar el ratón o pulsar una fila del sidebar lee su conversación
   (`usePrefetchConversation`) y, en un agente con el que ya se habló, su hilo
   (`usePrefetchAgentThread`). `GET /agents/thread/:username` CREA el hilo la primera vez, así que
   nunca se pide por adelantado de un agente sin conversación.
 - **Resultados previos a la vista** (`placeholderData: keepPreviousData`) al cambiar de búsqueda o
   categoría en el catálogo de skills.
-- **La caché vive tanto en memoria como en disco**: `@oxy.so/services` 14.19.3 da a las raíces
-  persistidas `gcTime: Infinity`. Antes salían de memoria a la media hora sin mirarlas, y con
-  ellas del siguiente snapshot, así que «persistido» era «visto en la última media hora».
 - **Facturación, créditos y derechos** se piden de nuevo en cada montaje (`staleTime: 0`) y nunca
   se escriben a disco (un estado de pago no se muestra de la semana pasada), pero la última
   respuesta de esta sesión se dibuja mientras tanto, en vez de un esqueleto en cada visita.
-- **Conectores, Seguridad y Estilo de escritura** son consultas (`queryKeys.mcp`, `.audit`,
-  `.writingStyle`), en memoria: la lista de conectores la leen el compositor de cada chat y
-  Ajustes, y se pide una vez.
+- **Conectores, Seguridad y Estilo de escritura** se leen en memoria: los conectores son del SDK
+  (`useConnections`, en el almacén de la cuenta), los leen el compositor de cada chat y Ajustes y
+  se piden una vez; Seguridad y Estilo de escritura son consultas (`queryKeys.audit`,
+  `.writingStyle`).
 - **Lo que se abre a demanda va en su propio trozo**: `preloadable()` y `usePreloadWhenIdle()`
   (`src/shared/platform/preloadable.ts`). El editor de agentes (con el creador de Bloom, ~400 KB)
   se carga al abrirlo y se descarga antes, cuando la página está ociosa con sesión.

@@ -45,6 +45,7 @@ import {
   useWebSignInReturn,
 } from '../../runtime/connectors';
 import { ConnectorLogo } from './ConnectorLogo';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /** This component's own strings. */
 const K = 'gemie.connectors';
@@ -98,6 +99,7 @@ export function GemieConnectorsStore({
   t = englishCopy,
   onConnected,
 }: GemieConnectorsStoreProps) {
+  const styles = useStyles();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<ConnectorCategory | null>(null);
   const [filters, setFilters] = useState<ReadonlySet<StoreFilter>>(new Set());
@@ -126,18 +128,15 @@ export function GemieConnectorsStore({
 
   const accountsOf = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const connection of connections.data ?? []) {
+    for (const connection of connections.value ?? []) {
       if (connection.registryId) {
         counts.set(connection.registryId, (counts.get(connection.registryId) ?? 0) + 1);
       }
     }
     return counts;
-  }, [connections.data]);
+  }, [connections.value]);
 
-  const pages = store.data?.pages ?? [];
-  const entries = pages.flatMap((page) => page.servers);
-  const total = pages[0]?.total ?? 0;
-  const categories = pages[0]?.categories ?? [];
+  const { entries, total, categories } = store;
   const browsing = !q && category === null && filters.size === 0 && sort === 'featured';
   const featured = browsing ? entries.filter((entry) => entry.featured) : [];
   const rest = browsing ? entries.filter((entry) => !entry.featured) : entries;
@@ -153,7 +152,7 @@ export function GemieConnectorsStore({
   const connect = async (entry: ConnectorEntry) => {
     setPending(entry.id);
     try {
-      const connection = await actions.connect.mutateAsync(entry.id);
+      const connection = await actions.connect.run(entry.id);
       if (connection) {
         toast.success(t(`${K}.signIn.connected`, { name: entry.name }));
         onConnected?.();
@@ -177,7 +176,7 @@ export function GemieConnectorsStore({
   );
 
   return (
-    <View className="gap-4">
+    <View style={styles.store}>
       <Search
         label={t(`${K}.store.search`)}
         value={query}
@@ -207,7 +206,7 @@ export function GemieConnectorsStore({
           ))}
         </ChipRow>
       ) : null}
-      <View className="flex-row flex-wrap items-center justify-between gap-3">
+      <View style={styles.filters}>
         <ChipRow role="group" accessibilityLabel={t(`${K}.store.filters`)}>
           {FILTERS.map((filter) => (
             <Chip
@@ -224,14 +223,19 @@ export function GemieConnectorsStore({
         <SortSelect value={sort} onChange={setSort} t={t} />
       </View>
 
-      {store.isPending ? (
+      {store.isLoading ? (
         <StoreSkeleton />
       ) : store.isError && entries.length === 0 ? (
-        <View className="items-start gap-2 py-4">
-          <Text variant="body-2-regular" className="text-text-secondary">
+        <View style={styles.failure}>
+          <Text variant="body-2-regular" style={styles.muted}>
             {t(`${K}.store.loadFailed`)}
           </Text>
-          <Button size="sm" appearance="outline" tone="neutral" onPress={() => store.refetch()}>
+          <Button
+            size="sm"
+            appearance="outline"
+            tone="neutral"
+            onPress={() => void store.refresh()}
+          >
             {t(`${K}.store.retry`)}
           </Button>
         </View>
@@ -252,18 +256,18 @@ export function GemieConnectorsStore({
             </StoreGroup>
           ) : null}
           {entries.length === 0 ? (
-            <Text variant="body-2-regular" className="py-4 text-text-secondary">
+            <Text variant="body-2-regular" style={styles.emptyText}>
               {q ? t(`${K}.store.noResults`, { query: q }) : t(`${K}.store.empty`)}
             </Text>
           ) : null}
-          {store.hasNextPage ? (
-            <View className="items-center">
+          {store.hasMore ? (
+            <View style={styles.more}>
               <Button
                 size="sm"
                 appearance="outline"
                 tone="neutral"
-                loading={store.isFetchingNextPage}
-                onPress={() => void store.fetchNextPage()}
+                loading={store.isLoadingMore}
+                onPress={() => void store.more()}
               >
                 {t(`${K}.store.more`, { count: total - entries.length })}
               </Button>
@@ -275,14 +279,14 @@ export function GemieConnectorsStore({
       <Pressable
         accessibilityRole="button"
         onPress={() => setCustomOpen(true)}
-        className="flex-row items-center gap-3 rounded-2xl border border-dashed border-border p-4"
+        style={styles.customTile}
       >
-        <View className="h-10 w-10 items-center justify-center rounded-xl bg-background-tertiary-default">
+        <View style={styles.customIcon}>
           <RiAddLine width={20} height={20} />
         </View>
-        <View className="flex-1 gap-0.5">
+        <View style={styles.customText}>
           <Text variant="body-2-semibold">{t(`${K}.custom.title`)}</Text>
-          <Text variant="body-2-regular" className="text-text-secondary">
+          <Text variant="body-2-regular" style={styles.muted}>
             {t(`${K}.custom.description`)}
           </Text>
         </View>
@@ -292,7 +296,7 @@ export function GemieConnectorsStore({
         open={customOpen}
         onClose={() => setCustomOpen(false)}
         onAdd={async (input) => {
-          await actions.addCustom.mutateAsync(input);
+          await actions.addCustom.run(input);
           toast.success(t(`${K}.signIn.connected`, { name: input.name }));
           onConnected?.();
         }}
@@ -338,10 +342,11 @@ function SortSelect({
 }
 
 function StoreGroup({ title, children }: { title?: string; children: React.ReactNode }) {
+  const styles = useStyles();
   return (
-    <View className="gap-2">
+    <View style={styles.section}>
       {title ? <Text variant="headline-semibold">{title}</Text> : null}
-      <View className="flex-row flex-wrap gap-3">{children}</View>
+      <View style={styles.grid}>{children}</View>
     </View>
   );
 }
@@ -359,15 +364,16 @@ function StoreCard({
   onConnect: (entry: ConnectorEntry) => void;
   t: Translate;
 }) {
+  const styles = useStyles();
   return (
-    <View className="min-w-[260px] flex-1 basis-[260px] gap-3 rounded-2xl border border-border p-4">
-      <View className="flex-row items-center gap-3">
+    <View style={styles.entry}>
+      <View style={styles.entryHeader}>
         <ConnectorLogo name={entry.name} logoUrl={entry.logoUrl} size={40} />
-        <View className="flex-1 gap-1">
+        <View style={styles.entryText}>
           <Text variant="body-2-semibold" numberOfLines={1}>
             {entry.name}
           </Text>
-          <View className="flex-row flex-wrap items-center gap-1.5">
+          <View style={styles.badges}>
             <Badge
               size="label-small"
               variant="subtle"
@@ -384,7 +390,7 @@ function StoreCard({
                 content={t(`${K}.store.filter.noSignIn`)}
               />
             ) : null}
-            <Text variant="body-2-regular" className="text-text-secondary" numberOfLines={1}>
+            <Text variant="body-2-regular" style={styles.muted} numberOfLines={1}>
               {accounts > 0
                 ? t(`${K}.store.connectedCount`, { count: accounts })
                 : t(`${K}.category.${entry.category}`)}
@@ -392,10 +398,10 @@ function StoreCard({
           </View>
         </View>
       </View>
-      <Text variant="body-2-regular" className="text-text-secondary" numberOfLines={2}>
+      <Text variant="body-2-regular" style={styles.muted} numberOfLines={2}>
         {entry.description}
       </Text>
-      <View className="flex-row items-center gap-2">
+      <View style={styles.entryActions}>
         <Button
           size="sm"
           appearance={accounts > 0 ? 'outline' : 'solid'}
@@ -431,6 +437,7 @@ function CustomServerDialog({
   onAdd: (input: { name: string; url: string; headers?: Record<string, string> }) => Promise<void>;
   t: Translate;
 }) {
+  const styles = useStyles();
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [headerName, setHeaderName] = useState('');
@@ -483,7 +490,7 @@ function CustomServerDialog({
         },
       ]}
     >
-      <View className="gap-3">
+      <View style={styles.form}>
         <View>
           <TextFieldLabel>{t(`${K}.custom.name`)}</TextFieldLabel>
           <TextFieldInput
@@ -514,7 +521,7 @@ function CustomServerDialog({
           <AccordionItem value="advanced">
             <AccordionTrigger>{t(`${K}.custom.advanced`)}</AccordionTrigger>
             <AccordionContent>
-              <View className="gap-3">
+              <View style={styles.form}>
                 <View>
                   <TextFieldLabel>{t(`${K}.custom.headerName`)}</TextFieldLabel>
                   <TextFieldInput
@@ -549,17 +556,15 @@ function CustomServerDialog({
 
 /** The store's shape while the catalogue is read: cards, never a spinner. */
 function StoreSkeleton() {
+  const styles = useStyles();
   return (
     <Skeleton.Region>
-      <View className="flex-row flex-wrap gap-3">
+      <View style={styles.grid}>
         {[0, 1, 2, 3].map((index) => (
-          <View
-            key={index}
-            className="min-w-[260px] flex-1 basis-[260px] gap-3 rounded-2xl border border-border p-4"
-          >
-            <View className="flex-row items-center gap-3">
+          <View key={index} style={styles.entry}>
+            <View style={styles.entryHeader}>
               <Skeleton.Box width={40} height={40} borderRadius={9} />
-              <View className="flex-1 gap-1.5">
+              <View style={styles.loadingText}>
                 <Skeleton.Box width={120} height={14} />
                 <Skeleton.Box width={80} height={12} />
               </View>
@@ -572,3 +577,56 @@ function StoreSkeleton() {
     </Skeleton.Region>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  store: { gap: 16 },
+  filters: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  failure: { alignItems: 'flex-start', gap: 8, paddingVertical: 16 },
+  muted: { color: t.mutedForeground },
+  emptyText: { paddingVertical: 16, color: t.mutedForeground },
+  more: { alignItems: 'center' },
+  customTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 16,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: t.border,
+    padding: 16,
+  },
+  customIcon: {
+    height: 40,
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: t.popover,
+  },
+  customText: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 2 },
+  section: { gap: 8 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  entry: {
+    minWidth: 260,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 260,
+    gap: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: t.border,
+    padding: 16,
+  },
+  entryHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  entryText: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 4 },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  entryActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  form: { gap: 12 },
+  loadingText: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 6 },
+}));

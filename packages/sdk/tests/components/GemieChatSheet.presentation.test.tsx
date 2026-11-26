@@ -3,7 +3,8 @@ import { create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ width: 1280, height: 844 }));
-vi.mock('react-native', () => ({
+vi.mock('react-native', async () => ({
+  ...(await import('../support/style-stubs')).reactNativeStyles,
   View: 'View',
   useWindowDimensions: () => state,
 }));
@@ -12,7 +13,10 @@ vi.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 vi.mock('@oxy.so/bloom/styles', () => ({ BREAKPOINTS: { md: 768 } }));
-vi.mock('@oxy.so/bloom/theme', () => ({ useTheme: () => ({ isDark: false }) }));
+vi.mock('@oxy.so/bloom/theme', async () => ({
+  ...(await import('../support/style-stubs')).bloomTokenStyles,
+  useTheme: () => ({ isDark: false }),
+}));
 vi.mock('@oxy.so/bloom/agent-avatar', () => ({
   AgentAvatarProvider: ({ children }: { children: React.ReactNode }) => children,
 }));

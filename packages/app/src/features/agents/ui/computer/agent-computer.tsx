@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, StyleSheet } from 'react-native';
 import { Chip } from '@oxy.so/bloom/chip';
 import * as Skeleton from '@oxy.so/bloom/skeleton';
 import { EmptyState } from '@/shared/ui/empty-state';
@@ -65,7 +65,7 @@ export function AgentComputer({ agentId }: { agentId: string }) {
 
   if (computer.isPending) {
     return (
-      <Skeleton.Region className="flex-1 gap-4 p-4">
+      <Skeleton.Region style={styles.loading}>
         <Skeleton.Box width="100%" height={220} borderRadius={12} />
         <ListRowsSkeleton rows={3} lines={1} />
       </Skeleton.Region>
@@ -85,11 +85,11 @@ export function AgentComputer({ agentId }: { agentId: string }) {
   const state = computer.data.computer.state;
 
   return (
-    <ScrollView className="flex-1" showsVerticalScrollIndicator={false} testID="agent-computer">
-      <View className={isLargeScreen ? 'w-full max-w-[960px] gap-6 p-4' : 'w-full gap-6 p-4'}>
-        <View className="gap-2">
+    <ScrollView style={styles.fill} showsVerticalScrollIndicator={false} testID="agent-computer">
+      <View style={[styles.page, isLargeScreen && styles.widePage]}>
+        <View style={styles.stack}>
           <Muted>{t('agents.computer.subtitle')}</Muted>
-          <View className="flex-row">
+          <View style={styles.row}>
             <Chip size="lg">{t(`agents.computer.state.${state}`)}</Chip>
           </View>
           {!granted ? <Muted>{t('agents.computer.notGranted')}</Muted> : null}
@@ -128,3 +128,12 @@ export function AgentComputer({ agentId }: { agentId: string }) {
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  loading: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 16, padding: 16 },
+  fill: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  page: { width: '100%', gap: 24, padding: 16 },
+  widePage: { maxWidth: 960 },
+  stack: { gap: 8 },
+  row: { flexDirection: 'row' },
+});

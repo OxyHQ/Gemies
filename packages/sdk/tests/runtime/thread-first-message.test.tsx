@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -38,40 +38,30 @@ vi.mock('../../src/runtime/use-conversation-stream', () => ({
     turnOptionsOf: () => undefined,
   }),
 }));
-vi.mock('../../src/runtime/conversations', () => {
-  class ConversationNotFoundError extends Error {
-    readonly conversationId: string;
-    constructor(conversationId: string) {
-      super('Conversation not found');
-      this.conversationId = conversationId;
-    }
-  }
-  return {
-    ConversationNotFoundError,
-    useConversation: (id: string) => ({
-      data: undefined,
-      error: world.detailError ?? null,
-      isLoading: false,
-      isFetching: false,
-      id,
-    }),
-    useCreateConversation: () => ({ mutateAsync: async () => ({ id: 'made' }) }),
-    useDeleteConversation: () => ({
-      mutateAsync: async (id: string) => {
-        world.deleted.push(id);
-      },
-    }),
-    useReadConversation: () => async () => ({ messages: [] }),
-    useMarkConversationRead: () => () => undefined,
-    useClearConversation: () => ({ mutateAsync: async () => {} }),
-  };
-});
+vi.mock('../../src/runtime/conversations', () => ({
+  useConversation: (id: string) => ({
+    value: undefined,
+    error: world.detailError ?? null,
+    isLoading: false,
+    isFetching: false,
+    id,
+  }),
+  useCreateConversation: () => ({ run: async () => ({ id: 'made' }) }),
+  useDeleteConversation: () => ({
+    run: async (id: string) => {
+      world.deleted.push(id);
+    },
+  }),
+  useMarkConversationRead: () => () => undefined,
+  useConversationsClient: () => ({}),
+  useRefreshConversation: () => () => undefined,
+  useClearConversation: () => ({ run: async () => {} }),
+}));
 vi.mock('@oxy.so/services/ui/client', () => ({
   useOxy: () => ({
     user: null,
     isAuthenticated: true,
     canUsePrivateApi: true,
-    isAccountCacheReady: true,
   }),
 }));
 const toast = vi.hoisted(() => ({ error: vi.fn() }));
@@ -83,7 +73,7 @@ vi.mock('../../src/runtime/attachment-utils', () => ({
 import { DEFAULT_LABELS } from '../../src/lib/labels';
 import { useComposerDraftStore } from '../../src/runtime/composer-draft-store';
 import { GemieRuntimeProvider, type GemieRuntimeHost } from '../../src/runtime/config';
-import { ConversationNotFoundError } from '../../src/runtime/conversations';
+import { ConversationNotFoundError } from '../../src/runtime/data/conversations';
 import { useConversationStore } from '../../src/runtime/conversation-store';
 import { useConversationThread } from '../../src/runtime/use-conversation-thread';
 
@@ -100,11 +90,11 @@ function Probe({ conversationId }: { conversationId: string }) {
 async function mount(conversationId: string) {
   await act(async () => {
     renderer = create(
-      <QueryClientProvider client={new QueryClient()}>
+      <DataProvider store={new Store()}>
         <GemieRuntimeProvider host={host}>
           <Probe conversationId={conversationId} />
         </GemieRuntimeProvider>
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
 }

@@ -1,17 +1,18 @@
-@import "@oxy.so/app-preset/css/base.css";
-
-@source "./app/**/*.{js,jsx,ts,tsx}";
-@source "./src/**/*.{js,jsx,ts,tsx}";
-@source "../../node_modules/@oxy.so/services/lib/**/*.{js,jsx}";
-@source "../../node_modules/@oxy.so/bloom/lib/**/*.{js,jsx}";
-@source "../../../node_modules/@oxy.so/services/lib/**/*.{js,jsx}";
-@source "../../../node_modules/@oxy.so/bloom/lib/**/*.{js,jsx}";
-@source "../sdk/src/**/*.{ts,tsx}";
-
-@layer utilities {
-  .squircle {
-    border-radius: 20%;
-  }
+/* The web document's face. A React Native text that names no family takes the
+   document's (app-preset's base font gives it `font-family: inherit`), so the
+   document is set in Bloom's sans, at the line height Tailwind's preflight gave
+   it when the app still compiled Tailwind. */
+html {
+  font-family: var(
+    --bloom-font-sans,
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif
+  );
+  line-height: 1.5;
 }
 
 /* The page scrolls the DOCUMENT (Bloom's `AiChatShell scroll="document"`).

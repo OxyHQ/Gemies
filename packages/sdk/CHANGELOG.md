@@ -1,5 +1,108 @@
 # @gemies/sdk
 
+## 10.0.0
+
+Built on `@oxy.so/services` 15. The runtime's own data moved off React Query onto
+`@oxy.so/bloom-data`, in the store Services' `OxyProvider` opens for the signed-in account: an
+account switch never shows the previous account's conversations, collections, threads or
+connections, and an answer that lands for an account that was left is dropped. The SDK has no React
+Query left.
+
+It also takes Bloom 23 and leaves NativeWind: the chat's components style through React Native
+styles and Bloom's colour tokens (`createTokenStyles` from `@oxy.so/bloom/theme`) and pass no
+`className`, which Bloom 23 no longer takes. They draw as on Bloom 22: each converted element was
+rendered before and after, light and dark, native and web. An app needs no NativeWind,
+react-native-css or Tailwind for the SDK.
+
+It carries 9.2.0's thread work too: a coding CLI's permission request is answered from the
+conversation: the thread draws the question and the host answers it through `onApprovalDecision`
+(Gemies ADR 0043 §5).
+
+### Peers
+
+- **Breaking:** `@oxy.so/services` `>=15.0.0 <16`; Services 14 is no longer supported.
+- **Breaking:** `@oxy.so/bloom` `>=23.0.0`.
+- **Removed:** `nativewind` (optional) and `react-native-css`, and the `clsx` and `tailwind-merge`
+  dependencies.
+- **Added:** `@oxy.so/bloom-data` `>=0.1.0` (Services 15 requires it too).
+- **Removed:** `@tanstack/react-query`. An app that uses React Query itself declares it itself.
+
+### The account's data (`@gemies/sdk/runtime`)
+
+- **Records and lists:** `Conversations` (a conversation's row), `ConversationMessages` (its
+  messages, once it was read, with its row as a ref; `heldConversation(id)` joins the two),
+  `ConversationList` (one per filter, `conversationsKey(filter)`, `filterOfKey`), `ThreadMessages`,
+  `ThreadHistory`, `ThreadWindow`. They are copied to the account's durable copy where the app
+  persisted them before (conversations, their lists, the collections, an agent's profile, a
+  thread), with the bound the app's cache had: the messages of the
+  `MAX_PERSISTED_CONVERSATIONS` (20) conversations written last, each its last
+  `MAX_PERSISTED_MESSAGES` (40) finished messages, text only, at most `MAX_PERSISTED_BYTES`
+  (150 KB), never a turn still streaming or not yet stored (`trimConversationMessages`). Memory
+  keeps everything.
+- **Sources** (each takes the provider's client first): `conversationList`, `conversation`,
+  `conversationCollections`, `agentProfile`, `agentFeatures`, `gemieThread`, `threadHistorySource`,
+  `threadWindow`, `threadSearch`, `sharedConversation`; `@gemies/sdk/accounts` adds
+  `connectedAccounts`, `connectedAccountQr`, `connectedAccountChats`; `@gemies/sdk/connectors`
+  adds `connections`, `connectorStore` (`ConnectorStoreList`, `ConnectorEntries`).
+- **Actions** (optimistic: a change shows at once and comes back exactly as it was when the server
+  refuses): `markConversationRead`, `saveConversation`, `renameConversation`,
+  `deleteConversation`, `clearConversation`, `createConversation`, `createCollection`,
+  `updateCollection`, `deleteCollection`, `setCollectionMember`, `setConversationPinned`,
+  `setConversationFavorite`, `importCollections`, `shareConversation`,
+  `revokeConversationShare`; `updateAccount`, `grantAccount`, `removeAccount`, `connectAccount`;
+  `renameConnector`, `disconnectConnector`, `connectConnector`, `addCustomConnector`,
+  `reconnectConnector`, `completeConnectorSignIn`. None is durable: nothing the runtime writes
+  was replayed after a restart.
+- **Helpers:** `useConversationsClient`, `useRefreshConversation`, `useRefreshGemieThread`,
+  `placeConversation`, `forgetConversation`, `messagesRecord`, `refreshConversationLists`, `storeCollections`, `answerSource`, `useAnswer`,
+  `gemieRead` (the read rules every source shares), `ACCOUNT`. An app keeps its own account
+  data the same way: `answerSource(type, { persist: { version } })` copies its answers to the
+  account's durable store and drops them when `version` changes.
+- **Removed:** `gemieQueryKeys`, `connectorQueryKeys`, `reviveConversationDates`, the
+  `ConversationsPage` and `ConversationsInfiniteData` types, and `importCollections(api, local)`'s
+  plain function (it is the action of that name).
+
+### Styles
+
+- `IdentityMark` takes `style` in place of `className`; `GemieActivityLine` takes `style`, laid over
+  its own small primary line, in place of a `className` that replaced it.
+- `cn` (the class-name merger) is gone with NativeWind.
+- Classes that resolved to no style drew nothing and are gone. The connect-failure note, whose
+  `text-error-primary` class drew it in no colour, is drawn in Bloom's error role.
+
+### Hooks
+
+- **Breaking — reads return bloom-data views.** `useConversation`, `useAgentProfile`,
+  `useAgentFeatures`, `useGemieThread`, `useThreadSearch`, `useSharedConversation`,
+  `useConnections`, `useConnectedAccounts`, `useConnectedAccountQr` and
+  `useConnectedAccountChats` return a `RecordView` (`value`, was `data`; `refresh()`, was
+  `refetch()`; `status === 'error'`, was `isError`). `useConversations` returns a `ListView` with
+  its rows as `conversations` (was `data.pages[n].conversations`; `more()` was `fetchNextPage()`).
+  `useConnectorStore` returns `entries`, `total`, `categories`, `isLoading`, `isError`, `hasMore`,
+  `isLoadingMore`, `more` and `refresh`, and keeps the previous search's results on screen until a
+  new search answers.
+- **Breaking — writes return `ActionView`** (`run`, `isPending`, `error`, `data`, `reset`; `run`
+  was `mutateAsync`, there is no `mutate`): `useSaveConversation`, `useDeleteConversation`,
+  `useClearConversation`, `useCreateConversation`, `useRenameConversation` (`run(id, title)`, was
+  `mutateAsync({ id, title })`), `useConnectedAccountMutations` (`update.run(accountId, patch)`,
+  `grant.run(accountId, gemieId, granted)`) and `useConnectorActions`
+  (`rename.run(id, accountLabel)`).
+- `useConversation(id, { onReload })` hears a conversation rewritten on another device once it is
+  read again. A row the sidebar holds shows at once, without messages, while the conversation is
+  read.
+- Every private read waits for `useOxy().canUsePrivateApi` (no more `isAccountCacheReady`, which
+  Services 15 removed); `useSharedConversation` needs no session.
+- A realtime reset makes the lists, the conversations, the collections, the connected accounts
+  and the connections stale (`invalidateAll`): what is on screen is read again at once, the rest
+  when it is next shown, however fresh it was. A `connections` event does the same for the
+  connected accounts and the connections, and a message appended to a conversation for the threads.
+
+### Records
+
+- **Breaking:** `Conversation.createdAt` and `updatedAt` are ISO strings (a record is JSON, as the
+  durable copy keeps it), and `Conversation.messages` is optional: a list row or a realtime event
+  carries none, and leaves the held ones in place.
+
 ## 9.1.0
 
 Conversation lists, search results and file/source rows now use Bloom's shared ListItem. Group

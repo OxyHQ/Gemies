@@ -4,7 +4,7 @@ import { SettingsRowsSkeleton } from '@/shared/ui/skeletons';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { SettingsSection } from '@oxy.so/bloom/settings-modal';
 import { Switch } from '@oxy.so/bloom/switch';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /** This page's own strings. */
 const K = 'settings.assistant.proactive';
@@ -32,7 +32,7 @@ export function ProactiveSection() {
   }
 
   return (
-    <View className="w-full gap-6">
+    <View style={styles.stack}>
       <SettingsSection label={t(`${K}.emailTitle`)}>
         <GroupedSection>
           <GroupedSectionItem
@@ -66,3 +66,7 @@ export function ProactiveSection() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  stack: { width: '100%', gap: 24 },
+});

@@ -13,7 +13,7 @@ import { SettingsProfilePage } from '@oxy.so/bloom/settings-modal';
 import { toast } from '@oxy.so/bloom/toast';
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 const CLI_LABELS: Record<ExternalAgent['cli'], string> = {
   claude: 'Claude Code',
@@ -97,7 +97,7 @@ export function ExternalAgentsSection() {
             .filter(Boolean)
             .join(' '),
           control: (
-            <View className="flex-row gap-2">
+            <View style={styles.row}>
               {inviteExpired ? null : (
                 <Button
                   size="sm"
@@ -174,7 +174,7 @@ export function ExternalAgentsSection() {
                     ? t('settings.connections.externalAgents.online')
                     : t('settings.connections.externalAgents.offline'),
                   control: (
-                    <View className="flex-row gap-2">
+                    <View style={styles.row}>
                       <Button
                         size="sm"
                         appearance="outline"
@@ -219,3 +219,7 @@ export function ExternalAgentsSection() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  row: { flexDirection: 'row', gap: 8 },
+});

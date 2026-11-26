@@ -31,7 +31,12 @@ vi.mock('react-native', async () => {
     (name: string) =>
     ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement(name, props, children);
-  return { View: host('View'), Text: host('Text'), Platform: { OS: 'web' } };
+  return {
+    ...(await import('../../support/style-stubs')).reactNativeStyles,
+    View: host('View'),
+    Text: host('Text'),
+    Platform: { OS: 'web' },
+  };
 });
 vi.mock('react-native-reanimated', async () => {
   const ReactModule = await import('react');
@@ -124,7 +129,7 @@ vi.mock('../../../src/components/thread/ApprovalCard', async () => ({
 vi.mock('../../../src/components/thread/NewConversationOffer', async () => ({
   NewConversationOffer: await stub('Offer')(),
 }));
-vi.mock('../../../src/components/Image', async () => ({ Image: await stub('Image')() }));
+vi.mock('expo-image', async () => ({ Image: await stub('Image')() }));
 vi.mock('../../../src/components/QuestionCard', async () => ({
   AskedQuestions: await stub('AskedQuestions')(),
 }));
@@ -170,8 +175,8 @@ vi.mock('@oxy.so/services/ui/client', () => ({ useOxy: () => ({ user: { id: 'u1'
 // Stable across renders, as the real hook's `t` is (see `use-translation.ts`).
 const translation = vi.hoisted(() => ({ t: (key: string) => key, locale: 'en-GB' }));
 vi.mock('../../../src/lib/labels', () => ({ useLabels: () => translation }));
-const queryClient = vi.hoisted(() => ({ getQueryState: () => undefined }));
-vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => queryClient }));
+// The thought scope reads the open conversation's read state through the conversation client.
+vi.mock('../../../src/runtime/conversations', () => ({ useConversationsClient: () => ({}) }));
 vi.mock('expo-clipboard', () => ({ setStringAsync: async () => true }));
 // The turn's actions reach TTS, dictation and Bloom's context menu; none of
 // them takes part in what a token re-renders. `stateOf` is stable, as the real
@@ -417,8 +422,9 @@ function historyFixture(
   }));
 }
 
+/** The list's measured box: the View that reports the list's layout. */
 const list = (r: ReactTestRenderer): ReactTestInstance =>
-  all(r, 'View').find((node) => node.props.className === 'relative') as ReactTestInstance;
+  all(r, 'View').find((node) => node.props.style?.position === 'relative') as ReactTestInstance;
 const startReached = (): void => {
   const handler = thread.props?.onStartReached as (() => void) | undefined;
   if (handler === undefined) throw new Error('the thread was given no onStartReached');

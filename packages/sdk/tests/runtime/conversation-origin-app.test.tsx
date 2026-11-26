@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, type Store, withStore } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -37,7 +37,7 @@ vi.mock('../../src/runtime/api', () => {
   return { useGemieApi: () => stub };
 });
 vi.mock('@oxy.so/services/ui/client', () => ({
-  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true, isAccountCacheReady: true }),
+  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true }),
 }));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
@@ -47,12 +47,13 @@ import {
   useCreateConversation,
   useSaveConversation,
 } from '../../src/runtime/conversations';
-import { gemieQueryKeys } from '../../src/runtime/query-keys';
+import { ConversationList, conversationsKey } from '../../src/runtime/data/conversations';
+import { freshStore } from '../support/data-store';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 let renderer: ReactTestRenderer | undefined;
-let client: QueryClient;
+let store: Store;
 let createConversation: ReturnType<typeof useCreateConversation>;
 let saveConversation: ReturnType<typeof useSaveConversation>;
 
@@ -64,14 +65,14 @@ function Lists({ app }: { app?: string }) {
 }
 
 async function mount({ chatApp, listApp }: { chatApp?: string; listApp?: string }) {
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  store = freshStore();
   await act(async () => {
     renderer = create(
-      <QueryClientProvider client={client}>
+      <DataProvider store={store}>
         <GemieRuntimeProvider app={chatApp}>
           <Lists app={listApp} />
         </GemieRuntimeProvider>
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
 }
@@ -89,10 +90,13 @@ describe('useConversations({ app })', () => {
   it("asks for the app's conversations, under the app's own key", async () => {
     await mount({ chatApp: 'mercaria', listApp: 'mercaria' });
     expect(http.gets[0]?.params).toMatchObject({ app: 'mercaria' });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(withStore(store, () => ConversationList.get('all'))).toBeUndefined();
     expect(
-      client.getQueryData(gemieQueryKeys.conversations.filtered({ app: 'mercaria' })),
+      withStore(store, () => ConversationList.get(conversationsKey({ app: 'mercaria' }))),
     ).toBeDefined();
-    expect(client.getQueryData(gemieQueryKeys.conversations.all)).toBeUndefined();
   });
 
   it("is every conversation without it, whatever the chat's app", async () => {
@@ -105,8 +109,8 @@ describe("the chat's app labels the conversations it makes", () => {
   it('on create and on save', async () => {
     await mount({ chatApp: 'mercaria' });
     await act(async () => {
-      await createConversation.mutateAsync({});
-      await saveConversation.mutateAsync({ id: 'c1', messages: [] });
+      await createConversation.run({});
+      await saveConversation.run({ id: 'c1', messages: [] });
     });
     expect(http.posts.map((post) => post.body.app)).toEqual(['mercaria', 'mercaria']);
   });
@@ -114,7 +118,7 @@ describe("the chat's app labels the conversations it makes", () => {
   it("and Alia's own chat names none", async () => {
     await mount({});
     await act(async () => {
-      await createConversation.mutateAsync({});
+      await createConversation.run({});
     });
     expect(http.posts[0]?.body).not.toHaveProperty('app');
   });

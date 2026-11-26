@@ -7,7 +7,7 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { ListRowsSkeleton } from '@/shared/ui/skeletons';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, RefreshControl, View } from 'react-native';
+import { FlatList, RefreshControl, View, StyleSheet } from 'react-native';
 
 /**
  * Agent Session Activity — Timeline view of all agent actions in a session.
@@ -33,7 +33,7 @@ export default function SessionActivityScreen() {
   }, [refetch]);
 
   return (
-    <View className="flex-1">
+    <View style={styles.fill}>
       <Stack.Screen
         options={{
           title: t('pages.agents.sessionTitle'),
@@ -52,7 +52,7 @@ export default function SessionActivityScreen() {
           data={entries}
           keyExtractor={(item) => item._id || String(item.seq)}
           renderItem={({ item }) => <SessionEventCard entry={item} />}
-          contentContainerClassName="gap-2 px-4 pb-4"
+          contentContainerStyle={styles.content}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={<EmptyState title={t('pages.agents.sessionEmpty')} />}
         />
@@ -60,3 +60,8 @@ export default function SessionActivityScreen() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  content: { gap: 8, paddingHorizontal: 16, paddingBottom: 16 },
+});

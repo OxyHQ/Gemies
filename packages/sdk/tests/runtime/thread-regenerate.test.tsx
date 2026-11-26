@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { act, create } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -63,20 +63,19 @@ vi.mock('../../src/runtime/use-conversation-stream', () => ({
 }));
 
 vi.mock('../../src/runtime/conversations', () => ({
-  ConversationNotFoundError: class ConversationNotFoundError extends Error {},
-  useConversation: () => ({ data: undefined, isLoading: false, isFetching: false }),
-  useCreateConversation: () => ({ mutateAsync: vi.fn() }),
-  useDeleteConversation: () => ({ mutateAsync: vi.fn() }),
-  useReadConversation: () => async () => ({ messages: [] }),
+  useConversation: () => ({ value: undefined, isLoading: false, isFetching: false }),
+  useCreateConversation: () => ({ run: vi.fn() }),
+  useDeleteConversation: () => ({ run: vi.fn() }),
   useMarkConversationRead: () => () => undefined,
-  useClearConversation: () => ({ mutateAsync: vi.fn() }),
+  useConversationsClient: () => ({}),
+  useRefreshConversation: () => () => undefined,
+  useClearConversation: () => ({ run: vi.fn() }),
 }));
 vi.mock('@oxy.so/services/ui/client', () => ({
   useOxy: () => ({
     user: null,
     isAuthenticated: true,
     canUsePrivateApi: true,
-    isAccountCacheReady: true,
   }),
 }));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
@@ -110,14 +109,14 @@ function Probe() {
 }
 
 async function mount() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new Store();
   await act(async () => {
     create(
-      <QueryClientProvider client={client}>
+      <DataProvider store={client}>
         <GemieRuntimeProvider host={host}>
           <Probe />
         </GemieRuntimeProvider>
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
 }

@@ -7,7 +7,7 @@ import { RiCheckLine } from '@oxy.so/bloom/icons/RiCheckLine';
 import { TextFieldInput } from '@oxy.so/bloom/text-field';
 import { useKeyboardOnOpen } from '@/shared/platform/use-keyboard-on-open';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /**
  * The colours a project can carry, each drawn as one of Bloom's data hues.
@@ -79,7 +79,7 @@ export function ProjectEditDialog({ open, onOpenChange, project, onSave }: Proje
         },
       ]}
     >
-      <View className="gap-4">
+      <View style={styles.stack}>
         <Field label={t('sidebar.projectDialog.name')} required>
           <TextFieldInput
             label={t('sidebar.projectDialog.name')}
@@ -121,3 +121,7 @@ export function ProjectEditDialog({ open, onOpenChange, project, onSave }: Proje
     </Dialog>
   );
 }
+
+const styles = StyleSheet.create({
+  stack: { gap: 16 },
+});

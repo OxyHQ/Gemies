@@ -1,11 +1,10 @@
 import { useOxy } from '@oxy.so/services/ui/client';
-import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { GemieAvatarState } from '../components/GemieAvatar';
 import { callThread } from '../lib/call-thread';
 import { turnActivityState } from '../lib/turn-state';
 import { useGemieRuntime } from '../runtime/config';
-import { gemieQueryKeys } from '../runtime/query-keys';
+import { useRefreshConversation } from '../runtime/conversations';
 import type { Message } from '../runtime/types';
 import { type SoundSources, useVoiceSoundEffects } from './useSoundEffects';
 import { type UseVoiceLauncherOptions, useVoiceLauncher } from './useVoiceLauncher';
@@ -58,19 +57,12 @@ export function useChatVoice({
 }: UseChatVoiceOptions) {
   const runtime = useGemieRuntime();
   const { user } = useOxy();
-  const queryClient = useQueryClient();
   const enabled = options !== false;
   const { sounds, ...launcherOptions }: GemieVoiceOptions =
     options === false || options === undefined ? {} : options;
   const { onCallEnded } = launcherOptions;
 
-  const refreshConversation = useCallback(
-    (id: string) => {
-      void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.conversations.detail(id) });
-      void queryClient.invalidateQueries({ queryKey: gemieQueryKeys.conversations.all });
-    },
-    [queryClient],
-  );
+  const refreshConversation = useRefreshConversation();
 
   const launcher = useVoiceLauncher({
     apiUrl: runtime.apiUrl,

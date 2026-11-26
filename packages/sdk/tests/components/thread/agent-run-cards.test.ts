@@ -7,7 +7,11 @@ import { describe, expect, it, vi } from 'vitest';
  * all: which conversation opened it.
  */
 
-vi.mock('react-native', () => ({ View: 'View', Pressable: 'Pressable' }));
+vi.mock('react-native', async () => ({
+  ...(await import('../../support/style-stubs')).reactNativeStyles,
+  View: 'View',
+  Pressable: 'Pressable',
+}));
 vi.mock('expo-image', () => ({ Image: 'Image' }));
 for (const mod of [
   'accordion',

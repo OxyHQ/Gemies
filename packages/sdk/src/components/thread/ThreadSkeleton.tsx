@@ -1,5 +1,5 @@
 import * as Skeleton from '@oxy.so/bloom/skeleton';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /**
  * A conversation's turns that are on their way: the person's bubbles at the end, the replies as
@@ -9,22 +9,28 @@ import { View } from 'react-native';
  */
 export function ThreadSkeleton() {
   return (
-    <Skeleton.Region className="gap-5 py-4">
-      <View className="items-end">
+    <Skeleton.Region style={styles.skeleton}>
+      <View style={styles.question}>
         <Skeleton.Box width="65%" height={48} borderRadius={24} />
       </View>
-      <View className="items-start gap-2.5">
+      <View style={styles.reply}>
         <Skeleton.Box width="80%" height={14} borderRadius={8} />
         <Skeleton.Box width="70%" height={14} borderRadius={8} />
         <Skeleton.Box width="45%" height={14} borderRadius={8} />
       </View>
-      <View className="items-end">
+      <View style={styles.question}>
         <Skeleton.Box width="50%" height={40} borderRadius={24} />
       </View>
-      <View className="items-start gap-2.5">
+      <View style={styles.reply}>
         <Skeleton.Box width="85%" height={14} borderRadius={8} />
         <Skeleton.Box width="60%" height={14} borderRadius={8} />
       </View>
     </Skeleton.Region>
   );
 }
+
+const styles = StyleSheet.create({
+  skeleton: { gap: 20, paddingVertical: 16 },
+  question: { alignItems: 'flex-end' },
+  reply: { alignItems: 'flex-start', gap: 10 },
+});

@@ -81,7 +81,7 @@ vi.mock('../../../src/components/thread/ToolResultCard', async () => ({
 vi.mock('../../../src/components/thread/TurnStatusLine', async () => ({
   TurnStatusLine: await stub('StatusLine')(),
 }));
-vi.mock('../../../src/components/Image', async () => ({ Image: await stub('Image')() }));
+vi.mock('expo-image', async () => ({ Image: await stub('Image')() }));
 vi.mock('@oxy.so/bloom/agent-progress', async () => ({
   AgentProgress: await stub('AgentProgress')(),
 }));
@@ -108,11 +108,10 @@ vi.mock('@oxy.so/services/ui/client', () => ({
     user: { id: 'me' },
     isAuthenticated: true,
     canUsePrivateApi: true,
-    isAccountCacheReady: true,
   }),
 }));
 
-const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query');
+const { DataProvider, Store } = await import('@oxy.so/bloom-data');
 const { BloomThemeProvider } = await import('@oxy.so/bloom/theme');
 const { GemieThread } = await import('../../../src/components/thread/GemieThread');
 const { GemieToolRenderersProvider } = await import('../../../src/lib/tool-renderers');
@@ -159,7 +158,7 @@ async function mount(messages: Message[], readOnly = false) {
   await act(async () => {
     renderer = create(
       <BloomThemeProvider mode="light">
-        <QueryClientProvider client={new QueryClient()}>
+        <DataProvider store={new Store()}>
           <GemieFlightsProvider value={flights as never}>
             <GemieToolRenderersProvider value={renderers}>
               <GemieThread
@@ -170,7 +169,7 @@ async function mount(messages: Message[], readOnly = false) {
               />
             </GemieToolRenderersProvider>
           </GemieFlightsProvider>
-        </QueryClientProvider>
+        </DataProvider>
       </BloomThemeProvider>,
     );
   });

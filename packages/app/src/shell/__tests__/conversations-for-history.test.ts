@@ -24,8 +24,8 @@ function conversation(id: string, agentId?: string | null): Conversation {
   return {
     id,
     title: id,
-    createdAt: new Date('2026-03-04T09:00:00Z'),
-    updatedAt: new Date('2026-03-04T09:00:00Z'),
+    createdAt: '2026-03-04T09:00:00Z',
+    updatedAt: '2026-03-04T09:00:00Z',
     messages: [],
     ...(agentId === undefined ? {} : { agentId }),
   };

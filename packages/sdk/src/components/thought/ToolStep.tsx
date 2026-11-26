@@ -10,7 +10,7 @@ import { Loading } from '@oxy.so/bloom/loading';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { Muted } from '@oxy.so/bloom/typography';
 import type { ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, StyleSheet } from 'react-native';
 
 /**
  * One execution row: a tool call, its state, and — expanded — what went in
@@ -79,7 +79,7 @@ export function ToolStep({
         subtitle={description}
         destructive={status === 'error'}
         trailing={
-          <View className="flex-row items-center gap-1.5">
+          <View style={styles.trailing}>
             {statusWord === null ? null : <Muted>{statusWord}</Muted>}
             <Chevron size="sm" fill={colors.textSecondary} />
           </View>
@@ -90,11 +90,11 @@ export function ToolStep({
       />
 
       {expanded ? (
-        <View className="gap-2 pb-2">
+        <View style={styles.details}>
           {input.length > 0 || output.length > 0 ? (
             <ScrollView
-              className="max-h-[200px]"
-              contentContainerClassName="gap-2"
+              style={styles.detailsScroll}
+              contentContainerStyle={styles.detailsContent}
               nestedScrollEnabled
             >
               {input.length > 0 ? (
@@ -118,7 +118,7 @@ export function ToolStep({
             </ScrollView>
           ) : null}
           {chips.length > 0 ? (
-            <View className="flex-row flex-wrap gap-1.5">
+            <View style={styles.chips}>
               {chips.map((source) => (
                 <Chip key={source.url} size="sm" leadingIcon={RiGlobalLine}>
                   {source.domain}
@@ -132,3 +132,11 @@ export function ToolStep({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  trailing: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  details: { gap: 8, paddingBottom: 8 },
+  detailsScroll: { maxHeight: 200 },
+  detailsContent: { gap: 8 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+});

@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => ({
   insets: { top: 24, bottom: 48, left: 0, right: 0 },
 }));
 
-vi.mock('react-native', () => ({
+vi.mock('react-native', async () => ({
+  ...(await import('../support/style-stubs')).reactNativeStyles,
   View: 'View',
   Text: 'Text',
   TouchableOpacity: 'TouchableOpacity',
@@ -23,7 +24,10 @@ vi.mock('@oxy.so/bloom/agent-avatar', () => ({
   AgentAvatarProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-vi.mock('@oxy.so/bloom/theme', () => ({ useTheme: () => ({ colors: { background: '#fff' } }) }));
+vi.mock('@oxy.so/bloom/theme', async () => ({
+  ...(await import('../support/style-stubs')).bloomTokenStyles,
+  useTheme: () => ({ colors: { background: '#fff' } }),
+}));
 
 vi.mock('../../src/components/GemieChatHeader', () => ({ GemieChatHeader: () => null }));
 

@@ -8,6 +8,7 @@ import { Switch } from '@oxy.so/bloom/switch';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
 import { View } from 'react-native';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /** This section's own strings. */
 const K = 'agents.editor.work';
@@ -22,8 +23,9 @@ const DEFAULT_HEARTBEAT = 60;
  * and how often, and whose computer it uses.
  */
 export function AgentWorkSection({ agentId, name }: { agentId: string; name: string }) {
+  const styles = useStyles();
   const { t } = useTranslation();
-  const { data: agents, isPending } = useMyAgents();
+  const { value: agents, isLoading: isPending } = useMyAgents();
   const update = useUpdateAgent();
   const agent = agents?.find((candidate) => candidate._id === agentId);
   const interval = agent?.scheduleInterval ?? null;
@@ -83,8 +85,8 @@ export function AgentWorkSection({ agentId, name }: { agentId: string; name: str
               onChange={(value) => save({ computerSource: value === 'own' ? 'own' : 'alia' })}
             />
           </AgentCreatorField>
-          <View className="border-t border-border py-2.5 pe-2.5">
-            <Text variant="body-2-regular" className="text-text-secondary">
+          <View style={styles.container}>
+            <Text variant="body-2-regular" style={styles.mutedText}>
               {t(`${K}.computerNote`, { name })}
             </Text>
           </View>
@@ -93,3 +95,13 @@ export function AgentWorkSection({ agentId, name }: { agentId: string; name: str
     </AgentCreatorSection>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  container: {
+    borderTopWidth: 1,
+    borderColor: t.border,
+    paddingVertical: 10,
+    paddingInlineEnd: 10,
+  },
+  mutedText: { color: t.mutedForeground },
+}));

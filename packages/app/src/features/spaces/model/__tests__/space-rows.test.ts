@@ -16,8 +16,8 @@ const agent = (id: string, name: string, spaceId?: string | null): Agent =>
 const conversation = (id: string, over: Partial<Conversation> = {}): Conversation => ({
   id,
   title: id,
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
   messages: [],
   ...over,
 });

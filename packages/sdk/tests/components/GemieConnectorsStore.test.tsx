@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import type React from 'react';
 import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,7 +18,12 @@ vi.mock('react-native', async () => {
     (name: string) =>
     ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement(name, props, children);
-  return { View: element('View'), Pressable: element('Pressable'), Platform: { OS: 'ios' } };
+  return {
+    ...(await import('../support/style-stubs')).reactNativeStyles,
+    View: element('View'),
+    Pressable: element('Pressable'),
+    Platform: { OS: 'ios' },
+  };
 });
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn(), openAuthSessionAsync: vi.fn() }));
 vi.mock('@oxy.so/bloom/typography', async () => host('Text'));
@@ -63,7 +68,9 @@ for (const icon of [
   vi.doMock(`@oxy.so/bloom/icons/${icon}`, () => ({ [icon]: () => null }));
 }
 vi.mock('@oxy.so/bloom/toast', () => ({ toast }));
-vi.mock('@oxy.so/services/ui/client', () => ({ useOxy: () => ({ isAuthenticated: true }) }));
+vi.mock('@oxy.so/services/ui/client', () => ({
+  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true }),
+}));
 vi.mock('../../src/runtime/api', () => ({ useGemieApi: () => api }));
 vi.mock('../../src/components/connectors/ConnectorLogo', () => ({ ConnectorLogo: () => null }));
 vi.mock('../../src/runtime/config', () => ({
@@ -150,12 +157,12 @@ async function settle(): Promise<void> {
 }
 
 async function render(): Promise<TestRenderer.ReactTestRenderer> {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new Store();
   await act(async () => {
     renderer = TestRenderer.create(
-      <QueryClientProvider client={client}>
+      <DataProvider store={client}>
         <GemieConnectorsStore nativeScheme="gemies" />
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
   await settle();

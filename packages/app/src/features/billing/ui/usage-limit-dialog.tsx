@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Dialog, type DialogAction } from '@oxy.so/bloom/dialog';
 import { IconCircle } from '@oxy.so/bloom/icon-circle';
@@ -7,7 +7,7 @@ import { RiBankCardLine } from '@oxy.so/bloom/icons/RiBankCardLine';
 import { RiFlashlightLine } from '@oxy.so/bloom/icons/RiFlashlightLine';
 import { RiLockLine } from '@oxy.so/bloom/icons/RiLockLine';
 import { RiTimeLine } from '@oxy.so/bloom/icons/RiTimeLine';
-import { type UsageLimitError } from '@gemies/sdk/model';
+import type { UsageLimitError } from '@gemies/sdk/model';
 import { useTranslation } from '@/shared/i18n/use-translation';
 
 interface UsageLimitDialogProps {
@@ -141,9 +141,13 @@ export function UsageLimitDialog({ error, onDismiss }: UsageLimitDialogProps) {
       description={description}
       actions={actions}
     >
-      <View className="items-center">
+      <View style={styles.container}>
         <IconCircle icon={icon} size="lg" />
       </View>
     </Dialog>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { alignItems: 'center' },
+});

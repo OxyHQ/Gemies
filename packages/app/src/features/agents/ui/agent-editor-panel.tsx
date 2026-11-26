@@ -1,7 +1,7 @@
 import { AgentEditorSurface } from '@/features/agents/ui/edit/lazy-agent-editor';
 import { useUIStore } from '@/features/chat/runtime/ui-store';
 import { useRouter } from 'expo-router';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /**
  * The agent editor: the right panel, beside the conversation, as Bloom's multi-agent chat shows
@@ -31,7 +31,7 @@ export function AgentEditorPanel() {
   // The creator draws its own header, with the close button, and fills the panel (a scroll area of
   // its own): the shell's bounded layout gives it the height, so the panel adds nothing.
   return (
-    <View className="flex-1" testID="agent-editor-panel">
+    <View style={styles.fill} testID="agent-editor-panel">
       <AgentEditorSurface
         agentId={agentId ?? undefined}
         onClose={() => setRightPanel(null)}
@@ -43,3 +43,7 @@ export function AgentEditorPanel() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+});

@@ -12,7 +12,7 @@ import { toast } from '@oxy.so/bloom/toast';
 import { Muted, Text } from '@oxy.so/bloom/typography';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 export default function ForgotPasswordScreen() {
   const { t } = useTranslation();
@@ -74,13 +74,13 @@ export default function ForgotPasswordScreen() {
         />
       ) : (
         // Form state
-        <View className="gap-6">
-          <View className="gap-2">
+        <View style={styles.form}>
+          <View style={styles.intro}>
             <Text variant="title-1-bold">{t('forgotPassword.title')}</Text>
             <Muted>{t('forgotPassword.subtitle')}</Muted>
           </View>
 
-          <View className="gap-3">
+          <View style={styles.fields}>
             <AuthError message={error} />
 
             <TextFieldInput
@@ -111,3 +111,9 @@ export default function ForgotPasswordScreen() {
     </AuthContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  form: { gap: 24 },
+  intro: { gap: 8 },
+  fields: { gap: 12 },
+});

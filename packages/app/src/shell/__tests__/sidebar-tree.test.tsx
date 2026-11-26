@@ -65,6 +65,7 @@ vi.mock('react-native', async () => {
     ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement(name, props, children);
   return {
+    ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
     View: host('View'),
     Linking: { openURL: vi.fn() },
     Platform: { OS: 'web', select: (spec: Record<string, unknown>) => spec.web },
@@ -126,25 +127,32 @@ vi.mock('@/shared/i18n/use-translation', () => ({
 // hooks that talk to the API are stubbed.
 vi.mock('@gemies/sdk/runtime', async () => ({
   ...(await import('../../../../sdk/src/runtime/conversation-store')),
+  ...(await import('@/shared/testing/sdk-runtime-data')),
   useConversations: (filter?: { kind?: string }) => ({
-    data: state.isLoading
-      ? undefined
-      : {
-          pages: [
-            {
-              conversations: filter?.kind === 'gemies' ? state.betweenGemies : state.conversations,
-            },
-          ],
-        },
-    fetchNextPage: vi.fn(),
-    hasNextPage: false,
-    isFetchingNextPage: state.isFetchingNextPage,
-    isFetchNextPageError: false,
-    isPending: state.isLoading,
+    conversations: state.isLoading
+      ? []
+      : filter?.kind === 'gemies'
+        ? state.betweenGemies
+        : state.conversations,
+    list: state.isLoading ? undefined : { ids: [] },
+    more: vi.fn(),
+    hasMore: false,
+    isFetching: state.isFetchingNextPage,
+    isLoading: state.isLoading,
+    status: state.isLoading ? 'loading' : 'success',
+    refresh: vi.fn(),
   }),
   usePrefetchConversation: () => vi.fn(),
-  useDeleteConversation: () => ({ mutateAsync: vi.fn() }),
-  useRenameConversation: () => ({ mutate: vi.fn() }),
+  useDeleteConversation: () => ({ run: vi.fn() }),
+  useRenameConversation: () => ({ run: vi.fn(async () => undefined) }),
+  // A gemie row's hover reads its thread ahead (`usePrefetchAgentThread`).
+  gemieThread: {
+    fetch: vi.fn(async () => undefined),
+    key: () => '',
+    entity: { get: () => undefined },
+  },
+  retryThreadRead: () => false,
+  useGemieApi: () => ({}),
 }));
 // The account's folders, projects, pins and favourites, held here as the server would hold them.
 vi.mock('@/features/projects/runtime/collections', async () => {
@@ -218,12 +226,13 @@ vi.mock('@/features/projects/runtime/collections', async () => {
   };
 });
 vi.mock('@/features/agents/runtime/use-my-agents', () => ({
-  useMyAgents: () => ({ data: state.agents }),
+  useMyAgents: () => ({ value: state.agents }),
 }));
 vi.mock('@/features/spaces/runtime/use-spaces', () => ({
   useSpaces: () => ({
-    data: state.spacesLoading ? undefined : state.spaces,
-    isPending: state.spacesLoading,
+    value: state.spacesLoading ? undefined : state.spaces,
+    isLoading: state.spacesLoading,
+    status: state.spacesLoading ? 'loading' : 'success',
   }),
   useSpaceMutations: () => state.mutations,
   spaceErrorCode: () => undefined,
@@ -389,7 +398,7 @@ import { useConversationStore } from '@gemies/sdk/runtime';
 import { useStore } from '@/features/chat/runtime/global-store';
 import { useSpacesOpenStore } from '@/features/spaces/runtime/spaces-open-store';
 
-const NOW = new Date();
+const NOW = new Date().toISOString();
 
 function chat(id: string): Record<string, unknown> {
   return { id, title: id, createdAt: NOW, updatedAt: NOW, messages: [], agentId: null };

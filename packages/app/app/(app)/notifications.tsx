@@ -29,7 +29,7 @@ import { useAuth } from '@oxy.so/services/ui/client';
 import * as ExpoNotifications from 'expo-notifications';
 import { type Href, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Platform, ScrollView, View } from 'react-native';
+import { Platform, ScrollView, View, StyleSheet } from 'react-native';
 
 /** A notification's priority, as the tone of its unread dot. */
 const PRIORITY_TONES: Record<string, AccentTone> = {
@@ -132,9 +132,9 @@ export default function NotificationsScreen() {
   const StatusIcon = pushEnabled ? RiNotification3Line : RiNotificationOffLine;
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pb-6 pt-4">
+    <ScrollView style={styles.fill} contentContainerStyle={styles.content}>
       {/* Top row: the way back, the unread count and the page's actions. */}
-      <View className="flex-row flex-wrap items-center gap-2">
+      <View style={styles.topRow}>
         <Button
           tone="neutral"
           appearance="plain"
@@ -144,7 +144,7 @@ export default function NotificationsScreen() {
         >
           {t('common.back')}
         </Button>
-        <View className="flex-1">
+        <View style={styles.fill}>
           {unreadCount > 0 ? (
             <Muted>{t('pages.notifications.unread', { count: unreadCount })}</Muted>
           ) : null}
@@ -233,7 +233,7 @@ export default function NotificationsScreen() {
                 supporting={notification.body}
                 supportingLines={3}
                 trailing={
-                  <View className="flex-row items-center gap-1">
+                  <View style={styles.trailing}>
                     <Muted>{timeAgo(notification.createdAt)}</Muted>
                     <Button
                       tone="neutral"
@@ -254,3 +254,10 @@ export default function NotificationsScreen() {
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  content: { gap: 16, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 },
+  topRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  trailing: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+});

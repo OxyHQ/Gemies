@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), delete: vi.fn() }));
 
 vi.mock('@oxy.so/services/ui/client', () => ({
-  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true, isAccountCacheReady: true }),
+  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true }),
 }));
 vi.mock('@/shared/api/client', () => ({
   default: { get: api.get, post: api.post, delete: api.delete, patch: vi.fn(), put: vi.fn() },

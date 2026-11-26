@@ -1,5 +1,5 @@
 import * as Skeleton from '@oxy.so/bloom/skeleton';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /**
  * A centred status block that is on its way (a mark, a title, a line and a button), the shape of
@@ -8,9 +8,9 @@ import { View } from 'react-native';
  */
 export function StatusSkeleton() {
   return (
-    <Skeleton.Region className="items-center gap-4 py-8">
+    <Skeleton.Region style={styles.status}>
       <Skeleton.Circle size={64} />
-      <View className="items-center gap-2">
+      <View style={styles.stack}>
         <Skeleton.Box width={200} height={18} />
         <Skeleton.Box width={260} height={13} />
       </View>
@@ -25,10 +25,22 @@ export function StatusSkeleton() {
  */
 export function CardsSkeleton({ count = 3, height = 360 }: { count?: number; height?: number }) {
   return (
-    <Skeleton.Region className="flex-row flex-wrap justify-center gap-4 py-4">
+    <Skeleton.Region style={styles.row}>
       {Array.from({ length: count }, (_, index) => (
         <Skeleton.Box key={index} width={280} height={height} borderRadius={24} />
       ))}
     </Skeleton.Region>
   );
 }
+
+const styles = StyleSheet.create({
+  status: { alignItems: 'center', gap: 16, paddingVertical: 32 },
+  stack: { alignItems: 'center', gap: 8 },
+  row: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 16,
+    paddingVertical: 16,
+  },
+});

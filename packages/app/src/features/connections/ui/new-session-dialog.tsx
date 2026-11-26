@@ -10,7 +10,7 @@ import { toast } from '@oxy.so/bloom/toast';
 import { Muted } from '@oxy.so/bloom/typography';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 const K = 'settings.connections.externalAgents.session';
 
@@ -82,8 +82,8 @@ export function NewSessionDialog({
         },
       ]}
     >
-      <View className="gap-4">
-        <View className="gap-2">
+      <View style={styles.body}>
+        <View style={styles.field}>
           <TextFieldInput
             label={t(`${K}.folderLabel`)}
             placeholder={t(`${K}.folderPlaceholder`)}
@@ -102,7 +102,7 @@ export function NewSessionDialog({
         {folders.length > 0 ? (
           <List
             accessibilityLabel={t(`${K}.recent`)}
-            style={{ width: '100%' }}
+            style={styles.list}
             items={folders.map((recent) => ({
               id: recent,
               title: recent,
@@ -118,3 +118,9 @@ export function NewSessionDialog({
     </Dialog>
   );
 }
+
+const styles = StyleSheet.create({
+  body: { gap: 16 },
+  field: { gap: 8 },
+  list: { width: '100%' },
+});

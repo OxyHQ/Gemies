@@ -6,18 +6,16 @@
  * reaches, with the consumer's options. The SDK's own `tsc` cannot see an entry that leans on
  * something only ANOTHER entry brings into the program: its project includes every file at once.
  *
- * That is how 21.4.0–21.5.2 shipped `/text` and `/ask/text`: the SDK's components use NativeWind's
- * `className` on React Native views, a prop that exists only once `nativewind/types` augments
- * React Native's types, and only `src/index.ts` carried that reference. Expo apps load NativeWind's
- * types themselves and never noticed; a Vite consumer importing `@gemies/sdk/text` (the website)
- * got 65 `className` errors. So each entry that reaches a component carries its own
- * `/// <reference types="nativewind/types" />` (a triple-slash directive in a shipped `.ts` file
- * is what a consumer's compiler reads), and this check holds it.
+ * That is how 21.4.0–21.5.2 shipped `/text` and `/ask/text`: the components then used NativeWind's
+ * `className`, a prop that exists only once `nativewind/types` augments React Native's types, and
+ * only `src/index.ts` carried that reference; a Vite consumer importing `@gemies/sdk/text` (the
+ * website) got 65 `className` errors. The SDK has used React Native styles since 10.0.0, but any
+ * global an entry leans on fails the same way, and this check holds it.
  *
  * For each entry it writes a throwaway consumer outside the repo whose `node_modules/@gemies/sdk`
  * is a symlink to this package — so the `exports` map is resolved exactly as for an installed
  * package — and compiles one file that imports only that entry, with `types: []` (nothing loaded
- * globally: no NativeWind, no Node, no Vite) and the strict options of the strictest consumers we
+ * globally: no Node, no Vite) and the strict options of the strictest consumers we
  * have (the website: `verbatimModuleSyntax`, `erasableSyntaxOnly`, `noUncheckedSideEffectImports`;
  * Astro: `noUncheckedIndexedAccess`, under which an index read is `T | undefined`).
  */
@@ -111,12 +109,6 @@ try {
       console.error(`     ${line.replace(PACKAGE_ROOT, '<sdk>')}`);
     }
     if (errors.length === 0) console.error(output);
-    if (errors.some((line) => line.includes("'className'"))) {
-      console.error(
-        '     `className` comes from NativeWind: the entry needs its own ' +
-          '`/// <reference types="nativewind/types" />`.',
-      );
-    }
   }
 } finally {
   rmSync(dir, { recursive: true, force: true });

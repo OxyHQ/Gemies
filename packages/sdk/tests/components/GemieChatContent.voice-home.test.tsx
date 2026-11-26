@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,7 +21,11 @@ const world = vi.hoisted(() => ({
   call: null as null | { conversationId?: string },
 }));
 
-vi.mock('react-native', () => ({ View: 'View', Text: 'Text' }));
+vi.mock('react-native', async () => ({
+  ...(await import('../support/style-stubs')).reactNativeStyles,
+  View: 'View',
+  Text: 'Text',
+}));
 vi.mock('react-native-reanimated', () => ({}));
 vi.mock('../../src/lib/flights', () => ({
   GemieFlightsProvider: ({ children }: { children: React.ReactNode }) => children,
@@ -40,8 +44,8 @@ vi.mock('../../src/components/GemieParticipants', () => ({
 }));
 vi.mock('../../src/runtime/agents', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  useAgentProfile: () => ({ data: undefined, isLoading: false }),
-  useAgentFeatures: () => ({ data: undefined, isLoading: false }),
+  useAgentProfile: () => ({ value: undefined, isLoading: false }),
+  useAgentFeatures: () => ({ value: undefined, isLoading: false }),
 }));
 vi.mock('../../src/runtime/oxy-files', () => ({ useDocumentUpload: () => async () => 'file-1' }));
 vi.mock('@oxy.so/bloom/agent-avatar', () => ({
@@ -50,12 +54,12 @@ vi.mock('@oxy.so/bloom/agent-avatar', () => ({
   resolveAvatarCharacter: (character: unknown) => character,
 }));
 vi.mock('@oxy.so/bloom/icons/RiFileTextLine', () => ({ RiFileTextLine: () => null }));
-vi.mock('@oxy.so/services/ui/client', () => ({
+vi.mock('@oxy.so/services/ui/client', async () => ({
+  ...(await import('../support/app-assertion-host')).hostWithoutAppAssertion,
   useOxy: () => ({
     user: { id: 'u1' },
     isAuthenticated: true,
     canUsePrivateApi: true,
-    isAccountCacheReady: true,
   }),
 }));
 vi.mock('@oxy.so/core', () => ({ getAccountDisplayName: () => 'Nate' }));
@@ -170,19 +174,19 @@ vi.mock('../../src/runtime/use-conversation-stream', () => ({
   }),
 }));
 vi.mock('../../src/runtime/conversations', () => ({
-  ConversationNotFoundError: class ConversationNotFoundError extends Error {},
-  useConversation: () => ({ data: undefined, error: null, isLoading: false, isFetching: false }),
+  useConversation: () => ({ value: undefined, error: null, isLoading: false, isFetching: false }),
   useCreateConversation: () => ({
-    mutateAsync: async (params: unknown) => {
+    run: async (params: unknown) => {
       world.created.push(params);
       if (world.failCreate) throw new Error('offline');
       return { id: 'made' };
     },
   }),
-  useDeleteConversation: () => ({ mutateAsync: async () => {} }),
-  useReadConversation: () => async () => ({ messages: [] }),
+  useDeleteConversation: () => ({ run: async () => {} }),
   useMarkConversationRead: () => () => undefined,
-  useClearConversation: () => ({ mutateAsync: async () => {} }),
+  useConversationsClient: () => ({}),
+  useRefreshConversation: () => () => undefined,
+  useClearConversation: () => ({ run: async () => {} }),
 }));
 
 import { GemieChatContent as TextChatContent } from '../../src/components/GemieChatContent';
@@ -199,9 +203,9 @@ let renderer: TestRenderer.ReactTestRenderer | undefined;
 function mount(props: React.ComponentProps<typeof GemieChatContent> = {}) {
   act(() => {
     renderer = TestRenderer.create(
-      <QueryClientProvider client={new QueryClient()}>
+      <DataProvider store={new Store()}>
         <GemieChatContent {...props} />
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
 }

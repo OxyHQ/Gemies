@@ -1,21 +1,21 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, type Store } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * What `useClearConversation` does to the query cache, and WHEN (#553).
+ * What `useClearConversation` does to the account's store, and WHEN (#553).
  *
- * The cached history is the reason "Clear conversation" used to undo itself:
- * `useChatConversation` resets its screen and then, seeing a cache with
- * messages and a screen with none, hydrates the cache back in. So the
- * mutation's contract is precise about the cache:
+ * The held history is the reason "Clear conversation" used to undo itself:
+ * the thread resets its screen and then, seeing a record with messages and a
+ * screen with none, hydrates the record back in. So the action's contract is
+ * precise about the record:
  *
- * - on SUCCESS the detail entry's messages are emptied and its preview
- *   dropped, the list entry keeps its place and loses its preview, and both
- *   are invalidated so the server's answer replaces the local guess;
- * - on FAILURE nothing in the cache moves at all — not optimistically before
- *   the request, not as cleanup after it — because the dialog that asked for
- *   the clear promised the opposite of "it will be back".
+ * - on SUCCESS its messages are emptied and its preview dropped, it keeps its
+ *   place in the list, and the conversation and the list are read again so
+ *   the server's answer replaces the local guess;
+ * - while it is in flight the messages are already gone (its layer), and on
+ *   FAILURE the layer goes: the record is exactly as it was, because the
+ *   dialog that asked for the clear promised the opposite of "it will be back".
  *
  * The API client is mocked at the module boundary; the request it must make
  * is pinned by path and method, since a clear that hit `DELETE
@@ -26,12 +26,15 @@ const http = vi.hoisted(() => ({
   /** Every request the hook made, as `METHOD path`. */
   requests: [] as string[],
   outcome: 'ok' as 'ok' | { status: number },
+  /** A clear waits on this when set. */
+  hold: null as Promise<void> | null,
 }));
 
 vi.mock('../../src/runtime/api', () => {
   const stub = {
     delete: vi.fn(async (path: string) => {
       http.requests.push(`DELETE ${path}`);
+      if (http.hold) await http.hold;
       if (http.outcome !== 'ok') {
         throw Object.assign(new Error(`Request failed with status code ${http.outcome.status}`), {
           isAxiosError: true,
@@ -40,22 +43,42 @@ vi.mock('../../src/runtime/api', () => {
       }
       return { data: { success: true } };
     }),
-    get: vi.fn(),
+    get: vi.fn(async (path: string) => {
+      http.requests.push(`GET ${path}`);
+      return path === '/v1/conversations'
+        ? {
+            data: {
+              conversations: [
+                { id: 'c1', title: 'Capitals', createdAt: '', updatedAt: '' },
+                {
+                  id: 'c2',
+                  title: 'Unrelated',
+                  lastMessage: 'still here',
+                  createdAt: '',
+                  updatedAt: '',
+                },
+              ],
+              nextCursor: null,
+              hasMore: false,
+            },
+          }
+        : { data: { id: 'c1', title: 'Capitals', createdAt: '', updatedAt: '', messages: [] } };
+    }),
     post: vi.fn(),
   };
   return { useGemieApi: () => stub };
 });
 vi.mock('@oxy.so/services/ui/client', () => ({
-  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true, isAccountCacheReady: true }),
+  useOxy: () => ({ isAuthenticated: true, canUsePrivateApi: true }),
 }));
 vi.mock('@oxy.so/bloom/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 import { useClearConversation } from '../../src/runtime/conversations';
 import type { Conversation } from '../../src/runtime/types';
-import { gemieQueryKeys as queryKeys } from '../../src/runtime/query-keys';
+import { freshStore, heldConversation, listIds, seedList } from '../support/data-store';
 
 let api: ReturnType<typeof useClearConversation>;
-let client: QueryClient;
+let store: Store;
 let renderer: ReactTestRenderer | undefined;
 
 function Probe() {
@@ -67,8 +90,8 @@ const THREAD: Conversation = {
   id: 'c1',
   title: 'Capitals',
   lastMessage: 'Lima',
-  createdAt: new Date('2026-09-01T00:00:00Z'),
-  updatedAt: new Date('2026-09-02T00:00:00Z'),
+  createdAt: '2026-09-01T00:00:00Z',
+  updatedAt: '2026-09-02T00:00:00Z',
   messages: [
     { id: 'u1', role: 'user', content: 'what is the capital of Peru' },
     { id: 'a1', role: 'assistant', content: 'Lima' },
@@ -79,30 +102,19 @@ const OTHER: Conversation = {
   id: 'c2',
   title: 'Unrelated',
   lastMessage: 'still here',
-  createdAt: new Date('2026-09-01T00:00:00Z'),
-  updatedAt: new Date('2026-09-01T00:00:00Z'),
-  messages: [],
+  createdAt: '2026-09-01T00:00:00Z',
+  updatedAt: '2026-09-01T00:00:00Z',
 };
 
-/** A cache in the state the screen is in when the dialog is confirmed. */
-function seed() {
-  client.setQueryData(queryKeys.conversations.detail('c1'), THREAD);
-  client.setQueryData(queryKeys.conversations.all, {
-    pages: [
-      { conversations: [{ ...THREAD, messages: [] }, OTHER], nextCursor: null, hasMore: false },
-    ],
-    pageParams: [undefined],
-  });
-}
-
 async function mount() {
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  seed();
+  store = freshStore();
+  // The state the screen is in when the dialog is confirmed.
+  seedList(store, [THREAD, OTHER]);
   await act(async () => {
     renderer = create(
-      <QueryClientProvider client={client}>
+      <DataProvider store={store}>
         <Probe />
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
 }
@@ -110,6 +122,7 @@ async function mount() {
 beforeEach(() => {
   http.requests = [];
   http.outcome = 'ok';
+  http.hold = null;
 });
 
 afterEach(() => {
@@ -124,70 +137,70 @@ describe('useClearConversation', () => {
     await mount();
 
     await act(async () => {
-      await api.mutateAsync('c1');
+      await api.run('c1');
     });
 
-    expect(http.requests).toEqual(['DELETE /v1/conversations/c1/messages']);
+    expect(http.requests.filter((r) => r.startsWith('DELETE'))).toEqual([
+      'DELETE /v1/conversations/c1/messages',
+    ]);
   });
 
-  it('empties the cached thread and drops its preview on success, keeping the row', async () => {
+  it('empties the held thread and drops its preview on success, keeping the row', async () => {
     await mount();
-
+    let release!: () => void;
+    http.hold = new Promise((resolve) => {
+      release = resolve;
+    });
+    let done!: Promise<unknown>;
+    act(() => {
+      done = api.run('c1');
+    });
+    // Its layer: the messages are gone at once.
+    expect(heldConversation(store, 'c1')?.messages).toEqual([]);
     await act(async () => {
-      await api.mutateAsync('c1');
+      release();
+      await done;
     });
 
-    const detail = client.getQueryData<Conversation>(queryKeys.conversations.detail('c1'));
-    // Empty, not gone: the title and the entry survive; only what the server
+    const held = heldConversation(store, 'c1');
+    // Empty, not gone: the title and the row survive; only what the server
     // deleted is dropped locally.
-    expect(detail).toMatchObject({ id: 'c1', title: 'Capitals', messages: [] });
-    expect(detail?.lastMessage).toBeUndefined();
-
-    const list = client.getQueryData<{ pages: { conversations: Conversation[] }[] }>(
-      queryKeys.conversations.all,
-    );
-    const entries = list?.pages[0].conversations ?? [];
-    expect(entries.map((c) => c.id)).toEqual(['c1', 'c2']);
-    expect(entries[0].lastMessage).toBeUndefined();
+    expect(held).toMatchObject({ id: 'c1', title: 'Capitals', messages: [] });
+    expect(held?.lastMessage).toBeUndefined();
+    expect(listIds(store)).toContain('c2');
     // A neighbour is not a casualty of somebody else's clear.
-    expect(entries[1].lastMessage).toBe('still here');
+    expect(heldConversation(store, 'c2')?.lastMessage).toBe('still here');
   });
 
-  it('invalidates the thread and the list after emptying the cache', async () => {
+  it('reads the thread and the list again once the server emptied it', async () => {
     await mount();
-    const invalidate = vi.spyOn(client, 'invalidateQueries');
 
     await act(async () => {
-      await api.mutateAsync('c1');
+      await api.run('c1');
     });
 
-    const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
-    expect(keys).toContainEqual(queryKeys.conversations.detail('c1'));
-    expect(keys).toContainEqual(queryKeys.conversations.all);
+    expect(http.requests).toContain('GET /v1/conversations/c1');
+    expect(http.requests).toContain('GET /v1/conversations');
   });
 
-  it('touches nothing in the cache when the server refuses', async () => {
+  it('puts the thread back exactly as it was when the server refuses', async () => {
     http.outcome = { status: 500 };
     vi.useFakeTimers();
     await mount();
 
-    // `retry: 1` sleeps before its second attempt; the clock is advanced past
-    // it rather than waited on.
-    const attempt = api.mutateAsync('c1').catch((error: Error) => error);
+    // A write retries once, a second later; the clock is advanced past it rather than waited on.
+    const attempt = api.run('c1').catch((error: Error) => error);
     await vi.advanceTimersByTimeAsync(5_000);
     const settled = await attempt;
 
     expect(settled).toBeInstanceOf(Error);
-    // Tried, retried, and refused both times — and the cache is exactly as it
-    // was seeded: a cleared cache under a failed clear is the bug's mirror.
+    // Tried, retried, and refused both times, and the record is exactly as it
+    // was seeded: a cleared thread under a failed clear is the bug's mirror.
     expect(http.requests).toEqual([
       'DELETE /v1/conversations/c1/messages',
       'DELETE /v1/conversations/c1/messages',
     ]);
-    expect(client.getQueryData(queryKeys.conversations.detail('c1'))).toEqual(THREAD);
-    const list = client.getQueryData<{ pages: { conversations: Conversation[] }[] }>(
-      queryKeys.conversations.all,
-    );
-    expect(list?.pages[0].conversations[0].lastMessage).toBe('Lima');
+    expect(heldConversation(store, 'c1')).toEqual(THREAD);
+    expect(listIds(store)).toEqual(['c1', 'c2']);
   });
 });

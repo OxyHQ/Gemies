@@ -28,7 +28,7 @@ import { TextFieldInput } from '@oxy.so/bloom/text-field';
 import { toast } from '@oxy.so/bloom/toast';
 import * as Clipboard from 'expo-clipboard';
 import React from 'react';
-import { Linking, Share, View } from 'react-native';
+import { Linking, Share, View, StyleSheet } from 'react-native';
 
 type InviteTab = 'share' | 'redeem' | 'history';
 
@@ -91,8 +91,8 @@ export function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
       title={t('dialogs.invite.title')}
       description={t('dialogs.invite.description')}
     >
-      <View className="gap-4">
-        <View className="items-center">
+      <View style={styles.stack}>
+        <View style={styles.container}>
           <IconCircle icon={RiHandHeartLine} size="lg" />
         </View>
         <SegmentedControl
@@ -132,7 +132,7 @@ function ShareTab() {
   };
 
   return (
-    <View className="gap-4">
+    <View style={styles.stack}>
       {/* The link is a field's height of placeholder until it is read; the buttons wait disabled. */}
       {inviteUrl ? (
         <InputGroup>
@@ -263,3 +263,8 @@ function HistoryTab() {
     </GroupedSection>
   );
 }
+
+const styles = StyleSheet.create({
+  stack: { gap: 16 },
+  container: { alignItems: 'center' },
+});

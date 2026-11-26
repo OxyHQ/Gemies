@@ -8,6 +8,7 @@ import Animated from 'react-native-reanimated';
 import { planPreviewEnter } from '../animations';
 import { useLabels } from '../lib/labels';
 import type { PlanStep } from '../types';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 interface PlanPreviewCardProps {
   steps: PlanStep[];
@@ -18,14 +19,15 @@ interface PlanPreviewCardProps {
  * nobody is asked to approve it.
  */
 export function PlanPreviewCard({ steps }: PlanPreviewCardProps) {
+  const styles = useStyles();
   const labels = useLabels();
   const { colors } = useTheme();
 
   return (
-    <Animated.View entering={planPreviewEnter} className="my-2">
+    <Animated.View entering={planPreviewEnter} style={styles.card}>
       <Card appearance="outline">
         <CardHeader>
-          <View className="flex-row items-center gap-2">
+          <View style={styles.titleRow}>
             <RiListCheck3 width={16} height={16} fill={colors.icon} />
             <CardTitle>{labels.planTitle}</CardTitle>
           </View>
@@ -37,11 +39,7 @@ export function PlanPreviewCard({ steps }: PlanPreviewCardProps) {
               // biome-ignore lint/suspicious/noArrayIndexKey: see above
               key={index}
               density="compact"
-              leading={
-                <Text className="w-5 text-center text-xs font-bold text-text-secondary">
-                  {index + 1}
-                </Text>
-              }
+              leading={<Text style={styles.stepNumber}>{index + 1}</Text>}
               title={step.action}
               subtitle={step.description || undefined}
             />
@@ -51,3 +49,16 @@ export function PlanPreviewCard({ steps }: PlanPreviewCardProps) {
     </Animated.View>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  card: { marginVertical: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  stepNumber: {
+    width: 20,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: 700,
+    color: t.mutedForeground,
+    lineHeight: 16,
+  },
+}));

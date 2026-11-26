@@ -10,6 +10,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   View,
+  StyleSheet,
 } from 'react-native';
 import { AT_BOTTOM_THRESHOLD } from '../../hooks/useAtBottom';
 import { useMessageVote } from '../../hooks/useMessageVote';
@@ -104,7 +105,7 @@ export interface GemieThreadProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   /** Quote a turn's words into the composer (a bubble's reply button). Omitted, the button is not drawn. */
   onReply?: (text: string) => void;
-  /** A saved reaction updates the live message as well as the query cache. */
+  /** A saved reaction updates the live message as well as the account's store. */
   onReactionChange?: (update: MessageReactionSnapshot) => void;
   /** A conversation read by somebody it was shared with: no votes, no read-aloud, no regenerate. */
   readOnly?: boolean;
@@ -280,8 +281,8 @@ export const GemieThread = memo(function GemieThread({
   if (nothingToShow) {
     return (
       // Screen reserves the composer; the empty state only owns its alignment.
-      <View className="flex-1 justify-center px-4">
-        <View className="w-full max-w-[768px] self-center">{empty}</View>
+      <View style={styles.empty}>
+        <View style={styles.emptyContent}>{empty}</View>
       </View>
     );
   }
@@ -338,7 +339,7 @@ export const GemieThread = memo(function GemieThread({
    * controller at all.
    */
   return (
-    <View className="flex-1">
+    <View style={styles.thread}>
       <AiChatThread
         ref={threadRef}
         followAnimated={false}
@@ -350,18 +351,18 @@ export const GemieThread = memo(function GemieThread({
       >
         {/* The transcript column, centred: a little wider than the composer (896 against its
             768), so the answer has room to breathe. */}
-        <View className="w-full max-w-4xl self-center">
+        <View style={styles.column}>
           {rows.length === 0 && conversationLoading ? <ThreadSkeleton /> : null}
 
-          <View className="relative" onLayout={timeline.onListLayout}>
+          <View style={styles.list} onLayout={timeline.onListLayout}>
             {/* The slot the history loader shows in, held open for as long as there is history to
                 load. The thread anchors ONE growth per request — the first after
                 `onStartReached` — so a loader that appeared on request would spend that anchor on
                 itself and leave the page that follows it to push the reader down. */}
             {loadMore === undefined && !loadingHistory ? null : (
-              <View className="h-14 items-center justify-center">
+              <View style={styles.historySlot}>
                 {loadingHistory ? (
-                  <Skeleton.Region className="w-full gap-2.5">
+                  <Skeleton.Region style={styles.historyLoading}>
                     <Skeleton.Box width="70%" height={14} borderRadius={8} />
                     <Skeleton.Box width="45%" height={14} borderRadius={8} />
                   </Skeleton.Region>
@@ -413,4 +414,20 @@ export const GemieThread = memo(function GemieThread({
       </AiChatThread>
     </View>
   );
+});
+
+const styles = StyleSheet.create({
+  empty: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  emptyContent: { width: '100%', maxWidth: 768, alignSelf: 'center' },
+  thread: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  column: { width: '100%', maxWidth: 896, alignSelf: 'center' },
+  list: { position: 'relative' },
+  historySlot: { height: 56, alignItems: 'center', justifyContent: 'center' },
+  historyLoading: { width: '100%', gap: 10 },
 });

@@ -24,7 +24,7 @@ import { useOxy } from '@oxy.so/services/ui/client';
 import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { useCallback, useEffect, useMemo } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /** Library category -> the storage table's filter key. */
 const KIND_FOR_CATEGORY: Record<FileCategory, string> = {
@@ -150,7 +150,7 @@ export function StorageSection() {
   if (loading && files.length === 0) {
     // The page's own geometry, shimmering: the dropzone, then the file table.
     return (
-      <View className="flex-1 gap-4">
+      <View style={styles.container}>
         <Skeleton.Box width="100%" height={164} borderRadius={16} />
         <Skeleton.Box width="100%" height={360} borderRadius={16} />
       </View>
@@ -171,3 +171,7 @@ export function StorageSection() {
     />
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 16 },
+});

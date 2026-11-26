@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -66,14 +66,14 @@ async function mount(
   options: Parameters<typeof useConversationStream>[0] = {},
   app: string | undefined = undefined,
 ) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new Store();
   await act(async () => {
     renderer = create(
-      <QueryClientProvider client={client}>
+      <DataProvider store={client}>
         <GemieRuntimeProvider apiUrl="http://api.test" host={host} app={app}>
           <Probe options={options} />
         </GemieRuntimeProvider>
-      </QueryClientProvider>,
+      </DataProvider>,
     );
   });
 }

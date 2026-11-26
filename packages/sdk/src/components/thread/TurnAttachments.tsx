@@ -20,7 +20,7 @@ import {
 } from '@oxy.so/bloom/message-media';
 import { useFileDownloadUrl, useOxy } from '@oxy.so/services/ui/client';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, View } from 'react-native';
+import { Linking, View, StyleSheet } from 'react-native';
 import { useLabels } from '../../lib/labels';
 import { loadExpoAudio } from '../../lib/deferred/expo-audio';
 import {
@@ -28,7 +28,7 @@ import {
   type MessageContent,
   type TurnAttachment,
 } from '../../lib/content-utils';
-import { Image } from '../Image';
+import { Image } from 'expo-image';
 
 type Tone = 'incoming' | 'outgoing';
 /** The bubble's tone, and its own foreground when the app paints a custom bubble. */
@@ -67,7 +67,7 @@ function StoredImage({ file, tone, onColor }: { file: FileAttachment } & Paint) 
         accessibilityLabel={file.description ?? t('chat.attachment.sticker')}
       />
     ) : (
-      <View className="size-32 rounded-xl bg-surface-secondary" />
+      <View style={styles.imagePlaceholder} />
     );
   }
   return url ? (
@@ -81,7 +81,7 @@ function StoredImage({ file, tone, onColor }: { file: FileAttachment } & Paint) 
       onPress={() => void Linking.openURL(url)}
     />
   ) : (
-    <View className="h-40 w-60 rounded-2xl bg-surface-secondary" />
+    <View style={styles.videoPlaceholder} />
   );
 }
 
@@ -152,8 +152,8 @@ function StoredFile({ file, tone, onColor }: { file: FileAttachment } & Paint) {
 function Attachment({ item, tone, onColor }: { item: TurnAttachment } & Paint) {
   if (item.type === 'inline-image') {
     return (
-      <View className="size-[120px] overflow-hidden rounded-xl">
-        <Image source={{ uri: item.url }} className="h-full w-full" contentFit="cover" />
+      <View style={styles.imageFrame}>
+        <Image source={{ uri: item.url }} style={styles.image} contentFit="cover" />
       </View>
     );
   }
@@ -179,10 +179,10 @@ export function TurnAttachments({
   const runs = attachmentRuns(getAttachmentsFromContent(content));
   if (runs.length === 0) return null;
   return (
-    <View className="gap-2">
+    <View style={styles.attachments}>
       {runs.map((run) =>
         Array.isArray(run) ? (
-          <View key={`images:${run[0]?.url}`} className="flex-row flex-wrap gap-2">
+          <View key={`images:${run[0]?.url}`} style={styles.imageRow}>
             {run.map((item) => (
               <Attachment key={item.url} item={item} tone={tone} onColor={onColor} />
             ))}
@@ -216,3 +216,12 @@ function attachmentRuns(items: readonly TurnAttachment[]): Array<InlineImage[] |
 export function hasAttachments(content: MessageContent | null | undefined): boolean {
   return getAttachmentsFromContent(content).length > 0;
 }
+
+const styles = StyleSheet.create({
+  imagePlaceholder: { width: 128, height: 128, borderRadius: 12 },
+  videoPlaceholder: { height: 160, width: 240, borderRadius: 16 },
+  imageFrame: { width: 120, height: 120, overflow: 'hidden', borderRadius: 12 },
+  image: { height: '100%', width: '100%' },
+  attachments: { gap: 8 },
+  imageRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+});

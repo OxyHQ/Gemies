@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataProvider, Store } from '@oxy.so/bloom-data';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -74,7 +74,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const host: GemieRuntimeHost = {};
 let api: ReturnType<typeof useConversationStream>;
 let renderer: ReactTestRenderer | null = null;
-const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+const client = new Store();
 
 function Probe() {
   api = useConversationStream({ conversationId: harness.conversationId });
@@ -82,11 +82,11 @@ function Probe() {
 }
 
 const tree = () => (
-  <QueryClientProvider client={client}>
+  <DataProvider store={client}>
     <GemieRuntimeProvider apiUrl="http://test.invalid" host={host}>
       <Probe />
     </GemieRuntimeProvider>
-  </QueryClientProvider>
+  </DataProvider>
 );
 
 async function mount() {

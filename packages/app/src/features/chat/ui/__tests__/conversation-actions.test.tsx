@@ -53,8 +53,10 @@ vi.mock('@gemies/sdk/runtime', () => ({
       world.revoked.push(id);
     },
   }),
+  // The conversation's record in the account's store: what the `alia.title` frame wrote.
+  Conversations: { get: () => (world.cachedTitle ? { title: world.cachedTitle } : undefined) },
   useDeleteConversation: () => ({
-    mutateAsync: async (id: string) => {
+    run: async (id: string) => {
       if (world.deleteFails) throw new Error('refused');
       world.deleted.push(id);
     },
@@ -66,9 +68,6 @@ vi.mock('@oxy.so/bloom/toast', () => ({
     error: (message: string) => world.toastErrors.push(message),
     success: (message: string) => world.toastSuccesses.push(message),
   }),
-}));
-vi.mock('@tanstack/react-query', () => ({
-  useQueryClient: () => ({ getQueryData: () => world.cachedTitle && { title: world.cachedTitle } }),
 }));
 vi.mock('expo-router', () => ({
   usePathname: () => '/c/c1',
