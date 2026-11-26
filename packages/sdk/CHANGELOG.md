@@ -51,7 +51,9 @@ react-native-css or Tailwind for the SDK.
   was replayed after a restart.
 - **Helpers:** `useConversationsClient`, `useRefreshConversation`, `useRefreshGemieThread`,
   `placeConversation`, `forgetConversation`, `messagesRecord`, `refreshConversationLists`, `storeCollections`, `answerSource`, `useAnswer`,
-  `gemieRead` (the read rules every source shares), `ACCOUNT`.
+  `gemieRead` (the read rules every source shares), `ACCOUNT`. An app keeps its own account
+  data the same way: `answerSource(type, { persist: { version } })` copies its answers to the
+  account's durable store and drops them when `version` changes.
 - **Removed:** `gemieQueryKeys`, `connectorQueryKeys`, `reviveConversationDates`, the
   `ConversationsPage` and `ConversationsInfiniteData` types, and `importCollections(api, local)`'s
   plain function (it is the action of that name).

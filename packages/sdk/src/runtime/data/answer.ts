@@ -1,5 +1,6 @@
 import {
   type Entity,
+  type EntityOptions,
   entity,
   type RecordSource,
   type RecordSourceOptions,
@@ -29,8 +30,11 @@ export interface AnswerSourceOptions<A extends unknown[], T>
   extends Omit<RecordSourceOptions<A, Answer<T>>, 'load' | 'index' | 'put'> {
   /** The answer; it is held under `key(...args)`. */
   load: (request: { readonly signal: AbortSignal }, ...args: NoInfer<A>) => Promise<T>;
-  /** Copy the answers to the account's durable store. */
-  persist?: boolean;
+  /**
+   * Copy the answers to the account's durable store; a `version` drops the stored answers when it
+   * changes (bump it with any change to the answer's shape).
+   */
+  persist?: EntityOptions<Answer<T>>['persist'];
 }
 
 /** A record source whose records are the answers of `load`, one per key. `type` names its entity. */
