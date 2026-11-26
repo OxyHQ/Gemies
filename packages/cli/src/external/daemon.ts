@@ -197,7 +197,11 @@ export function startDaemon(options: DaemonOptions): Daemon {
           break;
       }
     };
-    ws.onclose = () => {
+    let opened = false;
+    let gone = false;
+    const onGone = () => {
+      if (gone) return;
+      gone = true;
       if (socket === ws) socket = null;
       for (const controller of turns.values()) controller.abort();
       if (stopped) return;
@@ -206,7 +210,15 @@ export function startDaemon(options: DaemonOptions): Daemon {
       // network down) is retried for as long as it takes: the daemon is meant to run unattended.
       scheduleReconnect(refused && !authenticated);
     };
-    ws.onerror = () => undefined;
+    ws.addEventListener('open', () => {
+      opened = true;
+    });
+    ws.onclose = onGone;
+    // Node 22 reports a connection that never opened with `error` alone, no `close`; without this
+    // the daemon would wait for an event that never comes and never retry.
+    ws.onerror = () => {
+      if (!opened) onGone();
+    };
   };
 
   function scheduleReconnect(refusedHandshake: boolean): void {

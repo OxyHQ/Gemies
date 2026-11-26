@@ -8,7 +8,6 @@
     "url": "git+https://github.com/OxyHQ/Gemies.git",
     "directory": "packages/cli"
   },
-  "private": true,
   "type": "module",
   "main": "dist/index.js",
   "files": [
