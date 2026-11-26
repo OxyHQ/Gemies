@@ -79,8 +79,23 @@ const EXPECTED = {
  * lane (GitHub keeps only the most recent pending run per group). Exact in both
  * directions, like EXPECTED, and a file listed here must have no workflow-level
  * block (EXPECTED's exact set enforces that).
+ *
+ * `seldon-lane`: a lane of the Seldon race in ci.yml (OxyHQ/oxy
+ * docs/engineering/build-and-deploy.md, CI on Seldon). Its group is unique to
+ * this run and lane, `seldon-race-<run_id>-<attempt>-<lane>-<name>`, so it never
+ * shares a group with another commit's run; the race cancels a losing lane by
+ * queuing a reaper into it. It sets no `cancel-in-progress` of its own.
  */
+const SELDON_LANES = [
+  'lint-and-test',
+  'frontend-typecheck',
+  'build-api',
+  'integrations-postgres',
+  'api-postgres',
+].flatMap((job) => [`ci.yml#${job}`, `ci.yml#${job}-hosted`]);
+
 const EXPECTED_JOBS = {
+  ...Object.fromEntries(SELDON_LANES.map((key) => [key, 'seldon-lane'])),
   'deploy-aws.yml#deploy': 'serialised',
   // Its own group, not the API's: the two deploy different services and migrate
   // different databases, so sharing one would make each block the other for no
@@ -161,6 +176,18 @@ function check(where, block, kind) {
         `${where}: cancel-in-progress is \`${cancel}\`, which does not depend on the ref. ` +
           `It must be false for main and true elsewhere.`,
       );
+    }
+  }
+
+  if (kind === 'seldon-lane') {
+    if (!group.startsWith('seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-')) {
+      failures.push(
+        `${where}: group is \`${group}\`; a Seldon lane's group must be ` +
+          '`seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-<lane>-<name>`, unique to this run.',
+      );
+    }
+    if (cancel !== '') {
+      failures.push(`${where}: a Seldon lane sets no cancel-in-progress (found \`${cancel}\`).`);
     }
   }
 
