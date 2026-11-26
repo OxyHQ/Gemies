@@ -1222,12 +1222,12 @@ export function useConversationStream({
                     );
                     continue;
                   }
-                  case 'alia.approval_request': {
+                  case 'alia.cli_permission_request': {
                     const request = parseApprovalRequest(parsed);
                     if (request) setApprovals((prev) => withApprovalRequest(prev, request));
                     continue;
                   }
-                  case 'alia.approval_resolved': {
+                  case 'alia.cli_permission_resolved': {
                     const resolved = parseApprovalResolved(parsed);
                     if (resolved) {
                       setApprovals((prev) =>
@@ -1707,7 +1707,7 @@ export function useConversationStream({
     if (!isLoading) setComposerPhase('idle');
   }, [isLoading, setComposerPhase]);
 
-  /** The person's own answer, shown at once; the stream's `alia.approval_resolved` repeats it. */
+  /** The person's own answer, shown at once; the stream's `alia.cli_permission_resolved` repeats it. */
   const settleApproval = useCallback((requestId: string, outcome: ApprovalOutcome) => {
     setApprovals((prev) => withApprovalOutcome(prev, requestId, outcome));
   }, []);

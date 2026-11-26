@@ -4,8 +4,8 @@
  * During a turn with an external agent (Claude Code on the person's computer), the CLI may stop and
  * ask whether it can run something there. The turn waits; the stream carries two named events:
  *
- *   `alia.approval_request`   the CLI asks: which tool, on what.
- *   `alia.approval_resolved`  the answer was given, or the time ran out.
+ *   `alia.cli_permission_request`   the CLI asks: which tool, on what.
+ *   `alia.cli_permission_resolved`  the answer was given, or the time ran out.
  *
  * This is the third-party CLI's prompt to the person who runs it, on their own machine. It is not
  * an Oxy grant: nothing here reaches Oxy, and the SDK does not know the endpoint that carries the
@@ -34,7 +34,7 @@ export interface ApprovalEntry extends ApprovalRequest {
 const text = (value: unknown, max: number): string | undefined =>
   typeof value === 'string' && value !== '' ? value.slice(0, max) : undefined;
 
-/** The request in an `alia.approval_request` frame, or `null` when the frame is not one. */
+/** The request in an `alia.cli_permission_request` frame, or `null` when the frame is not one. */
 export function parseApprovalRequest(data: unknown): ApprovalRequest | null {
   if (data === null || typeof data !== 'object') return null;
   const d = data as Record<string, unknown>;
@@ -49,7 +49,7 @@ export function parseApprovalRequest(data: unknown): ApprovalRequest | null {
   return { requestId, agentId, tool, ...(summary ? { summary } : {}), expiresAt };
 }
 
-/** The answer in an `alia.approval_resolved` frame, or `null` when the frame is not one. */
+/** The answer in an `alia.cli_permission_resolved` frame, or `null` when the frame is not one. */
 export function parseApprovalResolved(
   data: unknown,
 ): { requestId: string; outcome: ApprovalOutcome } | null {

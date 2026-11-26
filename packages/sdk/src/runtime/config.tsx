@@ -106,7 +106,7 @@ export interface GemieRuntimeHost {
   onAgentTurn?: (turn: AgentRun & { conversationId: string | null }) => void;
   /**
    * The person answered a coding CLI that asked for permission to run something on their own
-   * computer (`alia.approval_request`, ADR 0043). The host carries the answer to Gemies; the
+   * computer (`alia.cli_permission_request`, ADR 0043). The host carries the answer to Gemies; the
    * promise rejects when it could not be sent. Omitted, the request is shown with no way to answer.
    */
   onApprovalDecision?: (

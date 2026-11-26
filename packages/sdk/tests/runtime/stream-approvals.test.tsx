@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * A coding CLI's question to its own user, as the stream carries it (ADR 0043 §5): the two named
- * events, `alia.approval_request` and `alia.approval_resolved`, and what the conversation keeps of
+ * events, `alia.cli_permission_request` and `alia.cli_permission_resolved`, and what the conversation keeps of
  * them from one turn to the next. The harness is `stream-host.test.tsx`'s.
  */
 
@@ -83,10 +83,10 @@ const asks = (requestId: string, extra: object = {}) =>
       expiresAt: '2026-11-26T12:00:00.000Z',
       ...extra,
     },
-    'alia.approval_request',
+    'alia.cli_permission_request',
   );
 const answered = (requestId: string, decision: string) =>
-  frame({ eventVersion: 1, requestId, decision }, 'alia.approval_resolved');
+  frame({ eventVersion: 1, requestId, decision }, 'alia.cli_permission_resolved');
 
 const send = (text: string) =>
   act(async () => {
@@ -146,7 +146,7 @@ describe('approvals in the stream', () => {
       asks('r-bad', { tool: undefined }),
       asks('r-late', { expiresAt: 'whenever' }),
       answered('r-unknown', 'allow'),
-      frame({ requestId: 'r-1', decision: 'maybe' }, 'alia.approval_resolved'),
+      frame({ requestId: 'r-1', decision: 'maybe' }, 'alia.cli_permission_resolved'),
       done,
     ]);
     await mount();
