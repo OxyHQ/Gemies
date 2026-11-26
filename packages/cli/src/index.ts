@@ -20,7 +20,10 @@ program
   .description(
     'Connect Claude Code, Codex or OpenCode to Gemies as one of your gemies, and keep it connected as a background service that starts at login. With a code from Gemies (Settings → Connect external Gemie) it pairs this machine; without one it reinstalls the service for the agents already paired here.',
   )
-  .option('--cli <cli>', 'Which CLI this machine serves: claude, codex or opencode')
+  .option(
+    '--cli <cli>',
+    'Serve only this CLI (claude, codex or opencode). Without it, every one installed here is paired',
+  )
   .option('--agent <id>', 'With --cwd or --read-only and no code: change only this paired agent')
   .option('--cwd <dir>', 'Working directory the agent runs in (default: the current one)')
   .option(
