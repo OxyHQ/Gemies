@@ -158,11 +158,13 @@ export const ConversationScreen = ({
 
   // ── The breadcrumb: where the sidebar's tree files the chat, and its actions ──
   const { projects, folders } = useAccountCollections();
-  const projectName = conversationId
+  // Where the sidebar files this chat: its project or folder, or nowhere.
+  const filedIn = conversationId
     ? (projects.find((p) => p.conversationIds.includes(conversationId))?.name ??
-      folders.find((f) => f.conversationIds.includes(conversationId))?.name ??
-      t('sidebar.chats'))
+      folders.find((f) => f.conversationIds.includes(conversationId))?.name)
     : undefined;
+  // The breadcrumb names a chat that is filed nowhere "Chats", as the sidebar's own list does.
+  const projectName = conversationId ? (filedIn ?? t('sidebar.chats')) : undefined;
   const title = conversationDetails?.title || agentName;
   // The header is the conversation's participants — its lead and the agents that joined — drawn
   // by the SDK; the app draws no title of its own there.
@@ -263,7 +265,10 @@ export const ConversationScreen = ({
         onModelChange={conversationId === undefined ? setGlobalLevel : setConversationLevel}
         deviceModels={deviceModels}
         addMenu={addMenu}
-        composerStatus={projectName ? <ComposerPanelStatusTab project={projectName} /> : undefined}
+        // The composer's status tab names the project a chat is filed in. A chat filed nowhere has
+        // none to name: "Chats" is the breadcrumb's word for that, not a project, and a tab saying
+        // it over every composer is noise.
+        composerStatus={filedIn ? <ComposerPanelStatusTab project={filedIn} /> : undefined}
         welcomeSuggestions={welcomeSuggestions}
         suggestionMatches={suggestionMatches}
         onSuggestionQuery={setSuggestionQuery}

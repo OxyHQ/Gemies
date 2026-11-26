@@ -343,15 +343,23 @@ describe('the breadcrumb', () => {
     world.projects = [{ name: 'Trips', conversationIds: ['c1'] }];
     mount({ conversationId: 'c1' });
     expect(content().chrome({}).project).toBe('Trips');
+    expect(content().composerStatus).toMatchObject({ props: { project: 'Trips' } });
 
     world.projects = [];
     world.folders = [{ name: 'Inbox', conversationIds: ['c1'] }];
     mount({ conversationId: 'c1' });
     expect(content().chrome({}).project).toBe('Inbox');
+    expect(content().composerStatus).toMatchObject({ props: { project: 'Inbox' } });
 
     world.folders = [];
     mount({ conversationId: 'c1' });
     expect(content().chrome({}).project).toBe('sidebar.chats');
+  });
+
+  it('puts no tab on the composer for a chat filed nowhere: "Chats" is the breadcrumb’s word, not a project', () => {
+    mount({ conversationId: 'c1', agentId: 'a1', agentName: 'Atlas' });
+    expect(content().chrome({}).project).toBe('sidebar.chats');
+    expect(content().composerStatus).toBeUndefined();
   });
 
   it('files the new-chat screen under nothing, and still offers it the menu: starting a group needs no stored chat', () => {
