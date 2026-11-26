@@ -101,7 +101,7 @@ describe('NewSessionDialog', () => {
     });
     expect(state.open).toHaveBeenCalledExactlyOnceWith('~/app');
     expect(state.onClose).toHaveBeenCalledTimes(1);
-    expect(state.push).toHaveBeenCalledExactlyOnceWith('/(app)/c/conv-9');
+    expect(state.push).toHaveBeenCalledExactlyOnceWith('/(app)/agents/agent-1');
   });
 
   it('stays open, with the folder kept, when the session cannot be opened', async () => {
