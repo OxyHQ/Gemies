@@ -1053,9 +1053,12 @@ export async function buildChatRequestContext(
    * reaches it (`chat-completions.ts`); the reservation taken above, if any, is refunded at the
    * route's release point, as it always was.
    */
+  // An external agent is always a `local` gemie (ADR 0036), so only those are looked up: no other
+  // turn pays for the question.
   const externalTurn =
     isDirectUserSession &&
     turnAgent.kind === 'agent' &&
+    turnAgent.agent.identity.source === 'local' &&
     (await isExternalAgent(turnAgent.agent._id));
 
   // Validate credit reservation

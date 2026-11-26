@@ -112,9 +112,12 @@ vi.mock('../../credits-manager.js', () => ({
   safeRefund: async () => undefined,
 }));
 vi.mock('../../plan-access.js', () => ({ getUserEntitlements: async () => null }));
-const external = vi.hoisted(() => ({ agents: new Set<string>() }));
+const external = vi.hoisted(() => ({ agents: new Set<string>(), lookups: 0 }));
 vi.mock('../../external-agents/turn.js', () => ({
-  isExternalAgent: async (id: string) => external.agents.has(id),
+  isExternalAgent: async (id: string) => {
+    external.lookups += 1;
+    return external.agents.has(id);
+  },
 }));
 const grants = vi.hoisted(() => ({
   person: vi.fn(async () => undefined),
@@ -543,6 +546,16 @@ describe('a turn with an external agent costs nothing, so credits never refuse i
     expect(ctx).toBeNull();
     expect(captured.status).toBe(402);
     expect(captured.body?.error).toMatchObject({ code: 'INSUFFICIENT_CREDITS' });
+  });
+
+  it('looks nothing up for a turn whose agent is not a local gemie', async () => {
+    findAgentById.mockResolvedValue({
+      ...agent,
+      identity: { source: 'oxy', oxyAccountId: 'oxy-bot-1' },
+    });
+    external.lookups = 0;
+    await turn();
+    expect(external.lookups).toBe(0);
   });
 
   it('is not the exemption of a channel turn: only a person’s own session reaches an external agent', async () => {
