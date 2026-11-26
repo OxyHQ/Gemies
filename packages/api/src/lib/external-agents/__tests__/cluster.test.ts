@@ -128,6 +128,30 @@ describe('turns across instances', () => {
     await turn;
   });
 
+  it('carries the tools of a turn across instances, as they happen', async () => {
+    const { ws, frames } = await daemonOnA();
+    const seen: unknown[] = [];
+    const turn = b.runTurn({
+      agentId: 'agent-1',
+      task: 'a',
+      history: [],
+      onActivity: (a) => seen.push(a),
+    });
+    await waitFor(() => frames.some((f) => f.type === 'turn'));
+    const { turnId } = frames.find((f) => f.type === 'turn') as { turnId: string };
+    ws.send(
+      JSON.stringify({
+        type: 'activity',
+        turnId,
+        activity: { id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'running' },
+      }),
+    );
+    await waitFor(() => seen.length === 1);
+    ws.send(JSON.stringify({ type: 'end', turnId, text: 'ok' }));
+    await turn;
+    expect(seen).toEqual([{ id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'running' }]);
+  });
+
   it('lists a daemon’s sessions from another instance than the one holding it', async () => {
     const { ws, frames } = await daemonOnA();
     const listing = b.listSessions('agent-1');

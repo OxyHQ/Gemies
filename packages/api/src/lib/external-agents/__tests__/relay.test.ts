@@ -238,6 +238,35 @@ describe('external agent relay', () => {
     await expect(listing).rejects.toThrow(/disconnected/);
   });
 
+  it('surfaces the tools the daemon reports, validated, tagged with their own turn only', async () => {
+    const { ws, frames } = await connect();
+    await waitFor(() => frames.length > 0);
+    const seen: unknown[] = [];
+    const turn = runExternalTurn({
+      agentId: 'agent-1',
+      task: 'a',
+      history: [],
+      onActivity: (a) => seen.push(a),
+    });
+    await waitFor(() => frames.some((f) => f.type === 'turn'));
+    const { turnId } = frames.find((f) => f.type === 'turn') as { turnId: string };
+    const send = (activity: unknown, id = turnId) =>
+      ws.send(JSON.stringify({ type: 'activity', turnId: id, activity }));
+    send({ id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'running' });
+    send({ id: 'a', tool: 'Read', summary: 'x'.repeat(500), status: 'done' });
+    send({ id: 'b', tool: 'Bash', status: 'exploded' });
+    send({ id: '', tool: 'Bash', status: 'running' });
+    send({ tool: 'Bash', status: 'running' });
+    send('junk');
+    send({ id: 'c', tool: 'Bash', status: 'running' }, 'another-turn');
+    ws.send(JSON.stringify({ type: 'end', turnId, text: 'ok' }));
+    await turn;
+    expect(seen).toEqual([
+      { id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'running' },
+      { id: 'a', tool: 'Read', summary: 'x'.repeat(200), status: 'done' },
+    ]);
+  });
+
   it('fails a turn when the daemon reports an error', async () => {
     const { ws, frames } = await connect();
     await waitFor(() => frames.length > 0);

@@ -143,6 +143,7 @@ export function startDaemon(options: DaemonOptions): Daemon {
           onSession: (id) => {
             if (sessionKey) options.sessions?.set(sessionKey, id);
           },
+          onActivity: (activity) => send(ws, { type: 'activity', turnId: frame.turnId, activity }),
           onDelta: (delta) => {
             emitted = true;
             send(ws, { type: 'delta', turnId: frame.turnId, text: delta });

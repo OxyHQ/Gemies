@@ -642,3 +642,34 @@ describe('daemon: sessions begun in a terminal (Gemies ADR 0043 §4)', () => {
     });
   });
 });
+
+describe('daemon: activity (Gemies ADR 0043 §5)', () => {
+  it('forwards what the CLI reports it is doing, tagged with the turn, before the answer', async () => {
+    start({
+      resumes: false,
+      async run({ onActivity, onDelta }: RuntimeRun) {
+        onActivity?.({ id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'running' });
+        onActivity?.({ id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'done' });
+        onDelta('ok');
+        return 'ok';
+      },
+    });
+    await until(() => peers.length > 0 && received.length > 0);
+    peers[0].send(JSON.stringify({ type: 'turn', turnId: 't1', task: 'x', history: [] }));
+    await until(() => received.some((f) => f.type === 'end'));
+    expect(received.filter((f) => f.type === 'activity')).toEqual([
+      {
+        type: 'activity',
+        turnId: 't1',
+        activity: { id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'running' },
+      },
+      {
+        type: 'activity',
+        turnId: 't1',
+        activity: { id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'done' },
+      },
+    ]);
+    const kinds = received.map((f) => f.type);
+    expect(kinds.indexOf('activity')).toBeLessThan(kinds.indexOf('end'));
+  });
+});

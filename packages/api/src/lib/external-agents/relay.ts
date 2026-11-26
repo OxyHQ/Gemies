@@ -27,6 +27,7 @@ import {
   EXTERNAL_TERMINAL_SESSIONS_MAX,
   EXTERNAL_TURN_TIMEOUT_MS,
   type ChatTurn,
+  type ExternalActivity,
   type TerminalSessionInfo,
   type DaemonFrame,
   type ServerFrame,
@@ -59,6 +60,8 @@ export interface ExternalTurnInput {
   /** The terminal session this conversation continues (ADR 0043 §4). */
   resumeId?: string;
   onDelta?: (text: string) => void;
+  /** Called as the CLI starts and finishes each tool it uses (ADR 0043 §5). */
+  onActivity?: (activity: ExternalActivity) => void;
   timeoutMs?: number;
   signal?: AbortSignal;
 }
@@ -82,6 +85,7 @@ interface Connection {
 interface PendingTurn {
   readonly agentId: string;
   readonly onDelta?: (text: string) => void;
+  readonly onActivity?: (activity: ExternalActivity) => void;
   readonly resolve: (result: { response: string }) => void;
   readonly reject: (error: Error) => void;
   readonly timer: NodeJS.Timeout;
@@ -101,6 +105,7 @@ function unstreamedTail(streamed: string, final: string): string {
 type TurnEvent =
   | { type: 'ack' }
   | { type: 'delta'; text: string }
+  | { type: 'activity'; activity: ExternalActivity }
   | { type: 'end'; text: string }
   | { type: 'error'; message: string; offline?: boolean }
   | { type: 'sessions'; sessions: TerminalSessionInfo[] };
@@ -148,6 +153,20 @@ export interface ExternalAgentRelay {
  * What a daemon says its CLI has. It is the person's own computer, but the answer is data from the
  * wire: every entry is checked, the rest dropped, and the list capped, before anything reads it.
  */
+export function sanitizeActivity(raw: unknown): ExternalActivity | null {
+  if (raw === null || typeof raw !== 'object') return null;
+  const { id, tool, summary, status } = raw as Record<string, unknown>;
+  if (typeof id !== 'string' || id === '' || id.length > 100) return null;
+  if (typeof tool !== 'string' || tool === '') return null;
+  if (status !== 'running' && status !== 'done' && status !== 'error') return null;
+  return {
+    id,
+    tool: tool.slice(0, 80),
+    ...(typeof summary === 'string' && summary !== '' ? { summary: summary.slice(0, 200) } : {}),
+    status,
+  };
+}
+
 export function sanitizeTerminalSessions(raw: unknown): TerminalSessionInfo[] {
   if (!Array.isArray(raw)) return [];
   const out: TerminalSessionInfo[] = [];
@@ -314,6 +333,7 @@ export function createExternalAgentRelay(
       pendingTurns.set(turnId, {
         agentId: input.agentId,
         ...(input.onDelta ? { onDelta: input.onDelta } : {}),
+        ...(input.onActivity ? { onActivity: input.onActivity } : {}),
         resolve,
         reject,
         timer,
@@ -403,6 +423,7 @@ export function createExternalAgentRelay(
       signal: controller.signal,
       ...(command.timeoutMs === undefined ? {} : { timeoutMs: command.timeoutMs }),
       onDelta: (text) => publishEvent(command.turnId, { type: 'delta', text }),
+      onActivity: (activity) => publishEvent(command.turnId, { type: 'activity', activity }),
     })
       .then(({ response }) => publishEvent(command.turnId, { type: 'end', text: response }))
       .catch((err: unknown) =>
@@ -485,6 +506,8 @@ export function createExternalAgentRelay(
           }
           if (event.type === 'ack') {
             clearTimeout(ackTimer);
+          } else if (event.type === 'activity') {
+            input.onActivity?.(event.activity);
           } else if (event.type === 'delta') {
             text += event.text;
             input.onDelta?.(event.text);
@@ -653,6 +676,12 @@ export function createExternalAgentRelay(
         if (!pending || typeof frame.text !== 'string' || frame.text === '') return;
         pending.text += frame.text;
         pending.onDelta?.(frame.text);
+        break;
+      }
+      case 'activity': {
+        const pending = ownedPending(agentId, frame.turnId);
+        const activity = pending?.onActivity ? sanitizeActivity(frame.activity) : null;
+        if (activity) pending?.onActivity?.(activity);
         break;
       }
       case 'end': {
