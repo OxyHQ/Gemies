@@ -18,7 +18,7 @@ import { Textarea } from '@oxy.so/bloom/textarea';
 import { toast } from '@oxy.so/bloom/toast';
 import { Muted } from '@oxy.so/bloom/typography';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /**
  * What the space dialog is doing: making a space (name, brief and its first agents), renaming one,
@@ -143,7 +143,7 @@ export function SpaceDialog({
         },
       ]}
     >
-      <View className="gap-4">
+      <View style={styles.form}>
         {asksName ? (
           <TextFieldInput
             label={t('spaces.name')}
@@ -168,13 +168,13 @@ export function SpaceDialog({
           />
         ) : null}
         {asksAgents ? (
-          <View className="gap-2">
+          <View style={styles.agents}>
             <Muted>{t('spaces.chooseAgents', { count: seats })}</Muted>
             {candidates.length === 0 ? (
               <Muted>{t('spaces.noFreeAgents')}</Muted>
             ) : (
               <View
-                className="flex-row flex-wrap gap-2"
+                style={styles.agentChips}
                 accessibilityRole="menu"
                 accessibilityLabel={t('spaces.chooseAgents', { count: seats })}
               >
@@ -206,3 +206,9 @@ export function SpaceDialog({
     </Dialog>
   );
 }
+
+const styles = StyleSheet.create({
+  form: { gap: 16 },
+  agents: { gap: 8 },
+  agentChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+});

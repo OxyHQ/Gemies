@@ -8,7 +8,7 @@ import { AgentAvatar } from '@oxy.so/bloom/agent-avatar';
 import { Badge } from '@oxy.so/bloom/badge';
 import { Rating } from '@oxy.so/bloom/rating';
 import { Muted, Text } from '@oxy.so/bloom/typography';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /** The agent's status, as the tone of Bloom's status dot and badge. */
 const STATUS_TONE = {
@@ -26,8 +26,8 @@ export function AgentIdentitySummary({ agent }: { agent: Agent }) {
   const handle = agentHandle(agent);
 
   return (
-    <View className="gap-1.5">
-      <View className="self-start">
+    <View style={styles.summary}>
+      <View style={styles.avatar}>
         <Badge dot color={STATUS_TONE[agent.status]} placement="bottom-right">
           <AgentAvatar
             size={80}
@@ -36,7 +36,7 @@ export function AgentIdentitySummary({ agent }: { agent: Agent }) {
           />
         </Badge>
       </View>
-      <View className="flex-row items-center gap-2">
+      <View style={styles.nameRow}>
         <Text variant="title-3-semibold">{agentDisplayName(agent)}</Text>
         <Badge
           size="label-small"
@@ -58,7 +58,7 @@ export function AgentIdentitySummary({ agent }: { agent: Agent }) {
         </Muted>
       )}
       {agent.tagline ? <Text variant="body-regular">{agent.tagline}</Text> : null}
-      <View className="flex-row items-center gap-3">
+      <View style={styles.meta}>
         <Rating value={agent.rating} count={agent.reviewCount} size="sm" />
         <Muted>
           {formatCompactNumber(agent.hireCount, locale)} {t('agents.hires')} ·{' '}
@@ -68,3 +68,10 @@ export function AgentIdentitySummary({ agent }: { agent: Agent }) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  summary: { gap: 6 },
+  avatar: { alignSelf: 'flex-start' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+});

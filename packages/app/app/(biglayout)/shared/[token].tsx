@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 import { View } from 'react-native';
 import { useTranslation } from '@/shared/i18n/use-translation';
 import config from '@/shared/platform/config';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /**
  * A shared conversation (`/shared/<token>`): the one public page every app's share link opens
@@ -17,6 +18,7 @@ import config from '@/shared/platform/config';
  * somebody's conversation, handed to the people they chose.
  */
 export default function SharedConversationScreen() {
+  const styles = useStyles();
   const { token } = useLocalSearchParams<{ token: string }>();
   const router = useRouter();
   const { t, locale } = useTranslation();
@@ -39,15 +41,25 @@ export default function SharedConversationScreen() {
           />
         }
       >
-        <View className="flex-1">
+        <View style={styles.fill}>
           {token ? (
             <GemieSharedConversation token={token} apiUrl={config.apiUrl} labels={labels} />
           ) : null}
         </View>
-        <Text className="px-4 py-3 text-center text-xs text-muted-foreground">
-          {t('sharedConversation.footer')}
-        </Text>
+        <Text style={styles.mutedText}>{t('sharedConversation.footer')}</Text>
       </Screen>
     </>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  fill: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  mutedText: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    textAlign: 'center',
+    fontSize: 12,
+    color: t.mutedForeground,
+    lineHeight: 16,
+  },
+}));

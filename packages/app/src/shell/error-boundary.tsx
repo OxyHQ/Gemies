@@ -3,7 +3,7 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { ErrorBoundary } from '@oxy.so/bloom/error-boundary';
 import { Screen } from '@oxy.so/bloom/screen';
 import type React from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 interface AppErrorBoundaryProps {
   children: React.ReactNode;
@@ -57,7 +57,7 @@ function ErrorFallback({ onRetry }: { onRetry: () => void }) {
   const { t } = useTranslation();
   return (
     <Screen scroll="content">
-      <View className="flex-1 items-center justify-center p-6">
+      <View style={styles.centered}>
         <EmptyState
           title={t('dialogs.errorBoundary.title')}
           description={t('dialogs.errorBoundary.message')}
@@ -67,3 +67,14 @@ function ErrorFallback({ onRetry }: { onRetry: () => void }) {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  centered: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+});

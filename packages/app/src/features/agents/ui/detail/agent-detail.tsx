@@ -19,7 +19,7 @@ import { Text } from '@oxy.so/bloom/typography';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { Stack, useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, StyleSheet } from 'react-native';
 
 /**
  * The granted families, by their label KEYS, for the listing.
@@ -124,7 +124,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
   ];
 
   return (
-    <View className="flex-1">
+    <View style={styles.fill}>
       <Stack.Screen
         options={{
           title: agentDisplayName(agent),
@@ -150,9 +150,9 @@ export function AgentDetail({ agent }: { agent: Agent }) {
           ),
         }}
       />
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <View className="w-full items-center p-4">
-          <View className="w-full gap-6" style={{ maxWidth: PAGE_MAX_WIDTH }}>
+      <ScrollView style={styles.fill} showsVerticalScrollIndicator={false}>
+        <View style={styles.container}>
+          <View style={styles.stack}>
             <AgentIdentitySummary agent={agent} />
             <ResponsiveGrid
               flow="columns"
@@ -169,3 +169,9 @@ export function AgentDetail({ agent }: { agent: Agent }) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  container: { width: '100%', alignItems: 'center', padding: 16 },
+  stack: { width: '100%', gap: 24, maxWidth: PAGE_MAX_WIDTH },
+});

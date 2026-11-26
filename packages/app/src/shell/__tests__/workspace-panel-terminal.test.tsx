@@ -25,7 +25,10 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
 }));
 vi.mock('react-native', async () => {
   const { host } = await import('@/shared/testing/panel-bloom-stubs');
-  return { View: host('View') };
+  return {
+    ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
+    View: host('View'),
+  };
 });
 vi.mock('expo-router', () => ({ usePathname: () => env.pathname }));
 vi.mock('@oxy.so/services/ui/client', () => ({ useOxy: () => ({ isAuthenticated: false }) }));

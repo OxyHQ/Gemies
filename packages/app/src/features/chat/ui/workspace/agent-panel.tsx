@@ -29,7 +29,7 @@ import { useTheme } from '@oxy.so/bloom/theme';
 import { Muted, Text } from '@oxy.so/bloom/typography';
 import * as WebBrowser from 'expo-web-browser';
 import { useMemo, useState } from 'react';
-import { Platform, ScrollView, View } from 'react-native';
+import { Platform, ScrollView, View, StyleSheet } from 'react-native';
 
 /**
  * AgentPanel — the right panel showing an agent run as it happens.
@@ -156,7 +156,7 @@ function StepsTab({ events, isActive }: { events: AgentActivityEvent[]; isActive
             last={last}
             reduce={reduce}
           >
-            <View className="flex-row items-center gap-1.5 py-1">
+            <View style={styles.step}>
               {step.type === 'complete' ? (
                 <RiCheckboxCircleLine size="sm" fill={colors.success} />
               ) : null}
@@ -189,7 +189,7 @@ function SourcesTab({ sources }: { sources: AgentSource[] }) {
   }
 
   return (
-    <View className="gap-2">
+    <View style={styles.steps}>
       <Muted>{t('panels.agent.websites', { count: sources.length })}</Muted>
       {sources.map((source, index) => (
         <LinkPreviewCard
@@ -256,9 +256,9 @@ export function AgentPanel() {
   ];
 
   return (
-    <View className="min-h-0 flex-1 gap-2.5 pt-2">
-      <View className="h-[30px] flex-row items-center justify-between">
-        <View className="min-w-0 shrink">
+    <View style={styles.panel}>
+      <View style={styles.header}>
+        <View style={styles.headerTitle}>
           <Tabs
             variant="pill"
             value={activeTab}
@@ -281,7 +281,7 @@ export function AgentPanel() {
         )}
       </View>
 
-      <View className="flex-row items-center gap-2 px-4 py-1">
+      <View style={styles.status}>
         {activity.isComplete ? (
           <RiCheckboxCircleLine size="sm" fill={colors.success} />
         ) : activity.hasError ? (
@@ -297,14 +297,14 @@ export function AgentPanel() {
       </View>
 
       {activity.plan && activity.plan.total > 0 ? (
-        <View className="px-4">
+        <View style={styles.plan}>
           <PlanProgressView plan={activity.plan} />
         </View>
       ) : null}
 
       <ScrollView
-        className="flex-1 px-4"
-        contentContainerClassName="pb-6"
+        style={styles.scroller}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
         {activeTab === 'steps' ? (
@@ -315,10 +315,34 @@ export function AgentPanel() {
       </ScrollView>
 
       {currentLabel && isActive ? (
-        <View className="px-4 py-2">
+        <View style={styles.current}>
           <AgentThinking key={currentLabel} label={currentLabel} showTimer />
         </View>
       ) : null}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  step: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
+  steps: { gap: 8 },
+  panel: { minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 10, paddingTop: 8 },
+  header: {
+    height: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitle: { minWidth: 0, flexShrink: 1 },
+  status: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+  },
+  plan: { paddingHorizontal: 16 },
+  scroller: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', paddingHorizontal: 16 },
+  content: { paddingBottom: 24 },
+  current: { paddingHorizontal: 16, paddingVertical: 8 },
+});

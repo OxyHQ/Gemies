@@ -26,7 +26,7 @@ import { toast } from '@oxy.so/bloom/toast';
 import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { errorMessage as getErrorMessage } from '@/shared/api/error-utils';
 
 /** `$12.00` from integer cents. */
@@ -161,7 +161,7 @@ export function BillingSection({ success }: BillingSectionProps) {
   if (isLoading) {
     // The page's own geometry, shimmering: the plan card, then a card of rows.
     return (
-      <View className="flex-1 gap-6">
+      <View style={styles.container}>
         <Skeleton.Box width="100%" height={132} borderRadius={16} />
         <Skeleton.Box width="100%" height={156} borderRadius={16} />
       </View>
@@ -448,3 +448,7 @@ export function BillingSection({ success }: BillingSectionProps) {
 
   return <SettingsGeneralPage plan={plan} sections={sections} />;
 }
+
+const styles = StyleSheet.create({
+  container: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 24 },
+});

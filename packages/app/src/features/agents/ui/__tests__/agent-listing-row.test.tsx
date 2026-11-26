@@ -30,7 +30,10 @@ const { slotted, hosts } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('react-native', async () => hosts('View'));
+vi.mock('react-native', async () => ({
+  ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
+  ...(await hosts('View')),
+}));
 vi.mock('@oxy.so/bloom/list', async () => ({
   ListItem: await slotted('ListItem', ['leading', 'title', 'supporting', 'trailing']),
 }));

@@ -2,7 +2,7 @@ import { errorStatus, errorMessage as getErrorMessage } from '@/shared/api/error
 import { useTranslation } from '@/shared/i18n/use-translation';
 import { EmptyState } from '@/shared/ui/empty-state';
 import * as Skeleton from '@oxy.so/bloom/skeleton';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /**
  * The editor's agent could not be loaded.
@@ -28,7 +28,7 @@ export function AgentEditorLoadFailed({
   const notFound = notYours || errorStatus(error) === 404;
 
   return (
-    <View className="flex-1 justify-center p-6">
+    <View style={styles.failed}>
       <EmptyState
         title={notFound ? t('agents.notFound') : t('agents.loadFailed')}
         description={
@@ -52,12 +52,12 @@ export function AgentEditorLoadFailed({
 export function AgentEditorLoading() {
   // The editor's own shape: the avatar's stage, its colours, then the fields.
   return (
-    <Skeleton.Region className="flex-1 items-center gap-6 p-4">
+    <Skeleton.Region style={styles.loading}>
       <Skeleton.Circle size={160} />
       <Skeleton.Box width={260} height={32} borderRadius={16} />
-      <View className="w-full gap-3">
+      <View style={styles.fields}>
         {[0, 1, 2].map((row) => (
-          <View key={row} className="flex-row items-center justify-between gap-4">
+          <View key={row} style={styles.field}>
             <Skeleton.Box width={80} height={14} />
             <Skeleton.Box width={220} height={32} borderRadius={10} />
           </View>
@@ -66,3 +66,17 @@ export function AgentEditorLoading() {
     </Skeleton.Region>
   );
 }
+
+const styles = StyleSheet.create({
+  failed: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', justifyContent: 'center', padding: 24 },
+  loading: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    gap: 24,
+    padding: 16,
+  },
+  fields: { width: '100%', gap: 12 },
+  field: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
+});

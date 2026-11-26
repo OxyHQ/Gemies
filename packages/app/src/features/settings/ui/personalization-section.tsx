@@ -8,7 +8,7 @@ import { SettingsSelect } from '@oxy.so/bloom/settings-modal/rows';
 import { toast } from '@oxy.so/bloom/toast';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { useEffect, useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { usePersonalityStyleRow } from './personality-style-picker';
 
 /** How much Alia says by default: the closed set the API stores (`short`, `medium`, `long`). */
@@ -186,7 +186,7 @@ export function PersonalizationSection() {
   ];
 
   return (
-    <View className="w-full gap-6">
+    <View style={styles.stack}>
       <SettingsPageActions label={t('settings.title')} actions={pageActions} />
       <GroupedSection>
         {rows.map((row) => (
@@ -204,3 +204,7 @@ export function PersonalizationSection() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  stack: { width: '100%', gap: 24 },
+});

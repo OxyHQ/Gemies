@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { List } from '@oxy.so/bloom/list';
 import { Button } from '@oxy.so/bloom/button';
 import { RiArrowUpLine } from '@oxy.so/bloom/icons/RiArrowUpLine';
@@ -35,9 +35,9 @@ export function WorkspaceFiles({
 
   if (!running) {
     return (
-      <View className="gap-2" testID="files-off">
+      <View style={styles.files} testID="files-off">
         <Muted>{t('agents.computer.files.off')}</Muted>
-        <View className="flex-row">
+        <View style={styles.inline}>
           <Button tone="neutral" appearance="outline" disabled={starting} onPress={onStart}>
             {t('agents.computer.files.turnOn')}
           </Button>
@@ -48,8 +48,8 @@ export function WorkspaceFiles({
 
   const parent = parentPath(path);
   return (
-    <View className="gap-2" testID="files">
-      <View className="flex-row items-center justify-between gap-2">
+    <View style={styles.files} testID="files">
+      <View style={styles.header}>
         <Text variant="body-medium" numberOfLines={1}>
           {path}
         </Text>
@@ -84,3 +84,9 @@ export function WorkspaceFiles({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  files: { gap: 8 },
+  inline: { flexDirection: 'row' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+});

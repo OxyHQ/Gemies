@@ -12,7 +12,7 @@ import { SelectedAgentPreview } from '@oxy.so/bloom/multi-agent-chat/selected-ag
 import { toast } from '@oxy.so/bloom/toast';
 import { Muted } from '@oxy.so/bloom/typography';
 import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /** The most agents one group holds (the API's own limit, `domain/conversation-groups.ts`). */
 const GROUP_MAX = 6;
@@ -90,7 +90,7 @@ export function GroupPickerDialog() {
         },
       ]}
     >
-      <View className="items-center gap-4">
+      <View style={styles.stack}>
         <SelectedAgentPreview agents={chosen} flights={flights} anchor="picker" caption />
         <List
           accessibilityLabel={t('group.choose')}
@@ -117,3 +117,7 @@ export function GroupPickerDialog() {
     </Dialog>
   );
 }
+
+const styles = StyleSheet.create({
+  stack: { alignItems: 'center', gap: 16 },
+});

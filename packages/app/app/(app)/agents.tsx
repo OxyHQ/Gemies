@@ -17,7 +17,7 @@ import { FlashList } from '@shopify/flash-list';
 import { useNewAgentConversation } from '@/features/agents/runtime/use-new-agent-conversation';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, View } from 'react-native';
+import { RefreshControl, View, StyleSheet } from 'react-native';
 
 /**
  * The agent catalogue. Plain content on the layout's surface: the layout draws
@@ -90,13 +90,13 @@ export default function AgentsScreen() {
 
   /** The description, and the page's two actions beside it. */
   const headerTop = (
-    <View className="pt-4">
+    <View style={styles.headerBlock}>
       <Muted>{t('agents.subtitle')}</Muted>
     </View>
   );
 
   const searchBar = (
-    <View className="pt-4">
+    <View style={styles.headerBlock}>
       <Search
         label={t('agents.searchPlaceholder')}
         value={searchQuery}
@@ -108,7 +108,7 @@ export default function AgentsScreen() {
 
   const categoryChips = useMemo(
     () => (
-      <View className="py-3">
+      <View style={styles.categories}>
         <ChipRow role="radiogroup" accessibilityLabel={t('pages.agents.categories')}>
           {categories.map((category) => {
             const isActive =
@@ -152,7 +152,7 @@ export default function AgentsScreen() {
   const renderItem = useCallback(
     ({ item }: { item: CatalogueItem }) =>
       item.kind === 'title' ? (
-        <View className="flex-row items-center justify-between px-3 pb-1 pt-5">
+        <View style={styles.sectionTitle}>
           <Text variant="headline-semibold">{item.label}</Text>
           {item.category === undefined ? null : (
             <Button
@@ -166,15 +166,15 @@ export default function AgentsScreen() {
           )}
         </View>
       ) : (
-        <View className="flex-row">
+        <View style={styles.cardRow}>
           {item.agents.map((agent) => (
-            <View key={agent._id} className="min-w-0 flex-1">
+            <View key={agent._id} style={styles.card}>
               <AgentListingRow agent={agent} onPress={handleSelectAgent} onChat={handleChat} />
             </View>
           ))}
           {/* A short last row keeps its agents the width of a column. */}
           {Array.from({ length: columns - item.agents.length }, (_, index) => (
-            <View key={`pad-${index}`} className="flex-1" />
+            <View key={`pad-${index}`} style={styles.cardPad} />
           ))}
         </View>
       ),
@@ -185,11 +185,11 @@ export default function AgentsScreen() {
   const loadingSkeleton = useMemo(() => {
     if (!loading || agents.length > 0) return null;
     return (
-      <View className="pt-5">
+      <View style={styles.loading}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <View key={i} className="flex-row items-center gap-3 p-3">
+          <View key={i} style={styles.loadingRow}>
             <Skeleton.Circle size={32} />
-            <View className="flex-1 gap-1.5">
+            <View style={styles.loadingText}>
               <Skeleton.Box width="45%" height={13} />
               <Skeleton.Box width="80%" height={11} />
             </View>
@@ -200,7 +200,7 @@ export default function AgentsScreen() {
   }, [loading, agents.length]);
 
   const listHeader = (
-    <View className="px-1.5">
+    <View style={styles.listHeader}>
       {headerTop}
       {searchBar}
       {categoryChips}
@@ -227,7 +227,7 @@ export default function AgentsScreen() {
   // layout breadcrumb's, less the 6 each cell pads) and the bottom breathing
   // room sit around the list and after it rather than in `contentContainerStyle`.
   return (
-    <View className="flex-1 px-2.5">
+    <View style={styles.page}>
       <Stack.Screen
         options={{
           headerRight: () => (
@@ -253,10 +253,32 @@ export default function AgentsScreen() {
         renderItem={renderItem}
         ListHeaderComponent={listHeader}
         ListEmptyComponent={listEmpty}
-        ListFooterComponent={<View className="h-6" />}
+        ListFooterComponent={<View style={styles.footer} />}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  headerBlock: { paddingTop: 16 },
+  categories: { paddingVertical: 12 },
+  sectionTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingTop: 20,
+    paddingBottom: 4,
+  },
+  cardRow: { flexDirection: 'row' },
+  card: { minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  cardPad: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  loading: { paddingTop: 20 },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
+  loadingText: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 6 },
+  listHeader: { paddingHorizontal: 6 },
+  page: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', paddingHorizontal: 10 },
+  footer: { height: 24 },
+});

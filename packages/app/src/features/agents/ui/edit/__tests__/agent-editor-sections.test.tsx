@@ -37,7 +37,10 @@ const mine = vi.hoisted(() => ({ agents: undefined as unknown, pending: false })
 const connections = vi.hoisted(() => ({ list: [] as unknown[] }));
 const updateAgent = vi.hoisted(() => vi.fn());
 
-vi.mock('react-native', async () => hosts('View', 'Text'));
+vi.mock('react-native', async () => ({
+  ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
+  ...(await hosts('View', 'Text')),
+}));
 vi.mock('@oxy.so/bloom/agent-creator', async () =>
   hosts('AgentCreatorField', 'AgentCreatorSection'),
 );

@@ -11,7 +11,8 @@ vi.mock('@oxy.so/services/ui/client', () => ({
   useOxy: () => mocks.session,
   useAuth: () => ({ ...mocks.session, signIn: vi.fn() }),
 }));
-vi.mock('react-native', () => ({
+vi.mock('react-native', async () => ({
+  ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
   View: ({ children }: { children: ReactNode }) => <>{children}</>,
   useWindowDimensions: () => ({ width: 390 }),
 }));

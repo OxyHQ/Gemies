@@ -7,7 +7,7 @@ import { toast } from '@oxy.so/bloom/toast';
 import { Muted } from '@oxy.so/bloom/typography';
 import { Stack, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, StyleSheet } from 'react-native';
 
 /**
  * Importing a skill from a public repository.
@@ -46,7 +46,7 @@ export default function ImportSkillScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerClassName="w-full max-w-[768px] self-center gap-4 px-4 pb-12 pt-4"
+        contentContainerStyle={styles.content}
       >
         <Muted>{t('skills.importSubtitle')}</Muted>
 
@@ -60,7 +60,7 @@ export default function ImportSkillScreen() {
           editable={!importSkill.isPending}
         />
 
-        <View className="flex-row items-center gap-2">
+        <View style={styles.row}>
           <Button
             tone="action"
             leadingIcon={RiDownloadLine}
@@ -77,3 +77,16 @@ export default function ImportSkillScreen() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  content: {
+    width: '100%',
+    maxWidth: 768,
+    gap: 16,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 48,
+  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+});

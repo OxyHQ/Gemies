@@ -15,6 +15,7 @@ import { Text } from '@oxy.so/bloom/typography';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /** This section's own strings. */
 const K = 'agents.editor.connectors';
@@ -28,6 +29,7 @@ const grantOf = (connectionId: string) => `mcp:${connectionId}`;
  * it was given. Connecting more is the store's (`/connectors`).
  */
 export function AgentConnectorsSection({ agentId, name }: { agentId: string; name: string }) {
+  const styles = useStyles();
   const { t } = useTranslation();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -58,8 +60,8 @@ export function AgentConnectorsSection({ agentId, name }: { agentId: string; nam
       ) : (
         <>
           {rows.length === 0 ? (
-            <View className="py-2.5 pe-2.5">
-              <Text variant="body-2-regular" className="text-text-secondary">
+            <View style={styles.section}>
+              <Text variant="body-2-regular" style={styles.mutedText}>
                 {t(`${K}.empty`, { name })}
               </Text>
             </View>
@@ -90,7 +92,7 @@ export function AgentConnectorsSection({ agentId, name }: { agentId: string; nam
               />
             ))
           )}
-          <View className="flex-row border-t border-border py-2.5 pe-2.5">
+          <View style={styles.row}>
             <Button
               size="sm"
               appearance="outline"
@@ -105,3 +107,15 @@ export function AgentConnectorsSection({ agentId, name }: { agentId: string; nam
     </AgentCreatorSection>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  section: { paddingVertical: 10, paddingInlineEnd: 10 },
+  mutedText: { color: t.mutedForeground },
+  row: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderColor: t.border,
+    paddingVertical: 10,
+    paddingInlineEnd: 10,
+  },
+}));

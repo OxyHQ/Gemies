@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Muted, Text } from '@oxy.so/bloom/typography';
 import type { ComputerReceipts } from '@/features/agents/model/computer';
 import { useTranslation } from '@/shared/i18n/use-translation';
@@ -19,12 +19,12 @@ export function ComputerActivity({ receipts }: { receipts: ComputerReceipts | un
   const browser = receipts?.browser ?? [];
 
   return (
-    <View className="gap-4" testID="computer-activity">
-      <View className="gap-1.5">
+    <View style={styles.activity} testID="computer-activity">
+      <View style={styles.group}>
         <Text variant="body-medium">{t('agents.computer.activity.commands')}</Text>
         {commands.length === 0 ? <Muted>{t('agents.computer.activity.none')}</Muted> : null}
         {commands.map((command) => (
-          <View key={command.operationId} className="gap-0.5 py-1">
+          <View key={command.operationId} style={styles.entry}>
             <Text variant="body-regular" numberOfLines={2} style={{ fontFamily: 'monospace' }}>
               {command.command}
             </Text>
@@ -36,11 +36,11 @@ export function ComputerActivity({ receipts }: { receipts: ComputerReceipts | un
           </View>
         ))}
       </View>
-      <View className="gap-1.5">
+      <View style={styles.group}>
         <Text variant="body-medium">{t('agents.computer.activity.browser')}</Text>
         {browser.length === 0 ? <Muted>{t('agents.computer.activity.none')}</Muted> : null}
         {browser.map((action, index) => (
-          <View key={`${action.at}-${index}`} className="gap-0.5 py-1">
+          <View key={`${action.at}-${index}`} style={styles.entry}>
             <Text variant="body-regular" numberOfLines={1}>
               {t(`agents.computer.activity.action.${action.action}`)}
               {action.origin ? ` · ${action.origin}` : ''}
@@ -57,3 +57,9 @@ export function ComputerActivity({ receipts }: { receipts: ComputerReceipts | un
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  activity: { gap: 16 },
+  group: { gap: 6 },
+  entry: { gap: 2, paddingVertical: 4 },
+});

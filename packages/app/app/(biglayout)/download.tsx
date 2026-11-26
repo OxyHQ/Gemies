@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { useEffect, useState } from 'react';
-import { Linking, Platform, View } from 'react-native';
+import { Linking, Platform, View, StyleSheet } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=onl.alia.app';
@@ -58,7 +58,7 @@ export default function DownloadScreen() {
         }
       >
         <ScreenScrollView>
-          <View className="mx-auto w-full max-w-sm items-center gap-6 px-6 py-8">
+          <View style={styles.container}>
             <GemiesMark size={72} />
 
             <View>
@@ -115,3 +115,15 @@ export default function DownloadScreen() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    marginHorizontal: 'auto',
+    width: '100%',
+    maxWidth: 384,
+    alignItems: 'center',
+    gap: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+  },
+});

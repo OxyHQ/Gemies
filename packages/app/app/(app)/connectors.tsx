@@ -3,7 +3,7 @@ import { GemieConnectorsStore } from '@gemies/sdk/connectors';
 import { Muted } from '@oxy.so/bloom/typography';
 import { useAuth } from '@oxy.so/services/ui/client';
 import { useEffect } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 
 /**
  * The connectors store: every provider's MCP server the person can connect, and their own by URL.
@@ -20,9 +20,14 @@ export default function ConnectorsScreen() {
   }, [isAuthenticated, signIn]);
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pb-6 pt-4">
+    <ScrollView style={styles.fill} contentContainerStyle={styles.content}>
       <Muted>{t('gemie.connectors.store.description')}</Muted>
       <GemieConnectorsStore nativeScheme="gemies" t={t} />
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  content: { gap: 16, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 },
+});

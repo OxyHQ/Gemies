@@ -65,6 +65,7 @@ vi.mock('react-native', async () => {
     ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement(name, props, children);
   return {
+    ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
     View: host('View'),
     Linking: { openURL: vi.fn() },
     Platform: { OS: 'web', select: (spec: Record<string, unknown>) => spec.web },

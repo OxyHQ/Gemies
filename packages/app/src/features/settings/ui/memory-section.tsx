@@ -10,7 +10,7 @@ import { toast } from '@oxy.so/bloom/toast';
 import { useAuth, useOxy } from '@oxy.so/services/ui/client';
 import * as Linking from 'expo-linking';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /** This page's own strings. */
 const K = 'settings.assistant.memory';
@@ -52,7 +52,7 @@ export function MemorySection() {
   };
 
   return (
-    <View className="w-full gap-6">
+    <View style={styles.stack}>
       <GroupedSection>
         <GroupedSectionItem
           titleNumberOfLines={0}
@@ -89,3 +89,7 @@ export function MemorySection() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  stack: { width: '100%', gap: 24 },
+});

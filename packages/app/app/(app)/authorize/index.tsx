@@ -11,6 +11,7 @@ import { Loading } from '@oxy.so/bloom/loading';
 import { Muted } from '@oxy.so/bloom/typography';
 import { useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
+import { StyleSheet } from 'react-native';
 
 /**
  * Links a system bot's chat (Discord) to the signed-in account.
@@ -81,7 +82,7 @@ export default function AuthorizeScreen() {
             title={t('authorize.linked')}
             description={message}
             footer={
-              <Muted className="text-center">
+              <Muted style={styles.centered}>
                 {t('authorize.returnToApp', { app: displayName })}
               </Muted>
             }
@@ -101,3 +102,7 @@ export default function AuthorizeScreen() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  centered: { textAlign: 'center' },
+});

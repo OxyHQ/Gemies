@@ -16,7 +16,7 @@ import { SettingsSelect } from '@oxy.so/bloom/settings-modal/rows';
 import { toast } from '@oxy.so/bloom/toast';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Platform, Share, View } from 'react-native';
+import { Platform, Share, View, StyleSheet } from 'react-native';
 
 interface ThreatEntry {
   id: string;
@@ -200,7 +200,7 @@ export function SecuritySection() {
 
   // The threat log holds its place as placeholder rows while it is read, under its own heading.
   return threatsLoading ? (
-    <View className="w-full gap-6">
+    <View style={styles.stack}>
       <SettingsSection label={threatsSection.label} description={threatsSection.description}>
         <SettingsRowsSkeleton rows={2} />
       </SettingsSection>
@@ -210,3 +210,7 @@ export function SecuritySection() {
     <SettingsGeneralPage sections={[threatsSection, ...sections]} />
   );
 }
+
+const styles = StyleSheet.create({
+  stack: { width: '100%', gap: 24 },
+});

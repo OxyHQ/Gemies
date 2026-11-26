@@ -13,7 +13,7 @@ import * as Skeleton from '@oxy.so/bloom/skeleton';
 import { toast } from '@oxy.so/bloom/toast';
 import { Muted } from '@oxy.so/bloom/typography';
 import { useMemo, useState } from 'react';
-import { View, type LayoutChangeEvent } from 'react-native';
+import { View, type LayoutChangeEvent, StyleSheet } from 'react-native';
 
 function formatDisplayDate(dateStr: string): string {
   const [y, m, d] = dateStr.split('-');
@@ -61,7 +61,7 @@ export function ActivityGrid({ agentId }: { agentId: string }) {
   const interactions = useMemo(() => interactionsIn(grid, today, weeks), [grid, today, weeks]);
 
   return (
-    <View className="gap-1.5" onLayout={onLayout}>
+    <View style={styles.stack} onLayout={onLayout}>
       {isLoading || width === 0 ? (
         <Skeleton.Box width="100%" height={96} />
       ) : (
@@ -94,3 +94,7 @@ export function ActivityGrid({ agentId }: { agentId: string }) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  stack: { gap: 6 },
+});
