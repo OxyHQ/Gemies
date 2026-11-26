@@ -201,7 +201,7 @@ describe('serveExternalDirectTurn: permission questions (ADR 0043 §5)', () => {
     ]);
     const res = fakeResponse();
     await serve(res);
-    expect(frames(res).filter((f) => f.event?.startsWith('alia.approval'))).toEqual([
+    expect(frames(res).filter((f) => f.event?.startsWith('alia.cli_permission'))).toEqual([
       {
         event: 'alia.cli_permission_request',
         data: {
@@ -226,6 +226,6 @@ describe('serveExternalDirectTurn: permission questions (ADR 0043 §5)', () => {
     ]);
     const res = fakeResponse();
     await serve(res, { stream: false });
-    expect(frames(res).some((f) => f.event?.startsWith('alia.approval'))).toBe(false);
+    expect(frames(res).some((f) => f.event?.startsWith('alia.cli_permission'))).toBe(false);
   });
 });
