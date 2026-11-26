@@ -1,5 +1,5 @@
 import * as Skeleton from '@oxy.so/bloom/skeleton';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /** Widths that vary row to row: identical ones read as a pattern, not as text. */
 const TITLE_WIDTHS = ['45%', '60%', '38%', '52%', '66%', '42%'] as const;
@@ -14,22 +14,20 @@ export function ListRowsSkeleton({
   rows = 6,
   mark = 'circle',
   lines = 2,
-  className,
 }: {
   rows?: number;
   /** What leads each row: an avatar (circle), a tile (square) or nothing. */
   mark?: 'circle' | 'tile' | 'none';
   /** Lines of text beside the mark (a title, plus one under it by default). */
   lines?: 1 | 2;
-  className?: string;
 }) {
   return (
-    <Skeleton.Region className={className}>
+    <Skeleton.Region>
       {Array.from({ length: rows }, (_, index) => (
-        <View key={index} className="flex-row items-center gap-3 p-3">
+        <View key={index} style={styles.row}>
           {mark === 'circle' ? <Skeleton.Circle size={32} /> : null}
           {mark === 'tile' ? <Skeleton.Box width={32} height={32} borderRadius={8} /> : null}
-          <View className="flex-1 gap-1.5">
+          <View style={styles.lines}>
             <Skeleton.Box width={TITLE_WIDTHS[index % TITLE_WIDTHS.length]} height={13} />
             {lines === 2 ? (
               <Skeleton.Box width={LINE_WIDTHS[index % LINE_WIDTHS.length]} height={11} />
@@ -40,3 +38,8 @@ export function ListRowsSkeleton({
     </Skeleton.Region>
   );
 }
+
+const styles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
+  lines: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 6 },
+});

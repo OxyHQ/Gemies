@@ -27,7 +27,10 @@ const { hosts } = vi.hoisted(() => ({
 
 const toastMock = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 
-vi.mock('react-native', async () => hosts('View', 'Text'));
+vi.mock('react-native', async () => ({
+  ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
+  ...(await hosts('View', 'Text')),
+}));
 vi.mock('@oxy.so/bloom/settings-modal', async () => hosts('SettingsPageActions'));
 vi.mock('@oxy.so/bloom/grouped-section', async () => hosts('GroupedSection', 'GroupedSectionItem'));
 vi.mock('@oxy.so/bloom/settings-modal/rows', async () => hosts('SettingsSelect'));

@@ -1,10 +1,9 @@
 const { createOxyMetroConfig } = require('@oxy.so/app-preset/metro');
 
 // The preset owns the monorepo watch folder and block list, symlink +
-// package-exports resolution, the font/wasm asset extensions, NativeWind
-// (`./global.css`, 1rem = 16px) and the complete `react-native` behind
-// NativeWind's shim, without which `expo-asset` reads React Native 0.88's
-// `AssetRegistry` as undefined and an Android release build stays blank.
+// package-exports resolution, the font/wasm asset extensions and the base face
+// of a React Native `Text` that names no family. The app lists no NativeWind,
+// so the preset applies none (app-preset 6.9, "An app without NativeWind").
 const config = createOxyMetroConfig(__dirname);
 
 // A fixtures build (EXPO_PUBLIC_ALIA_FIXTURES=1, see fixtures/entry.tsx)

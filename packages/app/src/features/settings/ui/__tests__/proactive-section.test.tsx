@@ -31,7 +31,10 @@ const { hosts } = vi.hoisted(() => ({
 
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), delete: vi.fn() }));
 
-vi.mock('react-native', async () => hosts('View', 'Text'));
+vi.mock('react-native', async () => ({
+  ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
+  ...(await hosts('View', 'Text')),
+}));
 vi.mock('@oxy.so/bloom/settings-modal', async () => hosts('SettingsSection'));
 vi.mock('@oxy.so/bloom/grouped-section', async () => hosts('GroupedSection', 'GroupedSectionItem'));
 vi.mock('@oxy.so/bloom/switch', async () => hosts('Switch'));

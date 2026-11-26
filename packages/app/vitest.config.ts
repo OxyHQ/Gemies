@@ -36,11 +36,6 @@ export default defineConfig({
    * mock every `@oxy.so/bloom/*` specifier instead of importing it — and a test
    * that mocks the component it is about is a test of its own stub.
    *
-   * `react-native-css` is here for a different reason with the same effect: it
-   * publishes extensionless relative ESM (`./runtime`), which a bundler
-   * resolves and node does not. Bloom's styled components import it, so it is
-   * reached by anything that mounts one.
-   *
    * Inlining is what makes #608 testable rather than assertable: an adoption
    * can now be proven by mounting the real Bloom component, as the suites
    * under the features' `ui/__tests__` do.
@@ -48,7 +43,7 @@ export default defineConfig({
   test: {
     server: {
       deps: {
-        inline: [/@oxy\.so[\\/]bloom/, /react-native-css/],
+        inline: [/@oxy\.so[\\/]bloom/],
       },
     },
   },

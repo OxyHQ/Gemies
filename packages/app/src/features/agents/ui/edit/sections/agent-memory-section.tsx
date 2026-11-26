@@ -17,7 +17,7 @@ import { Textarea } from '@oxy.so/bloom/textarea';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /** This section's own strings. */
 const K = 'agents.editor.memory';
@@ -93,7 +93,7 @@ function MemoryFileRow({
       {isPending || !document ? (
         <SettingsSkeletonRows control="none" rows={2} />
       ) : (
-        <View className="gap-2">
+        <View style={styles.stack}>
           <Textarea
             accessibilityLabel={path}
             size="sm"
@@ -108,7 +108,7 @@ function MemoryFileRow({
               {[t(`${K}.changedMeanwhile`), document.content].join('\n\n')}
             </Admonition>
           ) : null}
-          <View className="flex-row justify-end">
+          <View style={styles.row}>
             <Button.Group size="sm" accessibilityLabel={path}>
               <Button onPress={handleSave} disabled={!dirty || save.isPending}>
                 {conflict ? t(`${K}.saveMineOverIt`) : t('settings.saveButton')}
@@ -196,3 +196,8 @@ export function AgentMemorySection({ agentId, name }: { agentId: string; name: s
     </AgentCreatorSection>
   );
 }
+
+const styles = StyleSheet.create({
+  stack: { gap: 8 },
+  row: { flexDirection: 'row', justifyContent: 'flex-end' },
+});

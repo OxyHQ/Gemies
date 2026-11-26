@@ -12,6 +12,7 @@ const world = vi.hoisted(() => ({ toast: { error: vi.fn() } }));
 vi.mock('react-native', async () => {
   const ReactModule = await import('react');
   return {
+    ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
     View: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
       ReactModule.createElement('View', props, children),
   };

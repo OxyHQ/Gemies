@@ -2,7 +2,9 @@ import { useTranslation } from '@/shared/i18n/use-translation';
 import { useColorScheme } from '@/shared/platform/useColorScheme';
 import { GemieAvatar, AmbientField, PARALLAX_DURATION, PARALLAX_EASE } from '@gemies/sdk';
 import { Button } from '@oxy.so/bloom/button';
-import { Text } from '@oxy.so/bloom/typography';
+import { useWindowBreakpoint } from '@oxy.so/bloom/hooks';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
+import { fontFamilyStyle, Text } from '@oxy.so/bloom/typography';
 import { useAuth } from '@oxy.so/services/ui/client';
 import { useScreenOnShow } from '@/shared/platform/use-screen-on-show';
 import { GemiesWelcomeArt } from '@/shared/ui/gemies-welcome-art';
@@ -41,6 +43,8 @@ const FALL_DISTANCE = -22;
 
 /** The blinking caret that trails the headline while it types itself out. */
 function Caret({ done }: { done: boolean }) {
+  const styles = useStyles();
+  const wide = useWide();
   const blink = useSharedValue(1);
 
   useEffect(() => {
@@ -51,12 +55,7 @@ function Caret({ done }: { done: boolean }) {
     opacity: done ? withTiming(0, { duration: 200 }) : blink.value,
   }));
 
-  return (
-    <Animated.View
-      className="ml-[1px] h-8 w-[2px] self-center bg-foreground md:h-10"
-      style={animatedStyle}
-    />
-  );
+  return <Animated.View style={[styles.caret, wide && styles.wideCaret, animatedStyle]} />;
 }
 
 /**
@@ -99,6 +98,8 @@ export function WelcomeIntro({
   onDismissed: () => void;
   children: (slots: WelcomeIntroSlots) => ReactNode;
 }) {
+  const styles = useStyles();
+  const wide = useWide();
   const { t } = useTranslation();
   const { isDarkColorScheme } = useColorScheme();
   const { signIn } = useAuth();
@@ -270,13 +271,9 @@ export function WelcomeIntro({
   );
 
   const content = (
-    <View
-      className="flex-1 items-center justify-center px-7 py-6"
-      onLayout={handleStageLayout}
-      onPointerMove={handlePointerMove}
-    >
-      <View className="w-full max-w-[640px] items-center gap-3">
-        <Animated.View className="max-w-[560px] items-center gap-4">
+    <View style={styles.stage} onLayout={handleStageLayout} onPointerMove={handlePointerMove}>
+      <View style={styles.column}>
+        <Animated.View style={styles.lead}>
           <Animated.View style={markStyle}>
             {brand === 'gemies' ? (
               <GemiesWelcomeArt size={stage.width >= 768 ? 240 : 180} />
@@ -284,36 +281,31 @@ export function WelcomeIntro({
               <GemieAvatar size={40} interactive />
             )}
           </Animated.View>
-          <Animated.View
-            className="flex-row items-center justify-center"
-            accessibilityLabel={headline}
-            style={headlineStyle}
-          >
-            {/* Typeface matches the chat greeting in
-                the SDK's GemieWelcomeMessage — Text's own font-sans, no
-                display face. Editorial size stays. */}
-            <Text className="text-center text-4xl font-light text-foreground md:text-5xl">
+          <Animated.View accessibilityLabel={headline} style={[styles.headlineRow, headlineStyle]}>
+            {/* Typeface matches the chat greeting in the SDK's
+                GemieWelcomeMessage: the display face a title this size takes. */}
+            <Text style={[styles.headline, wide && styles.wideHeadline]}>
               {headline.slice(0, typed)}
             </Text>
             <Caret done={typed >= headline.length} />
           </Animated.View>
         </Animated.View>
 
-        <Animated.View className="w-full overflow-hidden" style={revealStyle}>
-          <View className="w-full items-center gap-6" onLayout={handleBodyLayout}>
+        <Animated.View style={[styles.reveal, revealStyle]}>
+          <View style={styles.body} onLayout={handleBodyLayout}>
             <Animated.View style={subtitleStyle}>
               <Text
-                className={
+                style={
                   brand === 'gemies'
-                    ? 'max-w-[560px] text-center text-lg text-muted-foreground md:text-xl'
-                    : 'max-w-[520px] text-center text-muted-foreground'
+                    ? [styles.gemiesSubtitle, wide && styles.wideGemiesSubtitle]
+                    : styles.subtitle
                 }
               >
                 {t(`${copy}.subtitle`)}
               </Text>
             </Animated.View>
 
-            <Animated.View className="items-center gap-2" style={ctaStyle}>
+            <Animated.View style={[styles.actions, ctaStyle]}>
               <Button tone="action" onPress={handleGetStarted}>
                 {t(`${copy}.cta`)}
               </Button>
@@ -331,3 +323,54 @@ export function WelcomeIntro({
 
   return <>{children({ background, content })}</>;
 }
+
+/** Whether the window is at Bloom's `md` breakpoint or wider, where the headline grows. */
+function useWide(): boolean {
+  const tier = useWindowBreakpoint();
+  return tier !== 'base' && tier !== 'sm';
+}
+
+const useStyles = createTokenStyles((t) => ({
+  stage: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    paddingVertical: 24,
+  },
+  column: { width: '100%', maxWidth: 640, alignItems: 'center', gap: 12 },
+  lead: { maxWidth: 560, alignItems: 'center', gap: 16 },
+  headlineRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  // A title this size is set in the display face, as Bloom's Text set a `text-4xl` class.
+  headline: {
+    ...fontFamilyStyle('display'),
+    textAlign: 'center',
+    fontSize: 36,
+    lineHeight: 40,
+    fontWeight: '300',
+    color: t.foreground,
+  },
+  wideHeadline: { fontSize: 48, lineHeight: 48 },
+  caret: {
+    marginLeft: 1,
+    height: 32,
+    width: 2,
+    alignSelf: 'center',
+    backgroundColor: t.foreground,
+  },
+  wideCaret: { height: 40 },
+  reveal: { width: '100%', overflow: 'hidden' },
+  body: { width: '100%', alignItems: 'center', gap: 24 },
+  gemiesSubtitle: {
+    maxWidth: 560,
+    textAlign: 'center',
+    fontSize: 18,
+    lineHeight: 28,
+    color: t.mutedForeground,
+  },
+  wideGemiesSubtitle: { fontSize: 20, lineHeight: 28 },
+  subtitle: { maxWidth: 520, textAlign: 'center', color: t.mutedForeground },
+  actions: { alignItems: 'center', gap: 8 },
+}));

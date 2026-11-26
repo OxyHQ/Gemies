@@ -71,6 +71,7 @@ vi.mock('react-native', async () => {
       select: (spec: Record<string, unknown>) => spec.web,
     },
     StyleSheet: {
+      ...(await import('@/shared/testing/style-stubs')).reactNativeStyles.StyleSheet,
       absoluteFill: {
         position: 'absolute',
         top: 0,

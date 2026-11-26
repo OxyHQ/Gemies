@@ -11,7 +11,7 @@ import { RiHistoryLine } from '@oxy.so/bloom/icons/RiHistoryLine';
 import { RiShieldLine } from '@oxy.so/bloom/icons/RiShieldLine';
 import { RiTimeLine } from '@oxy.so/bloom/icons/RiTimeLine';
 import { Muted } from '@oxy.so/bloom/typography';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 /** The session's status, as a badge tone. */
 function statusTone(status: string): AccentTone {
@@ -35,12 +35,12 @@ export function SessionSummary({
   return (
     <>
       {/* What this session was asked to do. */}
-      <View className="px-4">
+      <View style={styles.section}>
         <Muted numberOfLines={2}>{session.task}</Muted>
       </View>
 
       {/* Stats */}
-      <View className="flex-row flex-wrap items-center gap-2 px-4 pt-3">
+      <View style={styles.row}>
         <Badge
           size="label-small"
           variant="subtle"
@@ -83,3 +83,15 @@ export function SessionSummary({
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  section: { paddingHorizontal: 16 },
+  row: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+});

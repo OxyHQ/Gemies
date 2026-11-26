@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({ activity: {} as Record<string, unknown> }));
 vi.mock('react-native', async () => {
   const { host } = await import('@/shared/testing/panel-bloom-stubs');
   return {
+    ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
     View: host('View'),
     ScrollView: host('ScrollView'),
     Image: host('Image'),

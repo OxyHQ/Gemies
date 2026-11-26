@@ -18,7 +18,10 @@ const host = vi.hoisted(() => async (...names: string[]) => {
   );
 });
 
-vi.mock('react-native', async () => host('View', 'ScrollView'));
+vi.mock('react-native', async () => ({
+  ...(await import('@/shared/testing/style-stubs')).reactNativeStyles,
+  ...(await host('View', 'ScrollView')),
+}));
 vi.mock('@oxy.so/bloom/typography', async () => host('Text'));
 vi.mock('@oxy.so/bloom/button', async () => host('Button'));
 vi.mock('@oxy.so/bloom/agent-avatar', async () => host('AgentAvatar'));

@@ -18,7 +18,7 @@ import * as Skeleton from '@oxy.so/bloom/skeleton';
 import { Muted, Text } from '@oxy.so/bloom/typography';
 import { FlashList } from '@shopify/flash-list';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, View, StyleSheet } from 'react-native';
 
 /**
  * The Skills catalogue.
@@ -79,7 +79,7 @@ function SkillBook({
 }) {
   const { t } = useTranslation();
   return (
-    <View className="w-[110px] mr-[10px] items-center gap-1.5">
+    <View style={styles.book}>
       {/* The cover is the skill's own artwork, not a control, so the press
           around it is a bare `Pressable`: Bloom's `PressableScale` animates
           through reanimated, which the shelf must not load (#545). */}
@@ -144,12 +144,12 @@ function Shelf({
 
   if (skills.length === 0) return null;
   return (
-    <View className="gap-2">
-      <View className="px-4">
+    <View style={styles.shelf}>
+      <View style={styles.inset}>
         <Text variant="headline-semibold">{title}</Text>
       </View>
       {/* A horizontal list needs its height from outside; the books are all one size. */}
-      <View className="h-[199px]">
+      <View style={styles.shelfList}>
         <FlashList
           horizontal
           data={skills}
@@ -158,7 +158,7 @@ function Shelf({
           extraData={installedIds}
           drawDistance={SHELF_DRAW_DISTANCE}
           showsHorizontalScrollIndicator={false}
-          contentContainerClassName="px-4"
+          contentContainerStyle={styles.shelfContent}
           onEndReached={onEndReached}
           onEndReachedThreshold={0.5}
         />
@@ -243,7 +243,7 @@ export function SkillsCatalogue({ onOpenSkill, onImport, onCreate }: SkillsCatal
 
   return (
     <>
-      <View className="flex-row flex-wrap items-center justify-end gap-2 px-4 pt-4">
+      <View style={styles.actions}>
         <Button.Group accessibilityLabel={t('skills.import')}>
           <Button leadingIcon={RiDownloadLine} onPress={onImport}>
             {t('skills.import')}
@@ -268,7 +268,7 @@ export function SkillsCatalogue({ onOpenSkill, onImport, onCreate }: SkillsCatal
           />
         }
       >
-        <View className="gap-3 px-4 pt-4">
+        <View style={styles.search}>
           <Muted>{t('skills.subtitle')}</Muted>
           <Search
             label={t('skills.searchPlaceholder')}
@@ -279,15 +279,15 @@ export function SkillsCatalogue({ onOpenSkill, onImport, onCreate }: SkillsCatal
         </View>
 
         {catalogue.isLoading ? (
-          <View className="gap-5 pb-8 pt-5">
-            <View className="gap-2">
-              <View className="ml-4 w-[120px] flex-row">
+          <View style={styles.shelves}>
+            <View style={styles.shelf}>
+              <View style={styles.loadingTitle}>
                 <Skeleton.Text />
               </View>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerClassName="gap-[10px] px-4"
+                contentContainerStyle={styles.loadingShelf}
               >
                 {Array.from({ length: 4 }).map((_, index) => (
                   <Skeleton.Box key={index} width={BOOK_WIDTH} height={BOOK_WIDTH * 1.5} />
@@ -296,7 +296,7 @@ export function SkillsCatalogue({ onOpenSkill, onImport, onCreate }: SkillsCatal
             </View>
           </View>
         ) : (
-          <View className="gap-5 pb-8 pt-5">
+          <View style={styles.shelves}>
             <Shelf
               title={t('skills.installed')}
               skills={installedShelf}
@@ -343,7 +343,7 @@ export function SkillsCatalogue({ onOpenSkill, onImport, onCreate }: SkillsCatal
             {/* The shelves ask for more as they are scrolled; this is the same
               request for anybody who would rather press than scroll. */}
             {catalogue.hasNextPage ? (
-              <View className="px-4">
+              <View style={styles.inset}>
                 <Button
                   tone="neutral"
                   appearance="subtle"
@@ -362,3 +362,24 @@ export function SkillsCatalogue({ onOpenSkill, onImport, onCreate }: SkillsCatal
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  book: { marginRight: 10, width: 110, alignItems: 'center', gap: 6 },
+  shelf: { gap: 8 },
+  inset: { paddingHorizontal: 16 },
+  shelfList: { height: 199 },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  search: { gap: 12, paddingHorizontal: 16, paddingTop: 16 },
+  shelves: { gap: 20, paddingTop: 20, paddingBottom: 32 },
+  loadingTitle: { marginLeft: 16, width: 120, flexDirection: 'row' },
+  loadingShelf: { gap: 10, paddingHorizontal: 16 },
+  shelfContent: { paddingHorizontal: 16 },
+});

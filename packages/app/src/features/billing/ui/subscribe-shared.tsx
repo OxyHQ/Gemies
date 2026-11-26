@@ -25,7 +25,7 @@ import { Muted, Text } from '@oxy.so/bloom/typography';
 import { useRouter } from 'expo-router';
 import type React from 'react';
 import { useEffect } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -145,7 +145,7 @@ function OdometerDigit({ digit }: { digit: string }) {
   }));
 
   return (
-    <View className="h-10 w-[21px] overflow-hidden">
+    <View style={styles.priceSlot}>
       <Animated.View style={columnStyle}>
         {DIGITS.map((d) => (
           <Text key={d} variant="display-4-bold" style={DIGIT_CELL}>
@@ -163,7 +163,7 @@ function SlotPrice({ cents }: { cents: number }) {
     return <Text variant="display-4-bold">{display.formatUsd(cents)}</Text>;
   const chars = formatPrice(cents).split('');
   return (
-    <View className="flex-row items-center">
+    <View style={styles.price}>
       {chars.map((char, i) => {
         const isDigit = char >= '0' && char <= '9';
         const key = `${chars.length - i}-${isDigit ? 'd' : char}`;
@@ -260,7 +260,7 @@ interface PlanGridProps {
 /** A tier's name and, on the featured one, the "Popular" chip. */
 function TierName({ tier, t }: { tier: PricingTier; t: Translate }) {
   return (
-    <View className="flex-row flex-wrap items-center gap-2">
+    <View style={styles.tierName}>
       <Text variant="title-3-bold">{tier.name}</Text>
       {tier.isFeatured ? (
         <Chip size="sm" variant="solid" color="primary">
@@ -287,12 +287,12 @@ function TierSummary({ tier, props }: { tier: PricingTier; props: PlanGridProps 
   );
   const emphasised = tier.isFeatured && !button.label.includes('downgrade');
   return (
-    <View className="w-full gap-3">
+    <View style={styles.summary}>
       {tier.monthlyPrice === 0 ? (
         <Text variant="display-4-bold">{t('subscribe.free')}</Text>
       ) : (
-        <View className="gap-1">
-          <View className="flex-row items-center gap-1">
+        <View style={styles.priceBlock}>
+          <View style={styles.priceLine}>
             <SlotPrice cents={price} />
             <Muted>{t('subscribe.perMonth')}</Muted>
           </View>
@@ -312,7 +312,7 @@ function TierSummary({ tier, props }: { tier: PricingTier; props: PlanGridProps 
         appearance={emphasised ? 'solid' : 'outline'}
         tone={emphasised ? 'accent' : 'neutral'}
         size="sm"
-        className="w-full"
+        style={styles.fullWidth}
         onPress={() => onSubscribe(tier.id)}
         disabled={
           button.disabled ||
@@ -333,9 +333,9 @@ function TierSummary({ tier, props }: { tier: PricingTier; props: PlanGridProps 
 function Feature({ feature }: { feature: FeatureItem }) {
   const { colors } = useTheme();
   return (
-    <View className="flex-row items-start gap-2">
+    <View style={styles.feature}>
       <RiCheckLine width={16} height={16} fill={colors.primary} />
-      <View className="flex-1 gap-0.5">
+      <View style={styles.featureText}>
         <Text variant="body-regular">{feature.label}</Text>
         {feature.description ? <Muted>{feature.description}</Muted> : null}
       </View>
@@ -349,7 +349,7 @@ export function PlanGrid(props: PlanGridProps) {
 
   if (!isWideLayout) {
     return (
-      <View className="gap-4 px-4">
+      <View style={styles.narrowTiers}>
         {tiers.map((tier) => (
           <Card key={tier.id} appearance={tier.isFeatured ? 'solid' : 'outline'}>
             <CardHeader>
@@ -357,10 +357,10 @@ export function PlanGrid(props: PlanGridProps) {
               {tier.subtitle ? <CardDescription>{tier.subtitle}</CardDescription> : null}
             </CardHeader>
             <CardBody>
-              <View className="gap-4">
+              <View style={styles.tierBody}>
                 <TierSummary tier={tier} props={props} />
                 {tier.features.map((group) => (
-                  <View key={group.category} className="gap-2">
+                  <View key={group.category} style={styles.featureGroup}>
                     <CardTitle>{group.category}</CardTitle>
                     {group.items.map((feature) => (
                       <Feature key={feature.label} feature={feature} />
@@ -387,7 +387,7 @@ export function PlanGrid(props: PlanGridProps) {
     <TableRow key="summary">
       {tiers.map((tier) => (
         <TableCell key={tier.id}>
-          <View className="w-full gap-3 py-2">
+          <View style={styles.tierCell}>
             {tier.subtitle ? <Muted>{tier.subtitle}</Muted> : null}
             <TierSummary tier={tier} props={props} />
           </View>
@@ -427,7 +427,7 @@ export function PlanGrid(props: PlanGridProps) {
   }
 
   return (
-    <View className="px-2">
+    <View style={styles.table}>
       <Table accessibilityLabel={t('subscribe.title')}>
         <TableHeader>
           {tiers.map((tier) => (
@@ -446,8 +446,8 @@ export function PlanGrid(props: PlanGridProps) {
 
 export function InfoBanners({ t }: { t: Translate }) {
   return (
-    <View className="mx-4 my-8 flex-row flex-wrap gap-4">
-      <View className="min-w-[260px] flex-1">
+    <View style={styles.banners}>
+      <View style={styles.banner}>
         <Announcement
           icon={RiBuilding2Line}
           title={t('subscribe.teamTitle')}
@@ -455,7 +455,7 @@ export function InfoBanners({ t }: { t: Translate }) {
           actionLabel={t('subscribe.getTeam')}
         />
       </View>
-      <View className="min-w-[260px] flex-1">
+      <View style={styles.banner}>
         <Announcement
           icon={RiShieldLine}
           title={t('subscribe.securityTitle')}
@@ -471,7 +471,7 @@ export function PageFooter({ t }: { t: Translate }) {
   const router = useRouter();
 
   return (
-    <View className="flex-row flex-wrap items-center justify-between gap-2 px-6 py-4">
+    <View style={styles.footer}>
       <Muted>
         {t('subscribe.helpText')} {t('subscribe.helpCenter')}.
       </Muted>
@@ -486,3 +486,37 @@ export function PageFooter({ t }: { t: Translate }) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  priceSlot: { height: 40, width: 21, overflow: 'hidden' },
+  price: { flexDirection: 'row', alignItems: 'center' },
+  tierName: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  summary: { width: '100%', gap: 12 },
+  priceBlock: { gap: 4 },
+  priceLine: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  fullWidth: { width: '100%' },
+  feature: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  featureText: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 2 },
+  narrowTiers: { gap: 16, paddingHorizontal: 16 },
+  tierBody: { gap: 16 },
+  featureGroup: { gap: 8 },
+  tierCell: { width: '100%', gap: 12, paddingVertical: 8 },
+  table: { paddingHorizontal: 8 },
+  banners: {
+    marginHorizontal: 16,
+    marginVertical: 32,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  banner: { minWidth: 260, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  footer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+  },
+});

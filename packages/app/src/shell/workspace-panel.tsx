@@ -33,13 +33,14 @@ import { RiRobot2Line } from '@oxy.so/bloom/icons/RiRobot2Line';
 import { RiSideBarLine } from '@oxy.so/bloom/icons/RiSideBarLine';
 import { RiTerminalBoxLine } from '@oxy.so/bloom/icons/RiTerminalBoxLine';
 import { LinesSkeleton } from '@/shared/ui/skeletons';
+import { TERMINAL_BACKGROUND } from '@/features/chat/ui/workspace/terminal-palette';
 import { alert, confirm, type AlertButton } from '@oxy.so/bloom/surfaces';
 import { toast } from '@oxy.so/bloom/toast';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { usePathname } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { lazy, Suspense, useCallback, useEffect, useMemo } from 'react';
-import { Platform, View } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
 
 /**
  * The agent's terminal, loaded when it is first shown: it brings xterm (web)
@@ -99,7 +100,7 @@ export function WorkspacePanel({ width }: { width: number | '100%' }) {
     case 'agent':
     case 'editor':
       return (
-        <View className="h-full min-h-0" style={{ width }}>
+        <View style={[styles.panel, { width }]}>
           {kind === 'thought' ? (
             <ThoughtPanelSlot />
           ) : kind === 'credits' ? (
@@ -236,8 +237,8 @@ function CodePanel({
    * placeholder for a browser Alia does not have.
    */
   const second = showTerminal ? (
-    <View className="min-h-0 flex-1" testID="agent-terminal-slot">
-      <Suspense fallback={<LinesSkeleton className="bg-[#0d0d0d]" />}>
+    <View style={styles.terminalSlot} testID="agent-terminal-slot">
+      <Suspense fallback={<LinesSkeleton style={styles.terminalLoading} />}>
         <AgentTerminal agentId={terminalAgentId} />
       </Suspense>
     </View>
@@ -451,3 +452,9 @@ function GalleryPanel({ width, style }: { width: number | '100%'; style?: typeof
     />
   );
 }
+
+const styles = StyleSheet.create({
+  panel: { height: '100%', minHeight: 0 },
+  terminalSlot: { minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  terminalLoading: { backgroundColor: TERMINAL_BACKGROUND },
+});

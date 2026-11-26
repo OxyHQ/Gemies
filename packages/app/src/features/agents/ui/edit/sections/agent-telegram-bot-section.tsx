@@ -23,7 +23,8 @@ import { TextFieldInput } from '@oxy.so/bloom/text-field';
 import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
 import { type ReactNode, useState } from 'react';
-import { Linking, View } from 'react-native';
+import { Linking, Platform, type StyleProp, View, type ViewStyle } from 'react-native';
+import { createTokenStyles } from '@oxy.so/bloom/theme';
 
 /** This section's own strings. */
 const K = 'agents.editor.telegramBot';
@@ -47,18 +48,15 @@ type Look = { character: AvatarCharacter; color: string | null };
 /** One row of the card, with the hairline above it that every row but the first has. */
 function Row({
   first,
-  className = '',
+  style,
   children,
 }: {
   first?: boolean;
-  className?: string;
+  style?: StyleProp<ViewStyle>;
   children: ReactNode;
 }) {
-  return (
-    <View className={`py-3 pe-3 ${first ? '' : 'border-t border-border'} ${className}`}>
-      {children}
-    </View>
-  );
+  const styles = useStyles();
+  return <View style={[styles.cardRow, !first && styles.cardRowRule, style]}>{children}</View>;
 }
 
 /**
@@ -74,14 +72,15 @@ function SettingRow({
   hint?: string;
   children: ReactNode;
 }) {
+  const styles = useStyles();
   return (
-    <Row className="min-h-[52px] flex-row flex-wrap items-center justify-between gap-x-4 gap-y-2">
-      <View className="min-w-[140px] flex-1 basis-0 gap-0.5">
-        <Text variant="body-regular" className="text-text-primary">
+    <Row style={styles.settingRow}>
+      <View style={styles.settingText}>
+        <Text variant="body-regular" style={styles.text}>
           {title}
         </Text>
         {hint ? (
-          <Text variant="body-2-regular" className="text-text-secondary">
+          <Text variant="body-2-regular" style={styles.mutedText}>
             {hint}
           </Text>
         ) : null}
@@ -96,9 +95,11 @@ function SettingRow({
  * the circle sits under it, and the plane reads white on any surface.
  */
 function TelegramLogo({ size }: { size: 20 | 40 }) {
+  const styles = useStyles();
+  const large = size === 40;
   return (
-    <View className={`items-center justify-center ${size === 40 ? 'h-10 w-10' : 'h-5 w-5'}`}>
-      <View className={`absolute rounded-full bg-white ${size === 40 ? 'h-8 w-8' : 'h-4 w-4'}`} />
+    <View style={[styles.logo, large ? styles.largeLogo : styles.smallLogo]}>
+      <View style={[styles.logoDisc, large ? styles.largeLogoDisc : styles.smallLogoDisc]} />
       {/* A view of its own, so the glyph stacks above the disc on the web as well. */}
       <View>
         <RiTelegramFill width={size} height={size} fill={TELEGRAM_BLUE} />
@@ -109,14 +110,15 @@ function TelegramLogo({ size }: { size: 20 | 40 }) {
 
 /** What the bot is, beside the logo, before there is one. */
 function Intro({ name, t }: { name: string; t: T }) {
+  const styles = useStyles();
   return (
-    <Row first className="flex-row items-start gap-3">
+    <Row first style={styles.introRow}>
       <TelegramLogo size={40} />
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Text variant="body-semibold" className="text-text-primary">
+      <View style={styles.introText}>
+        <Text variant="body-semibold" style={styles.text}>
           {t(`${K}.intro`, { name })}
         </Text>
-        <Text variant="body-2-regular" className="text-text-secondary">
+        <Text variant="body-2-regular" style={styles.mutedText}>
           {t(`${K}.description`, { name })}
         </Text>
       </View>
@@ -126,20 +128,22 @@ function Intro({ name, t }: { name: string; t: T }) {
 
 /** One numbered step of making a bot. */
 function Step({ n, children }: { n: number; children: ReactNode }) {
+  const styles = useStyles();
   return (
-    <View className="flex-row items-start gap-3">
-      <View className="h-6 w-6 items-center justify-center rounded-full bg-background-tertiary-default">
-        <Text variant="caption-1-semibold" className="text-text-primary">
+    <View style={styles.step}>
+      <View style={styles.stepNumber}>
+        <Text variant="caption-1-semibold" style={styles.text}>
           {n}
         </Text>
       </View>
-      <View className="min-w-0 flex-1 gap-2 pt-0.5">{children}</View>
+      <View style={styles.stepBody}>{children}</View>
     </View>
   );
 }
 
 /** Pasting a @BotFather token: the gemie gets its own bot. */
 function ConnectBot({ gemieId, name }: { gemieId: string; name: string }) {
+  const styles = useStyles();
   const { t } = useTranslation();
   const { connect } = useGemieTelegramBotMutations(gemieId);
   const [token, setToken] = useState('');
@@ -157,12 +161,12 @@ function ConnectBot({ gemieId, name }: { gemieId: string; name: string }) {
 
   return (
     <>
-      <Row className="gap-3">
+      <Row style={styles.steps}>
         <Step n={1}>
-          <Text variant="body-2-regular" className="text-text-primary">
+          <Text variant="body-2-regular" style={styles.text}>
             {t(`${K}.step1`)}
           </Text>
-          <View className="flex-row">
+          <View style={styles.inline}>
             <Button
               size="sm"
               appearance="outline"
@@ -175,12 +179,12 @@ function ConnectBot({ gemieId, name }: { gemieId: string; name: string }) {
           </View>
         </Step>
         <Step n={2}>
-          <Text variant="body-2-regular" className="text-text-primary">
+          <Text variant="body-2-regular" style={styles.text}>
             {t(`${K}.step2`)}
           </Text>
         </Step>
         <Step n={3}>
-          <Text variant="body-2-regular" className="text-text-primary">
+          <Text variant="body-2-regular" style={styles.text}>
             {t(`${K}.step3`, { name })}
           </Text>
         </Step>
@@ -207,7 +211,7 @@ function ConnectBot({ gemieId, name }: { gemieId: string; name: string }) {
       </SettingRow>
       <Row>
         <Button
-          className="w-full"
+          style={styles.fullWidth}
           loading={connect.isPending}
           disabled={connect.isPending || token.trim().length < 10}
           onPress={submit}
@@ -233,21 +237,22 @@ function BotCard({
   look: Look;
   t: T;
 }) {
+  const styles = useStyles();
   const state = !bot.live ? 'unknown' : bot.live.webhook;
   return (
-    <Row first className="gap-3">
-      <View className="flex-row items-center gap-3">
+    <Row first style={styles.steps}>
+      <View style={styles.botIdentity}>
         <View>
           <AgentAvatar character={readAgentCharacter(look.character, look.color)} size={48} />
-          <View className="absolute -bottom-1 -end-1 rounded-full bg-background-secondary-default p-px">
+          <View style={styles.logoBadge}>
             <TelegramLogo size={20} />
           </View>
         </View>
-        <View className="min-w-0 flex-1">
-          <Text variant="body-semibold" className="text-text-primary" numberOfLines={1}>
+        <View style={styles.botText}>
+          <Text variant="body-semibold" style={styles.text} numberOfLines={1}>
             {username ? `@${username}` : bot.name}
           </Text>
-          <Text variant="body-2-regular" className="text-text-secondary" numberOfLines={1}>
+          <Text variant="body-2-regular" style={styles.mutedText} numberOfLines={1}>
             {t(`${K}.answered`, { count: bot.totalMessages, name })}
           </Text>
         </View>
@@ -281,6 +286,7 @@ function ConnectedBot({
   bot: GemieTelegramBot;
   look: Look;
 }) {
+  const styles = useStyles();
   const { t } = useTranslation();
   const { update, remove, link, unlink } = useGemieTelegramBotMutations(gemieId);
   const username = bot.live?.username ?? bot.username;
@@ -334,11 +340,11 @@ function ConnectedBot({
       <BotCard bot={bot} name={name} username={username} look={look} t={t} />
       {/* The bot follows the gemie by itself; only a failure is said, with the one manual control. */}
       {bot.profileSyncError ? (
-        <Row className="gap-2">
+        <Row style={styles.syncRow}>
           <Admonition type="error" size="sm">
             {[t(`${K}.syncFailed`, { name }), bot.profileSyncError].join('\n')}
           </Admonition>
-          <View className="flex-row">
+          <View style={styles.inline}>
             <Button
               size="sm"
               appearance="outline"
@@ -353,7 +359,7 @@ function ConnectedBot({
           </View>
         </Row>
       ) : null}
-      <Row className="flex-row flex-wrap gap-2">
+      <Row style={styles.actionsRow}>
         {username ? (
           <>
             <Button
@@ -392,7 +398,7 @@ function ConnectedBot({
         />
       </AgentCreatorField>
       {bot.groupReplies === 'mentions' && bot.live && !bot.live.canReadAllGroupMessages ? (
-        <View className="pe-3 pb-3">
+        <View style={styles.notice}>
           <Admonition type="info" size="sm">
             {t(`${K}.privacy`, { username: username ?? '' })}
           </Admonition>
@@ -409,7 +415,7 @@ function ConnectedBot({
         >
           {bot.personLinked ? (
             // Linked: who it is, and the way out or to another account; never the call to link.
-            <View className="flex-row flex-wrap justify-end gap-2">
+            <View style={styles.personActions}>
               <Button
                 size="sm"
                 appearance="outline"
@@ -484,6 +490,7 @@ export function AgentTelegramBotSection({
   /** The gemie's character and colour, drawn beside the bot as the bot shows it. */
   look: Look;
 }) {
+  const styles = useStyles();
   const { t } = useTranslation();
   const { data, isPending, isError } = useGemieTelegramBot(agentId);
   const bot = !isPending && !isError && data?.available ? data.bot : null;
@@ -496,18 +503,18 @@ export function AgentTelegramBotSection({
         <>
           <Intro name={name} t={t} />
           {isPending ? (
-            <View className="border-t border-border">
+            <View style={styles.loading}>
               <SettingsSkeletonRows control="none" rows={2} />
             </View>
           ) : isError || !data ? (
             <Row>
-              <Text variant="body-2-regular" className="text-text-secondary">
+              <Text variant="body-2-regular" style={styles.mutedText}>
                 {t(`${K}.loadFailed`)}
               </Text>
             </Row>
           ) : !data.available ? (
             <Row>
-              <Text variant="body-2-regular" className="text-text-secondary">
+              <Text variant="body-2-regular" style={styles.mutedText}>
                 {t(`${K}.unavailable`)}
               </Text>
             </Row>
@@ -519,3 +526,64 @@ export function AgentTelegramBotSection({
     </AgentCreatorSection>
   );
 }
+
+const useStyles = createTokenStyles((t) => ({
+  cardRow: { paddingVertical: 12, paddingInlineEnd: 12 },
+  cardRowRule: { borderTopWidth: 1, borderColor: t.border },
+  settingRow: {
+    minHeight: 52,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 16,
+    rowGap: 8,
+  },
+  settingText: {
+    minWidth: 140,
+    flexGrow: 1,
+    flexShrink: 1,
+    // `flex-1 basis-0` as each platform resolved it: the web's `flex: 1` won over the basis.
+    flexBasis: Platform.OS === 'web' ? '0%' : 0,
+    gap: 2,
+  },
+  text: { color: t.foreground },
+  mutedText: { color: t.mutedForeground },
+  // Telegram's paper plane is cut out of its circle; the disc under it is the plane's white.
+  logo: { alignItems: 'center', justifyContent: 'center' },
+  largeLogo: { height: 40, width: 40 },
+  smallLogo: { height: 20, width: 20 },
+  logoDisc: { position: 'absolute', borderRadius: 9999, backgroundColor: '#fff' },
+  largeLogoDisc: { height: 32, width: 32 },
+  smallLogoDisc: { height: 16, width: 16 },
+  introRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  introText: { minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 2 },
+  step: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  stepNumber: {
+    height: 24,
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9999,
+    backgroundColor: t.popover,
+  },
+  stepBody: { minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 8, paddingTop: 2 },
+  steps: { gap: 12 },
+  inline: { flexDirection: 'row' },
+  fullWidth: { width: '100%' },
+  botIdentity: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logoBadge: {
+    position: 'absolute',
+    insetInlineEnd: -4,
+    bottom: -4,
+    borderRadius: 9999,
+    backgroundColor: t.surface,
+    padding: 1,
+  },
+  botText: { minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  syncRow: { gap: 8 },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  notice: { paddingInlineEnd: 12, paddingBottom: 12 },
+  personActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 },
+  loading: { borderTopWidth: 1, borderColor: t.border },
+}));

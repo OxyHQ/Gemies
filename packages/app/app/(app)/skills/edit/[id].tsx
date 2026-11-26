@@ -22,7 +22,7 @@ import { toast } from '@oxy.so/bloom/toast';
 import { Text } from '@oxy.so/bloom/typography';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 
 /**
  * Editing a skill.
@@ -189,8 +189,7 @@ export default function EditSkillScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerClassName="w-full self-center px-4 pb-12 pt-4"
-        contentContainerStyle={{ maxWidth: PAGE_MAX_WIDTH }}
+        contentContainerStyle={styles.content}
       >
         <ResponsiveGrid
           flow="columns"
@@ -294,3 +293,14 @@ export default function EditSkillScreen() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  content: {
+    width: '100%',
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 48,
+    maxWidth: PAGE_MAX_WIDTH,
+  },
+});

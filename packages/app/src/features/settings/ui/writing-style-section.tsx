@@ -19,7 +19,7 @@ import { toast } from '@oxy.so/bloom/toast';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
 interface WritingStyleProfile {
   messagesAnalyzed: number;
@@ -198,7 +198,7 @@ export function WritingStyleSection() {
   if (loading) {
     // The page's own geometry, shimmering: the status card, then the overview.
     return (
-      <View className="flex-1 gap-6">
+      <View style={styles.container}>
         <Skeleton.Box width="100%" height={52} borderRadius={16} />
         <Skeleton.Box width="100%" height={312} borderRadius={16} />
       </View>
@@ -417,7 +417,7 @@ export function WritingStyleSection() {
           },
         ]}
       >
-        <View className="gap-4">
+        <View style={styles.stack}>
           <SettingsSection label={t(`${K}.signOff`)}>
             <TextFieldInput
               label={t(`${K}.signOff`)}
@@ -458,3 +458,8 @@ export function WritingStyleSection() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', gap: 24 },
+  stack: { gap: 16 },
+});

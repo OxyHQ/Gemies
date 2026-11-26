@@ -4,7 +4,7 @@ import { useUIStore } from '@/features/chat/runtime/ui-store';
 import { Dialog } from '@oxy.so/bloom/dialog';
 import { Kbd } from '@oxy.so/bloom/kbd';
 
-import { Platform, View } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
 function modKey(): string {
@@ -56,7 +56,7 @@ export function KeyboardShortcutsDialog() {
       title={t('keyboardShortcuts.title')}
       maxWidth={448}
     >
-      <View className="gap-4">
+      <View style={styles.stack}>
         {SHORTCUT_SECTIONS.map((section) => (
           <GroupedSection key={section.titleKey} title={t(section.titleKey)}>
             {section.shortcuts.map((shortcut) => (
@@ -66,7 +66,7 @@ export function KeyboardShortcutsDialog() {
                 showChevron={false}
                 rightElement={
                   // One key per cap: `⌘` and `K` are two keys, so two `Kbd`s.
-                  <View className="flex-row items-center gap-1">
+                  <View style={styles.row}>
                     {shortcut.keys().map((key, i) => (
                       <Kbd key={i} size="sm">
                         {key}
@@ -82,3 +82,8 @@ export function KeyboardShortcutsDialog() {
     </Dialog>
   );
 }
+
+const styles = StyleSheet.create({
+  stack: { gap: 16 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+});
