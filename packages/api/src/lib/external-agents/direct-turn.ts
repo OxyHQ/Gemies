@@ -41,6 +41,8 @@ export async function serveExternalDirectTurn(input: {
   beforeFinish?: () => Promise<void>;
   /** Server-loaded observations, encoded in the existing external task interface. */
   reactionContext?: string;
+  /** Called with the reason when no answer was delivered (offline, a folder the computer refuses…). */
+  onFailure?: (message: string) => void;
   /** What the person's other surfaces show while the agent answers (`lib/realtime/activity.ts`). */
   activity?: ActorActivity;
 }): Promise<boolean> {
@@ -170,8 +172,10 @@ export async function serveExternalDirectTurn(input: {
   sse.stopKeepAlive();
 
   if (result.error !== undefined || result.response.trim() === '') {
+    const reason = result.error ?? 'The external agent returned no answer';
+    input.onFailure?.(reason);
     const error = {
-      message: result.error ?? 'The external agent returned no answer',
+      message: reason,
       type: 'server_error',
       code: 'agent_unavailable',
       retryable: true,

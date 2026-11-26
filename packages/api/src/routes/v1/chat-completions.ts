@@ -411,7 +411,11 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
       (await isExternalAgent(linkedAgent._id))
     ) {
       clearTimeout(globalTimer);
+      let externalFailure: string | undefined;
       const answered = await serveExternalDirectTurn({
+        onFailure: (message) => {
+          externalFailure = message;
+        },
         reactionContext,
         ...(activity === undefined ? {} : { activity }),
         req,
@@ -446,7 +450,9 @@ export const handleChatCompletions = async (req: Request, res: Response) => {
         completed = true;
         await coordinatedTurn?.complete();
       } else {
-        await coordinatedTurn?.fail(new Error('The external agent did not answer'));
+        await coordinatedTurn?.fail(
+          new Error(externalFailure ?? 'The external agent did not answer'),
+        );
       }
       coordinatedTurn = null;
       return;
