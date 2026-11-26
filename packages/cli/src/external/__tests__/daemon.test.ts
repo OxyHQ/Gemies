@@ -254,7 +254,20 @@ describe('daemon', () => {
     await new Promise((r) => setTimeout(r, 200));
     expect(exited).toBe(false);
     // Gemies comes back on the same address: the daemon connects without being restarted.
-    wss = new WebSocketServer({ port, host: '127.0.0.1' });
+    // The port was just released: a busy machine may keep it a moment, so binding is retried.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        wss = await new Promise<WebSocketServer>((resolve, reject) => {
+          const server = new WebSocketServer({ port, host: '127.0.0.1' });
+          server.once('listening', () => resolve(server));
+          server.once('error', reject);
+        });
+        break;
+      } catch (err) {
+        if (attempt >= 50) throw err;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
     wss.on('connection', (ws) => {
       peers.push(ws);
       ws.on('message', (data) => {
@@ -264,8 +277,8 @@ describe('daemon', () => {
           ws.send(JSON.stringify({ type: 'auth-ok', agentId: frame.agentId }));
       });
     });
-    await until(() => received.some((f) => f.type === 'auth'));
-  });
+    await until(() => received.some((f) => f.type === 'auth'), 15_000);
+  }, 30_000);
 
   it('gives up after repeated refused handshakes', async () => {
     wss.removeAllListeners('connection');
