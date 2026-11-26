@@ -99,6 +99,8 @@ vi.mock('../../../src/runtime/use-conversation-stream', () => ({
     suggestedNewConversation: null,
     dismissSuggestedNewConversation: () => {},
     agentRun: null,
+    approvals: [],
+    settleApproval: () => {},
     failedTurn: null,
     retryFailedTurn: async () => 'sent',
     clearFailedTurn: () => {},

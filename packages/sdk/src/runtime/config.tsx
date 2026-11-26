@@ -104,6 +104,16 @@ export interface GemieRuntimeHost {
   onFeatureLocked?: (key: string) => void;
   /** A delegated agent started a run of its own for this turn. */
   onAgentTurn?: (turn: AgentRun & { conversationId: string | null }) => void;
+  /**
+   * The person answered a coding CLI that asked for permission to run something on their own
+   * computer (`alia.cli_permission_request`, ADR 0043). The host carries the answer to Gemies; the
+   * promise rejects when it could not be sent. Omitted, the request is shown with no way to answer.
+   */
+  onApprovalDecision?: (
+    requestId: string,
+    agentId: string,
+    decision: 'allow' | 'deny',
+  ) => Promise<void>;
   /** The agent's row in the host's list, ahead of the server: your line, then her answer. */
   onTurnPreview?: (agentId: string | null | undefined, text: string) => void;
   /**

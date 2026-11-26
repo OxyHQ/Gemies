@@ -44,6 +44,42 @@ export interface ChatTurn {
 /** How many earlier messages a direct chat turn carries to the daemon. */
 export const EXTERNAL_HISTORY_TURNS = 20;
 
+/** One tool the CLI is using, as the daemon reports it and the conversation shows it (ADR 0043 §5). */
+export interface ExternalActivity {
+  /** The CLI's own id for the call: the same id reports it starting and then finishing. */
+  readonly id: string;
+  readonly tool: string;
+  /** What it acts on (a path, a command, a pattern). Never a file's contents or an output. */
+  readonly summary?: string;
+  readonly status: 'running' | 'done' | 'error';
+}
+
+/**
+ * The CLI asked to use a tool, or the question was closed (ADR 0043 §5). The turn waits on the
+ * person until they answer in the conversation or `expiresAt` passes; then it is denied.
+ */
+export type ExternalApprovalEvent =
+  | {
+      readonly kind: 'request';
+      readonly requestId: string;
+      readonly tool: string;
+      readonly summary?: string;
+      readonly expiresAt: string;
+    }
+  | {
+      readonly kind: 'resolved';
+      readonly requestId: string;
+      readonly decision: 'allow' | 'deny' | 'expired';
+    };
+
+/** What the person can answer a permission question with. */
+export const EXTERNAL_APPROVAL_DECISIONS = ['allow', 'deny'] as const;
+export type ExternalApprovalDecision = (typeof EXTERNAL_APPROVAL_DECISIONS)[number];
+
+/** A request id as the daemon makes it. */
+export const EXTERNAL_APPROVAL_REQUEST_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 /** A session of the CLI that was begun in a terminal on the person's computer. */
 export interface TerminalSessionInfo {
   /** The CLI's own id: what `--resume` takes. */
@@ -80,7 +116,12 @@ export const EXTERNAL_TURN_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Frames the server sends to the daemon. */
 export type ServerFrame =
-  | { type: 'auth-ok'; agentId: string }
+  | {
+      type: 'auth-ok';
+      agentId: string;
+      /** What this Gemies can do beyond the first protocol: `approvals` (ADR 0043 §5). */
+      features?: string[];
+    }
   | { type: 'auth-error'; reason: string }
   | {
       type: 'turn';
@@ -107,6 +148,8 @@ export type ServerFrame =
   /** Asks the daemon which sessions its CLI already has, in the folders that computer allows. */
   | { type: 'list-sessions'; requestId: string }
   | { type: 'cancel'; turnId: string }
+  /** The person's answer to an `approval-request`. */
+  | { type: 'approval'; requestId: string; decision: 'allow' | 'deny' }
   | { type: 'revoked' };
 
 /**
@@ -121,4 +164,14 @@ export type DaemonFrame =
   | { type: 'delta'; turnId: string; text: string }
   | { type: 'end'; turnId: string; text?: string }
   | { type: 'error'; turnId: string; message: string }
+  | { type: 'activity'; turnId: string; activity: unknown }
+  | {
+      type: 'approval-request';
+      turnId: string;
+      requestId: string;
+      tool: string;
+      summary?: string;
+      expiresAt: string;
+    }
+  | { type: 'approval-resolved'; turnId: string; requestId: string; decision: string }
   | { type: 'sessions'; requestId: string; sessions: readonly unknown[] };

@@ -123,6 +123,9 @@ vi.mock('../../../src/components/thread/GemieConversationCard', async () => ({
 vi.mock('../../../src/components/thread/ToolResultCard', async () => ({
   ToolResultCard: await stub('ToolCard')(),
 }));
+vi.mock('../../../src/components/thread/ApprovalCard', async () => ({
+  ApprovalCards: await stub('Approvals')(),
+}));
 vi.mock('../../../src/components/thread/NewConversationOffer', async () => ({
   NewConversationOffer: await stub('Offer')(),
 }));

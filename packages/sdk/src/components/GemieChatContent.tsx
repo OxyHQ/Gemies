@@ -407,6 +407,8 @@ function GemieConversationView({
     suggestedNewConversation,
     dismissSuggestedNewConversation,
     agentRun,
+    approvals,
+    settleApproval,
     failedTurn,
     retryFailedTurn,
   } = thread;
@@ -641,6 +643,22 @@ function GemieConversationView({
     [suggestedNewConversation, acceptNewConversation, dismissSuggestedNewConversation],
   );
 
+  // A coding CLI's question to its own user (ADR 0043 §5): the host carries the answer to Gemies.
+  const decideApproval = runtime.host.onApprovalDecision;
+  const approvalCards = useMemo(
+    () => ({
+      entries: approvals,
+      agentName: lead.name,
+      onDecide:
+        decideApproval === undefined
+          ? undefined
+          : (entry: (typeof approvals)[number], decision: 'allow' | 'deny') =>
+              decideApproval(entry.requestId, entry.agentId, decision),
+      onSettled: settleApproval,
+    }),
+    [approvals, lead.name, decideApproval, settleApproval],
+  );
+
   // ── The chrome ──
   const latestMessages = useRef(messages);
   latestMessages.current = messages;
@@ -797,6 +815,7 @@ function GemieConversationView({
                 onRegenerate={composer.regenerate}
                 onStartEdit={edit.start}
                 newConversationOffer={newConversationOffer}
+                approvals={approvalCards}
                 agentActivity={agentRun === null ? null : agentActivity}
                 call={voice.isActive ? { agentState: voice.agentState } : undefined}
                 empty={welcome}

@@ -642,3 +642,180 @@ describe('daemon: sessions begun in a terminal (Gemies ADR 0043 §4)', () => {
     });
   });
 });
+
+describe('daemon: activity (Gemies ADR 0043 §5)', () => {
+  it('forwards what the CLI reports it is doing, tagged with the turn, before the answer', async () => {
+    start({
+      resumes: false,
+      async run({ onActivity, onDelta }: RuntimeRun) {
+        onActivity?.({ id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'running' });
+        onActivity?.({ id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'done' });
+        onDelta('ok');
+        return 'ok';
+      },
+    });
+    await until(() => peers.length > 0 && received.length > 0);
+    peers[0].send(JSON.stringify({ type: 'turn', turnId: 't1', task: 'x', history: [] }));
+    await until(() => received.some((f) => f.type === 'end'));
+    expect(received.filter((f) => f.type === 'activity')).toEqual([
+      {
+        type: 'activity',
+        turnId: 't1',
+        activity: { id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'running' },
+      },
+      {
+        type: 'activity',
+        turnId: 't1',
+        activity: { id: 'a', tool: 'Read', summary: '/w/a.txt', status: 'done' },
+      },
+    ]);
+    const kinds = received.map((f) => f.type);
+    expect(kinds.indexOf('activity')).toBeLessThan(kinds.indexOf('end'));
+  });
+});
+
+describe('daemon: permission questions answered in Gemies (ADR 0043 §5)', () => {
+  /** A CLI that asks for permission the way Claude Code does, and ends with what it was told. */
+  const asking: ExternalRuntime = {
+    resumes: false,
+    approvals: true,
+    async run({ approvals }: RuntimeRun) {
+      if (!approvals) return 'no-approvals';
+      const response = await fetch(approvals.url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${approvals.token}` },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'approve',
+            arguments: { tool_name: 'Bash', input: { command: 'ls' }, tool_use_id: 'tu_1' },
+          },
+        }),
+      });
+      const body = (await response.json()) as { result: { content: { text: string }[] } };
+      return (JSON.parse(body.result.content[0].text) as { behavior: string }).behavior;
+    },
+  };
+
+  function serverWith(features: string[] | undefined) {
+    wss.removeAllListeners('connection');
+    wss.on('connection', (ws) => {
+      peers.push(ws);
+      ws.on('message', (data) => {
+        const frame = JSON.parse(data.toString()) as Record<string, unknown>;
+        received.push(frame);
+        if (frame.type === 'auth') {
+          ws.send(
+            JSON.stringify({
+              type: 'auth-ok',
+              agentId: frame.agentId,
+              ...(features ? { features } : {}),
+            }),
+          );
+        }
+      });
+    });
+  }
+
+  const turn = (turnId = 't1') =>
+    peers[0].send(JSON.stringify({ type: 'turn', turnId, task: 'x', history: [] }));
+  const ready = () => until(() => peers.length > 0 && received.some((f) => f.type === 'auth'));
+  const ended = () => received.find((f) => f.type === 'end') as { text: string } | undefined;
+
+  it('asks Gemies, names the tool and what it acts on, and lets the CLI go on when allowed', async () => {
+    serverWith(['approvals']);
+    start(asking, { write: true });
+    await ready();
+    await until(() => received.length > 0);
+    // `auth-ok` arrives after the daemon sent `auth`; wait for it to be processed.
+    await new Promise((r) => setTimeout(r, 50));
+    turn();
+    await until(() => received.some((f) => f.type === 'approval-request'));
+    const request = received.find((f) => f.type === 'approval-request') as Record<string, string>;
+    expect(request).toMatchObject({ turnId: 't1', tool: 'Bash', summary: 'ls' });
+    expect(Date.parse(request.expiresAt)).toBeGreaterThan(Date.now());
+    peers[0].send(
+      JSON.stringify({ type: 'approval', requestId: request.requestId, decision: 'allow' }),
+    );
+    await until(() => ended() !== undefined);
+    expect(ended()?.text).toBe('allow');
+  });
+
+  it('tells the CLI no when the person says no', async () => {
+    serverWith(['approvals']);
+    start(asking, { write: true });
+    await ready();
+    await new Promise((r) => setTimeout(r, 50));
+    turn();
+    await until(() => received.some((f) => f.type === 'approval-request'));
+    const request = received.find((f) => f.type === 'approval-request') as { requestId: string };
+    peers[0].send(
+      JSON.stringify({ type: 'approval', requestId: request.requestId, decision: 'deny' }),
+    );
+    await until(() => ended() !== undefined);
+    expect(ended()?.text).toBe('deny');
+  });
+
+  it('denies a question nobody answers in time, and ignores an answer to one it never asked', async () => {
+    serverWith(['approvals']);
+    start(asking, { write: true, approvalTimeoutMs: 150 });
+    await ready();
+    await new Promise((r) => setTimeout(r, 50));
+    peers[0].send(
+      JSON.stringify({ type: 'approval', requestId: 'never-asked', decision: 'allow' }),
+    );
+    turn();
+    await until(() => ended() !== undefined);
+    expect(ended()?.text).toBe('deny');
+    expect(received.find((f) => f.type === 'approval-resolved')).toMatchObject({
+      turnId: 't1',
+      decision: 'expired',
+    });
+  });
+
+  it('denies what is waiting when the connection drops', async () => {
+    serverWith(['approvals']);
+    let result: string | undefined;
+    start(
+      {
+        ...asking,
+        async run(input: RuntimeRun) {
+          result = await asking.run(input);
+          return result;
+        },
+      },
+      { write: true },
+    );
+    await ready();
+    await new Promise((r) => setTimeout(r, 50));
+    turn();
+    await until(() => received.some((f) => f.type === 'approval-request'));
+    peers[0].terminate();
+    await until(() => result !== undefined);
+    expect(result).toBe('deny');
+  });
+
+  it('offers no way to ask when Gemies cannot carry the question, or the agent is read-only', async () => {
+    serverWith(undefined);
+    start(asking, { write: true });
+    await ready();
+    await new Promise((r) => setTimeout(r, 50));
+    turn();
+    await until(() => ended() !== undefined);
+    expect(ended()?.text).toBe('no-approvals');
+    expect(received.some((f) => f.type === 'approval-request')).toBe(false);
+
+    daemon?.stop();
+    received = [];
+    peers = [];
+    serverWith(['approvals']);
+    start(asking, { write: false });
+    await ready();
+    await new Promise((r) => setTimeout(r, 50));
+    turn('t2');
+    await until(() => ended() !== undefined);
+    expect(ended()?.text).toBe('no-approvals');
+  });
+});

@@ -36,6 +36,8 @@ import {
   EXTERNAL_AGENT_CLI_COLORS,
   EXTERNAL_AGENT_CLI_LABELS,
   EXTERNAL_AGENT_CLIS,
+  EXTERNAL_APPROVAL_DECISIONS,
+  EXTERNAL_APPROVAL_REQUEST_ID,
   EXTERNAL_CLI_SESSION_ID,
   EXTERNAL_PAIRING_TTL_MS,
   EXTERNAL_SESSION_CWD_MAX,
@@ -55,6 +57,7 @@ import {
   isWellFormedPairingCode,
 } from '../../lib/external-agents/pairing-code.js';
 import {
+  answerExternalApproval,
   disconnectExternalAgent,
   ExternalAgentOfflineError,
   isExternalAgentReachable,
@@ -406,6 +409,35 @@ router.get(
       }
       res.status(503).json({ error: 'agent_unavailable' });
     }
+  }),
+);
+
+const approvalSchema = z.object({ decision: z.enum(EXTERNAL_APPROVAL_DECISIONS) }).strict();
+
+/**
+ * The person's answer to a permission question the agent's CLI asked in a conversation (ADR 0043
+ * §5). Only the agent's owner answers; the request id is the daemon's, which ignores one it never
+ * asked, so an answer cannot make a CLI do what it did not ask to do.
+ */
+router.post(
+  '/external/:agentId/approvals/:requestId',
+  authenticateToken,
+  route(async (req, res) => {
+    if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+    const parsed = approvalSchema.safeParse(req.body);
+    const requestId = String(req.params.requestId);
+    if (!parsed.success || !EXTERNAL_APPROVAL_REQUEST_ID.test(requestId)) {
+      return res.status(400).json({ error: 'invalid_request' });
+    }
+    const agentId = String(req.params.agentId);
+    const link = await findExternalLink(getDb(), agentId);
+    if (link === undefined || link.ownerOxyUserId !== req.user.id) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    if (!(await isExternalAgentReachable(agentId)))
+      return res.status(404).json({ error: 'Not found' });
+    answerExternalApproval(agentId, requestId, parsed.data.decision);
+    res.status(204).end();
   }),
 );
 

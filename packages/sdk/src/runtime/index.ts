@@ -14,6 +14,8 @@
  */
 
 export { GemieRuntimeProvider, useGemieRuntime } from './config';
+export { ApprovalExpiredError } from './approvals';
+export type { ApprovalDecision, ApprovalEntry, ApprovalRequest } from './approvals';
 export type {
   GemieArtifact,
   GemieRuntimeConfig,

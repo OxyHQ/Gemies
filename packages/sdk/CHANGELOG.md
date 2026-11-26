@@ -14,6 +14,10 @@ styles and Bloom's colour tokens (`createTokenStyles` from `@oxy.so/bloom/theme`
 rendered before and after, light and dark, native and web. An app needs no NativeWind,
 react-native-css or Tailwind for the SDK.
 
+It carries 9.2.0's thread work too: a coding CLI's permission request is answered from the
+conversation: the thread draws the question and the host answers it through `onApprovalDecision`
+(Gemies ADR 0043 §5).
+
 ### Peers
 
 - **Breaking:** `@oxy.so/services` `>=15.0.0 <16`; Services 14 is no longer supported.
