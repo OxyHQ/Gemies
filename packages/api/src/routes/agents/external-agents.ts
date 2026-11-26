@@ -71,13 +71,20 @@ const pairSchema = z
   })
   .strict();
 
+/**
+ * `cli` is one CLI (what every daemon so far sends); `clis` is every CLI the computer has, so one
+ * code pairs the whole machine (ADR 0043). Exactly one of the two.
+ */
 const redeemSchema = z
   .object({
     code: z.string().min(1).max(64),
-    cli: z.enum(EXTERNAL_AGENT_CLIS),
+    cli: z.enum(EXTERNAL_AGENT_CLIS).optional(),
+    clis: z.array(z.enum(EXTERNAL_AGENT_CLIS)).min(1).max(EXTERNAL_AGENT_CLIS.length).optional(),
     hostName: z.string().trim().min(1).max(80),
   })
-  .strict();
+  .strict()
+  .refine((body) => (body.cli === undefined) !== (body.clis === undefined))
+  .refine((body) => body.clis === undefined || new Set(body.clis).size === body.clis.length);
 
 /** Five codes a minute per account is far more than a person pairing machines needs. */
 const PAIRINGS_PER_MINUTE = 5;
@@ -131,31 +138,42 @@ router.post(
   }),
 );
 
-/** What a redemption made: the agent the daemon now serves, and the credential it connects with. */
-interface Redemption {
-  readonly ownerOxyUserId: string;
+/** One agent a redemption made or reconnected, and the credential it connects with. */
+interface RedeemedAgent {
   readonly agentId: string;
   readonly name: string;
+  readonly cli: ExternalAgentCli;
+  readonly credentialHash: string;
+}
+
+/** What a redemption made: the agents the daemon now serves. */
+interface Redemption {
+  readonly ownerOxyUserId: string;
+  readonly machineId: string;
+  readonly agents: readonly RedeemedAgent[];
   readonly reconnected: boolean;
 }
 
 /**
- * Consumes the code and makes its agent in ONE transaction: a failure after the code is consumed
- * rolls it back, so the person's code still works rather than being burnt on our error.
+ * Consumes the code and makes its agents in ONE transaction: a failure after the code is consumed
+ * rolls it back, so the person's code still works rather than being burnt on our error. A new
+ * connection makes one gemie per CLI, sharing a machine (ADR 0043); a reconnect code replaces one
+ * agent's credential, with the first CLI it names.
  */
 async function redeem(input: {
   codeHash: string;
-  cli: ExternalAgentCli;
+  clis: readonly { cli: ExternalAgentCli; credentialHash: string }[];
   hostName: string;
-  credentialHash: string;
 }): Promise<Redemption | null> {
-  const { cli, hostName, credentialHash } = input;
+  const { clis, hostName } = input;
   return getDb().transaction(async (tx) => {
     const pairing = await redeemPairing(tx, { codeHash: input.codeHash, now: new Date() });
     if (pairing === null) return null;
     const { ownerOxyUserId } = pairing;
+    const machineId = randomUUID();
 
     if (pairing.agentId !== null) {
+      const { cli, credentialHash } = clis[0];
       const machine = { agentId: pairing.agentId, ownerOxyUserId, cli, hostName, credentialHash };
       // Revoked since the code was minted: the code reconnects nothing.
       if (!(await replaceExternalLinkCredential(tx, machine))) return null;
@@ -164,31 +182,41 @@ async function redeem(input: {
         agent?.identity.source === 'local'
           ? agent.identity.name
           : `${EXTERNAL_AGENT_CLI_LABELS[cli]} · ${hostName}`;
-      return { ownerOxyUserId, agentId: pairing.agentId, name, reconnected: true };
+      return {
+        ownerOxyUserId,
+        machineId,
+        agents: [{ agentId: pairing.agentId, name, cli, credentialHash }],
+        reconnected: true,
+      };
     }
 
-    const label = EXTERNAL_AGENT_CLI_LABELS[cli];
-    const name = `${label} · ${hostName}`;
-    const agent = await createAgent(tx, {
-      identity: { source: 'local', name, color: EXTERNAL_AGENT_CLI_COLORS[cli] },
-      // Picked from its name, so the agents of two computers look apart; its owner changes it.
-      character: avatarCharacterFor(name),
-      ownerOxyAccountId: ownerOxyUserId,
-      tagline: `${label} on ${hostName}`,
-      description: `${label} running on ${hostName}, connected to Gemies through the Codea daemon.`,
-      authorOxyUserId: ownerOxyUserId,
-      category: 'Assistant',
-      isPublished: false,
-      access: 'private',
-    });
-    await createExternalLink(tx, {
-      agentId: agent._id,
-      ownerOxyUserId,
-      cli,
-      hostName,
-      credentialHash,
-    });
-    return { ownerOxyUserId, agentId: agent._id, name, reconnected: false };
+    const agents: RedeemedAgent[] = [];
+    for (const { cli, credentialHash } of clis) {
+      const label = EXTERNAL_AGENT_CLI_LABELS[cli];
+      const name = `${label} · ${hostName}`;
+      const agent = await createAgent(tx, {
+        identity: { source: 'local', name, color: EXTERNAL_AGENT_CLI_COLORS[cli] },
+        // Picked from its name, so the agents of two computers look apart; its owner changes it.
+        character: avatarCharacterFor(name),
+        ownerOxyAccountId: ownerOxyUserId,
+        tagline: `${label} on ${hostName}`,
+        description: `${label} running on ${hostName}, connected to Gemies through the Gemies daemon.`,
+        authorOxyUserId: ownerOxyUserId,
+        category: 'Assistant',
+        isPublished: false,
+        access: 'private',
+      });
+      await createExternalLink(tx, {
+        agentId: agent._id,
+        ownerOxyUserId,
+        cli,
+        hostName,
+        credentialHash,
+        machineId,
+      });
+      agents.push({ agentId: agent._id, name, cli, credentialHash });
+    }
+    return { ownerOxyUserId, machineId, agents, reconnected: false };
   });
 }
 
@@ -204,33 +232,63 @@ router.post(
     if (!parsed.success || !isWellFormedPairingCode(parsed.data.code)) {
       return res.status(400).json({ error: 'invalid_request' });
     }
-    const { cli, hostName } = parsed.data;
-    const credential = generateExternalAgentCredential();
-    const credentialHash = hashExternalAgentCredential(credential);
+    const { hostName } = parsed.data;
+    const requested = parsed.data.clis ?? (parsed.data.cli === undefined ? [] : [parsed.data.cli]);
+    // One credential per agent, shown once; only its hash is stored.
+    const credentials = requested.map((cli) => {
+      const credential = generateExternalAgentCredential();
+      return { cli, credential, credentialHash: hashExternalAgentCredential(credential) };
+    });
 
     const redemption = await redeem({
       codeHash: hashPairingCode(parsed.data.code),
-      cli,
+      clis: credentials.map(({ cli, credentialHash }) => ({ cli, credentialHash })),
       hostName,
-      credentialHash,
     });
     if (redemption === null) {
-      log.general.warn({ ip, cli }, 'External agent code refused: unknown, used or expired');
+      log.general.warn(
+        { ip, clis: requested },
+        'External agent code refused: unknown, used or expired',
+      );
       return res.status(400).json({ error: 'invalid_or_expired_code' });
     }
 
-    const { agentId, name, ownerOxyUserId, reconnected } = redemption;
-    // The machine that held the previous credential is cut off now, not when it next reconnects.
-    if (reconnected) {
-      disconnectExternalAgent(agentId, { reason: 'credential-replaced', credentialHash });
+    const { ownerOxyUserId, machineId, reconnected } = redemption;
+    for (const agent of redemption.agents) {
+      // The machine that held the previous credential is cut off now, not when it next reconnects.
+      if (reconnected) {
+        disconnectExternalAgent(agent.agentId, {
+          reason: 'credential-replaced',
+          credentialHash: agent.credentialHash,
+        });
+      }
+      log.general.info(
+        {
+          agentId: agent.agentId,
+          cli: agent.cli,
+          hostName,
+          userId: ownerOxyUserId,
+          ip,
+          reconnected,
+        },
+        reconnected ? 'External agent reconnected' : 'External agent paired',
+      );
+      // The owner's gemies list shows it on every device (`gemies`, `docs/realtime.mdx`).
+      void publishGemieChanged(ownerOxyUserId, agent.agentId, reconnected ? 'updated' : 'created');
     }
-    log.general.info(
-      { agentId, cli, hostName, userId: ownerOxyUserId, ip, reconnected },
-      reconnected ? 'External agent reconnected' : 'External agent paired',
-    );
-    // The owner's gemies list shows it on every device (`gemies`, `docs/realtime.mdx`).
-    void publishGemieChanged(ownerOxyUserId, agentId, reconnected ? 'updated' : 'created');
-    res.status(201).json({ agentId, name, cli, credential });
+    const credentialOf = (cli: ExternalAgentCli) =>
+      credentials.find((entry) => entry.cli === cli)?.credential ?? '';
+    const agents = redemption.agents.map(({ agentId, name, cli }) => ({
+      agentId,
+      name,
+      cli,
+      credential: credentialOf(cli),
+    }));
+    if (parsed.data.cli !== undefined) {
+      // What every daemon before machines reads: one agent, flat.
+      return res.status(201).json(agents[0]);
+    }
+    res.status(201).json({ machineId, agents });
   }),
 );
 
@@ -245,6 +303,7 @@ router.get(
         agentId: link.agentId,
         cli: link.cli,
         hostName: link.hostName,
+        machineId: link.machineId,
         online: await isExternalAgentReachable(link.agentId),
         createdAt: link.createdAt,
         lastConnectedAt: link.lastConnectedAt,

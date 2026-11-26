@@ -60,6 +60,8 @@ interface ExternalLinkMachine {
   hostName: string;
   /** SHA-256 of the credential the daemon will present. */
   credentialHash: string;
+  /** The pairing the link came from: its gemies share one machine (ADR 0043). */
+  machineId?: string;
 }
 
 export async function createExternalLink(db: Executor, input: ExternalLinkMachine): Promise<void> {
