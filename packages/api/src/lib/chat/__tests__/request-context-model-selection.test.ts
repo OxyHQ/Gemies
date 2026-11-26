@@ -112,6 +112,10 @@ vi.mock('../../credits-manager.js', () => ({
   safeRefund: async () => undefined,
 }));
 vi.mock('../../plan-access.js', () => ({ getUserEntitlements: async () => null }));
+const external = vi.hoisted(() => ({ agents: new Set<string>() }));
+vi.mock('../../external-agents/turn.js', () => ({
+  isExternalAgent: async (id: string) => external.agents.has(id),
+}));
 const grants = vi.hoisted(() => ({
   person: vi.fn(async () => undefined),
   service: vi.fn(async () => undefined),
@@ -293,6 +297,7 @@ beforeEach(() => {
   findMcpServerForUser.mockResolvedValue(null);
   reserveCredits.mockResolvedValue({ reservationId: 'reservation-1' });
   findAgentById.mockResolvedValue(null);
+  external.agents.clear();
   oxy.mode = 'denies';
   clearAgentAccountVerdicts();
 });
@@ -491,6 +496,62 @@ describe('the turn resolves the agent it NAMED', () => {
     const { ctx } = await run(undefined, { directUserId: 'user-1', agentId: 'agent-2' });
 
     expect(ctx?.linkedAgent?._id).toBe('agent-2');
+  });
+});
+
+describe('a turn with an external agent costs nothing, so credits never refuse it (ADR 0030 §3)', () => {
+  const agent = {
+    _id: 'agent-ext',
+    identity: { source: 'local', name: 'Claude Code · laptop', color: 'orange' },
+    isPublished: false,
+    access: 'private',
+    status: 'active',
+    systemPrompt: 'p',
+    featureGates: {},
+    ownerOxyAccountId: 'user-1',
+  };
+  const turn = () => run(undefined, { directUserId: 'user-1', agentId: 'agent-ext' });
+
+  beforeEach(() => {
+    findAgentById.mockResolvedValue(agent);
+  });
+
+  it('runs with no credits left: the 402 is not for it', async () => {
+    external.agents.add('agent-ext');
+    reserveCredits.mockResolvedValue(null);
+    const { ctx, captured } = await turn();
+    expect(captured.status).toBeNull();
+    expect(ctx?.linkedAgent?._id).toBe('agent-ext');
+  });
+
+  it('runs when the credit authority cannot be asked, instead of "credits are unavailable"', async () => {
+    external.agents.add('agent-ext');
+    const { ProductCreditAuthorityUnavailableError } = await import(
+      '../../product-credit-access.js'
+    );
+    reserveCredits.mockRejectedValue(new ProductCreditAuthorityUnavailableError());
+    const { ctx, captured } = await turn();
+    expect(captured.status).toBeNull();
+    expect(ctx).not.toBeNull();
+  });
+
+  it('is not the exemption of every named agent: the same turn with an ordinary agent is refused', async () => {
+    reserveCredits.mockResolvedValue(null);
+    const { ctx, captured } = await turn();
+    expect(ctx).toBeNull();
+    expect(captured.status).toBe(402);
+    expect(captured.body?.error).toMatchObject({ code: 'INSUFFICIENT_CREDITS' });
+  });
+
+  it('is not the exemption of a channel turn: only a person’s own session reaches an external agent', async () => {
+    external.agents.add('agent-ext');
+    reserveCredits.mockResolvedValue(null);
+    const { captured } = await run(undefined, {
+      agentId: 'agent-ext',
+      serviceApp: { appId: 'gemies-integrations', scopes: [] },
+      channel: { kind: 'bot', accountId: 'owner-1', platform: 'discord' },
+    });
+    expect(captured.status).toBe(402);
   });
 });
 
