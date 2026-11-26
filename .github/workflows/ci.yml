@@ -678,7 +678,7 @@ jobs:
 
   build-api:
     name: Build API
-    runs-on: *seldon-lane
+    runs-on: ${{ vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && 'seldon-ci-light' || 'ubuntu-latest' }}
     concurrency:
       group: seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-seldon-Build API
     permissions: *race-lane-permissions
