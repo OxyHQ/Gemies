@@ -504,7 +504,7 @@ jobs:
 
   # lint-and-test's hosted twin in the Seldon race: the same name, services and steps.
   lint-and-test-hosted:
-    name: Lint & Test
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Lint & Test' || 'Lint & Test (seldon twin, off)' }}
     needs: race
     if: ${{ !cancelled() && needs.race.outputs.race == 'true' }}
     runs-on: ubuntu-latest
@@ -517,7 +517,7 @@ jobs:
   # lint-and-test's rescue: reruns it hosted when its Seldon lane failed (the house
   # network drops connections); a genuine failure fails again.
   lint-and-test-rescue:
-    name: Lint & Test
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Lint & Test' || 'Lint & Test (seldon rescue, off)' }}
     needs: lint-and-test
     if: ${{ !cancelled() && needs.lint-and-test.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
@@ -656,7 +656,7 @@ jobs:
 
   # frontend-typecheck's hosted twin in the Seldon race: the same name, services and steps.
   frontend-typecheck-hosted:
-    name: Frontend Typecheck
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Frontend Typecheck' || 'Frontend Typecheck (seldon twin, off)' }}
     needs: race
     if: ${{ !cancelled() && needs.race.outputs.race == 'true' }}
     runs-on: ubuntu-latest
@@ -669,7 +669,7 @@ jobs:
   # frontend-typecheck's rescue: reruns it hosted when its Seldon lane failed (the house
   # network drops connections); a genuine failure fails again.
   frontend-typecheck-rescue:
-    name: Frontend Typecheck
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Frontend Typecheck' || 'Frontend Typecheck (seldon rescue, off)' }}
     needs: frontend-typecheck
     if: ${{ !cancelled() && needs.frontend-typecheck.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
@@ -721,7 +721,7 @@ jobs:
 
   # build-api's hosted twin in the Seldon race: the same name, services and steps.
   build-api-hosted:
-    name: Build API
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Build API' || 'Build API (seldon twin, off)' }}
     needs: [lint-and-test, lint-and-test-hosted, lint-and-test-rescue, changes, race-2]
     if: ${{ needs.race-2.outputs.race == 'true' && !cancelled() && (needs.lint-and-test.result == 'success' || needs.lint-and-test-hosted.result == 'success' || needs.lint-and-test-rescue.result == 'success') && (github.event_name != 'pull_request' || needs.changes.outputs.api == 'true') }}
     runs-on: ubuntu-latest
@@ -734,7 +734,7 @@ jobs:
   # build-api's rescue: reruns it hosted when its Seldon lane failed (the house
   # network drops connections); a genuine failure fails again.
   build-api-rescue:
-    name: Build API
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Build API' || 'Build API (seldon rescue, off)' }}
     needs: [lint-and-test, lint-and-test-hosted, lint-and-test-rescue, changes, build-api]
     if: ${{ !cancelled() && needs.build-api.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && (needs.lint-and-test.result == 'success' || needs.lint-and-test-hosted.result == 'success' || needs.lint-and-test-rescue.result == 'success') && (github.event_name != 'pull_request' || needs.changes.outputs.api == 'true') }}
     runs-on: ubuntu-latest
@@ -974,7 +974,7 @@ jobs:
 
   # integrations-postgres's hosted twin in the Seldon race: the same name, services and steps.
   integrations-postgres-hosted:
-    name: Integrations (Postgres)
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Integrations (Postgres)' || 'Integrations (Postgres) (seldon twin, off)' }}
     needs: [lint-and-test, lint-and-test-hosted, lint-and-test-rescue, changes, race-2]
     if: ${{ needs.race-2.outputs.race == 'true' && !cancelled() && (needs.lint-and-test.result == 'success' || needs.lint-and-test-hosted.result == 'success' || needs.lint-and-test-rescue.result == 'success') && (github.event_name != 'pull_request' || needs.changes.outputs.integrations == 'true') }}
     runs-on: ubuntu-latest
@@ -988,7 +988,7 @@ jobs:
   # integrations-postgres's rescue: reruns it hosted when its Seldon lane failed (the house
   # network drops connections); a genuine failure fails again.
   integrations-postgres-rescue:
-    name: Integrations (Postgres)
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Integrations (Postgres)' || 'Integrations (Postgres) (seldon rescue, off)' }}
     needs: [lint-and-test, lint-and-test-hosted, lint-and-test-rescue, changes, integrations-postgres]
     if: ${{ !cancelled() && needs.integrations-postgres.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && (needs.lint-and-test.result == 'success' || needs.lint-and-test-hosted.result == 'success' || needs.lint-and-test-rescue.result == 'success') && (github.event_name != 'pull_request' || needs.changes.outputs.integrations == 'true') }}
     runs-on: ubuntu-latest
@@ -1086,7 +1086,7 @@ jobs:
 
   # api-postgres's hosted twin in the Seldon race: the same name, services and steps.
   api-postgres-hosted:
-    name: API (Postgres)
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'API (Postgres)' || 'API (Postgres) (seldon twin, off)' }}
     needs: [lint-and-test, lint-and-test-hosted, lint-and-test-rescue, changes, race-2]
     if: ${{ needs.race-2.outputs.race == 'true' && !cancelled() && (needs.lint-and-test.result == 'success' || needs.lint-and-test-hosted.result == 'success' || needs.lint-and-test-rescue.result == 'success') && (github.event_name != 'pull_request' || needs.changes.outputs.api == 'true') }}
     runs-on: ubuntu-latest
@@ -1100,7 +1100,7 @@ jobs:
   # api-postgres's rescue: reruns it hosted when its Seldon lane failed (the house
   # network drops connections); a genuine failure fails again.
   api-postgres-rescue:
-    name: API (Postgres)
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'API (Postgres)' || 'API (Postgres) (seldon rescue, off)' }}
     needs: [lint-and-test, lint-and-test-hosted, lint-and-test-rescue, changes, api-postgres]
     if: ${{ !cancelled() && needs.api-postgres.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && (needs.lint-and-test.result == 'success' || needs.lint-and-test-hosted.result == 'success' || needs.lint-and-test-rescue.result == 'success') && (github.event_name != 'pull_request' || needs.changes.outputs.api == 'true') }}
     runs-on: ubuntu-latest
