@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
+import postgres from 'postgres';
 import { closePostgres, connectPostgres, type ApiDatabase } from '../index';
 import { acquireOrRenewLease, releaseLease } from '../coordination/leaseRepository';
 import { leases } from '../schema/leases';
@@ -20,6 +21,11 @@ import { leases } from '../schema/leases';
  */
 
 let db: ApiDatabase;
+/**
+ * A second, independent connection that plays "the other ECS task" mid-commit:
+ * it holds the lease row's lock in an open transaction while the repository runs.
+ */
+let other: postgres.Sql;
 
 const HOLDER_A = 'task-a';
 const HOLDER_B = 'task-b';
@@ -29,9 +35,11 @@ beforeAll(() => {
   const connected = connectPostgres(process.env.DATABASE_URL);
   if (!connected) throw new Error('DATABASE_URL is not set; vitest.pg.globalSetup.ts must run.');
   db = connected;
+  other = postgres(process.env.DATABASE_URL ?? '', { max: 1 });
 });
 
 afterAll(async () => {
+  await other.end();
   await closePostgres();
 });
 
@@ -154,5 +162,121 @@ describe('releasing', () => {
     const row = await readLease(name);
     expect(row.holderId).toBe(HOLDER_B);
     expect(row.expiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+});
+
+/**
+ * Resolves with the promise's value, or rejects once `ms` passes: the way to
+ * assert "this did NOT wait for that lock" without hanging the suite when it does.
+ */
+function within<T>(ms: number, promise: Promise<T>): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`still waiting after ${ms} ms`)), ms).unref?.();
+    }),
+  ]);
+}
+
+/**
+ * Starts a transaction on `other` that renews `name` for `holder` and stays OPEN
+ * (the row lock held) until the returned `finish` commits or rolls it back. This
+ * is what a holder's renewal looks like to everyone else while its COMMIT waits
+ * on a synchronous standby.
+ */
+async function holdRenewalOpen(name: string, holder: string) {
+  let finish!: (outcome: 'commit' | 'rollback') => void;
+  const decided = new Promise<'commit' | 'rollback'>((resolve) => {
+    finish = resolve;
+  });
+  let locked!: () => void;
+  const isLocked = new Promise<void>((resolve) => {
+    locked = resolve;
+  });
+  const done = other
+    .begin(async (tx) => {
+      await tx`update leases set holder_id = ${holder}, expires_at = now() + interval '1 minute' where name = ${name}`;
+      locked();
+      if ((await decided) === 'rollback') throw new Error('rollback');
+    })
+    .catch((error: unknown) => {
+      if (!(error instanceof Error) || error.message !== 'rollback') throw error;
+    });
+  await isLocked;
+  return {
+    async commit() {
+      finish('commit');
+      await done;
+    },
+    async rollback() {
+      finish('rollback');
+      await done;
+    },
+  };
+}
+
+describe('row locks (the measured 43 s stalls)', () => {
+  it("does not wait on a LIVE holder's in-flight renewal when it cannot win", async () => {
+    const name = 'lease-repo-no-wait';
+    expect(await acquireOrRenewLease(db, name, HOLDER_A, TTL_MS)).toBe(true);
+
+    const renewal = await holdRenewalOpen(name, HOLDER_A);
+    try {
+      // The old INSERT ... ON CONFLICT DO UPDATE locked the row before its WHERE
+      // and sat here until the holder's transaction ended.
+      expect(await within(2_000, acquireOrRenewLease(db, name, HOLDER_B, TTL_MS))).toBe(false);
+    } finally {
+      await renewal.commit();
+    }
+    expect((await readLease(name)).holderId).toBe(HOLDER_A);
+  });
+
+  it('a contender for a LAPSED lease waits for the in-flight renewal and loses when it commits', async () => {
+    const name = 'lease-repo-lapsed-commit';
+    expect(await acquireOrRenewLease(db, name, HOLDER_A, TTL_MS)).toBe(true);
+    await expireLease(name);
+
+    const renewal = await holdRenewalOpen(name, HOLDER_A);
+    const contender = acquireOrRenewLease(db, name, HOLDER_B, TTL_MS);
+    // It MAY win, so it must wait for the lock and then re-check the predicate
+    // against the renewed row instead of the expired one it first saw.
+    await expect(within(300, contender)).rejects.toThrow('still waiting');
+    await renewal.commit();
+    expect(await contender).toBe(false);
+    expect((await readLease(name)).holderId).toBe(HOLDER_A);
+  });
+
+  it('a contender for a LAPSED lease takes it when the in-flight renewal rolls back', async () => {
+    const name = 'lease-repo-lapsed-rollback';
+    expect(await acquireOrRenewLease(db, name, HOLDER_A, TTL_MS)).toBe(true);
+    await expireLease(name);
+
+    const renewal = await holdRenewalOpen(name, HOLDER_A);
+    const contender = acquireOrRenewLease(db, name, HOLDER_B, TTL_MS);
+    await renewal.rollback();
+    expect(await contender).toBe(true);
+    expect((await readLease(name)).holderId).toBe(HOLDER_B);
+  });
+
+  it('elects exactly one of several instances racing for a lease with no row yet', async () => {
+    const name = 'lease-repo-first-boot-race';
+    const holders = ['task-1', 'task-2', 'task-3', 'task-4', 'task-5'];
+    const results = await Promise.all(
+      holders.map((holder) => acquireOrRenewLease(db, name, holder, TTL_MS)),
+    );
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect((await readLease(name)).holderId).toBe(holders[results.indexOf(true)]);
+  });
+
+  it('elects exactly one of several instances racing for a lapsed lease', async () => {
+    const name = 'lease-repo-lapsed-race';
+    expect(await acquireOrRenewLease(db, name, HOLDER_A, TTL_MS)).toBe(true);
+    await expireLease(name);
+    const holders = ['task-6', 'task-7', 'task-8', 'task-9', 'task-10'];
+    const results = await Promise.all(
+      holders.map((holder) => acquireOrRenewLease(db, name, holder, TTL_MS)),
+    );
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect((await readLease(name)).holderId).toBe(holders[results.indexOf(true)]);
   });
 });
