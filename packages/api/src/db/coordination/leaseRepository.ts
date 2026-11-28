@@ -7,20 +7,46 @@
  * afterwards, because a second read is a second instant — and two ECS tasks
  * racing at that seam is the only failure this table exists to prevent.
  *
- * ## Why one `INSERT … ON CONFLICT DO UPDATE … WHERE`
+ * ## Why an `UPDATE` first, and an `INSERT` only for a missing row
  *
- * The claim is `holderId == me OR expiresAt < now()`, evaluated server-side. It
- * is not "select then update": that is two statements, needs a
- * transaction to be atomic, and still has to decide what to do when the row does
- * not exist yet. `ON CONFLICT` handles the first-boot insert and the steady-state
- * renewal with the same statement, and the `WHERE` on `DO UPDATE` is what makes a
- * losing attempt a genuine no-op rather than a theft.
+ * The claim is `holderId == me OR expiresAt < now()`, evaluated server-side, in
+ * ONE statement: a writable CTE that UPDATEs the row when the predicate holds and
+ * INSERTs it only when no row exists yet (first boot). It is not "select, then
+ * decide in JavaScript": that is two instants, and two ECS tasks racing at that
+ * seam is exactly what this table exists to prevent.
  *
- * When the `WHERE` is false, Postgres updates nothing and `RETURNING` yields
- * NOTHING — the empty result IS "somebody else holds it". That matters: a
- * failure still propagates as an exception, so "not the leader" and "the database
- * is unreachable" stay distinguishable. Collapsing them is how a network blip
- * turns into two leaders.
+ * It used to be `INSERT … ON CONFLICT DO UPDATE … WHERE`, which elects the same
+ * winner but LOCKS the conflicting row before it evaluates the `WHERE`, so the
+ * instance that loses still takes the row lock. Every task heartbeats every lease
+ * on the same 20 s cadence from the same deploy, so the loser routinely queued
+ * behind the holder's renewal and waited for its COMMIT, which on a primary with
+ * quorum-synchronous replicas includes the standby round trip and stalls for as
+ * long as replication does. Measured on PlanetScale (2026-11-28, ~10 h): 9,600
+ * calls, 431 s of statement time, mean 45 ms, stddev 1.1 s, max 43 s, for a
+ * one-row write whose neighbours in the same database take 0.2 ms.
+ *
+ * A plain `UPDATE` evaluates its `WHERE` on the committed row version BEFORE it
+ * tries to lock it. A loser looking at a live lease held by someone else skips the
+ * row without locking or waiting; only an instance that may actually win (the
+ * holder renewing, or a contender for an expired lease) takes the lock, and READ
+ * COMMITTED re-checks the predicate on the newest version after any wait
+ * (EvalPlanQual), so two contenders for a lapsed lease still produce one winner.
+ *
+ * The `INSERT` runs only when the statement's snapshot has no row at all
+ * (a lease name's first boot). If another statement inserted the row meanwhile,
+ * its conflict clause is the previous upsert, unchanged: renew if the row is
+ * mine (this instance's own earlier heartbeat whose insert had not committed
+ * yet), take it if it lapsed, otherwise nothing. So two first-boot instances
+ * still produce one holder, and an instance never reads its own uncommitted
+ * first claim as somebody else's. The UPDATE and the INSERT can never both act,
+ * because one needs the row to exist in the snapshot and the other needs it not
+ * to.
+ *
+ * Either way the shape of the RESULT is the answer: a row when this instance
+ * holds the lease, no row when another instance holds a live one. A failure still
+ * propagates as an exception, so "not the leader" and "the database is
+ * unreachable" stay distinguishable. Collapsing them is how a network blip turns
+ * into two leaders.
  *
  * ## The clock is the SERVER's, always
  *
@@ -59,39 +85,40 @@ export async function acquireOrRenewLease(
 ): Promise<boolean> {
   const expiresAt = sql`${serverNow} + (${leaseTtlMs} * interval '1 millisecond')`;
 
-  const rows = await db
-    .insert(leases)
-    .values({
-      name,
-      holderId,
-      expiresAt,
-      acquiredAt: serverNow,
-    })
-    .onConflictDoUpdate({
-      target: leases.name,
-      set: {
-        holderId,
-        expiresAt,
-        /**
-         * Preserved across renewals by the SAME holder, reset only when
-         * leadership actually changes hands. In a `DO UPDATE SET` value the
-         * unqualified table reference is the EXISTING row, so this reads the
-         * stored holder, not the one being proposed.
-         */
-        acquiredAt: sql`case when ${leases.holderId} = ${holderId} then ${leases.acquiredAt} else ${serverNow} end`,
-        /**
-         * Set explicitly: `$onUpdate` is applied by `db.update()`, and this is an
-         * insert's conflict clause, so the builder would not touch it.
-         */
-        updatedAt: serverNow,
-      },
-      /**
-       * The whole election, in one predicate: take it if it is already mine, or
-       * if the previous holder's claim has lapsed. Anything else updates no row.
-       */
-      setWhere: sql`${leases.holderId} = ${holderId} or ${leases.expiresAt} < now()`,
-    })
-    .returning({ holderId: leases.holderId });
+  /**
+   * `acquired_at` is preserved across renewals by the SAME holder and reset only
+   * when leadership changes hands: in an UPDATE's SET list the column is the
+   * row's CURRENT value, so the `case` reads the stored holder. `updated_at` is
+   * set explicitly because `$onUpdate` belongs to `db.update()`, not raw SQL.
+   * The `where` is the whole election: mine already, or the claim has lapsed.
+   */
+  const rows = await db.execute<{ holder_id: string }>(sql`
+    with renewed as (
+      update ${leases}
+      set holder_id = ${holderId},
+          expires_at = ${expiresAt},
+          acquired_at = case when ${leases.holderId} = ${holderId} then ${leases.acquiredAt} else ${serverNow} end,
+          updated_at = ${serverNow}
+      where ${leases.name} = ${name}
+        and (${leases.holderId} = ${holderId} or ${leases.expiresAt} < now())
+      returning ${leases.holderId}
+    ),
+    created as (
+      insert into ${leases} (name, holder_id, expires_at, acquired_at)
+      select ${name}, ${holderId}, ${expiresAt}, ${serverNow}
+      where not exists (select 1 from ${leases} where ${leases.name} = ${name})
+      on conflict (name) do update
+        set holder_id = ${holderId},
+            expires_at = ${expiresAt},
+            acquired_at = case when ${leases.holderId} = ${holderId} then ${leases.acquiredAt} else ${serverNow} end,
+            updated_at = ${serverNow}
+        where ${leases.holderId} = ${holderId} or ${leases.expiresAt} < now()
+      returning ${leases.holderId}
+    )
+    select holder_id from renewed
+    union all
+    select holder_id from created
+  `);
 
   return rows.length > 0;
 }
