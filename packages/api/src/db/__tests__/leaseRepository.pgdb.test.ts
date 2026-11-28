@@ -258,6 +258,32 @@ describe('row locks (the measured 43 s stalls)', () => {
     expect((await readLease(name)).holderId).toBe(HOLDER_B);
   });
 
+  it('renews, not refuses, when its own first claim is still uncommitted', async () => {
+    const name = 'lease-repo-own-first-insert';
+    // This instance's first heartbeat, inserted but not committed when the
+    // next heartbeat (same holder) runs and sees no row in its snapshot.
+    let finish!: () => void;
+    const decided = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    let inserted!: () => void;
+    const isInserted = new Promise<void>((resolve) => {
+      inserted = resolve;
+    });
+    const first = other.begin(async (tx) => {
+      await tx`insert into leases (name, holder_id, expires_at, acquired_at) values (${name}, ${HOLDER_A}, now() + interval '1 minute', date_trunc('milliseconds', now()))`;
+      inserted();
+      await decided;
+    });
+    await isInserted;
+    const second = acquireOrRenewLease(db, name, HOLDER_A, TTL_MS);
+    await expect(within(300, second)).rejects.toThrow('still waiting');
+    finish();
+    await first;
+    expect(await second).toBe(true);
+    expect((await readLease(name)).holderId).toBe(HOLDER_A);
+  });
+
   it('elects exactly one of several instances racing for a lease with no row yet', async () => {
     const name = 'lease-repo-first-boot-race';
     const holders = ['task-1', 'task-2', 'task-3', 'task-4', 'task-5'];

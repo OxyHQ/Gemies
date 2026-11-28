@@ -32,11 +32,15 @@
  * COMMITTED re-checks the predicate on the newest version after any wait
  * (EvalPlanQual), so two contenders for a lapsed lease still produce one winner.
  *
- * The `INSERT` runs only when the statement's snapshot has no row at all, and
- * its `ON CONFLICT DO NOTHING` settles two first-boot instances racing to create
- * it: the second one inserts nothing. The UPDATE and the INSERT can never both
- * act, because one needs the row to exist in the snapshot and the other needs it
- * not to.
+ * The `INSERT` runs only when the statement's snapshot has no row at all
+ * (a lease name's first boot). If another statement inserted the row meanwhile,
+ * its conflict clause is the previous upsert, unchanged: renew if the row is
+ * mine (this instance's own earlier heartbeat whose insert had not committed
+ * yet), take it if it lapsed, otherwise nothing. So two first-boot instances
+ * still produce one holder, and an instance never reads its own uncommitted
+ * first claim as somebody else's. The UPDATE and the INSERT can never both act,
+ * because one needs the row to exist in the snapshot and the other needs it not
+ * to.
  *
  * Either way the shape of the RESULT is the answer: a row when this instance
  * holds the lease, no row when another instance holds a live one. A failure still
@@ -103,7 +107,12 @@ export async function acquireOrRenewLease(
       insert into ${leases} (name, holder_id, expires_at, acquired_at)
       select ${name}, ${holderId}, ${expiresAt}, ${serverNow}
       where not exists (select 1 from ${leases} where ${leases.name} = ${name})
-      on conflict (name) do nothing
+      on conflict (name) do update
+        set holder_id = ${holderId},
+            expires_at = ${expiresAt},
+            acquired_at = case when ${leases.holderId} = ${holderId} then ${leases.acquiredAt} else ${serverNow} end,
+            updated_at = ${serverNow}
+        where ${leases.holderId} = ${holderId} or ${leases.expiresAt} < now()
       returning ${leases.holderId}
     )
     select holder_id from renewed
